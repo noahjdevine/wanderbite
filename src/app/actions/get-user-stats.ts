@@ -122,7 +122,7 @@ export async function getUserStats(userId: string): Promise<GetUserStatsResult> 
       getLevelInfo(xp);
 
     const history: UserStatsHistoryItem[] = list.map((row) => {
-      const r = row as {
+      const r = row as unknown as {
         restaurant_id: string;
         verified_at: string | null;
         restaurants: { name: string } | null;
