@@ -1,0 +1,36 @@
+# WANDERBITE PROJECT CONTEXT
+
+## Project Vision
+Wanderbite is a gamified restaurant discovery app. 
+- Users ($15/mo) receive 2 random "Challenges" (restaurants) per month.
+- Users can swap 1 challenge per month.
+- Users get $10 off $40+ spend at assigned restaurants.
+- Logic is "Safety First" (Allergies) then "Discovery" (Random assignment).
+
+## Tech Stack
+- Frontend: Next.js (App Router), TypeScript, Tailwind CSS, Shadcn/UI
+- Backend: Supabase (Postgres, Auth, Edge Functions)
+- Payments: Stripe
+
+## Database Schema (Key Tables)
+Refer to these table names exactly in SQL generation:
+- `markets` (id, name, status)
+- `users` (id, email, role, preferences_json)
+- `restaurants` (id, market_id, cuisine_tags, lat, lon, price_tier)
+- `restaurant_offers` (id, restaurant_id, discount_cents, min_spend_cents, valid_from)
+- `challenges` (id, user_id, cycle_month, status, swap_count_used)
+- `challenge_items` (id, challenge_id, restaurant_id, status[assigned/swapped/redeemed])
+- `redemptions` (id, token_hash, status[issued/verified])
+
+## Business Rules (Strict Enforcement)
+1. **Assignment:** A user cannot be assigned a restaurant they have redeemed at in the last 6 months.
+2. **Frequency:** Max 2 redemptions per restaurant per rolling 12 months.
+3. **Swaps:** Only 1 swap allowed per `challenge_cycle`.
+4. **Safety:** If `user_preferences.dietary_flags` contains a flag (e.g., 'peanut'), NEVER assign a restaurant with that specific `allergy_flag`.
+
+## Coding Guidelines
+- Use Supabase SSR client for all data fetching.
+- Use Shadcn/UI for components.
+- Always use `date-fns` for date manipulation.
+- Implement Row Level Security (RLS) policies in every SQL migration.
+- DO NOT use `any` types; strictly type the Supabase return data.
