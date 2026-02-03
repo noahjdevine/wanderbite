@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server';
-import Stripe from 'stripe';
-import { getStripe } from '@/lib/stripe';
+import type Stripe from 'stripe';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
 export async function POST(request: Request) {
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('Missing STRIPE_WEBHOOK_SECRET');
     return NextResponse.json(
@@ -22,10 +20,11 @@ export async function POST(request: Request) {
     );
   }
 
-  let event: Stripe.Event;
   const rawBody = await (await request.blob()).text();
 
+  let event: Stripe.Event;
   try {
+    const { getStripe } = await import('@/lib/stripe');
     event = getStripe().webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -59,6 +58,7 @@ export async function POST(request: Request) {
             typeof session.subscription === 'string'
               ? session.subscription
               : session.subscription.id;
+          const { getStripe } = await import('@/lib/stripe');
           const raw = await getStripe().subscriptions.retrieve(subId);
           const subscription = raw as unknown as { current_period_end?: number | null };
           const periodEnd = subscription.current_period_end;
