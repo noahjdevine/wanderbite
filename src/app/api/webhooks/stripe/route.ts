@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const rawBody = await (await request.blob()).text();
 
   try {
-    event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret);
+    event = getStripe().webhooks.constructEvent(rawBody, signature, webhookSecret);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Stripe webhook signature verification failed:', message);
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
             typeof session.subscription === 'string'
               ? session.subscription
               : session.subscription.id;
-          const raw = await stripe.subscriptions.retrieve(subId);
+          const raw = await getStripe().subscriptions.retrieve(subId);
           const subscription = raw as unknown as { current_period_end?: number | null };
           const periodEnd = subscription.current_period_end;
           currentPeriodEnd = periodEnd

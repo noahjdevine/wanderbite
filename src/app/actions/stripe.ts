@@ -1,7 +1,7 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { stripe } from '@/lib/stripe';
+import { getStripe } from '@/lib/stripe';
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
 const priceId = process.env.STRIPE_PRICE_ID ?? '';
@@ -25,7 +25,7 @@ export async function createCheckoutSession(
   }
 
   try {
-    const session = await stripe.checkout.sessions.create({
+    const session = await getStripe().checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${baseUrl}/?success=true`,
@@ -76,7 +76,7 @@ export async function createBillingPortalSession(
   }
 
   try {
-    const session = await stripe.billingPortal.sessions.create({
+    const session = await getStripe().billingPortal.sessions.create({
       customer: customerId,
       return_url: `${baseUrl}/billing`,
     });
