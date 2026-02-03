@@ -60,9 +60,10 @@ export async function POST(request: Request) {
               ? session.subscription
               : session.subscription.id;
           const raw = await stripe.subscriptions.retrieve(subId);
-          const subscription = raw as unknown as Stripe.Subscription;
-          currentPeriodEnd = subscription.current_period_end
-            ? new Date(subscription.current_period_end * 1000).toISOString()
+          const subscription = raw as unknown as { current_period_end?: number | null };
+          const periodEnd = subscription.current_period_end;
+          currentPeriodEnd = periodEnd
+            ? new Date(periodEnd * 1000).toISOString()
             : null;
         }
 
