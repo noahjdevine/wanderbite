@@ -31,10 +31,11 @@ function DropdownMenuTrigger({
 }: React.ComponentProps<'button'> & { asChild?: boolean }) {
   const { open, setOpen } = useDropdownMenu();
   if (asChild && React.isValidElement(children)) {
-    return React.cloneElement(children as React.ReactElement<{ onClick?: () => void }>, {
+    type ChildProps = { onClick?: (e: React.MouseEvent) => void };
+    return React.cloneElement(children as React.ReactElement<ChildProps>, {
       onClick: (e: React.MouseEvent) => {
         setOpen(!open);
-        (children as React.ReactElement<{ onClick?: () => void }>).props?.onClick?.(e);
+        (children as React.ReactElement<ChildProps>).props?.onClick?.(e);
       },
     });
   }
