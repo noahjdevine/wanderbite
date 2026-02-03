@@ -38,18 +38,33 @@ export default async function AdminPage() {
     );
   }
 
-  const restaurants = (rows ?? []).map((r) => ({
-    id: (r as { id: string }).id,
-    name: (r as { name: string }).name,
-    address: (r as { address: string | null }).address,
-    description: (r as { description: string | null }).description ?? null,
-    cuisine_tags: (r as { cuisine_tags: string[] | null }).cuisine_tags,
-    price_range: (r as { price_range: string | null }).price_range ?? null,
-    neighborhood: (r as { neighborhood: string | null }).neighborhood ?? null,
-    image_url: (r as { image_url: string | null }).image_url ?? null,
-    verification_code: (r as { verification_code: string | null }).verification_code ?? null,
-    status: (r as { status: string }).status,
-  }));
+  type RestaurantRow = {
+    id: string;
+    name: string;
+    address: string | null;
+    description: string | null;
+    cuisine_tags: string[] | null;
+    price_range: string | null;
+    neighborhood: string | null;
+    image_url: string | null;
+    verification_code: string | null;
+    status: string;
+  };
+  const restaurants = (rows ?? []).map((r) => {
+    const row = r as unknown as RestaurantRow;
+    return {
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      description: row.description ?? null,
+      cuisine_tags: row.cuisine_tags,
+      price_range: row.price_range ?? null,
+      neighborhood: row.neighborhood ?? null,
+      image_url: row.image_url ?? null,
+      verification_code: row.verification_code ?? null,
+      status: row.status,
+    };
+  });
 
   return (
     <main className="min-h-screen bg-background px-4 py-10">

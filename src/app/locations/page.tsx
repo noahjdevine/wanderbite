@@ -33,20 +33,21 @@ export default async function LocationsPage() {
   }
 
   const restaurants: LocationRestaurant[] = (rows ?? []).map((r) => {
-    const row = r as {
+    const row = r as unknown as {
       id: string;
       name: string;
       cuisine_tags: string[] | null;
       address: string | null;
       lat: number | null;
       lon: number | null;
-      markets: { name: string } | null;
+      markets: { name: string } | { name: string }[] | null;
     };
+    const market = Array.isArray(row.markets) ? row.markets[0] : row.markets;
     return {
       id: row.id,
       name: row.name,
       cuisine_tags: row.cuisine_tags,
-      neighborhood: row.markets?.name ?? null,
+      neighborhood: market?.name ?? null,
       description: null,
       price_range: null,
       address: row.address,
