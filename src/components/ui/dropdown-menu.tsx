@@ -99,14 +99,14 @@ function DropdownMenuItem({
   ...props
 }: React.ComponentProps<'div'> & { asChild?: boolean }) {
   const { setOpen } = useDropdownMenu();
-  const handleClick = (e: React.MouseEvent) => {
+  const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     setOpen(false);
     onClick?.(e);
   };
   if (asChild && React.isValidElement(children)) {
-    const child = children as React.ReactElement<{ onClick?: (e: React.MouseEvent) => void }>;
+    const child = children as React.ReactElement<{ onClick?: (e: React.MouseEvent<HTMLDivElement>) => void }>;
     return React.cloneElement(child, {
-      onClick: (e: React.MouseEvent) => {
+      onClick: (e: React.MouseEvent<HTMLDivElement>) => {
         handleClick(e);
         child.props?.onClick?.(e);
       },
