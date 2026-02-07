@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
+import { HelpCircle, LogOut, Settings, CreditCard } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,42 @@ export default async function ProfilePage() {
           }}
           dietaryOptions={DIETARY_OPTIONS}
         />
+
+        <div className="mt-8 space-y-4">
+          <h3 className="text-sm font-semibold text-slate-500 uppercase tracking-wider px-1">
+            Menu
+          </h3>
+
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm divide-y divide-slate-100 overflow-hidden">
+            <Link href="/billing" className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-3">
+                <CreditCard className="size-5 text-slate-400" />
+                <span className="font-medium text-slate-700">Subscription & Billing</span>
+              </div>
+            </Link>
+
+            <Link href="/how-it-works" className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-3">
+                <HelpCircle className="size-5 text-slate-400" />
+                <span className="font-medium text-slate-700">How it Works</span>
+              </div>
+            </Link>
+
+            <Link href="/settings" className="flex items-center justify-between p-4 hover:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-3">
+                <Settings className="size-5 text-slate-400" />
+                <span className="font-medium text-slate-700">Account Settings</span>
+              </div>
+            </Link>
+          </div>
+
+          <form action="/auth/signout" method="post">
+            <button className="w-full flex items-center justify-center gap-2 p-4 mt-6 text-red-600 font-medium bg-red-50 rounded-xl hover:bg-red-100 transition-colors" type="submit">
+              <LogOut className="size-5" />
+              Sign Out
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   );
