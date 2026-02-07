@@ -2,17 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, MapPin, User } from 'lucide-react';
+import { Home, MapPin, User, HelpCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
   { href: '/', label: 'Home', icon: Home },
+  { href: '/how-it-works', label: 'How it Works', icon: HelpCircle },
   { href: '/locations', label: 'Explore', icon: MapPin },
   {
     href: '/profile',
     label: 'Profile',
     icon: User,
-    /** Profile link is active on /profile or /login (middleware redirects unauthenticated users). */
     activePaths: ['/profile', '/login'],
   },
 ] as const;
