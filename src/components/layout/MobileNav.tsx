@@ -3,9 +3,17 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Home, MapPin, User, HelpCircle } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const ITEMS = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  activePaths?: readonly string[];
+};
+
+const ITEMS: NavItem[] = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/how-it-works', label: 'How it Works', icon: HelpCircle },
   { href: '/locations', label: 'Explore', icon: MapPin },
@@ -15,7 +23,7 @@ const ITEMS = [
     icon: User,
     activePaths: ['/profile', '/login'],
   },
-] as const;
+];
 
 export function MobileNav() {
   const pathname = usePathname();
