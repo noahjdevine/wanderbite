@@ -41,16 +41,26 @@ type RestaurantRow = {
   neighborhood: string | null;
   image_url: string | null;
   verification_code: string | null;
+  pin: string | null;
   status: string;
+};
+
+type UserRow = {
+  id: string;
+  email: string;
+  full_name: string;
+  username: string;
+  subscription_status: string;
 };
 
 type AdminClientProps = {
   restaurants: RestaurantRow[];
+  users: UserRow[];
 };
 
 const PRICE_OPTIONS = ['$', '$$', '$$$', '$$$$'];
 
-export function AdminClient({ restaurants: initialRestaurants }: AdminClientProps) {
+export function AdminClient({ restaurants: initialRestaurants, users }: AdminClientProps) {
   const router = useRouter();
   const [restaurants, setRestaurants] = useState(initialRestaurants);
   const [adding, setAdding] = useState(false);
@@ -184,14 +194,27 @@ export function AdminClient({ restaurants: initialRestaurants }: AdminClientProp
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               />
             </div>
-            <div className="sm:col-span-2">
+            <div>
               <label htmlFor="verification_code" className="mb-1 block text-sm font-medium">
-                Verification Code (Secret Code for partner)
+                Verification Code (for partner redemption)
               </label>
               <input
                 id="verification_code"
                 name="verification_code"
-                placeholder="Code restaurant uses to verify redemptions"
+                placeholder="Optional"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="pin" className="mb-1 block text-sm font-medium">
+                Partner PIN (for /partner portal login)
+              </label>
+              <input
+                id="pin"
+                name="pin"
+                type="password"
+                placeholder="e.g. 4–6 digits"
+                autoComplete="off"
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               />
             </div>
@@ -207,7 +230,7 @@ export function AdminClient({ restaurants: initialRestaurants }: AdminClientProp
       <Card className="border-violet-200">
         <CardHeader>
           <CardTitle className="text-primary">Restaurant List</CardTitle>
-          <CardDescription>All partner restaurants. Delete with care.</CardDescription>
+          <CardDescription>All partner restaurants. PIN used for Partner Portal login.</CardDescription>
         </CardHeader>
         <CardContent>
           {restaurants.length === 0 ? (
@@ -221,6 +244,7 @@ export function AdminClient({ restaurants: initialRestaurants }: AdminClientProp
                     <TableHead>Address</TableHead>
                     <TableHead>Neighborhood</TableHead>
                     <TableHead>Price</TableHead>
+                    <TableHead>PIN set</TableHead>
                     <TableHead className="w-[100px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -233,6 +257,7 @@ export function AdminClient({ restaurants: initialRestaurants }: AdminClientProp
                       </TableCell>
                       <TableCell className="text-sm">{r.neighborhood ?? '—'}</TableCell>
                       <TableCell className="text-sm">{r.price_range ?? '—'}</TableCell>
+                      <TableCell className="text-sm">{r.pin ? 'Yes' : '—'}</TableCell>
                       <TableCell>
                         <Button
                           variant="outline"
@@ -244,6 +269,41 @@ export function AdminClient({ restaurants: initialRestaurants }: AdminClientProp
                           Delete
                         </Button>
                       </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-violet-200">
+        <CardHeader>
+          <CardTitle className="text-primary">User List</CardTitle>
+          <CardDescription>All users (subscribers).</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {users.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No users yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Username</TableHead>
+                    <TableHead>Subscription</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {users.map((u) => (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-medium">{u.email}</TableCell>
+                      <TableCell className="text-sm">{u.full_name}</TableCell>
+                      <TableCell className="text-sm">{u.username}</TableCell>
+                      <TableCell className="text-sm">{u.subscription_status}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

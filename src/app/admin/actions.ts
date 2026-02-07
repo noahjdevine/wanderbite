@@ -54,6 +54,7 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
     const neighborhood = (formData.get('neighborhood') as string)?.trim() ?? null;
     const image_url = (formData.get('image_url') as string)?.trim() ?? null;
     const verification_code = (formData.get('verification_code') as string)?.trim() ?? null;
+    const pin = (formData.get('pin') as string)?.trim() ?? null;
 
     const { data: org, error: orgErr } = await supabase
       .from('restaurant_orgs')
@@ -72,13 +73,14 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
       org_id: orgId,
       market_id: marketId,
       name,
-      cuisine_tags: cuisine_tags.length > 0 ? cuisine_tags : null,
+      cuisine_tags: cuisine_tags.length ? cuisine_tags : null,
       address,
       description,
       price_range,
       neighborhood,
       image_url,
       verification_code,
+      pin: pin || null,
       status: 'active',
     });
 

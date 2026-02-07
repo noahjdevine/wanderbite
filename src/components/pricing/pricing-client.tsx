@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { createCheckoutSession } from '@/app/actions/stripe';
-import { PricingFaq } from '@/components/pricing/pricing-faq';
 
 const FEATURES = [
   '$10 off at every spot',
@@ -108,9 +107,6 @@ export function PricingClient({ userId, email }: PricingClientProps) {
           )}
         </CardFooter>
       </Card>
-
-      {/* FAQ */}
-      <PricingFaq />
     </div>
   );
 }

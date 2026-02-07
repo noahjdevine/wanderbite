@@ -5,6 +5,8 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { Button } from '@/components/ui/button';
 import { AdminClient } from '@/app/admin/admin-client';
 
+export const dynamic = 'force-dynamic';
+
 const SUPER_ADMIN_EMAIL = 'noah@wanderbite.com';
 
 export default async function AdminPage() {
@@ -23,9 +25,10 @@ export default async function AdminPage() {
   }
 
   const admin = getSupabaseAdmin();
+
   const { data: rows, error } = await admin
     .from('restaurants')
-    .select('id, name, address, description, cuisine_tags, price_range, neighborhood, image_url, verification_code, status')
+    .select('id, name, address, description, cuisine_tags, price_range, neighborhood, image_url, verification_code, pin, status')
     .order('name');
 
   if (error) {
@@ -38,6 +41,39 @@ export default async function AdminPage() {
     );
   }
 
+  const { data: userRows, error: userError } = await admin
+    .from('user_profiles')
+    .select('id, email, full_name, username, subscription_status')
+    .order('email');
+
+  if (userError) {
+    return (
+      <main className="min-h-screen bg-background px-4 py-10">
+        <div className="mx-auto max-w-4xl">
+          <p className="text-destructive">Failed to load users: {userError.message}</p>
+        </div>
+      </main>
+    );
+  }
+
+  type UserRow = {
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    username: string | null;
+    subscription_status: string | null;
+  };
+  const users = (userRows ?? []).map((r) => {
+    const row = r as unknown as UserRow;
+    return {
+      id: row.id,
+      email: row.email ?? '—',
+      full_name: row.full_name ?? '—',
+      username: row.username ?? '—',
+      subscription_status: row.subscription_status ?? '—',
+    };
+  });
+
   type RestaurantRow = {
     id: string;
     name: string;
@@ -48,6 +84,7 @@ export default async function AdminPage() {
     neighborhood: string | null;
     image_url: string | null;
     verification_code: string | null;
+    pin: string | null;
     status: string;
   };
   const restaurants = (rows ?? []).map((r) => {
@@ -62,6 +99,7 @@ export default async function AdminPage() {
       neighborhood: row.neighborhood ?? null,
       image_url: row.image_url ?? null,
       verification_code: row.verification_code ?? null,
+      pin: row.pin ?? null,
       status: row.status,
     };
   });
@@ -82,7 +120,7 @@ export default async function AdminPage() {
             <Link href="/">Back to app</Link>
           </Button>
         </div>
-        <AdminClient restaurants={restaurants} />
+        <AdminClient restaurants={restaurants} users={users} />
       </div>
     </main>
   );

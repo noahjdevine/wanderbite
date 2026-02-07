@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { MobileNav } from "@/components/layout/MobileNav";
+import { OnboardingModal } from "@/components/onboarding/onboarding-modal";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -30,6 +31,7 @@ export default function RootLayout({
         {children}
         <Footer />
         <MobileNav />
+        <OnboardingModal />
         <Toaster />
       </body>
     </html>

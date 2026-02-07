@@ -1,7 +1,10 @@
 'use server';
 
+import { cookies } from 'next/headers';
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+
+const PARTNER_COOKIE_NAME = 'partner_restaurant_id';
 
 const BADGE_ID_TO_NAME: Record<string, string> = {
   first_bite: 'First Bite',
@@ -160,4 +163,103 @@ async function awardBadgesForVerifiedCount(
   if (insertErr) return [];
 
   return newBadgeIds.map((id) => BADGE_ID_TO_NAME[id] ?? id);
+}
+
+/**
+ * Partner Portal: verify a customer code. Only succeeds if the redemption is for
+ * the restaurant in the partner session cookie. Uses service role (bypasses RLS);
+ * authorization is enforced by server-side PIN-verified session.
+ */
+export async function verifyRedemptionTokenForPartner(
+  token: string
+): Promise<VerifyRedemptionResult> {
+  const cookieStore = await cookies();
+  const partnerRestaurantId = cookieStore.get(PARTNER_COOKIE_NAME)?.value;
+  if (!partnerRestaurantId) {
+    return { success: false, message: 'Partner session expired. Please log in again.' };
+  }
+
+  const trimmed = token?.trim();
+  if (!trimmed) {
+    return { success: false, message: 'Invalid code' };
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  const { data: rows, error: searchErr } = await supabase
+    .from('redemptions')
+    .select('id, user_id, restaurant_id, status, verified_at')
+    .ilike('token_hash', trimmed)
+    .limit(2);
+
+  if (searchErr) {
+    return { success: false, message: 'Verification failed. Please try again.' };
+  }
+  if (!rows?.length) {
+    return { success: false, message: 'Invalid code' };
+  }
+
+  const redemption = rows[0] as {
+    id: string;
+    user_id: string;
+    restaurant_id: string;
+    status: string;
+    verified_at: string | null;
+  };
+
+  if (redemption.restaurant_id !== partnerRestaurantId) {
+    return { success: false, message: 'This code is not for your restaurant.' };
+  }
+
+  if (redemption.status === 'verified') {
+    const usedAt = redemption.verified_at
+      ? format(new Date(redemption.verified_at), 'PPp')
+      : 'a previous time';
+    return {
+      success: false,
+      message: `This code was already used on ${usedAt}.`,
+    };
+  }
+
+  if (redemption.status === 'expired') {
+    return { success: false, message: 'Code expired' };
+  }
+
+  const now = new Date().toISOString();
+  const { error: updateErr } = await supabase
+    .from('redemptions')
+    .update({ status: 'verified', verified_at: now })
+    .eq('id', redemption.id);
+
+  if (updateErr) {
+    return { success: false, message: 'Verification failed. Please try again.' };
+  }
+
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('email')
+    .eq('id', redemption.user_id)
+    .maybeSingle();
+
+  const { data: restaurant } = await supabase
+    .from('restaurants')
+    .select('name')
+    .eq('id', redemption.restaurant_id)
+    .maybeSingle();
+
+  const email = (profile as { email: string | null } | null)?.email ?? null;
+  const restaurantName =
+    (restaurant as { name: string } | null)?.name ?? 'Unknown restaurant';
+  const verifiedAt = format(new Date(now), 'PPp');
+
+  const newBadgesEarned = await awardBadgesForVerifiedCount(
+    supabase,
+    redemption.user_id
+  );
+
+  return {
+    success: true,
+    redemptionDetails: { email, restaurantName, verifiedAt },
+    newBadgesEarned,
+  };
 }

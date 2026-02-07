@@ -265,7 +265,6 @@ export function DashboardClient({
     }
   }
 
-  const dietaryFlags = testUser.dietary_flags ?? [];
   const swapCountUsed = currentChallenge?.cycle.swap_count_used ?? 0;
   const swapsRemaining = Math.max(0, 1 - swapCountUsed);
   const canSwap = swapsRemaining > 0;
@@ -278,33 +277,6 @@ export function DashboardClient({
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 p-6">
-      {/* Profile card */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>
-            {testUser.email ?? 'No email'}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-2 text-sm font-medium text-muted-foreground">
-            Dietary flags
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {dietaryFlags.length > 0 ? (
-              dietaryFlags.map((flag) => (
-                <Badge key={flag} variant="outline">
-                  {flag}
-                </Badge>
-              ))
-            ) : (
-              <span className="text-sm text-muted-foreground">None set</span>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Challenge section */}
       {currentChallenge ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

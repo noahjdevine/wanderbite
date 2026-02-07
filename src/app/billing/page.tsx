@@ -14,6 +14,8 @@ import Link from 'next/link';
 import { CreditCard } from 'lucide-react';
 import { ManageSubscriptionButton } from './manage-subscription-button';
 
+export const dynamic = 'force-dynamic';
+
 export default async function BillingPage() {
   const supabase = await createClient();
   const {
@@ -84,6 +86,11 @@ export default async function BillingPage() {
           <CardContent className="space-y-4">
             {isActive ? (
               <>
+                {nextBillingDate && (
+                  <p className="text-sm font-medium text-foreground">
+                    Next Payment Date: {nextBillingDate}
+                  </p>
+                )}
                 <p className="text-sm text-muted-foreground">
                   Update your payment method, view invoices, or cancel anytime in the Stripe portal.
                 </p>

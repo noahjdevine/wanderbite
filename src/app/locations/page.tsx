@@ -1,6 +1,8 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { LocationsClient } from '@/components/locations/locations-client';
 
+export const dynamic = 'force-dynamic';
+
 export type LocationRestaurant = {
   id: string;
   name: string;

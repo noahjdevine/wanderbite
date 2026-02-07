@@ -43,8 +43,11 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md md:flex">
       <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-8 px-4 sm:px-6">
-        {/* Left: Logo */}
-        <Link href="/" className="flex shrink-0 items-center gap-1.5 font-bold text-lg tracking-tight text-primary">
+        {/* Left: Logo — landing if logged out, challenges if logged in */}
+        <Link
+          href={user ? '/challenges' : '/'}
+          className="flex shrink-0 items-center gap-1.5 font-bold text-lg tracking-tight text-primary"
+        >
           <span aria-hidden>🍔</span>
           <span>Wanderbite</span>
         </Link>
@@ -52,23 +55,42 @@ export function Navbar() {
         {/* Center: Links */}
         <div className="hidden items-center gap-8 md:flex">
           <Link
-            href="/#how-it-works"
+            href="/how-it-works"
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             How it Works
           </Link>
-          <Link
-            href="/locations"
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Locations
-          </Link>
-          <Link
-            href="/pricing"
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Pricing
-          </Link>
+          {user ? (
+            <>
+              <Link
+                href="/challenges"
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Challenges
+              </Link>
+              <Link
+                href="/journey"
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                My Journey
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                href="/locations"
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Locations
+              </Link>
+              <Link
+                href="/pricing"
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Pricing
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Right: Auth */}
@@ -77,9 +99,6 @@ export function Navbar() {
             <div className="h-9 w-20 rounded-md bg-muted animate-pulse" />
           ) : user ? (
             <>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/dashboard">Dashboard</Link>
-              </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="icon-sm" className="gap-1.5 px-2">
@@ -94,6 +113,9 @@ export function Navbar() {
                   <DropdownMenuItem asChild>
                     <Link href="/billing">Billing</Link>
                   </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <Link href="/suggest">Suggest a Restaurant</Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handleSignOut}>
                     Sign Out
                   </DropdownMenuItem>
@@ -101,14 +123,9 @@ export function Navbar() {
               </DropdownMenu>
             </>
           ) : (
-            <>
-              <Button variant="ghost" size="sm" asChild>
-                <Link href="/login">Log In</Link>
-              </Button>
-              <Button size="sm" asChild>
-                <Link href="/login">Get Started</Link>
-              </Button>
-            </>
+            <Button size="sm" asChild>
+              <Link href="/login">Log In</Link>
+            </Button>
           )}
         </div>
       </nav>
