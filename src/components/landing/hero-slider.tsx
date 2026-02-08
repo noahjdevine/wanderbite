@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 const SLIDES = [
   {
     id: 'cocktail',
-    src: 'https://images.unsplash.com/photo-1536935338788-843bb630347d?q=80&w=1200&auto=format&fit=crop',
+    src: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=1920&q=80',
     alt: 'Moody cocktail bar',
   },
   {
