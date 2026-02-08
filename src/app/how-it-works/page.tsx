@@ -132,11 +132,13 @@ export default function HowItWorksPage() {
                     </div>
                     <h3 className="font-semibold leading-tight text-foreground">{tier.title}</h3>
                   </CardHeader>
-                  <CardContent className="pt-0">
+                  <CardContent className="pt-0 text-center">
                     <p className="text-sm font-normal leading-snug text-foreground">
                       {tier.instantPerk}
-                      {' + '}
-                      <span className="text-violet-600">{QUARTERLY_BONUS}</span>
+                    </p>
+                    <p className="my-1.5 text-sm font-normal text-foreground">+</p>
+                    <p className="text-sm font-normal leading-snug text-foreground">
+                      {QUARTERLY_BONUS}
                     </p>
                   </CardContent>
                 </Card>
