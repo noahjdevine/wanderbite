@@ -82,17 +82,17 @@ function getLevelInfo(xp: number): {
       };
     }
   }
-  const tier = LEVELS[0];
+  // Below first tier (300 XP): next level is Level 1 at 300 XP
+  const firstTier = LEVELS[0];
+  const xpToFirstLevel = firstTier.minXp;
   return {
-    level: tier.level,
-    currentLevelName: tier.name,
-    nextLevelXp: tier.nextLevelXp,
-    levelStartXp: tier.minXp,
+    level: 0,
+    currentLevelName: 'Getting started',
+    nextLevelXp: xpToFirstLevel,
+    levelStartXp: 0,
     progressPercent: Math.min(
       100,
-      tier.nextLevelXp != null
-        ? Math.round((xp / tier.nextLevelXp) * 100)
-        : 100
+      Math.round((xp / xpToFirstLevel) * 100)
     ),
   };
 }

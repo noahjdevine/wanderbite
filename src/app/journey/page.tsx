@@ -27,13 +27,13 @@ export const dynamic = 'force-dynamic';
 const SAVINGS_PER_REDEMPTION_CENTS = 1000; // $10
 const CURRENT_STREAK_MOCK = 1;
 
-/** Member perks by level; XP thresholds and copy aligned with How It Works and Quarterly Prizes (300, 1000, 1500, 2500). */
-const QUARTERLY_BONUS = 'an automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
+/** Member perks by level; XP thresholds aligned with How It Works (300, 1000, 1500, 2500). */
+const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
 const MILESTONE_PERKS = [
-  { level: 1, minXp: 300, title: 'The Explorer', perk: 'Free App or Drink' },
-  { level: 2, minXp: 1000, title: 'The Tastemaker', perk: 'Free Dessert or Specialty Cocktail' },
-  { level: 3, minXp: 1500, title: 'The Connoisseur', perk: 'BOGO Entree (Buy 1 Get 1 Free)' },
-  { level: 4, minXp: 2500, title: 'The Local Legend', perk: 'Legend Swag Pack' },
+  { level: 1, minXp: 300, title: 'The Explorer', perk: 'Free App or Drink (Show screen to server).' },
+  { level: 2, minXp: 1000, title: 'The Tastemaker', perk: 'Free Dessert or Specialty Cocktail.' },
+  { level: 3, minXp: 1500, title: 'The Connoisseur', perk: 'BOGO Entree (Buy 1 Get 1 Free).' },
+  { level: 4, minXp: 2500, title: 'The Local Legend', perk: 'Legend Swag Pack.' },
 ] as const;
 
 /** Quarterly drawing: XP thresholds; reaching a level = entry into that tier’s drawing. */
@@ -149,13 +149,10 @@ export default async function JourneyPage() {
                       <p className={`font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
                         Level {level} · {title}
                       </p>
-                      <p className={`text-sm font-normal ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <p className={`text-sm font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
                         {perk}
                       </p>
-                      <p className={`text-sm font-normal ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        +
-                      </p>
-                      <p className={`text-sm font-normal ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <p className="text-xs text-muted-foreground">
                         {QUARTERLY_BONUS}
                       </p>
                     </div>
