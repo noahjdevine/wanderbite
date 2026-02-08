@@ -101,6 +101,13 @@ function shuffle<T>(array: T[]): T[] {
   return out;
 }
 
+/** True when restaurant is tagged as cocktail bar / lounge (curated cocktails). */
+function isCocktailBar(restaurant: RestaurantRow): boolean {
+  const tags = (restaurant.cuisine_tags ?? []).map((t) => String(t).toLowerCase());
+  const cocktailKeywords = ['cocktail', 'cocktails', 'bar', 'lounge', 'speakeasy'];
+  return cocktailKeywords.some((kw) => tags.some((t) => t.includes(kw)));
+}
+
 /** Number of distinct restaurant challenges to generate per month. */
 const CHALLENGE_ITEMS_PER_MONTH = 2;
 
@@ -145,10 +152,10 @@ export async function generateMonthlyChallenge(
       };
     }
 
-    // 2. User profile (allergy_flags, dietary_flags)
+    // 2. User profile (allergy_flags, dietary_flags, wants_cocktail_experience)
     const { data: profile, error: profileErr } = await supabase
       .from('user_profiles')
-      .select('allergy_flags, dietary_flags')
+      .select('allergy_flags, dietary_flags, wants_cocktail_experience')
       .eq('id', userId)
       .maybeSingle();
 
@@ -157,6 +164,7 @@ export async function generateMonthlyChallenge(
     }
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
+    const wantsCocktailExperience = Boolean((profile as { wants_cocktail_experience?: boolean } | null)?.wants_cocktail_experience);
 
     // 3. Restaurants in market with active offer
     const { data: restaurants, error: restErr } = await supabase
@@ -358,9 +366,20 @@ export async function generateMonthlyChallenge(
     }
 
     // 7. Select exactly CHALLENGE_ITEMS_PER_MONTH distinct restaurants (limit 2; no same restaurant twice)
-    // User's existing active cycle for this month is already returned above, so we never duplicate within a month.
-    const shuffled = shuffle(eligible);
-    const chosen = shuffled.slice(0, CHALLENGE_ITEMS_PER_MONTH);
+    // When wants_cocktail_experience: reserve 1 slot for a cocktail/bar venue.
+    let chosen: RestaurantRow[];
+    if (wantsCocktailExperience && CHALLENGE_ITEMS_PER_MONTH >= 2) {
+      const cocktailBars = eligible.filter(isCocktailBar);
+      const others = eligible.filter((r) => !isCocktailBar(r));
+      const oneCocktail = cocktailBars.length > 0 ? [shuffle(cocktailBars)[0]] : [];
+      const needMore = CHALLENGE_ITEMS_PER_MONTH - oneCocktail.length;
+      const restPool = others.filter((r) => !oneCocktail.includes(r));
+      const restShuffled = shuffle(restPool);
+      chosen = [...oneCocktail, ...restShuffled.slice(0, needMore)];
+    } else {
+      const shuffled = shuffle(eligible);
+      chosen = shuffled.slice(0, CHALLENGE_ITEMS_PER_MONTH);
+    }
 
     // 8. Insert challenge_cycles + challenge_items
     const { data: newCycle, error: insertCycleErr } = await supabase

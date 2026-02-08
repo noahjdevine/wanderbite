@@ -13,9 +13,11 @@ export type LocationRestaurant = {
   address: string | null;
   lat: number | null;
   lon: number | null;
+  /** Optional thumbnail URL; when null, a placeholder is shown. */
+  image_url?: string | null;
 };
 
-export default async function LocationsPage() {
+export default async function RestaurantsPage() {
   const supabase = getSupabaseAdmin();
 
   const { data: rows, error } = await supabase
@@ -34,7 +36,17 @@ export default async function LocationsPage() {
     );
   }
 
-  const restaurants: LocationRestaurant[] = (rows ?? []).map((r) => {
+  /** Placeholder descriptions when DB has none (for layout preview). */
+  const PLACEHOLDER_DESCRIPTIONS = [
+    'Cozy spot known for handmade pasta and warm service.',
+    'Hidden gem with a focus on seasonal, locally sourced dishes.',
+    'Neighborhood favorite for brunch and creative cocktails.',
+    'Upscale casual with a standout wine list and shareable plates.',
+    'Family-run kitchen serving comfort food with a modern twist.',
+    'Trendy eatery with rooftop seating and small plates.',
+  ] as const;
+
+  const restaurants: LocationRestaurant[] = (rows ?? []).map((r, i) => {
     const row = r as unknown as {
       id: string;
       name: string;
@@ -45,16 +57,18 @@ export default async function LocationsPage() {
       markets: { name: string } | { name: string }[] | null;
     };
     const market = Array.isArray(row.markets) ? row.markets[0] : row.markets;
+    const placeholderDesc = PLACEHOLDER_DESCRIPTIONS[i % PLACEHOLDER_DESCRIPTIONS.length];
     return {
       id: row.id,
       name: row.name,
       cuisine_tags: row.cuisine_tags,
       neighborhood: market?.name ?? null,
-      description: null,
+      description: placeholderDesc,
       price_range: null,
       address: row.address,
       lat: row.lat,
       lon: row.lon,
+      image_url: null,
     };
   });
 

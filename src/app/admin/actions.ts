@@ -103,7 +103,7 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
     }
 
     revalidatePath('/admin');
-    revalidatePath('/locations');
+    revalidatePath('/restaurants');
     return { ok: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
@@ -138,7 +138,7 @@ export async function deleteRestaurant(restaurantId: string): Promise<DeleteRest
     }
 
     revalidatePath('/admin');
-    revalidatePath('/locations');
+    revalidatePath('/restaurants');
     return { ok: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';

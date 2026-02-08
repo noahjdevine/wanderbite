@@ -1,9 +1,19 @@
 import Link from 'next/link';
 import { UtensilsCrossed, Ticket, TrendingUp, Star } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PricingFaq } from '@/components/pricing/pricing-faq';
 
 export const dynamic = 'force-dynamic';
+
+/** Level-up XP thresholds and perks (align with Journey / get-user-stats). */
+const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter.';
+const LEVEL_UP_TIERS = [
+  { xp: 0, title: 'The Explorer', instantPerk: 'Free App or Drink (Show screen to server).', quarterlyBonus: QUARTERLY_BONUS },
+  { xp: 500, title: 'The Tastemaker', instantPerk: 'Free Dessert or Specialty Cocktail.', quarterlyBonus: QUARTERLY_BONUS },
+  { xp: 1500, title: 'The Connoisseur', instantPerk: 'BOGO Entree (Buy 1 Get 1 Free).', quarterlyBonus: QUARTERLY_BONUS },
+  { xp: 3000, title: 'The Local Legend', instantPerk: 'Legend Swag Pack.', quarterlyBonus: QUARTERLY_BONUS },
+] as const;
 
 /**
  * How it Works: public page for both logged-in and logged-out users.
@@ -75,6 +85,37 @@ export default function HowItWorksPage() {
                 Complete visits, earn badges, and unlock more perks as you level up.
               </p>
             </div>
+          </div>
+        </section>
+
+        {/* Level Up Your Palate */}
+        <section className="mt-20">
+          <h2 className="mb-4 text-center text-2xl font-semibold tracking-tight md:text-3xl">
+            Level Up Your Palate
+          </h2>
+          <p className="mx-auto mb-12 max-w-2xl text-center text-muted-foreground">
+            Earn XP for every restaurant you visit and every review you leave. Show your status screen to the server to claim your rewards!
+          </p>
+          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {LEVEL_UP_TIERS.map((tier, index) => (
+              <Card key={tier.xp} className="flex flex-col">
+                <CardHeader className="pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                      {index + 1}
+                    </span>
+                    <span className="text-xs font-medium text-muted-foreground">
+                      {tier.xp} XP
+                    </span>
+                  </div>
+                  <h3 className="font-semibold leading-tight">{tier.title}</h3>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-2">
+                  <p className="text-sm text-foreground font-medium">{tier.instantPerk}</p>
+                  <p className="text-xs text-muted-foreground">{tier.quarterlyBonus}</p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </section>
 

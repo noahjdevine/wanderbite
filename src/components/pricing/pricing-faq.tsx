@@ -6,6 +6,11 @@ import { cn } from '@/lib/utils';
 
 const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
+    question: 'Where is WanderBite available?',
+    answer:
+      'Currently, we are exclusively exploring the hidden gems of the Dallas Metroplex, but we are expanding soon!',
+  },
+  {
     question: 'Can I cancel anytime?',
     answer: 'Yes, one click in your profile.',
   },
@@ -25,7 +30,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
 ];
 
 export function PricingFaq() {
-  const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
     <section className="mt-16 border-t pt-16">

@@ -1,5 +1,4 @@
 import { redirect } from 'next/navigation';
-import Link from 'next/link';
 import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -11,7 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import {
   Table,
@@ -29,23 +27,24 @@ export const dynamic = 'force-dynamic';
 const SAVINGS_PER_REDEMPTION_CENTS = 1000; // $10
 const CURRENT_STREAK_MOCK = 1;
 
-/** Guaranteed perks by level; XP thresholds match Quarterly Giveaway (300, 600, 1000, 2000). */
+/** Member perks by level; XP thresholds aligned with How It Works (0, 500, 1500, 3000). */
+const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter.';
 const MILESTONE_PERKS = [
-  { level: 1, minXp: 300, perk: 'Free App or Drink (Show screen to server)' },
-  { level: 2, minXp: 600, perk: 'Free Dessert or Specialty Cocktail' },
-  { level: 3, minXp: 1000, perk: 'BOGO Entree (Buy 1 Get 1 Free)' },
-  { level: 4, minXp: 2000, perk: 'Legend Swag Pack' },
+  { level: 1, minXp: 0, title: 'The Explorer', perk: 'Free App or Drink (Show screen to server).' },
+  { level: 2, minXp: 500, title: 'The Tastemaker', perk: 'Free Dessert or Specialty Cocktail.' },
+  { level: 3, minXp: 1500, title: 'The Connoisseur', perk: 'BOGO Entree (Buy 1 Get 1 Free).' },
+  { level: 4, minXp: 3000, title: 'The Local Legend', perk: 'Legend Swag Pack.' },
 ] as const;
 
 /** Quarterly drawing: XP thresholds; reaching a level = entry into that tier’s drawing. */
 const QUARTERLY_DRAWING_LEVELS = [
-  { label: 'Level 1', amount: '$25', minXp: 300 },
-  { label: 'Level 2', amount: '$50', minXp: 600 },
-  { label: 'Level 3', amount: '$75', minXp: 1000 },
-  { label: 'Level 4', amount: '$100', minXp: 2000 },
+  { label: 'The Explorer', minXp: 0 },
+  { label: 'The Tastemaker', minXp: 500 },
+  { label: 'The Connoisseur', minXp: 1500 },
+  { label: 'The Local Legend', minXp: 3000 },
 ] as const;
 
-const QUARTERLY_DRAWING_MAX_XP = 2000;
+const QUARTERLY_DRAWING_MAX_XP = 3000;
 
 export default async function JourneyPage() {
   const supabase = await createClient();
@@ -85,20 +84,6 @@ export default async function JourneyPage() {
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="border-b py-4">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-6">
-          <h1 className="text-xl font-semibold">Wanderbite</h1>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/challenges">Challenges</Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/profile">Profile</Link>
-            </Button>
-          </div>
-        </div>
-      </div>
-
       <div className="mx-auto max-w-2xl space-y-8 p-6">
         <h2 className="text-2xl font-bold tracking-tight text-foreground">
           My Journey
@@ -142,7 +127,7 @@ export default async function JourneyPage() {
           </CardHeader>
           <CardContent>
             <ul className="space-y-3">
-              {MILESTONE_PERKS.map(({ level, minXp, perk }) => {
+              {MILESTONE_PERKS.map(({ level, minXp, title, perk }) => {
                 const unlocked = stats.xp >= minXp;
                 return (
                   <li
@@ -160,12 +145,15 @@ export default async function JourneyPage() {
                     ) : (
                       <Lock className="size-5 shrink-0 text-muted-foreground" aria-hidden />
                     )}
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 space-y-1">
                       <p className={`font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        Level {level}
+                        Level {level} · {title}
                       </p>
-                      <p className={`text-sm ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
+                      <p className={`text-sm font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
                         {perk}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {QUARTERLY_BONUS}
                       </p>
                     </div>
                     {unlocked ? (
@@ -209,7 +197,7 @@ export default async function JourneyPage() {
           <CardHeader>
             <CardTitle>Quarterly Giveaway Progress</CardTitle>
             <CardDescription>
-              Reach XP milestones to earn entries into our quarterly gift card drawings. The more you level up, the better your chances.
+              Reach XP milestones to earn automatic entry to win 1 of 5 Gift Cards given away each quarter.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -221,7 +209,7 @@ export default async function JourneyPage() {
                 <span className="font-medium text-foreground">
                   {stats.xp >= QUARTERLY_DRAWING_MAX_XP
                     ? 'Max level reached!'
-                    : `${QUARTERLY_DRAWING_MAX_XP - stats.xp} XP to $100 drawing`}
+                    : `${QUARTERLY_DRAWING_MAX_XP - stats.xp} XP to max level`}
                 </span>
               </div>
               <Progress
@@ -243,13 +231,13 @@ export default async function JourneyPage() {
                     }`}
                   >
                     <p className="text-xs font-medium text-muted-foreground">
-                      {tier.label}
+                      {tier.minXp} XP
                     </p>
                     <p className="mt-1 text-sm font-bold text-foreground">
-                      Entry into Quarterly {tier.amount} Drawing
+                      {tier.label}
                     </p>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {tier.minXp} XP
+                      Entry to win 1 of 5 Gift Cards
                     </p>
                     {reached ? (
                       <Badge variant="default" className="mt-2 text-xs">

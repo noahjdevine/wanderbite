@@ -4,9 +4,13 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
+export const DISTANCE_BANDS = ['5_mi', '15_mi', '25_mi', '40_mi'] as const;
+export type DistanceBand = (typeof DISTANCE_BANDS)[number];
+
 export type OnboardingData = {
   dietary_flags: string[];
   distance_band: string;
+  wants_cocktail_experience?: boolean;
 };
 
 export type CompleteOnboardingResult =
@@ -25,10 +29,12 @@ export async function completeOnboarding(
     return { ok: false, error: 'You must be signed in to complete onboarding.' };
   }
 
-  const distanceBand = data.distance_band as 'close' | 'worth_trip' | 'adventure';
-  if (!['close', 'worth_trip', 'adventure'].includes(distanceBand)) {
+  const distanceBand = data.distance_band as DistanceBand;
+  if (!DISTANCE_BANDS.includes(distanceBand)) {
     return { ok: false, error: 'Invalid distance band.' };
   }
+
+  const wantsCocktail = Boolean(data.wants_cocktail_experience);
 
   const admin = getSupabaseAdmin();
   const { error: insertError } = await admin.from('user_profiles').insert({
@@ -36,6 +42,7 @@ export async function completeOnboarding(
     email: user.email ?? null,
     dietary_flags: data.dietary_flags?.length ? data.dietary_flags : null,
     distance_band: distanceBand,
+    wants_cocktail_experience: wantsCocktail,
     role: 'subscriber',
   });
 

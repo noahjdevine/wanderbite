@@ -17,10 +17,10 @@ export function Footer() {
             How it Works
           </Link>
           <Link
-            href="/locations"
+            href="/restaurants"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            Locations
+            Restaurants
           </Link>
           <Link
             href="/pricing"

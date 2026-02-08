@@ -78,10 +78,10 @@ export function Navbar() {
           ) : (
             <>
               <Link
-                href="/locations"
+                href="/restaurants"
                 className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
-                Locations
+                Restaurants
               </Link>
               <Link
                 href="/pricing"

@@ -1,7 +1,6 @@
-import Link from 'next/link';
 import { UtensilsCrossed, Ticket, TrendingUp } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { ClubSection } from '@/components/landing/club-section';
+import { HeroSlider } from '@/components/landing/hero-slider';
 
 type LandingPageProps = {
   /** When provided, Club section shows Subscribe; otherwise Get Started → /login */
@@ -12,22 +11,9 @@ type LandingPageProps = {
 export function LandingPage({ userId, email }: LandingPageProps) {
   return (
     <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
-        {/* Hero */}
-        <section className="py-20 text-center">
-          <h1 className="mx-auto max-w-4xl text-4xl font-bold tracking-tight text-foreground sm:text-5xl md:text-6xl">
-            Dining Adventures, Curated for You.
-          </h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-muted-foreground sm:text-xl">
-            Stop arguing about where to eat.
-          </p>
-          <div className="mt-10">
-            <Button size="lg" asChild>
-              <Link href="/login">Start Your Journey</Link>
-            </Button>
-          </div>
-        </section>
+      <HeroSlider />
 
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
         {/* How it Works */}
         <section className="py-20" id="how-it-works">
           <h2 className="mb-12 text-center text-2xl font-semibold tracking-tight md:text-3xl">

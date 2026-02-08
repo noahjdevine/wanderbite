@@ -20,14 +20,16 @@ const DIETARY_OPTIONS = [
 ] as const;
 
 const DISTANCE_OPTIONS = [
-  { value: 'close', label: 'Close (< 5 mi)' },
-  { value: 'worth_trip', label: 'Worth Trip (< 15 mi)' },
-  { value: 'adventure', label: 'Adventure (> 15 mi)' },
+  { value: '5_mi', label: '5 Miles (Neighborhood)' },
+  { value: '15_mi', label: '15 Miles (City)' },
+  { value: '25_mi', label: '25 Miles (Metro)' },
+  { value: '40_mi', label: '40 Miles (Road Trip)' },
 ] as const;
 
 export default function OnboardingPage() {
   const [dietaryFlags, setDietaryFlags] = useState<string[]>([]);
-  const [distanceBand, setDistanceBand] = useState<string>('worth_trip');
+  const [distanceBand, setDistanceBand] = useState<string>('15_mi');
+  const [wantsCocktailExperience, setWantsCocktailExperience] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -45,6 +47,7 @@ export default function OnboardingPage() {
       const result = await completeOnboarding({
         dietary_flags: dietaryFlags,
         distance_band: distanceBand,
+        wants_cocktail_experience: wantsCocktailExperience,
       });
       if (!result.ok) {
         setError(result.error);
@@ -90,7 +93,7 @@ export default function OnboardingPage() {
 
             <div className="space-y-2">
               <label htmlFor="distance" className="text-sm font-medium">
-                Distance band
+                Distance preference
               </label>
               <select
                 id="distance"
@@ -106,6 +109,24 @@ export default function OnboardingPage() {
                 ))}
               </select>
             </div>
+
+            <fieldset className="space-y-2">
+              <label className="flex cursor-pointer items-start gap-3 rounded-md border border-input px-3 py-3 hover:bg-muted/50">
+                <input
+                  type="checkbox"
+                  checked={wantsCocktailExperience}
+                  onChange={(e) => setWantsCocktailExperience(e.target.checked)}
+                  className="mt-1 size-4 rounded border-input"
+                  disabled={isLoading}
+                />
+                <div>
+                  <span className="text-sm font-medium">Are you interested in Cocktail/Bar experiences?</span>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    If selected, we will curate 1 high-end cocktail bar or lounge experience for you per month.
+                  </p>
+                </div>
+              </label>
+            </fieldset>
 
             {error && (
               <Alert variant="destructive">
