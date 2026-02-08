@@ -7,12 +7,12 @@ import { PricingFaq } from '@/components/pricing/pricing-faq';
 export const dynamic = 'force-dynamic';
 
 /** Level-up XP thresholds and perks (align with Journey / get-user-stats). */
-const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
+const QUARTERLY_BONUS = 'an automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
 const LEVEL_UP_TIERS = [
-  { xp: 300, title: 'The Explorer', instantPerk: 'Free App or Drink (Show screen to server).', quarterlyBonus: QUARTERLY_BONUS },
-  { xp: 1000, title: 'The Tastemaker', instantPerk: 'Free Dessert or Specialty Cocktail.', quarterlyBonus: QUARTERLY_BONUS },
-  { xp: 1500, title: 'The Connoisseur', instantPerk: 'BOGO Entree (Buy 1 Get 1 Free).', quarterlyBonus: QUARTERLY_BONUS },
-  { xp: 2500, title: 'The Local Legend', instantPerk: 'Legend Swag Pack.', quarterlyBonus: QUARTERLY_BONUS },
+  { xp: 300, title: 'The Explorer', instantPerk: 'Free App or Drink' },
+  { xp: 1000, title: 'The Tastemaker', instantPerk: 'Free Dessert or Specialty Cocktail' },
+  { xp: 1500, title: 'The Connoisseur', instantPerk: 'BOGO Entree (Buy 1 Get 1 Free)' },
+  { xp: 2500, title: 'The Local Legend', instantPerk: 'Legend Swag Pack' },
 ] as const;
 
 /**
@@ -133,10 +133,10 @@ export default function HowItWorksPage() {
                     <h3 className="font-semibold leading-tight text-foreground">{tier.title}</h3>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <p className="text-sm leading-snug text-foreground">
-                      <span className="font-medium">{tier.instantPerk}</span>
-                      <span className="mx-1 text-muted-foreground">+</span>
-                      <span className="text-sm font-normal text-violet-600">{tier.quarterlyBonus}</span>
+                    <p className="text-sm font-normal leading-snug text-foreground">
+                      {tier.instantPerk}
+                      {' + '}
+                      <span className="text-violet-600">{QUARTERLY_BONUS}</span>
                     </p>
                   </CardContent>
                 </Card>
