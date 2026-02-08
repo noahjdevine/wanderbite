@@ -121,8 +121,8 @@ export default function HowItWorksPage() {
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {LEVEL_UP_TIERS.map((tier, index) => (
                 <Card key={tier.xp} className="flex flex-col bg-white/95 shadow-lg backdrop-blur-sm">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-2">
+                  <CardHeader className="pb-2 text-center">
+                    <div className="flex justify-center gap-2">
                       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                         {index + 1}
                       </span>
@@ -130,7 +130,7 @@ export default function HowItWorksPage() {
                         {tier.xp} XP
                       </span>
                     </div>
-                    <h3 className="font-semibold leading-tight text-foreground">{tier.title}</h3>
+                    <h3 className="font-bold leading-tight text-violet-600">{tier.title}</h3>
                   </CardHeader>
                   <CardContent className="pt-0 text-center">
                     <p className="text-sm font-normal leading-snug text-foreground">
