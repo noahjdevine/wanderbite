@@ -7,6 +7,13 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    /*
+     * Match all request paths except:
+     * - _next/static, _next/image (Next.js internals)
+     * - favicon.ico, image assets
+     * - auth (OAuth callback; avoid running middleware during session refresh)
+     * - login (avoid redirect loops when sending unauthenticated users here)
+     */
+    '/((?!_next/static|_next/image|favicon.ico|auth|login|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

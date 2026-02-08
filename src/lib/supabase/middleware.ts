@@ -27,6 +27,11 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
+  // Never run redirect logic for auth callback or login (matcher should exclude these; safety net)
+  if (pathname.startsWith('/auth/') || pathname === '/login') {
+    return response;
+  }
+
   // Public routes: allow both logged-in and logged-out (no app login required)
   const isPublic =
     pathname === '/' ||
@@ -41,13 +46,10 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user) {
-    if (pathname === '/login') {
-      return NextResponse.redirect(new URL('/challenges', request.url));
-    }
     return response;
   }
 
-  // Protected routes: require app login
+  // Unauthenticated: redirect to login only for routes that require it (e.g. onboarding)
   if (pathname === '/onboarding') {
     return NextResponse.redirect(new URL('/login', request.url));
   }
