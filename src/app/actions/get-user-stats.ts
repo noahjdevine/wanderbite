@@ -35,17 +35,17 @@ export type GetUserStatsResult =
   | { ok: true; data: UserStats }
   | { ok: false; error: string };
 
-/** Tier structure aligned with How It Works and Journey (0, 500, 1500, 3000 XP). */
+/** Tier structure aligned with How It Works and Journey (300, 1000, 1500, 2500 XP). */
 const LEVELS: {
   level: number;
   minXp: number;
   nextLevelXp: number | null;
   name: string;
 }[] = [
-  { level: 1, minXp: 0, nextLevelXp: 500, name: 'The Explorer' },
-  { level: 2, minXp: 500, nextLevelXp: 1500, name: 'The Tastemaker' },
-  { level: 3, minXp: 1500, nextLevelXp: 3000, name: 'The Connoisseur' },
-  { level: 4, minXp: 3000, nextLevelXp: null, name: 'The Local Legend' },
+  { level: 1, minXp: 300, nextLevelXp: 1000, name: 'The Explorer' },
+  { level: 2, minXp: 1000, nextLevelXp: 1500, name: 'The Tastemaker' },
+  { level: 3, minXp: 1500, nextLevelXp: 2500, name: 'The Connoisseur' },
+  { level: 4, minXp: 2500, nextLevelXp: null, name: 'The Local Legend' },
 ];
 
 function getLevelInfo(xp: number): {

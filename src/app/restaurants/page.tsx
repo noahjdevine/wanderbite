@@ -3,6 +3,8 @@ import { LocationsClient } from '@/components/locations/locations-client';
 
 export const dynamic = 'force-dynamic';
 
+/** Restaurants list: accessible to all logged-in users (including active/trial subscribers). No subscription gate. */
+
 export type LocationRestaurant = {
   id: string;
   name: string;

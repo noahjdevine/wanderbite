@@ -16,7 +16,8 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   },
   {
     question: 'Do the discounts expire?',
-    answer: 'You have all month to use them.',
+    answer:
+      'Yes, you have 30 days to use your discounts from the moment you generate the challenge. This keeps the adventure fresh!',
   },
   {
     question: "What if I don't like the restaurant?",

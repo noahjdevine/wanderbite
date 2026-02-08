@@ -50,8 +50,11 @@ function formatOffer(discountCents: number, minSpendCents: number): string {
   return `$${dollars} off when you spend $${minDollars}+`;
 }
 
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
 type RestaurantCardProps = {
   item: GeneratedChallengeItem;
+  cycleCreatedAt: string;
   canSwap: boolean;
   isSwapping: boolean;
   isRedeeming: boolean;
@@ -61,12 +64,14 @@ type RestaurantCardProps = {
 
 function RestaurantCard({
   item,
+  cycleCreatedAt,
   canSwap,
   isSwapping,
   isRedeeming,
   onSwap,
   onRedeem,
 }: RestaurantCardProps) {
+  const isExpired = Date.now() - new Date(cycleCreatedAt).getTime() > THIRTY_DAYS_MS;
   const tags = item.restaurant.cuisine_tags ?? [];
   const offerText = formatOffer(
     item.offer.discount_amount_cents,
@@ -88,10 +93,15 @@ function RestaurantCard({
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
 
   return (
-    <Card>
+    <Card className={isExpired ? 'opacity-75 grayscale' : ''}>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <CardTitle>{item.restaurant.name}</CardTitle>
+          <div className="flex flex-wrap items-center gap-2">
+            <CardTitle>{item.restaurant.name}</CardTitle>
+            {isExpired && (
+              <Badge variant="secondary">Expired</Badge>
+            )}
+          </div>
           <CardDescription className="flex flex-wrap gap-1.5">
             {tags.length > 0 ? (
               tags.map((tag) => (
@@ -142,7 +152,7 @@ function RestaurantCard({
               variant="default"
               size="sm"
               className="w-full gap-2"
-              disabled={isRedeeming}
+              disabled={isRedeeming || isExpired}
               onClick={() => setRedeemDialogOpen(true)}
             >
               {isRedeeming ? (
@@ -150,6 +160,8 @@ function RestaurantCard({
                   <Loader2 className="size-4 animate-spin" aria-hidden />
                   Redeeming…
                 </>
+              ) : isExpired ? (
+                'Offer expired'
               ) : (
                 <>
                   <Ticket className="size-4" aria-hidden />
@@ -181,7 +193,7 @@ function RestaurantCard({
             variant="outline"
             size="sm"
             className="w-full gap-2"
-            disabled={!canSwap || isSwapping}
+            disabled={!canSwap || isSwapping || isExpired}
             onClick={() => onSwap(item.challengeItem.id)}
           >
             {isSwapping ? (
@@ -290,6 +302,7 @@ export function DashboardClient({
               <RestaurantCard
                 key={item.challengeItem.id}
                 item={item}
+                cycleCreatedAt={currentChallenge.cycle.created_at}
                 canSwap={canSwap}
                 isSwapping={swappingItemId === item.challengeItem.id}
                 isRedeeming={redeemingItemId === item.challengeItem.id}

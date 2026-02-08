@@ -27,24 +27,24 @@ export const dynamic = 'force-dynamic';
 const SAVINGS_PER_REDEMPTION_CENTS = 1000; // $10
 const CURRENT_STREAK_MOCK = 1;
 
-/** Member perks by level; XP thresholds aligned with How It Works (0, 500, 1500, 3000). */
-const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter.';
+/** Member perks by level; XP thresholds aligned with How It Works (300, 1000, 1500, 2500). */
+const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
 const MILESTONE_PERKS = [
-  { level: 1, minXp: 0, title: 'The Explorer', perk: 'Free App or Drink (Show screen to server).' },
-  { level: 2, minXp: 500, title: 'The Tastemaker', perk: 'Free Dessert or Specialty Cocktail.' },
+  { level: 1, minXp: 300, title: 'The Explorer', perk: 'Free App or Drink (Show screen to server).' },
+  { level: 2, minXp: 1000, title: 'The Tastemaker', perk: 'Free Dessert or Specialty Cocktail.' },
   { level: 3, minXp: 1500, title: 'The Connoisseur', perk: 'BOGO Entree (Buy 1 Get 1 Free).' },
-  { level: 4, minXp: 3000, title: 'The Local Legend', perk: 'Legend Swag Pack.' },
+  { level: 4, minXp: 2500, title: 'The Local Legend', perk: 'Legend Swag Pack.' },
 ] as const;
 
 /** Quarterly drawing: XP thresholds; reaching a level = entry into that tier’s drawing. */
 const QUARTERLY_DRAWING_LEVELS = [
-  { label: 'The Explorer', minXp: 0 },
-  { label: 'The Tastemaker', minXp: 500 },
+  { label: 'The Explorer', minXp: 300 },
+  { label: 'The Tastemaker', minXp: 1000 },
   { label: 'The Connoisseur', minXp: 1500 },
-  { label: 'The Local Legend', minXp: 3000 },
+  { label: 'The Local Legend', minXp: 2500 },
 ] as const;
 
-const QUARTERLY_DRAWING_MAX_XP = 3000;
+const QUARTERLY_DRAWING_MAX_XP = 2500;
 
 export default async function JourneyPage() {
   const supabase = await createClient();

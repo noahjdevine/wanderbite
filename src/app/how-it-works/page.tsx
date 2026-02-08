@@ -7,22 +7,34 @@ import { PricingFaq } from '@/components/pricing/pricing-faq';
 export const dynamic = 'force-dynamic';
 
 /** Level-up XP thresholds and perks (align with Journey / get-user-stats). */
-const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter.';
+const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
 const LEVEL_UP_TIERS = [
-  { xp: 0, title: 'The Explorer', instantPerk: 'Free App or Drink (Show screen to server).', quarterlyBonus: QUARTERLY_BONUS },
-  { xp: 500, title: 'The Tastemaker', instantPerk: 'Free Dessert or Specialty Cocktail.', quarterlyBonus: QUARTERLY_BONUS },
+  { xp: 300, title: 'The Explorer', instantPerk: 'Free App or Drink (Show screen to server).', quarterlyBonus: QUARTERLY_BONUS },
+  { xp: 1000, title: 'The Tastemaker', instantPerk: 'Free Dessert or Specialty Cocktail.', quarterlyBonus: QUARTERLY_BONUS },
   { xp: 1500, title: 'The Connoisseur', instantPerk: 'BOGO Entree (Buy 1 Get 1 Free).', quarterlyBonus: QUARTERLY_BONUS },
-  { xp: 3000, title: 'The Local Legend', instantPerk: 'Legend Swag Pack.', quarterlyBonus: QUARTERLY_BONUS },
+  { xp: 2500, title: 'The Local Legend', instantPerk: 'Legend Swag Pack.', quarterlyBonus: QUARTERLY_BONUS },
 ] as const;
 
 /**
  * How it Works: public page for both logged-in and logged-out users.
  * Explains the product and includes FAQ (moved from pricing).
  */
+const HERO_BG_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1920&q=80';
+
 export default function HowItWorksPage() {
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20">
+    <main className="min-h-screen bg-background relative">
+      {/* Background image: group enjoying restaurant */}
+      <div className="fixed inset-0 -z-10" aria-hidden>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={HERO_BG_IMAGE}
+          alt=""
+          className="h-full w-full object-cover opacity-[0.08]"
+        />
+        <div className="absolute inset-0 bg-background/80" />
+      </div>
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 relative">
         <header className="text-center">
           <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
             How Wanderbite Works
@@ -112,7 +124,7 @@ export default function HowItWorksPage() {
                 </CardHeader>
                 <CardContent className="pt-0 space-y-2">
                   <p className="text-sm text-foreground font-medium">{tier.instantPerk}</p>
-                  <p className="text-xs text-muted-foreground">{tier.quarterlyBonus}</p>
+                  <p className="text-lg font-bold text-violet-700">{tier.quarterlyBonus}</p>
                 </CardContent>
               </Card>
             ))}

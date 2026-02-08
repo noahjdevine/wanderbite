@@ -7,18 +7,18 @@ import { Button } from '@/components/ui/button';
 const SLIDES = [
   {
     id: 'cocktail',
-    src: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=1920&q=80',
+    src: 'https://images.unsplash.com/photo-1514362545857-3bc16549766b?w=1920&q=80',
     alt: 'Moody cocktail bar',
   },
   {
-    id: 'tacos',
-    src: 'https://images.unsplash.com/photo-1551504734-5ee1c6a14729?w=1920&q=80',
-    alt: 'Vibrant tacos and tex-mex',
+    id: 'restaurant',
+    src: 'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1920&q=80',
+    alt: 'Restaurant vibe, lively',
   },
   {
-    id: 'steak',
-    src: 'https://images.unsplash.com/photo-1600891964092-4316c288032e?w=1920&q=80',
-    alt: 'Plated steak dish',
+    id: 'plated',
+    src: 'https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=1920&q=80',
+    alt: 'Plated food',
   },
 ] as const;
 

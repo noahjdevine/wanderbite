@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { HelpCircle, LogOut, Settings, CreditCard } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { Button } from '@/components/ui/button';
 import { ProfileForm } from './profile-form';
 
 export const dynamic = 'force-dynamic';
@@ -47,20 +46,6 @@ export default async function ProfilePage() {
 
   return (
     <main className="min-h-screen bg-background">
-      <div className="border-b py-4">
-        <div className="mx-auto flex max-w-2xl items-center justify-between px-6">
-          <h1 className="text-xl font-semibold">Wanderbite</h1>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/challenges">Challenges</Link>
-            </Button>
-            <Button variant="outline" size="sm" asChild>
-              <Link href="/journey">My Journey</Link>
-            </Button>
-          </div>
-        </div>
-      </div>
-
       <div className="mx-auto max-w-2xl space-y-8 p-6">
         <h2 className="text-2xl font-bold tracking-tight text-foreground">
           Profile

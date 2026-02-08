@@ -25,6 +25,8 @@ function buildMapsUrl(restaurant: LocationRestaurant): string | null {
   return null;
 }
 
+const PLACEHOLDER_FOOD_IMAGE = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80';
+
 function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
   const mapsUrl = buildMapsUrl(restaurant);
   const tags = [
@@ -32,23 +34,19 @@ function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
     ...(restaurant.neighborhood ? [restaurant.neighborhood] : []),
   ];
   const description = restaurant.description ?? restaurant.address ?? null;
+  const [thumbSrc, setThumbSrc] = useState(restaurant.image_url ?? PLACEHOLDER_FOOD_IMAGE);
 
   return (
     <Card className="flex h-full flex-col overflow-hidden p-0">
-      {/* Thumbnail: image or placeholder */}
+      {/* Thumbnail: image or generic food placeholder (fallback when missing or on load error) */}
       <div className="relative aspect-[16/10] w-full shrink-0 bg-muted">
-        {restaurant.image_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={restaurant.image_url}
-            alt=""
-            className="h-full w-full object-cover"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground/50">
-            <UtensilsCrossed className="size-12" aria-hidden />
-          </div>
-        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={thumbSrc}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setThumbSrc(PLACEHOLDER_FOOD_IMAGE)}
+        />
       </div>
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2 pt-4">
         <div className="min-w-0 flex-1">
