@@ -100,34 +100,48 @@ export default function HowItWorksPage() {
           </div>
         </section>
 
-        {/* Level Up Your Palate */}
-        <section className="mt-20">
-          <h2 className="mb-4 text-center text-2xl font-semibold tracking-tight md:text-3xl">
-            Level Up Your Palate
-          </h2>
-          <p className="mx-auto mb-12 max-w-2xl text-center text-muted-foreground">
-            Earn XP for every restaurant you visit and every review you leave. Show your status screen to the server to claim your rewards!
-          </p>
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {LEVEL_UP_TIERS.map((tier, index) => (
-              <Card key={tier.xp} className="flex flex-col">
-                <CardHeader className="pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
-                      {index + 1}
-                    </span>
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {tier.xp} XP
-                    </span>
-                  </div>
-                  <h3 className="font-semibold leading-tight">{tier.title}</h3>
-                </CardHeader>
-                <CardContent className="pt-0 space-y-2">
-                  <p className="text-sm text-foreground font-medium">{tier.instantPerk}</p>
-                  <p className="text-lg font-bold text-violet-700">{tier.quarterlyBonus}</p>
-                </CardContent>
-              </Card>
-            ))}
+        {/* Level Up Your Palate — background: friends laughing at dinner */}
+        <section className="relative mt-20 overflow-hidden rounded-2xl">
+          <div className="absolute inset-0 -z-10" aria-hidden>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2000&q=80"
+              alt=""
+              className="h-full w-full object-cover"
+            />
+            <div className="absolute inset-0 bg-black/60" />
+          </div>
+          <div className="relative px-4 py-12 sm:px-6 sm:py-16">
+            <h2 className="mb-4 text-center text-2xl font-semibold tracking-tight text-white md:text-3xl">
+              Level Up Your Palate
+            </h2>
+            <p className="mx-auto mb-12 max-w-2xl text-center text-white/90">
+              Earn XP for every restaurant you visit and every review you leave. Show your status screen to the server to claim your rewards!
+            </p>
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              {LEVEL_UP_TIERS.map((tier, index) => (
+                <Card key={tier.xp} className="flex flex-col bg-white/95 shadow-lg backdrop-blur-sm">
+                  <CardHeader className="pb-2">
+                    <div className="flex items-center gap-2">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                        {index + 1}
+                      </span>
+                      <span className="text-xs font-medium text-muted-foreground">
+                        {tier.xp} XP
+                      </span>
+                    </div>
+                    <h3 className="font-semibold leading-tight text-foreground">{tier.title}</h3>
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    <p className="text-sm text-foreground">
+                      <span className="font-medium">{tier.instantPerk}</span>
+                      {' + '}
+                      <span className="text-violet-600">{tier.quarterlyBonus}</span>
+                    </p>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
           </div>
         </section>
 
