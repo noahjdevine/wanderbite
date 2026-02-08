@@ -101,17 +101,17 @@ export default function HowItWorksPage() {
         </section>
 
         {/* Level Up Your Palate — background: friends laughing at dinner */}
-        <section className="relative mt-20 overflow-hidden rounded-2xl">
-          <div className="absolute inset-0 -z-10" aria-hidden>
+        <section className="relative mt-20 min-h-[480px] overflow-hidden rounded-2xl">
+          <div className="absolute inset-0 z-0" aria-hidden>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2000&q=80"
               alt=""
-              className="h-full w-full object-cover"
+              className="absolute inset-0 h-full w-full object-cover"
             />
             <div className="absolute inset-0 bg-black/60" />
           </div>
-          <div className="relative px-4 py-12 sm:px-6 sm:py-16">
+          <div className="relative z-10 px-4 py-12 sm:px-6 sm:py-16">
             <h2 className="mb-4 text-center text-2xl font-semibold tracking-tight text-white md:text-3xl">
               Level Up Your Palate
             </h2>
@@ -133,10 +133,10 @@ export default function HowItWorksPage() {
                     <h3 className="font-semibold leading-tight text-foreground">{tier.title}</h3>
                   </CardHeader>
                   <CardContent className="pt-0">
-                    <p className="text-sm text-foreground">
+                    <p className="text-sm leading-snug text-foreground">
                       <span className="font-medium">{tier.instantPerk}</span>
-                      {' + '}
-                      <span className="text-violet-600">{tier.quarterlyBonus}</span>
+                      <span className="mx-1 text-muted-foreground">+</span>
+                      <span className="text-sm font-normal text-violet-600">{tier.quarterlyBonus}</span>
                     </p>
                   </CardContent>
                 </Card>
