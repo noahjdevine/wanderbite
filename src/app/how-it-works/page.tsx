@@ -122,11 +122,11 @@ export default function HowItWorksPage() {
               {LEVEL_UP_TIERS.map((tier, index) => (
                 <Card key={tier.xp} className="flex flex-col bg-white/95 shadow-lg backdrop-blur-sm">
                   <CardHeader className="pb-2 text-center">
-                    <div className="flex justify-center gap-2">
+                    <div className="flex items-center justify-center gap-2">
                       <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
                         {index + 1}
                       </span>
-                      <span className="text-xs font-medium text-muted-foreground">
+                      <span className="text-sm font-medium text-muted-foreground leading-none">
                         {tier.xp} XP
                       </span>
                     </div>
