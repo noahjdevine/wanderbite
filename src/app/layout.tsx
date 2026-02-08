@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { Navbar } from "@/components/layout/Navbar";
@@ -12,9 +12,24 @@ const outfit = Outfit({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+};
+
 export const metadata: Metadata = {
   title: "Wanderbite",
   description: "Dining adventures, curated for you.",
+  icons: {
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "WanderBite",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export default function RootLayout({
