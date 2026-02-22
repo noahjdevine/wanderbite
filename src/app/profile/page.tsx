@@ -4,6 +4,7 @@ import { HelpCircle, LogOut, Settings, CreditCard } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { ProfileForm } from './profile-form';
+import { DeleteAccountSection } from './delete-account-section';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +100,8 @@ export default async function ProfilePage() {
               Sign Out
             </button>
           </form>
+
+          <DeleteAccountSection />
         </div>
       </div>
     </main>

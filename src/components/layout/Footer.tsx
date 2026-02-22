@@ -29,6 +29,18 @@ export function Footer() {
             Pricing
           </Link>
           <Link
+            href="/terms"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Terms of Service
+          </Link>
+          <Link
+            href="/privacy"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Privacy Policy
+          </Link>
+          <Link
             href="/login"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >

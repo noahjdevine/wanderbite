@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
@@ -43,13 +44,16 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md md:flex">
       <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-8 px-4 sm:px-6">
-        {/* Left: Logo — landing if logged out, challenges if logged in */}
-        <Link
-          href={user ? '/challenges' : '/'}
-          className="flex shrink-0 items-center gap-1.5 font-bold text-lg tracking-tight text-primary"
-        >
-          <span aria-hidden>🍔</span>
-          <span>Wanderbite</span>
+        {/* Left: Logo — always links to / */}
+        <Link href="/" className="flex shrink-0 items-center">
+          <Image
+            src="/wanderbite-logo.png"
+            alt="Wanderbite"
+            width={150}
+            height={50}
+            priority
+            className="h-auto w-[150px]"
+          />
         </Link>
 
         {/* Center: Links */}

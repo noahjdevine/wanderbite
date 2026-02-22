@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { createCheckoutSession } from '@/app/actions/stripe';
 
 const FEATURES = [
@@ -23,6 +24,8 @@ const FEATURES = [
   '1 Free Swap per month',
 ];
 
+type BillingInterval = 'monthly' | 'annual';
+
 type PricingClientProps = {
   userId?: string | null;
   email?: string | null;
@@ -30,6 +33,7 @@ type PricingClientProps = {
 
 export function PricingClient({ userId, email }: PricingClientProps) {
   const [loading, setLoading] = useState(false);
+  const [billingInterval, setBillingInterval] = useState<BillingInterval>('monthly');
   const canSubscribe = userId && email?.trim();
 
   async function handleJoinClub() {
@@ -62,8 +66,40 @@ export function PricingClient({ userId, email }: PricingClientProps) {
         </p>
       </header>
 
+      {/* Billing interval toggle */}
+      <div className="mt-10 flex justify-center">
+        <div
+          role="group"
+          aria-label="Billing interval"
+          className="inline-flex rounded-lg border border-input bg-muted/50 p-1"
+        >
+          <button
+            type="button"
+            onClick={() => setBillingInterval('monthly')}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              billingInterval === 'monthly'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setBillingInterval('annual')}
+            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              billingInterval === 'annual'
+                ? 'bg-background text-foreground shadow-sm'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            Annual
+          </button>
+        </div>
+      </div>
+
       {/* Main Card */}
-      <Card className="mt-10 border-2 shadow-lg">
+      <Card className="mt-6 border-2 shadow-lg">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Wanderbite Club</CardTitle>
           <CardDescription className="text-base">
@@ -72,9 +108,20 @@ export function PricingClient({ userId, email }: PricingClientProps) {
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="text-center">
-            <p className="text-4xl font-bold tracking-tight text-primary">
-              $15<span className="text-lg font-normal text-muted-foreground">/month</span>
-            </p>
+            {billingInterval === 'monthly' ? (
+              <p className="text-4xl font-bold tracking-tight text-primary">
+                $15<span className="text-lg font-normal text-muted-foreground">/month</span>
+              </p>
+            ) : (
+              <div className="flex flex-wrap items-center justify-center gap-2">
+                <p className="text-4xl font-bold tracking-tight text-primary">
+                  $120<span className="text-lg font-normal text-muted-foreground">/year</span>
+                </p>
+                <Badge variant="secondary" className="text-xs">
+                  Save $60 a year!
+                </Badge>
+              </div>
+            )}
             <p className="mt-2 text-sm text-muted-foreground">
               Includes 2 Curated Adventures per month ($20+ value).
             </p>

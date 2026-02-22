@@ -1,8 +1,10 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
+import { signUpSchema } from '@/lib/validations/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -11,12 +13,15 @@ export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
   async function handleSignIn(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setPasswordError(null);
     if (!email.trim() || !password) {
       setError('Please enter email and password.');
       return;
@@ -41,20 +46,33 @@ export default function LoginPage() {
   async function handleSignUp(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    if (!email.trim() || !password) {
-      setError('Please enter email and password.');
+    setPasswordError(null);
+
+    const result = signUpSchema.safeParse({
+      email: email.trim(),
+      password,
+      agreeToTerms,
+    });
+
+    if (!result.success) {
+      const issues = result.error.flatten();
+      const passwordMsg = issues.fieldErrors.password?.[0];
+      if (passwordMsg) {
+        setPasswordError(passwordMsg);
+      }
+      const otherMsg = issues.fieldErrors.email?.[0] ?? issues.fieldErrors.agreeToTerms?.[0];
+      if (otherMsg) {
+        setError(otherMsg);
+      }
       return;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.');
-      return;
-    }
+
     setIsLoading(true);
     try {
       const supabase = createClient();
       const { error: err } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
+        email: result.data.email,
+        password: result.data.password,
         options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
       });
       if (err) {
@@ -95,19 +113,73 @@ export default function LoginPage() {
               />
             </div>
             <div className="space-y-2">
-              <label htmlFor="password" className="text-sm font-medium">
-                Password
-              </label>
+              <div className="flex items-center justify-between">
+                <label htmlFor="password" className="text-sm font-medium">
+                  Password
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-sm text-muted-foreground underline hover:text-foreground"
+                >
+                  Forgot Password?
+                </Link>
+              </div>
               <input
                 id="password"
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  setPasswordError(null);
+                }}
                 placeholder="••••••••"
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
                 autoComplete="current-password"
                 disabled={isLoading}
+                aria-invalid={!!passwordError}
+                aria-describedby={passwordError ? 'password-error' : undefined}
               />
+              {passwordError && (
+                <p id="password-error" className="text-sm text-destructive">
+                  {passwordError}
+                </p>
+              )}
+            </div>
+            <div className="flex items-start gap-2 space-y-0">
+              <input
+                id="agree-to-terms"
+                type="checkbox"
+                checked={agreeToTerms}
+                onChange={(e) => setAgreeToTerms(e.target.checked)}
+                disabled={isLoading}
+                className="mt-1 h-4 w-4 rounded border-input focus:ring-2 focus:ring-ring"
+                aria-describedby="agree-to-terms-description"
+              />
+              <label
+                id="agree-to-terms-description"
+                htmlFor="agree-to-terms"
+                className="text-sm text-muted-foreground"
+              >
+                I confirm I am at least 21 years of age, and I agree to the{' '}
+                <Link
+                  href="/terms"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  Terms of Service
+                </Link>{' '}
+                and{' '}
+                <Link
+                  href="/privacy"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  Privacy Policy
+                </Link>
+                .
+              </label>
             </div>
             {error && (
               <Alert variant="destructive">
