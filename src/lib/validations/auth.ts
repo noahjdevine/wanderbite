@@ -5,8 +5,7 @@ export const signUpSchema = z.object({
   email: z.string().min(1, 'Please enter your email.').email('Please enter a valid email.'),
   password: z.string().min(6, 'Password must be at least 6 characters.'),
   agreeToTerms: z.literal(true, {
-    errorMap: () => ({ message: 'You must be 21+ and agree to the terms to use WanderBite.' }),
+    message: 'You must be 21+ and agree to the terms to use WanderBite.',
   }),
-});
 
 export type SignUpInput = z.infer<typeof signUpSchema>;
