@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { sendSubscriptionConfirmationEmail } from '@/lib/resend';
 
 export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -75,6 +76,13 @@ export async function POST(request: Request) {
             current_period_end: currentPeriodEnd,
           })
           .eq('id', userId);
+
+        const customerEmail =
+          session.customer_email ??
+          (session.customer_details as { email?: string } | null)?.email;
+        if (customerEmail) {
+          await sendSubscriptionConfirmationEmail(customerEmail);
+        }
         break;
       }
 

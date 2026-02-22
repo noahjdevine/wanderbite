@@ -206,6 +206,24 @@ export default function LoginPage() {
                 Sign Up
               </Button>
             </div>
+            <p className="text-xs text-muted-foreground">
+              By creating an account, you agree to our{' '}
+              <Link href="/terms" className="underline hover:text-foreground">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link href="/privacy" className="underline hover:text-foreground">
+                Privacy Policy
+              </Link>
+              . We use your info to manage your account and subscription. We don&apos;t sell your data.{' '}
+              Questions?{' '}
+              <a
+                href="mailto:privacy@wanderbite.com"
+                className="underline hover:text-foreground"
+              >
+                privacy@wanderbite.com
+              </a>
+            </p>
           </form>
         </CardContent>
       </Card>

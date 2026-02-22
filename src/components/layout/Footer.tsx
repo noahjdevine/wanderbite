@@ -41,6 +41,18 @@ export function Footer() {
             Privacy Policy
           </Link>
           <Link
+            href="/rules"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Rules
+          </Link>
+          <Link
+            href="/contact"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Contact
+          </Link>
+          <Link
             href="/login"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >

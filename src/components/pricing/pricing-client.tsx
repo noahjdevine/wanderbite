@@ -136,6 +136,31 @@ export function PricingClient({ userId, email }: PricingClientProps) {
               </li>
             ))}
           </ul>
+
+          <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
+            <p>
+              Plan: $15/month (billed monthly). Auto-renews until canceled. Includes 2 challenges/month
+              and 1 swap/month. Cancel anytime in Settings → Manage Subscription; cancellation takes
+              effect at the end of your current billing period. No partial refunds. Discount redemptions
+              are subject to restaurant terms (including $10 off $40+ before tax/tip, non-stackable,
+              and in-person confirmation).
+            </p>
+            <p>
+              By subscribing, you agree to our{' '}
+              <Link href="/terms" className="underline hover:text-foreground">
+                Terms of Service
+              </Link>
+              ,{' '}
+              <Link href="/privacy" className="underline hover:text-foreground">
+                Privacy Policy
+              </Link>
+              , and{' '}
+              <Link href="/rules" className="underline hover:text-foreground">
+                Discount & Challenge Rules
+              </Link>
+              .
+            </p>
+          </div>
         </CardContent>
         <CardFooter className="justify-center">
           {canSubscribe ? (
