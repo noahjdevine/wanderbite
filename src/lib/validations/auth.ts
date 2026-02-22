@@ -7,5 +7,6 @@ export const signUpSchema = z.object({
   agreeToTerms: z.literal(true, {
     message: 'You must be 21+ and agree to the terms to use WanderBite.',
   }),
+});
 
 export type SignUpInput = z.infer<typeof signUpSchema>;
