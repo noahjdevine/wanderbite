@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { Button } from '@/components/ui/button';
-import { AdminClient } from '@/app/admin/admin-client';
+import { AdminClient } from './admin-client';
 
 export const dynamic = 'force-dynamic';
 

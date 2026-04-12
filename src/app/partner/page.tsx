@@ -15,14 +15,12 @@ export default async function PartnerPage() {
     const analytics = await getPartnerAnalytics(session.restaurantId);
 
     return (
-      <main className="min-h-screen bg-background">
-        <div className="mx-auto max-w-4xl px-6 py-12">
-          <PartnerDashboard
-            restaurantName={session.restaurantName}
-            analytics={analytics.ok ? analytics : null}
-          />
-        </div>
-      </main>
+      <div className="mx-auto max-w-4xl px-6 py-12">
+        <PartnerDashboard
+          restaurantName={session.restaurantName}
+          analytics={analytics.ok ? analytics : null}
+        />
+      </div>
     );
   }
 
@@ -39,10 +37,8 @@ export default async function PartnerPage() {
   }));
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-md px-6 py-12">
-        <PartnerLoginForm restaurants={restaurants} />
-      </div>
-    </main>
+    <div className="mx-auto max-w-md px-6 py-12">
+      <PartnerLoginForm restaurants={restaurants} />
+    </div>
   );
 }

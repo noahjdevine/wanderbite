@@ -1,9 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import { Navbar } from "@/components/layout/Navbar";
-import { Footer } from "@/components/layout/Footer";
-import { MobileNav } from "@/components/layout/MobileNav";
 import { OnboardingModal } from "@/components/onboarding/onboarding-modal";
 import "./globals.css";
 
@@ -40,13 +37,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${outfit.variable} font-sans antialiased pb-20 md:pb-0`}
-      >
-        <Navbar />
+      <body className={`${outfit.variable} font-sans antialiased`}>
         {children}
-        <Footer />
-        <MobileNav />
         <OnboardingModal />
         <Toaster />
       </body>

@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { LocationRestaurant } from '@/app/restaurants/page';
+import type { LocationRestaurant } from '@/app/(site)/restaurants/page';
 import {
   RESTAURANT_IMAGE_PLACEHOLDER,
   restaurantDisplayImageUrl,
