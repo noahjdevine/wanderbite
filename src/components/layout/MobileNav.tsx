@@ -45,18 +45,26 @@ export function MobileNav() {
       aria-label="Mobile navigation"
     >
       <div className="mb-3 flex w-full items-center justify-center">
-        <div className="flex items-center">
-          <Link href="/">
+        <Link href="/">
+          <div
+            style={{
+              background: '#e8d3ff',
+              borderRadius: '12px',
+              padding: '6px 12px',
+              display: 'inline-flex',
+              alignItems: 'center',
+            }}
+          >
             <Image
               src="/logo.svg"
               alt="Wanderbite"
-              width={140}
-              height={40}
+              width={100}
+              height={28}
               priority
               style={{ objectFit: 'contain' }}
             />
-          </Link>
-        </div>
+          </div>
+        </Link>
       </div>
       <div className="flex w-full items-center justify-between">
         {ITEMS.map(({ href, label, icon: Icon, activePaths, ariaLabel }) => {

@@ -54,7 +54,7 @@ export async function enrichAllRestaurants(): Promise<{
   const admin = getSupabaseAdmin();
   const { data: rows, error } = await admin
     .from('restaurants')
-    .select('id, name, address, google_photo_url')
+    .select('id, name, address')
     .eq('status', 'active');
 
   if (error) {
@@ -65,15 +65,15 @@ export async function enrichAllRestaurants(): Promise<{
     id: string;
     name: string;
     address: string | null;
-    google_photo_url: string | null;
   }[];
 
-  const pending = list.filter((r) => !r.google_photo_url?.trim());
   let updated = 0;
   let failed = 0;
 
-  for (const r of pending) {
+  for (const r of list) {
     const res = await enrichSingleRestaurant(r.id);
+    const photoUrl = res.ok ? res.photoUrl : undefined;
+    console.log('Enriching:', r.name, '→', photoUrl ?? 'not found');
     if (res.ok) updated += 1;
     else failed += 1;
     await new Promise((resolve) => setTimeout(resolve, 300));

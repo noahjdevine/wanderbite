@@ -47,14 +47,24 @@ export function Navbar() {
         {/* Left: Logo + wordmark (SVG) — always links to / */}
         <div className="flex shrink-0 items-center">
           <Link href="/">
-            <Image
-              src="/logo.svg"
-              alt="Wanderbite"
-              width={180}
-              height={50}
-              priority
-              style={{ objectFit: 'contain' }}
-            />
+            <div
+              style={{
+                background: '#e8d3ff',
+                borderRadius: '12px',
+                padding: '6px 12px',
+                display: 'inline-flex',
+                alignItems: 'center',
+              }}
+            >
+              <Image
+                src="/logo.svg"
+                alt="Wanderbite"
+                width={120}
+                height={32}
+                priority
+                style={{ objectFit: 'contain' }}
+              />
+            </div>
           </Link>
         </div>
 

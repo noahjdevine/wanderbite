@@ -104,7 +104,7 @@ function LoginPageInner() {
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl">Wanderbite</CardTitle>
+          <CardTitle className="text-xl">Welcome</CardTitle>
           <CardDescription>Sign in or create an account</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -250,7 +250,7 @@ export default function LoginPage() {
         <main className="flex min-h-screen items-center justify-center bg-background p-6">
           <Card className="w-full max-w-sm">
             <CardHeader className="text-center">
-              <CardTitle className="text-xl">Wanderbite</CardTitle>
+              <CardTitle className="text-xl">Welcome</CardTitle>
               <CardDescription>Loading…</CardDescription>
             </CardHeader>
           </Card>

@@ -5,7 +5,6 @@ export default function RulesPage() {
     <main className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto py-12 px-4 md:px-8 prose prose-violet">
         <h1 className="text-3xl font-bold tracking-tight">Discount & Challenge Rules</h1>
-        <p className="text-muted-foreground font-medium">Wanderbite</p>
         <p className="text-muted-foreground">Last updated: 2/22/2026</p>
 
         <p>
