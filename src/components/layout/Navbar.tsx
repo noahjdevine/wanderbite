@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { ChevronDown, Dices, UtensilsCrossed, User as UserIcon } from 'lucide-react';
+import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
 
 export function Navbar() {
   const [user, setUser] = useState<User | null>(null);
@@ -50,6 +51,12 @@ export function Navbar() {
           <Link
             href="/"
             aria-label="Wanderbite"
+            onClick={(e) => {
+              if (pathname !== '/') return;
+              e.preventDefault();
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+              window.dispatchEvent(new Event(WANDERBITE_RESET_ROULETTE_EVENT));
+            }}
             style={{
               display: 'flex',
               alignItems: 'center',

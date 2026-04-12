@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { ChevronDown, ExternalLink, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
 import type { RouletteApiResult } from '@/components/roulette/roulette-client';
 
 const VIBES = [
@@ -84,6 +85,9 @@ export function RouletteHero() {
   const angleRef = useRef(0);
   const modeRef = useRef<'idle' | 'fast' | 'coast'>('idle');
   const rafRef = useRef<number>(0);
+  /** Browser timer id — typed as number for DOM `setTimeout` return type. */
+  const resultRevealTimeoutRef = useRef<number | null>(null);
+  const coastEndTimeoutRef = useRef<number | null>(null);
 
   const [quickVibe, setQuickVibe] = useState<(typeof VIBES)[number] | null>(null);
   const [refineVibe, setRefineVibe] = useState<(typeof VIBES)[number] | null>(null);
@@ -120,6 +124,10 @@ export function RouletteHero() {
   const runCoastStop = useCallback(() => {
     const el = wheelRef.current;
     if (!el) return;
+    if (coastEndTimeoutRef.current) {
+      clearTimeout(coastEndTimeoutRef.current);
+      coastEndTimeoutRef.current = null;
+    }
     modeRef.current = 'coast';
     const from = angleRef.current;
     const extra = 720 + Math.random() * 360;
@@ -127,7 +135,8 @@ export function RouletteHero() {
     angleRef.current = to;
     el.style.transition = 'transform 2.4s cubic-bezier(0.18, 0.85, 0.22, 1)';
     el.style.transform = `rotate(${to}deg)`;
-    window.setTimeout(() => {
+    coastEndTimeoutRef.current = window.setTimeout(() => {
+      coastEndTimeoutRef.current = null;
       if (wheelRef.current) {
         wheelRef.current.style.transition = 'none';
       }
@@ -135,7 +144,49 @@ export function RouletteHero() {
     }, 2500);
   }, []);
 
+  const resetRoulette = useCallback(() => {
+    if (resultRevealTimeoutRef.current) {
+      clearTimeout(resultRevealTimeoutRef.current);
+      resultRevealTimeoutRef.current = null;
+    }
+    if (coastEndTimeoutRef.current) {
+      clearTimeout(coastEndTimeoutRef.current);
+      coastEndTimeoutRef.current = null;
+    }
+    modeRef.current = 'idle';
+    angleRef.current = 0;
+    const el = wheelRef.current;
+    if (el) {
+      el.style.transition = 'none';
+      el.style.transform = 'rotate(0deg)';
+    }
+    setQuickVibe(null);
+    setRefineVibe(null);
+    setTimeOfDay(null);
+    setDietary(null);
+    setSpinning(false);
+    setAllowRefine(false);
+    setResult(null);
+    setErrorMessage(null);
+    setTypedReason('');
+  }, []);
+
+  useEffect(() => {
+    const handleReset = () => resetRoulette();
+    window.addEventListener(WANDERBITE_RESET_ROULETTE_EVENT, handleReset);
+    return () =>
+      window.removeEventListener(WANDERBITE_RESET_ROULETTE_EVENT, handleReset);
+  }, [resetRoulette]);
+
   const spin = useCallback(async () => {
+    if (resultRevealTimeoutRef.current) {
+      clearTimeout(resultRevealTimeoutRef.current);
+      resultRevealTimeoutRef.current = null;
+    }
+    if (coastEndTimeoutRef.current) {
+      clearTimeout(coastEndTimeoutRef.current);
+      coastEndTimeoutRef.current = null;
+    }
     setErrorMessage(null);
     setResult(null);
     setTypedReason('');
@@ -182,7 +233,11 @@ export function RouletteHero() {
     try {
       const [data] = await Promise.all([fetchPromise, minWait]);
       runCoastStop();
-      window.setTimeout(() => {
+      if (resultRevealTimeoutRef.current) {
+        clearTimeout(resultRevealTimeoutRef.current);
+      }
+      resultRevealTimeoutRef.current = window.setTimeout(() => {
+        resultRevealTimeoutRef.current = null;
         setResult(data);
         setAllowRefine(true);
         setSpinning(false);
