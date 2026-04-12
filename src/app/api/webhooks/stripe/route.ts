@@ -171,7 +171,7 @@ export async function POST(request: Request) {
         const subscriptionStatus = stripeSubscriptionStatusToProfileStatus(
           subscription.status
         );
-        const periodEnd = subscription.current_period_end;
+        const periodEnd = (subscription as any).current_period_end ?? subscription.items?.data?.[0]?.current_period_end ?? null;
         const currentPeriodEnd = periodEnd
           ? new Date(periodEnd * 1000).toISOString()
           : null;
