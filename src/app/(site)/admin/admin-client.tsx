@@ -38,7 +38,7 @@ import {
   searchRestaurantsFromGoogle,
   getRestaurantDetailsFromGoogle,
   attachGoogleMetadataToLatestRestaurantByName,
-} from '@/app/admin/actions-import';
+} from './actions-import';
 import { GOOGLE_IMPORT_CITIES } from '@/lib/google-places-import';
 import type { PlaceDetails } from '@/lib/google-places-import';
 import { toast } from 'sonner';

@@ -25,8 +25,6 @@ async function checkAdminPermissions() {
   }
 }
 
-export type { PlaceDetails, PlaceResult };
-
 /**
  * After addRestaurant(), attaches google_place_id and google_photo_url to the
  * row that was just created (same trimmed name, created within last 5 minutes).
