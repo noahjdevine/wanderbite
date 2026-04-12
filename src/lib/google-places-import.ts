@@ -13,6 +13,12 @@ export type PlaceDetails = {
   rating: number | null;
 };
 
+export type PlaceResult = {
+  placeId: string;
+  name: string;
+  address: string;
+};
+
 export type ImportCityOption = {
   id: string;
   label: string;
@@ -21,6 +27,42 @@ export type ImportCityOption = {
   lat: number;
   lng: number;
 };
+
+export type SearchPlacesResponseHook = (info: {
+  httpStatus: number;
+  bodyText: string;
+}) => void;
+
+/** Builds the legacy Places Text Search URL (caller supplies API key). */
+export function buildGooglePlacesTextSearchUrl(
+  query: string,
+  city: string,
+  center: { lat: number; lng: number },
+  apiKey: string
+): string {
+  const fullQuery = `${query.trim()} restaurant ${city}`.trim();
+  const params = new URLSearchParams({
+    query: fullQuery,
+    location: `${center.lat},${center.lng}`,
+    radius: '50000',
+    key: apiKey,
+  });
+  return `https://maps.googleapis.com/maps/api/place/textsearch/json?${params.toString()}`;
+}
+
+/** Masks the raw API key wherever it appears in the URL (including URL-encoded). */
+export function maskGoogleApiKeyInUrl(url: string, apiKey: string): string {
+  if (!apiKey) return url;
+  const prefix = `${apiKey.slice(0, 8)}…`;
+  let out = url.split(apiKey).join(prefix);
+  try {
+    const enc = encodeURIComponent(apiKey);
+    out = out.split(enc).join(prefix);
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
 
 /** Cities for admin import dropdown; bias circle matches each market. */
 export const GOOGLE_IMPORT_CITIES: ImportCityOption[] = [
@@ -123,57 +165,107 @@ function neighborhoodFromComponents(
 }
 
 /**
- * Text Search (Legacy). Never throws; returns [] on missing key or failure.
+ * Text Search (Legacy). Returns mapped results for OK / ZERO_RESULTS.
+ * Throws with a descriptive message on HTTP errors, invalid JSON, or Places error statuses.
  */
 export async function searchPlaces(
   query: string,
   city: string = DEFAULT_CITY,
-  center: { lat: number; lng: number } = DEFAULT_CENTER
-): Promise<{ placeId: string; name: string; address: string }[]> {
+  center: { lat: number; lng: number } = DEFAULT_CENTER,
+  options?: { onResponse?: SearchPlacesResponseHook }
+): Promise<PlaceResult[]> {
   const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
-  if (!key) return [];
+  if (!key) {
+    throw new Error(
+      'Google Places API key not configured. Add GOOGLE_PLACES_API_KEY to environment variables.'
+    );
+  }
 
   const q = query.trim();
   if (!q) return [];
 
-  const fullQuery = `${q} restaurant ${city}`.trim();
+  const url = buildGooglePlacesTextSearchUrl(q, city, center, key);
+  console.log(
+    '[searchPlaces] URL (key masked):',
+    maskGoogleApiKeyInUrl(url, key)
+  );
 
+  let res: Response;
   try {
-    const params = new URLSearchParams({
-      query: fullQuery,
-      /** Biases results to ~50km around the selected city (legacy Text Search API). */
-      location: `${center.lat},${center.lng}`,
-      radius: '50000',
-      key,
-    });
-    const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?${params.toString()}`;
-    const res = await fetch(url, { cache: 'no-store' });
-    if (!res.ok) return [];
+    res = await fetch(url, { cache: 'no-store' });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[searchPlaces] fetch failed:', msg);
+    throw new Error(`Google Places request failed: ${msg}`);
+  }
 
-    const data = (await res.json()) as {
-      status?: string;
-      results?: {
-        place_id?: string;
-        name?: string;
-        formatted_address?: string;
-      }[];
-    };
+  const httpStatus = res.status;
+  let bodyText: string;
+  try {
+    bodyText = await res.text();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[searchPlaces] reading response body failed:', msg);
+    throw new Error(`Google Places response could not be read: ${msg}`);
+  }
 
-    if (data.status !== 'OK' || !data.results?.length) {
-      return [];
-    }
+  options?.onResponse?.({ httpStatus, bodyText });
 
-    return data.results
-      .filter((r) => r.place_id && r.name)
-      .slice(0, 5)
-      .map((r) => ({
-        placeId: r.place_id as string,
-        name: r.name as string,
-        address: (r.formatted_address ?? '').trim() || '—',
-      }));
-  } catch {
+  if (!res.ok) {
+    console.error(
+      '[searchPlaces] HTTP error:',
+      res.status,
+      res.statusText
+    );
+    throw new Error(
+      `Google Places returned HTTP ${res.status} ${res.statusText}`
+    );
+  }
+
+  let data: {
+    status?: string;
+    error_message?: string;
+    results?: {
+      place_id?: string;
+      name?: string;
+      formatted_address?: string;
+    }[];
+  };
+  try {
+    data = JSON.parse(bodyText) as typeof data;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[searchPlaces] JSON parse failed:', msg);
+    throw new Error(`Invalid JSON from Google Places: ${msg}`);
+  }
+
+  const status = data.status ?? 'UNKNOWN';
+  if (status === 'ZERO_RESULTS') {
     return [];
   }
+
+  if (status !== 'OK') {
+    const detail = data.error_message?.trim();
+    const suffix = detail ? `: ${detail}` : '';
+    console.error('[searchPlaces] Places API status:', status, detail ?? '');
+    throw new Error(`Google Places error (${status})${suffix}`);
+  }
+
+  const raw = data.results ?? [];
+  if (!raw.length) {
+    return [];
+  }
+
+  const mapped = raw
+    .filter((r) => r.place_id && r.name)
+    .slice(0, 5)
+    .map((r) => ({
+      placeId: r.place_id as string,
+      name: r.name as string,
+      address: (r.formatted_address ?? '').trim() || '—',
+    }));
+
+  return mapped;
 }
 
 /**

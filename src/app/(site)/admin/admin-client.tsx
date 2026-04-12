@@ -81,6 +81,8 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
   const [importCityId, setImportCityId] = useState(GOOGLE_IMPORT_CITIES[0]!.id);
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleSearching, setGoogleSearching] = useState(false);
+  const [googleSearchError, setGoogleSearchError] = useState<string | null>(null);
+  const [googleSearchEmptyHint, setGoogleSearchEmptyHint] = useState(false);
   const [googleResults, setGoogleResults] = useState<
     { placeId: string; name: string; address: string }[]
   >([]);
@@ -133,19 +135,38 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
     setGoogleSearching(true);
     setGoogleResults([]);
     setGoogleImported(null);
+    setGoogleSearchError(null);
+    setGoogleSearchEmptyHint(false);
     try {
-      const rows = await searchRestaurantsFromGoogle(
+      const result = await searchRestaurantsFromGoogle(
         q,
         selectedCity.cityQuery,
         selectedCity.lat,
         selectedCity.lng
       );
-      setGoogleResults(rows);
-      if (rows.length === 0) {
-        toast.message('No results', {
-          description: 'Try another name or city, or check the Places API key.',
-        });
+      if (!result.ok) {
+        setGoogleResults([]);
+        const noHits = result.error.startsWith(
+          'No results found for that search'
+        );
+        if (noHits) {
+          setGoogleSearchError(null);
+          setGoogleSearchEmptyHint(true);
+        } else {
+          setGoogleSearchError(result.error);
+          setGoogleSearchEmptyHint(false);
+        }
+        return;
       }
+      setGoogleSearchError(null);
+      setGoogleSearchEmptyHint(result.results.length === 0);
+      setGoogleResults(result.results);
+    } catch (e) {
+      setGoogleResults([]);
+      setGoogleSearchEmptyHint(false);
+      setGoogleSearchError(
+        e instanceof Error ? e.message : 'Google Places search failed.'
+      );
     } finally {
       setGoogleSearching(false);
     }
@@ -210,6 +231,8 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
     setGoogleImported(null);
     setGoogleResults([]);
     setGoogleDetailsLoading(false);
+    setGoogleSearchError(null);
+    setGoogleSearchEmptyHint(false);
   }
 
   async function handleDelete(id: string) {
@@ -403,6 +426,15 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
               )}
             </Button>
           </div>
+
+          {googleSearchError ? (
+            <p className="text-sm text-red-600">{googleSearchError}</p>
+          ) : null}
+          {!googleSearchError && googleSearchEmptyHint ? (
+            <p className="text-sm text-muted-foreground">
+              0 results found — try a different search term
+            </p>
+          ) : null}
 
           {googleResults.length > 0 && (
             <div className="space-y-2">

@@ -7,6 +7,9 @@ import {
   searchPlaces,
   getPlaceDetails,
   type PlaceDetails,
+  type PlaceResult,
+  buildGooglePlacesTextSearchUrl,
+  maskGoogleApiKeyInUrl,
 } from '@/lib/google-places-import';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 
@@ -23,7 +26,7 @@ async function checkAdminPermissions() {
   }
 }
 
-export type { PlaceDetails };
+export type { PlaceDetails, PlaceResult };
 
 /**
  * After addRestaurant(), attaches google_place_id and google_photo_url to the
@@ -103,13 +106,59 @@ export async function searchRestaurantsFromGoogle(
   city: string,
   lat: number,
   lng: number
-): Promise<{ placeId: string; name: string; address: string }[]> {
+): Promise<
+  { ok: true; results: PlaceResult[] } | { ok: false; error: string }
+> {
+  console.log('Searching Google Places for:', query);
+
   try {
     await checkAdminPermissions();
-  } catch {
-    return [];
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unauthorized';
+    return { ok: false, error: message };
   }
-  return searchPlaces(query, city, { lat, lng });
+
+  const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
+  if (!key) {
+    return {
+      ok: false,
+      error:
+        'Google Places API key not configured. Add GOOGLE_PLACES_API_KEY to environment variables.',
+    };
+  }
+
+  const trimmedQuery = query.trim();
+  const cityTrim = city.trim();
+  const url = buildGooglePlacesTextSearchUrl(
+    trimmedQuery,
+    cityTrim,
+    { lat, lng },
+    key
+  );
+  console.log('Google Places request URL:', maskGoogleApiKeyInUrl(url, key));
+
+  try {
+    const results = await searchPlaces(trimmedQuery, cityTrim, { lat, lng }, {
+      onResponse: ({ httpStatus, bodyText }) => {
+        console.log('Google Places raw response status:', httpStatus);
+        console.log('Google Places raw response body:', bodyText);
+      },
+    });
+
+    if (!results.length) {
+      return {
+        ok: false,
+        error:
+          'No results found for that search. Try a different name or check your Google Places API key.',
+      };
+    }
+
+    return { ok: true, results };
+  } catch (e) {
+    const message =
+      e instanceof Error ? e.message : 'Google Places search failed.';
+    return { ok: false, error: message };
+  }
 }
 
 export async function getRestaurantDetailsFromGoogle(
