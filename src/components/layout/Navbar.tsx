@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,8 @@ export function Navbar() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const pathname = usePathname();
+  const rouletteHref = pathname === '/' ? '/#roulette' : '/roulette';
 
   useEffect(() => {
     const client = createClient();
@@ -89,7 +91,7 @@ export function Navbar() {
             How it Works
           </Link>
           <Link
-            href="/roulette"
+            href={rouletteHref}
             className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
             <Dices className="size-4 shrink-0" aria-hidden />

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { LandingPage } from '@/components/landing/landing-page';
+import { RouletteHero } from '@/components/roulette/roulette-hero';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,5 +19,10 @@ export default async function Home() {
     redirect('/challenges');
   }
 
-  return <LandingPage />;
+  return (
+    <>
+      <RouletteHero />
+      <LandingPage />
+    </>
+  );
 }

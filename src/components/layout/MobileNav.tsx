@@ -80,13 +80,15 @@ export function MobileNav() {
       </div>
       <div className="flex w-full items-center justify-between">
         {ITEMS.map(({ href, label, icon: Icon, activePaths, ariaLabel }) => {
+          const resolvedHref =
+            href === '/roulette' && pathname === '/' ? '/#roulette' : href;
           const isActive = activePaths
             ? activePaths.includes(pathname)
             : pathname === href;
           return (
             <Link
               key={href}
-              href={href}
+              href={resolvedHref}
               aria-label={ariaLabel}
               className={cn(
                 'flex flex-col items-center gap-1 min-w-0 flex-1 transition-colors',

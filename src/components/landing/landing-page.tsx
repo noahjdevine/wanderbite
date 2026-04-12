@@ -11,7 +11,9 @@ type LandingPageProps = {
 export function LandingPage({ userId, email }: LandingPageProps) {
   return (
     <main className="min-h-screen bg-background">
-      <HeroSlider />
+      <div id="landing-continue">
+        <HeroSlider />
+      </div>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-6">
         {/* How it Works */}
