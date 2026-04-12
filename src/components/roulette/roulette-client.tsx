@@ -1,6 +1,10 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
+import {
+  RESTAURANT_IMAGE_PLACEHOLDER,
+  restaurantDisplayImageUrl,
+} from '@/lib/restaurant-image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -32,9 +36,35 @@ export type RouletteApiResult = {
   cuisine_tags: string[] | null;
   neighborhood: string | null;
   address: string | null;
+  image_url: string | null;
+  google_photo_url: string | null;
 };
 
 type Phase = 'form' | 'loading' | 'result' | 'error';
+
+function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
+  const [src, setSrc] = useState(() =>
+    restaurantDisplayImageUrl({
+      google_photo_url: result.google_photo_url,
+      image_url: result.image_url,
+    })
+  );
+
+  return (
+    <div className="aspect-[16/10] w-full shrink-0 overflow-hidden rounded-xl bg-muted">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt=""
+        width={800}
+        height={600}
+        className="h-full w-full"
+        style={{ objectFit: 'cover' }}
+        onError={() => setSrc(RESTAURANT_IMAGE_PLACEHOLDER)}
+      />
+    </div>
+  );
+}
 
 function PillGroup<T extends string>({
   label,
@@ -148,7 +178,18 @@ export function RouletteClient() {
         setPhase('error');
         return;
       }
-      setResult(data as RouletteApiResult);
+      setResult({
+        restaurantId: data.restaurantId,
+        restaurantName: data.restaurantName,
+        reason: data.reason,
+        vibeMatch: data.vibeMatch ?? null,
+        suggestedDish: data.suggestedDish ?? null,
+        cuisine_tags: data.cuisine_tags ?? null,
+        neighborhood: data.neighborhood ?? null,
+        address: data.address ?? null,
+        image_url: data.image_url ?? null,
+        google_photo_url: data.google_photo_url ?? null,
+      });
       setPhase('result');
     } catch {
       setErrorMessage('Network error. Check your connection and try again.');
@@ -212,7 +253,8 @@ export function RouletteClient() {
       {phase === 'error' && (
         <div className="flex flex-1 flex-col items-center justify-center space-y-6 text-center">
           <p className="text-lg text-foreground">
-            Wanderbite Roulette hit a snag — {errorMessage}
+            {errorMessage ||
+              'Something went wrong. Please try Wanderbite Roulette again.'}
           </p>
           <Button type="button" onClick={spin} variant="default" className="rounded-full">
             Try again
@@ -236,6 +278,8 @@ export function RouletteClient() {
               <p className="mt-1 text-muted-foreground">{result.neighborhood}</p>
             ) : null}
           </div>
+
+          <RouletteResultPhoto key={result.restaurantId} result={result} />
 
           <div className="rounded-xl border bg-card p-6 shadow-sm">
             <div className="mb-4 flex flex-wrap gap-1.5">

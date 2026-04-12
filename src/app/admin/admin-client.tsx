@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -29,6 +29,10 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { addRestaurant, deleteRestaurant } from '@/app/admin/actions';
+import {
+  enrichAllRestaurants,
+  enrichSingleRestaurant,
+} from '@/app/admin/actions-places';
 import { toast } from 'sonner';
 
 type RestaurantRow = {
@@ -40,6 +44,7 @@ type RestaurantRow = {
   price_range: string | null;
   neighborhood: string | null;
   image_url: string | null;
+  google_photo_url: string | null;
   verification_code: string | null;
   pin: string | null;
   status: string;
@@ -66,6 +71,12 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
   const [adding, setAdding] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [enrichingBulk, setEnrichingBulk] = useState(false);
+  const [enrichingId, setEnrichingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setRestaurants(initialRestaurants);
+  }, [initialRestaurants]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -100,6 +111,43 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
       toast.error(result.error);
     } finally {
       setDeleting(false);
+    }
+  }
+
+  async function handleEnrichAll() {
+    setEnrichingBulk(true);
+    try {
+      const result = await enrichAllRestaurants();
+      if (!result.ok) {
+        toast.error(result.error ?? 'Could not enrich restaurants.');
+        return;
+      }
+      toast.success(`Updated ${result.updated} restaurants, ${result.failed} failed`);
+      router.refresh();
+    } finally {
+      setEnrichingBulk(false);
+    }
+  }
+
+  async function handleRefreshPhoto(id: string) {
+    setEnrichingId(id);
+    try {
+      const result = await enrichSingleRestaurant(id);
+      if (result.ok) {
+        setRestaurants((prev) =>
+          prev.map((r) =>
+            r.id === id
+              ? { ...r, google_photo_url: result.photoUrl ?? r.google_photo_url }
+              : r
+          )
+        );
+        toast.success('Photo updated.');
+        router.refresh();
+        return;
+      }
+      toast.error(result.error ?? 'Could not refresh photo.');
+    } finally {
+      setEnrichingId(null);
     }
   }
 
@@ -228,9 +276,24 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
       </Card>
 
       <Card className="border-violet-200">
-        <CardHeader>
-          <CardTitle className="text-primary">Restaurant List</CardTitle>
-          <CardDescription>All partner restaurants. PIN used for Partner Portal login.</CardDescription>
+        <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="space-y-1.5">
+            <CardTitle className="text-primary">Restaurant List</CardTitle>
+            <CardDescription>
+              All partner restaurants. PIN used for Partner Portal login.
+            </CardDescription>
+          </div>
+          <Button
+            type="button"
+            variant="secondary"
+            className="shrink-0"
+            disabled={enrichingBulk}
+            onClick={() => void handleEnrichAll()}
+          >
+            {enrichingBulk
+              ? 'Fetching photos... this may take a moment'
+              : 'Enrich Restaurant Photos'}
+          </Button>
         </CardHeader>
         <CardContent>
           {restaurants.length === 0 ? (
@@ -245,13 +308,22 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
                     <TableHead>Neighborhood</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>PIN set</TableHead>
-                    <TableHead className="w-[100px]">Actions</TableHead>
+                    <TableHead className="min-w-[180px]">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {restaurants.map((r) => (
                     <TableRow key={r.id}>
-                      <TableCell className="font-medium">{r.name}</TableCell>
+                      <TableCell className="font-medium">
+                        <span className="inline-flex flex-wrap items-center gap-2">
+                          {r.name}
+                          {r.google_photo_url?.trim() ? (
+                            <span className="rounded-full bg-emerald-600/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                              Photo ✓
+                            </span>
+                          ) : null}
+                        </span>
+                      </TableCell>
                       <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
                         {r.address ?? '—'}
                       </TableCell>
@@ -259,15 +331,25 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
                       <TableCell className="text-sm">{r.price_range ?? '—'}</TableCell>
                       <TableCell className="text-sm">{r.pin ? 'Yes' : '—'}</TableCell>
                       <TableCell>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          onClick={() => setDeleteId(r.id)}
-                          disabled={deleting}
-                        >
-                          Delete
-                        </Button>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={deleting || enrichingBulk || enrichingId === r.id}
+                            onClick={() => void handleRefreshPhoto(r.id)}
+                          >
+                            {enrichingId === r.id ? 'Refreshing…' : 'Refresh Photo'}
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            onClick={() => setDeleteId(r.id)}
+                            disabled={deleting || enrichingBulk}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}

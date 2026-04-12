@@ -12,6 +12,8 @@ type RouletteRestaurant = {
   neighborhood: string | null;
   address: string | null;
   description: string | null;
+  image_url: string | null;
+  google_photo_url: string | null;
 };
 
 type ClaudePick = {
@@ -96,10 +98,17 @@ function parseClaudeJson(text: string): ClaudePick | null {
 }
 
 export async function POST(request: NextRequest) {
+  console.log(
+    'ANTHROPIC_API_KEY present:',
+    !!process.env.ANTHROPIC_API_KEY
+  );
+  console.log('Supabase URL present:', !!process.env.NEXT_PUBLIC_SUPABASE_URL);
+
   const ip = getClientIp(request);
 
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
   if (!apiKey) {
+    console.error('Roulette config error:', { reason: 'missing key or config' });
     return NextResponse.json(
       { error: 'Wanderbite Roulette is not configured yet. Please try again later.' },
       { status: 503 }
@@ -125,7 +134,9 @@ export async function POST(request: NextRequest) {
   const supabase = createClient(url, anon);
   const { data: rows, error: dbError } = await supabase
     .from('restaurants')
-    .select('id, name, cuisine_tags, neighborhood, address, description')
+    .select(
+      'id, name, cuisine_tags, neighborhood, address, description, image_url, google_photo_url'
+    )
     .eq('status', 'active');
 
   if (dbError) {
@@ -250,5 +261,7 @@ Valid JSON shape:
     cuisine_tags: chosen.cuisine_tags,
     neighborhood: chosen.neighborhood,
     address: chosen.address,
+    image_url: chosen.image_url,
+    google_photo_url: chosen.google_photo_url,
   });
 }

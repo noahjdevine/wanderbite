@@ -45,6 +45,10 @@ import {
 } from '@/app/actions/bite-notes';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { SocialProofRatingBlock } from '@/components/restaurant-social-proof';
+import {
+  RESTAURANT_IMAGE_PLACEHOLDER,
+  restaurantDisplayImageUrl,
+} from '@/lib/restaurant-image';
 
 type TestUser = {
   id: string;
@@ -343,14 +347,34 @@ function RestaurantCard({
     item.restaurant.lon != null &&
     !Number.isNaN(item.restaurant.lat) &&
     !Number.isNaN(item.restaurant.lon);
-    const mapsUrl = hasCoords
+  const mapsUrl = hasCoords
     ? `https://www.google.com/maps/search/?api=1&query=${item.restaurant.lat},${item.restaurant.lon}`
     : null;
 
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
+  const [dashImg, setDashImg] = useState(() =>
+    restaurantDisplayImageUrl(
+      item.restaurant as {
+        google_photo_url?: string | null;
+        image_url?: string | null;
+      }
+    )
+  );
 
   return (
-    <Card className={isExpired ? 'opacity-75 grayscale' : ''}>
+    <Card className={`overflow-hidden ${isExpired ? 'opacity-75 grayscale' : ''}`}>
+      <div className="-mt-6 aspect-[16/9] w-full shrink-0 bg-muted">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={dashImg}
+          alt=""
+          width={800}
+          height={600}
+          className="h-full w-full"
+          style={{ objectFit: 'cover' }}
+          onError={() => setDashImg(RESTAURANT_IMAGE_PLACEHOLDER)}
+        />
+      </div>
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">

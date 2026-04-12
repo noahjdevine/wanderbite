@@ -22,6 +22,10 @@ import {
   SocialProofRatingBlock,
 } from '@/components/restaurant-social-proof';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
+import {
+  RESTAURANT_IMAGE_PLACEHOLDER,
+  restaurantDisplayImageUrl,
+} from '@/lib/restaurant-image';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -67,6 +71,7 @@ export type PassportVisit = {
     cuisine_tags: string[] | null;
     neighborhood: string | null;
     image_url: string | null;
+    google_photo_url: string | null;
   };
 };
 
@@ -136,6 +141,31 @@ function UserStarRatingRow({ rating }: { rating: number }) {
         />
       ))}
     </div>
+  );
+}
+
+function PassportVisitRestaurantPhoto({
+  restaurant,
+}: {
+  restaurant: PassportVisit['restaurant'];
+}) {
+  const [src, setSrc] = useState(() =>
+    restaurantDisplayImageUrl({
+      google_photo_url: restaurant.google_photo_url,
+      image_url: restaurant.image_url,
+    })
+  );
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- Google Places + admin URLs
+    <img
+      src={src}
+      alt=""
+      width={800}
+      height={600}
+      className="h-full w-full"
+      style={{ objectFit: 'cover' }}
+      onError={() => setSrc(RESTAURANT_IMAGE_PLACEHOLDER)}
+    />
   );
 }
 
@@ -508,18 +538,7 @@ export function PassportClient({
           {visits.map((v) => (
             <Card key={v.id} className="overflow-hidden">
               <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
-                {v.restaurant.image_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- dynamic admin URLs; avoid remotePatterns sprawl
-                  <img
-                    src={v.restaurant.image_url}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex size-full items-center justify-center text-xs text-muted-foreground">
-                    No photo
-                  </div>
-                )}
+                <PassportVisitRestaurantPhoto restaurant={v.restaurant} />
               </div>
               <CardHeader className="pb-2">
                 <CardTitle className="text-base leading-snug">

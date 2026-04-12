@@ -17,6 +17,8 @@ type RestaurantRow = {
   status: string;
   market_id: string;
   org_id: string;
+  image_url?: string | null;
+  google_photo_url?: string | null;
 };
 
 type RestaurantOfferRow = {
@@ -194,7 +196,9 @@ export async function generateMonthlyChallenge(
     // 3. Restaurants in market with active offer
     const { data: restaurants, error: restErr } = await supabase
       .from('restaurants')
-      .select('id, name, cuisine_tags, address, lat, lon, status, market_id, org_id')
+      .select(
+        'id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, image_url, google_photo_url'
+      )
       .eq('market_id', marketId)
       .eq('status', 'active');
 

@@ -26,6 +26,7 @@ type RedemptionRow = {
         cuisine_tags: string[] | null;
         neighborhood: string | null;
         image_url: string | null;
+        google_photo_url: string | null;
       }
     | {
         id: string;
@@ -36,6 +37,7 @@ type RedemptionRow = {
         cuisine_tags: string[] | null;
         neighborhood: string | null;
         image_url: string | null;
+        google_photo_url: string | null;
       }[]
     | null;
 };
@@ -74,7 +76,8 @@ export default async function PassportPage() {
         lon,
         cuisine_tags,
         neighborhood,
-        image_url
+        image_url,
+        google_photo_url
       )
     `
     )
@@ -111,6 +114,7 @@ export default async function PassportPage() {
           cuisine_tags: restaurant.cuisine_tags,
           neighborhood: restaurant.neighborhood,
           image_url: restaurant.image_url,
+          google_photo_url: restaurant.google_photo_url,
         },
       };
     })

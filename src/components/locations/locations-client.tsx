@@ -10,6 +10,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import type { LocationRestaurant } from '@/app/restaurants/page';
+import {
+  RESTAURANT_IMAGE_PLACEHOLDER,
+  restaurantDisplayImageUrl,
+} from '@/lib/restaurant-image';
 
 type LocationsClientProps = {
   restaurants: LocationRestaurant[];
@@ -25,8 +29,6 @@ function buildMapsUrl(restaurant: LocationRestaurant): string | null {
   return null;
 }
 
-const PLACEHOLDER_FOOD_IMAGE = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=800&q=80';
-
 function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
   const mapsUrl = buildMapsUrl(restaurant);
   const tags = [
@@ -34,18 +36,25 @@ function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
     ...(restaurant.neighborhood ? [restaurant.neighborhood] : []),
   ];
   const description = restaurant.description ?? restaurant.address ?? null;
-  const [thumbSrc, setThumbSrc] = useState(restaurant.image_url ?? PLACEHOLDER_FOOD_IMAGE);
+  const initialSrc = restaurantDisplayImageUrl({
+    google_photo_url: restaurant.google_photo_url,
+    image_url: restaurant.image_url,
+  });
+  const [thumbSrc, setThumbSrc] = useState(initialSrc);
 
   return (
     <Card className="flex h-full flex-col overflow-hidden p-0">
-      {/* Thumbnail: image or generic food placeholder (fallback when missing or on load error) */}
+      {/* Thumbnail: Google photo, manual image, or local placeholder */}
       <div className="relative aspect-[16/10] w-full shrink-0 bg-muted">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={thumbSrc}
           alt=""
-          className="h-full w-full object-cover"
-          onError={() => setThumbSrc(PLACEHOLDER_FOOD_IMAGE)}
+          width={800}
+          height={600}
+          className="h-full w-full"
+          style={{ objectFit: 'cover' }}
+          onError={() => setThumbSrc(RESTAURANT_IMAGE_PLACEHOLDER)}
         />
       </div>
       <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2 pt-4">

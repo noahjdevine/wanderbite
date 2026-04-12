@@ -28,7 +28,9 @@ export default async function AdminPage() {
 
   const { data: rows, error } = await admin
     .from('restaurants')
-    .select('id, name, address, description, cuisine_tags, price_range, neighborhood, image_url, verification_code, pin, status')
+    .select(
+      'id, name, address, description, cuisine_tags, price_range, neighborhood, image_url, google_photo_url, verification_code, pin, status'
+    )
     .order('name');
 
   if (error) {
@@ -83,6 +85,7 @@ export default async function AdminPage() {
     price_range: string | null;
     neighborhood: string | null;
     image_url: string | null;
+    google_photo_url: string | null;
     verification_code: string | null;
     pin: string | null;
     status: string;
@@ -98,6 +101,7 @@ export default async function AdminPage() {
       price_range: row.price_range ?? null,
       neighborhood: row.neighborhood ?? null,
       image_url: row.image_url ?? null,
+      google_photo_url: row.google_photo_url ?? null,
       verification_code: row.verification_code ?? null,
       pin: row.pin ?? null,
       status: row.status,
