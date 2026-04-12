@@ -11,8 +11,9 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ExternalLink, Loader2 } from 'lucide-react';
+import { ChevronDown, ExternalLink, Loader2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { shareOrCopy } from '@/lib/share';
 import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
 import type { RouletteApiResult } from '@/components/roulette/roulette-client';
 
@@ -274,12 +275,15 @@ export function RouletteHero() {
 
   const sharePick = useCallback(async () => {
     if (!result?.restaurantName) return;
-    const text = `Wanderbite Roulette just sent me to ${result.restaurantName} tonight 🎲🍽️ Find your next bite free at wanderbite.com`;
-    try {
-      await navigator.clipboard.writeText(text);
-      toast.success('Copied to clipboard');
-    } catch {
-      toast.error('Could not copy — try selecting the text manually.');
+    const outcome = await shareOrCopy({
+      title: 'Wanderbite Roulette picked my dinner',
+      text: `Wanderbite Roulette just sent me to ${result.restaurantName} tonight 🎲🍽️ Find your next bite free at`,
+      url: 'https://wanderbite.com',
+    });
+    if (outcome === 'copied') {
+      toast.success('Link copied to clipboard!');
+    } else if (outcome === 'error') {
+      toast.error('Could not share. Try copying the link manually.');
     }
   }, [result?.restaurantName]);
 
@@ -440,9 +444,10 @@ export function RouletteHero() {
               <Button
                 type="button"
                 variant="outline"
-                className="rounded-full border-violet-300 bg-white/90"
+                className="gap-2 rounded-full border-violet-300 bg-white/90"
                 onClick={() => void sharePick()}
               >
+                <Share2 className="size-4 shrink-0" aria-hidden />
                 Share Tonight&apos;s Pick
               </Button>
               <Button

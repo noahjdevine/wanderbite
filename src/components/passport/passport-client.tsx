@@ -6,6 +6,7 @@ import Map, { Marker, NavigationControl, Popup } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { shareOrCopy } from '@/lib/share';
 import { BookMarked, Flame, Share2, Star, StarHalf } from 'lucide-react';
 import type { BiteNoteRow } from '@/app/actions/bite-notes';
 import { Button } from '@/components/ui/button';
@@ -276,11 +277,6 @@ export function PassportClient({
     [currentStreak]
   );
 
-  const neighborhoodSharePhrase = useMemo(() => {
-    if (neighborhoodCount === 1) return '1 Austin neighborhood';
-    return `${neighborhoodCount} Austin neighborhoods`;
-  }, [neighborhoodCount]);
-
   const mapMarkers: MapMarker[] = useMemo(() => {
     const seen = new Set<string>();
     const out: MapMarker[] = [];
@@ -317,20 +313,18 @@ export function PassportClient({
     };
   }, [bounds]);
 
-  const shareMessage = useMemo(
-    () =>
-      `I've explored ${uniqueRestaurantCount} restaurants across ${neighborhoodSharePhrase} with Wanderbite 🍽️🔥 ${streakPhrase} and counting. wanderbite.com`,
-    [neighborhoodSharePhrase, streakPhrase, uniqueRestaurantCount]
-  );
-
   const handleShare = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(shareMessage);
-      toast.success('Copied to clipboard');
-    } catch {
-      toast.error('Could not copy — try again');
+    const outcome = await shareOrCopy({
+      title: 'My Wanderbite Food Passport',
+      text: `I've explored ${uniqueRestaurantCount} restaurants across ${neighborhoodCount} neighborhoods with Wanderbite 🍽️🔥 ${currentStreak} month streak and counting.`,
+      url: 'https://wanderbite.com',
+    });
+    if (outcome === 'copied') {
+      toast.success('Link copied to clipboard!');
+    } else if (outcome === 'error') {
+      toast.error('Could not share. Try copying the link manually.');
     }
-  }, [shareMessage]);
+  }, [currentStreak, neighborhoodCount, uniqueRestaurantCount]);
 
   const popupVisit = popupVisitId
     ? mapMarkers.find((m) => m.visit.id === popupVisitId)?.visit
