@@ -23,6 +23,7 @@ export const metadata: Metadata = {
   title: "Wanderbite",
   description: "Dining adventures, curated for you.",
   icons: {
+    icon: "/Wanderbite-logo.svg",
     apple: "/apple-touch-icon.png",
   },
   appleWebApp: {

@@ -44,17 +44,19 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md md:flex">
       <nav className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6 sm:gap-6">
-        {/* Left: Logo — always links to / */}
-        <Link href="/" className="flex shrink-0 items-center gap-2 self-center">
-          <Image
-            src="/wanderbite-logo.png"
-            alt="Wanderbite"
-            width={150}
-            height={50}
-            priority
-            className="h-8 w-auto max-w-[150px] shrink-0 object-contain"
-          />
-        </Link>
+        {/* Left: Logo + wordmark (SVG) — always links to / */}
+        <div className="flex shrink-0 items-center">
+          <Link href="/">
+            <Image
+              src="/logo.svg"
+              alt="Wanderbite"
+              width={180}
+              height={50}
+              priority
+              style={{ objectFit: 'contain' }}
+            />
+          </Link>
+        </div>
 
         {/* Center: Links */}
         <div className="hidden min-w-0 flex-1 items-center justify-center gap-8 md:flex">

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Dices, Home, UtensilsCrossed, User, HelpCircle, Stamp } from 'lucide-react';
@@ -43,6 +44,20 @@ export function MobileNav() {
       style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
       aria-label="Mobile navigation"
     >
+      <div className="mb-3 flex w-full items-center justify-center">
+        <div className="flex items-center">
+          <Link href="/">
+            <Image
+              src="/logo.svg"
+              alt="Wanderbite"
+              width={140}
+              height={40}
+              priority
+              style={{ objectFit: 'contain' }}
+            />
+          </Link>
+        </div>
+      </div>
       <div className="flex w-full items-center justify-between">
         {ITEMS.map(({ href, label, icon: Icon, activePaths, ariaLabel }) => {
           const isActive = activePaths
