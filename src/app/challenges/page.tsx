@@ -80,9 +80,11 @@ export default async function ChallengesPage() {
   const biteNotesForDash =
     biteNotesRes.ok
       ? biteNotesRes.data.map((b) => ({
+          id: b.id,
           redemption_id: b.redemption_id,
           note: b.note,
           rating: b.rating,
+          is_public: b.is_public,
         }))
       : [];
 

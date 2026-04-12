@@ -21,6 +21,7 @@ import {
   roundAvgRatingToHalf,
   SocialProofRatingBlock,
 } from '@/components/restaurant-social-proof';
+import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -592,6 +593,7 @@ export function PassportClient({
                     </div>
                   );
                 })()}
+                <RestaurantReviews restaurantId={v.restaurant.id} className="pt-1" />
                 {!biteNoteForVisit(v, biteNotesByRestaurantId) ? (
                   <Link
                     href="/journal"

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Flame, Loader2, MapPin, RefreshCw, Star, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -38,7 +38,12 @@ import {
   getNextBadgeMilestoneMonths,
   getStreakBadgeForLongest,
 } from '@/lib/streaks';
-import { saveBiteNote, type BiteNoteSummary } from '@/app/actions/bite-notes';
+import {
+  saveBiteNote,
+  toggleNoteVisibility,
+  type BiteNoteSummary,
+} from '@/app/actions/bite-notes';
+import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { SocialProofRatingBlock } from '@/components/restaurant-social-proof';
 
 type TestUser = {
@@ -129,20 +134,51 @@ function BiteNotesInline({
   const [showForm, setShowForm] = useState(false);
   const [rating, setRating] = useState(saved?.rating ?? 5);
   const [text, setText] = useState(saved?.note ?? '');
+  const [formIsPublic, setFormIsPublic] = useState(saved?.is_public ?? false);
+  const [publicLocal, setPublicLocal] = useState(Boolean(saved?.is_public));
+  const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const hasSaved = Boolean(saved);
 
+  useEffect(() => {
+    setPublicLocal(Boolean(saved?.is_public));
+  }, [saved?.id, saved?.is_public]);
+
   function openEdit() {
     setRating(saved?.rating ?? 5);
     setText(saved?.note ?? '');
+    setFormIsPublic(saved?.is_public ?? false);
     setShowForm(true);
+  }
+
+  async function handleVisibilityChange(next: boolean) {
+    if (!saved?.id) return;
+    setVisibilitySaving(true);
+    try {
+      const res = await toggleNoteVisibility(saved.id, userId, next);
+      if (res.ok) {
+        setPublicLocal(next);
+        toast.success(next ? 'Your review is now public' : 'Your review is now private');
+        router.refresh();
+      } else {
+        toast.error(res.error);
+      }
+    } finally {
+      setVisibilitySaving(false);
+    }
   }
 
   async function handleSave() {
     setSaving(true);
     try {
-      const res = await saveBiteNote(redemptionId, userId, text, rating);
+      const res = await saveBiteNote(
+        redemptionId,
+        userId,
+        text,
+        rating,
+        formIsPublic
+      );
       if (res.ok) {
         toast.success('Bite Note saved');
         setShowForm(false);
@@ -162,19 +198,46 @@ function BiteNotesInline({
       </p>
       {hasSaved && !showForm && (
         <div className="space-y-2">
-          <StarRow value={saved!.rating} readOnly />
+          <div className="flex flex-wrap items-center gap-2">
+            <StarRow value={saved!.rating} readOnly />
+            {saved!.is_public ? (
+              <Badge variant="secondary" className="text-xs">
+                Public review
+              </Badge>
+            ) : null}
+          </div>
           {saved!.note ? (
             <p className="whitespace-pre-wrap text-sm text-foreground">{saved!.note}</p>
           ) : (
             <p className="text-sm italic text-muted-foreground">No written note</p>
           )}
+          {saved?.id ? (
+            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+              <input
+                type="checkbox"
+                className="size-3.5 rounded border-input accent-[#E85D26]"
+                checked={publicLocal}
+                disabled={visibilitySaving}
+                onChange={(e) => void handleVisibilityChange(e.target.checked)}
+              />
+              <span>Share publicly as a review</span>
+            </label>
+          ) : null}
           <Button type="button" variant="outline" size="sm" onClick={openEdit}>
             Edit
           </Button>
         </div>
       )}
       {!hasSaved && !showForm && (
-        <Button type="button" variant="outline" size="sm" onClick={() => setShowForm(true)}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setFormIsPublic(false);
+            setShowForm(true);
+          }}
+        >
           Leave a Bite Note
         </Button>
       )}
@@ -201,6 +264,15 @@ function BiteNotesInline({
               {text.length}/{BITE_NOTE_MAX}
             </p>
           </div>
+          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              className="size-3.5 rounded border-input accent-[#E85D26]"
+              checked={formIsPublic}
+              onChange={(e) => setFormIsPublic(e.target.checked)}
+            />
+            <span>Share this note publicly as a review</span>
+          </label>
           <div className="flex flex-wrap gap-2">
             <Button type="button" size="sm" disabled={saving} onClick={handleSave}>
               {saving ? 'Saving…' : 'Save Note'}
@@ -215,10 +287,12 @@ function BiteNotesInline({
                   setShowForm(false);
                   setRating(saved!.rating);
                   setText(saved!.note ?? '');
+                  setFormIsPublic(saved!.is_public);
                 } else {
                   setShowForm(false);
                   setRating(5);
                   setText('');
+                  setFormIsPublic(false);
                 }
               }}
             >
@@ -325,6 +399,7 @@ function RestaurantCard({
               totalRatings={item.socialProof.totalRatings}
             />
           )}
+        <RestaurantReviews restaurantId={item.restaurant.id} />
         {isRedeemed && token && (
           <div className="rounded-lg border-2 border-green-600 bg-green-50 p-4 dark:border-green-500 dark:bg-green-950/30">
             <p className="text-center text-lg font-mono font-bold tracking-wide text-green-800 dark:text-green-200">

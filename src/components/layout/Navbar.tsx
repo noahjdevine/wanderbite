@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, Dices, User as UserIcon } from 'lucide-react';
+import { ChevronDown, Dices, UtensilsCrossed, User as UserIcon } from 'lucide-react';
 
 export function Navbar() {
   const [user, setUser] = useState<User | null>(null);
@@ -43,21 +43,21 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md md:flex">
-      <nav className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-8 px-4 sm:px-6">
+      <nav className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6 sm:gap-6">
         {/* Left: Logo — always links to / */}
-        <Link href="/" className="flex shrink-0 items-center">
+        <Link href="/" className="flex shrink-0 items-center gap-2 self-center">
           <Image
             src="/wanderbite-logo.png"
             alt="Wanderbite"
             width={150}
             height={50}
             priority
-            className="h-auto w-[150px]"
+            className="h-8 w-auto max-w-[150px] shrink-0 object-contain"
           />
         </Link>
 
         {/* Center: Links */}
-        <div className="hidden items-center gap-8 md:flex">
+        <div className="hidden min-w-0 flex-1 items-center justify-center gap-8 md:flex">
           <Link
             href="/how-it-works"
             className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -73,6 +73,13 @@ export function Navbar() {
           </Link>
           {user ? (
             <>
+              <Link
+                href="/restaurants"
+                className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <UtensilsCrossed className="size-4 shrink-0" aria-hidden />
+                Restaurants
+              </Link>
               <Link
                 href="/challenges"
                 className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -117,7 +124,7 @@ export function Navbar() {
         </div>
 
         {/* Right: Auth */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center justify-end gap-2 self-center">
           {loading ? (
             <div className="h-9 w-20 rounded-md bg-muted animate-pulse" />
           ) : user ? (

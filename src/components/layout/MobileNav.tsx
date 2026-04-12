@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Dices, Home, MapPin, User, HelpCircle, Stamp } from 'lucide-react';
+import { Dices, Home, UtensilsCrossed, User, HelpCircle, Stamp } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,7 +24,7 @@ const ITEMS: NavItem[] = [
     icon: Dices,
     ariaLabel: 'Wanderbite Roulette',
   },
-  { href: '/restaurants', label: 'Restaurants', icon: MapPin },
+  { href: '/restaurants', label: 'Restaurants', icon: UtensilsCrossed },
   { href: '/passport', label: 'Passport', icon: Stamp },
   {
     href: '/profile',
@@ -43,7 +43,7 @@ export function MobileNav() {
       style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}
       aria-label="Mobile navigation"
     >
-      <div className="flex items-center justify-between">
+      <div className="flex w-full items-center justify-between">
         {ITEMS.map(({ href, label, icon: Icon, activePaths, ariaLabel }) => {
           const isActive = activePaths
             ? activePaths.includes(pathname)

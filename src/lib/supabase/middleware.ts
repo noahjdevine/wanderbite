@@ -53,6 +53,8 @@ export async function updateSession(request: NextRequest) {
     pathname.startsWith('/how-it-works/') ||
     pathname === '/pricing' ||
     pathname.startsWith('/pricing/') ||
+    pathname === '/restaurants' ||
+    pathname.startsWith('/restaurants/') ||
     pathname === '/partner' ||
     pathname.startsWith('/partner/') ||
     pathname === '/roulette' ||
