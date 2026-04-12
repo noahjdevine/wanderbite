@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Dices, Home, UtensilsCrossed, User, HelpCircle, Stamp } from 'lucide-react';
@@ -45,25 +44,38 @@ export function MobileNav() {
       aria-label="Mobile navigation"
     >
       <div className="mb-3 flex w-full items-center justify-center">
-        <Link href="/">
+        <Link
+          href="/"
+          aria-label="Wanderbite"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            textDecoration: 'none',
+          }}
+        >
           <div
             style={{
               background: '#e8d3ff',
-              borderRadius: '12px',
-              padding: '6px 12px',
-              display: 'inline-flex',
-              alignItems: 'center',
+              borderRadius: '10px',
+              padding: '4px 8px',
             }}
           >
-            <Image
+            <img
               src="/logo.svg"
-              alt="Wanderbite"
-              width={100}
-              height={28}
-              priority
-              style={{ objectFit: 'contain' }}
+              alt=""
+              style={{
+                width: '28px',
+                height: '28px',
+                objectFit: 'contain',
+                objectPosition: 'top',
+                display: 'block',
+              }}
             />
           </div>
+          <span style={{ fontWeight: 600, fontSize: '14px', color: '#111111' }}>
+            Wanderbite
+          </span>
         </Link>
       </div>
       <div className="flex w-full items-center justify-between">

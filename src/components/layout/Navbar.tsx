@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { User } from '@supabase/supabase-js';
@@ -44,27 +43,40 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md md:flex">
       <nav className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6 sm:gap-6">
-        {/* Left: Logo + wordmark (SVG) — always links to / */}
+        {/* Left: Icon in pill + wordmark — always links to / */}
         <div className="flex shrink-0 items-center">
-          <Link href="/">
+          <Link
+            href="/"
+            aria-label="Wanderbite"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              textDecoration: 'none',
+            }}
+          >
             <div
               style={{
                 background: '#e8d3ff',
-                borderRadius: '12px',
-                padding: '6px 12px',
-                display: 'inline-flex',
-                alignItems: 'center',
+                borderRadius: '10px',
+                padding: '4px 8px',
               }}
             >
-              <Image
+              <img
                 src="/logo.svg"
-                alt="Wanderbite"
-                width={120}
-                height={32}
-                priority
-                style={{ objectFit: 'contain' }}
+                alt=""
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  objectFit: 'contain',
+                  objectPosition: 'top',
+                  display: 'block',
+                }}
               />
             </div>
+            <span style={{ fontWeight: 600, fontSize: '16px', color: '#111111' }}>
+              Wanderbite
+            </span>
           </Link>
         </div>
 
