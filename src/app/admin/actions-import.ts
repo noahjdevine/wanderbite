@@ -8,6 +8,7 @@ import {
   getPlaceDetails,
   type PlaceDetails,
 } from '@/lib/google-places-import';
+import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 
 const SUPER_ADMIN_EMAIL = 'noah@wanderbite.com';
 
@@ -79,6 +80,17 @@ export async function attachGoogleMetadataToLatestRestaurantByName(
 
   if (updErr) {
     return { ok: false, error: updErr.message };
+  }
+
+  const { data: slugRow } = await admin
+    .from('restaurants')
+    .select('name, slug')
+    .eq('id', id)
+    .maybeSingle();
+  const sr = slugRow as { name: string; slug: string | null } | null;
+  if (sr && (!sr.slug || !sr.slug.trim())) {
+    const newSlug = await allocateUniqueRestaurantSlug(admin, sr.name);
+    await admin.from('restaurants').update({ slug: newSlug }).eq('id', id);
   }
 
   revalidatePath('/admin');

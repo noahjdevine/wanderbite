@@ -3,11 +3,12 @@
 import { revalidatePath } from 'next/cache';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { createClient } from '@/lib/supabase/server';
+import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 
 const SUPER_ADMIN_EMAIL = 'noah@wanderbite.com';
 
 export type AddRestaurantResult =
-  | { ok: true }
+  | { ok: true; partnerUrl: string }
   | { ok: false; error: string };
 
 export type DeleteRestaurantResult =
@@ -69,10 +70,13 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
     const orgId = (org as { id: string }).id;
     const marketId = (market as { id: string }).id;
 
+    const slug = await allocateUniqueRestaurantSlug(supabase, name);
+
     const { error: restErr } = await supabase.from('restaurants').insert({
       org_id: orgId,
       market_id: marketId,
       name,
+      slug,
       cuisine_tags: cuisine_tags.length ? cuisine_tags : null,
       address,
       description,
@@ -104,11 +108,51 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
 
     revalidatePath('/admin');
     revalidatePath('/restaurants');
-    return { ok: true };
+    return { ok: true, partnerUrl: `/partner/${slug}` };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return { ok: false, error: message };
   }
+}
+
+export async function generateMissingSlugs(): Promise<{
+  ok: boolean;
+  updated: number;
+  error?: string;
+}> {
+  try {
+    await checkAdminPermissions();
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'Unauthorized';
+    return { ok: false, updated: 0, error: message };
+  }
+
+  const supabase = getSupabaseAdmin();
+
+  const { data: allRows, error: listErr } = await supabase
+    .from('restaurants')
+    .select('id, name, slug');
+
+  if (listErr) {
+    return { ok: false, updated: 0, error: listErr.message };
+  }
+
+  const rows = (allRows ?? []) as { id: string; name: string; slug: string | null }[];
+  const missing = rows.filter((r) => !r.slug?.trim());
+  let updated = 0;
+
+  for (const row of missing) {
+    const slug = await allocateUniqueRestaurantSlug(supabase, row.name);
+    const { error: upErr } = await supabase
+      .from('restaurants')
+      .update({ slug })
+      .eq('id', row.id);
+    if (!upErr) updated += 1;
+  }
+
+  revalidatePath('/admin');
+  revalidatePath('/restaurants');
+  return { ok: true, updated };
 }
 
 export async function deleteRestaurant(restaurantId: string): Promise<DeleteRestaurantResult> {

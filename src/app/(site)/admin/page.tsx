@@ -29,7 +29,7 @@ export default async function AdminPage() {
   const { data: rows, error } = await admin
     .from('restaurants')
     .select(
-      'id, name, address, description, cuisine_tags, price_range, neighborhood, image_url, google_photo_url, verification_code, pin, status'
+      'id, name, slug, address, description, cuisine_tags, price_range, neighborhood, image_url, google_photo_url, verification_code, pin, status'
     )
     .order('name');
 
@@ -79,6 +79,7 @@ export default async function AdminPage() {
   type RestaurantRow = {
     id: string;
     name: string;
+    slug: string | null;
     address: string | null;
     description: string | null;
     cuisine_tags: string[] | null;
@@ -95,6 +96,7 @@ export default async function AdminPage() {
     return {
       id: row.id,
       name: row.name,
+      slug: row.slug ?? null,
       address: row.address,
       description: row.description ?? null,
       cuisine_tags: row.cuisine_tags,

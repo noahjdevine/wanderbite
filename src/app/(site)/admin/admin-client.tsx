@@ -28,8 +28,8 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { MapPin, Loader2 } from 'lucide-react';
-import { addRestaurant, deleteRestaurant } from './actions';
+import { Copy, Loader2, MapPin } from 'lucide-react';
+import { addRestaurant, deleteRestaurant, generateMissingSlugs } from './actions';
 import {
   enrichAllRestaurants,
   enrichSingleRestaurant,
@@ -46,6 +46,7 @@ import { toast } from 'sonner';
 type RestaurantRow = {
   id: string;
   name: string;
+  slug: string | null;
   address: string | null;
   description: string | null;
   cuisine_tags: string[] | null;
@@ -90,6 +91,10 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
   const [deleting, setDeleting] = useState(false);
   const [enrichingBulk, setEnrichingBulk] = useState(false);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
+  const [partnerSuccessFullUrl, setPartnerSuccessFullUrl] = useState<string | null>(
+    null
+  );
+  const [slugGenerating, setSlugGenerating] = useState(false);
 
   useEffect(() => {
     setRestaurants(initialRestaurants);
@@ -103,6 +108,9 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
     try {
       const result = await addRestaurant(formData);
       if (result.ok) {
+        const origin =
+          typeof window !== 'undefined' ? window.location.origin : '';
+        setPartnerSuccessFullUrl(`${origin}${result.partnerUrl}`);
         toast.success('Restaurant added.');
         form.reset();
         router.refresh();
@@ -169,6 +177,9 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
         toast.error(result.error);
         return;
       }
+      const origin =
+        typeof window !== 'undefined' ? window.location.origin : '';
+      setPartnerSuccessFullUrl(`${origin}${result.partnerUrl}`);
       const name = (formData.get('name') as string)?.trim() ?? '';
       const gid = (formData.get('google_place_id') as string)?.trim() ?? '';
       const gphoto = (formData.get('google_photo_url') as string)?.trim() || null;
@@ -218,6 +229,21 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
     }
   }
 
+  async function handleGenerateMissingSlugs() {
+    setSlugGenerating(true);
+    try {
+      const res = await generateMissingSlugs();
+      if (res.ok) {
+        toast.success(`Generated slugs for ${res.updated} restaurant(s).`);
+        router.refresh();
+        return;
+      }
+      toast.error(res.error ?? 'Could not generate slugs.');
+    } finally {
+      setSlugGenerating(false);
+    }
+  }
+
   async function handleEnrichAll() {
     setEnrichingBulk(true);
     try {
@@ -257,6 +283,47 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
 
   return (
     <div className="space-y-10">
+      {partnerSuccessFullUrl ? (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50/90 px-4 py-4 text-emerald-950 shadow-sm">
+          <p className="font-semibold text-emerald-900">
+            ✅ Restaurant added! Partner login URL:
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              readOnly
+              value={partnerSuccessFullUrl}
+              className="min-w-0 flex-1 rounded-md border border-emerald-200 bg-white px-3 py-2 font-mono text-xs text-foreground"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="shrink-0 gap-1.5 border-emerald-300"
+              onClick={() => {
+                void navigator.clipboard.writeText(partnerSuccessFullUrl);
+                toast.success('URL copied');
+              }}
+            >
+              <Copy className="size-4" aria-hidden />
+              Copy URL
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-emerald-900/80">
+            Share this URL with your restaurant partner. They will use it with their PIN
+            to log in.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="mt-2 h-8 text-emerald-900 hover:bg-emerald-100"
+            onClick={() => setPartnerSuccessFullUrl(null)}
+          >
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+
       <Card
         className="border-[#86efac] shadow-sm"
         style={{ backgroundColor: '#f0fdf4' }}
@@ -672,17 +739,28 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
               All partner restaurants. PIN used for Partner Portal login.
             </CardDescription>
           </div>
-          <Button
-            type="button"
-            variant="secondary"
-            className="shrink-0"
-            disabled={enrichingBulk}
-            onClick={() => void handleEnrichAll()}
-          >
-            {enrichingBulk
-              ? 'Fetching photos... this may take a moment'
-              : 'Enrich Restaurant Photos'}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0"
+              disabled={slugGenerating || enrichingBulk}
+              onClick={() => void handleGenerateMissingSlugs()}
+            >
+              {slugGenerating ? 'Generating…' : 'Generate Missing Slugs'}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              className="shrink-0"
+              disabled={enrichingBulk}
+              onClick={() => void handleEnrichAll()}
+            >
+              {enrichingBulk
+                ? 'Fetching photos... this may take a moment'
+                : 'Enrich Restaurant Photos'}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           {restaurants.length === 0 ? (
@@ -693,6 +771,7 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
                 <TableHeader>
                   <TableRow>
                     <TableHead>Name</TableHead>
+                    <TableHead>Partner URL</TableHead>
                     <TableHead>Address</TableHead>
                     <TableHead>Neighborhood</TableHead>
                     <TableHead>Price</TableHead>
@@ -712,6 +791,34 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
                             </span>
                           ) : null}
                         </span>
+                      </TableCell>
+                      <TableCell className="max-w-[220px]">
+                        {r.slug ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-mono text-xs text-muted-foreground">
+                              {`/partner/${r.slug}`}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="shrink-0"
+                              title="Copy partner URL"
+                              onClick={() => {
+                                const full =
+                                  typeof window !== 'undefined'
+                                    ? `${window.location.origin}/partner/${r.slug}`
+                                    : `/partner/${r.slug}`;
+                                void navigator.clipboard.writeText(full);
+                                toast.success('URL copied');
+                              }}
+                            >
+                              <Copy className="size-4" aria-hidden />
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        )}
                       </TableCell>
                       <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground">
                         {r.address ?? '—'}
