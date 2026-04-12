@@ -3,11 +3,10 @@
 import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import type { PlaceDetails, PlaceResult } from '@/lib/google-places-import';
 import {
   searchPlaces,
   getPlaceDetails,
-  type PlaceDetails,
-  type PlaceResult,
   buildGooglePlacesTextSearchUrl,
   maskGoogleApiKeyInUrl,
 } from '@/lib/google-places-import';
