@@ -2,6 +2,7 @@
 
 import { cookies } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { partnerLoginLimiter } from '@/lib/ratelimit';
 
 const PARTNER_COOKIE_NAME = 'partner_restaurant_id';
 const PARTNER_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -18,6 +19,16 @@ export async function loginPartner(
   const trimmedPin = pin?.trim();
   if (!restaurantId || !trimmedPin) {
     return { ok: false, error: 'Select a restaurant and enter your PIN.' };
+  }
+
+  if (partnerLoginLimiter) {
+    const { success } = await partnerLoginLimiter.limit(restaurantId);
+    if (!success) {
+      return {
+        ok: false,
+        error: 'Too many attempts. Please try again later.',
+      };
+    }
   }
 
   const admin = getSupabaseAdmin();

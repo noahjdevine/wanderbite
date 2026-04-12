@@ -2,6 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { hashRedemptionToken } from '@/lib/redemption-token-hash';
+import { redeemLimiter } from '@/lib/ratelimit';
 
 const TOKEN_PREFIX = 'WB-';
 const TOKEN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I for readability
@@ -28,6 +30,16 @@ export async function redeemChallengeItem(
   userId: string
 ): Promise<RedeemChallengeResult> {
   try {
+    if (redeemLimiter) {
+      const { success } = await redeemLimiter.limit(userId);
+      if (!success) {
+        return {
+          ok: false,
+          error: 'Too many attempts. Please try again later.',
+        };
+      }
+    }
+
     const supabase = getSupabaseAdmin();
 
     // 1. Fetch the challenge_item
@@ -80,8 +92,9 @@ export async function redeemChallengeItem(
       return { ok: false, error: 'This challenge does not belong to you.' };
     }
 
-    // 3. Generate token and insert redemption
+    // 3. Generate token, hash for DB, return raw token to client only
     const token = generateRedemptionToken();
+    const tokenHash = hashRedemptionToken(token);
 
     const { data: redemption, error: insertErr } = await supabase
       .from('redemptions')
@@ -89,7 +102,7 @@ export async function redeemChallengeItem(
         user_id: userId,
         restaurant_id: challengeItem.restaurant_id,
         challenge_item_id: challengeItemId,
-        token_hash: token,
+        token_hash: tokenHash,
         status: 'issued',
       })
       .select('created_at')

@@ -1,16 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { signUpSchema } from '@/lib/validations/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
-export default function LoginPage() {
+function safeRedirectPath(redirectTo: string | null): string {
+  if (!redirectTo) return '/';
+  try {
+    const path = decodeURIComponent(redirectTo);
+    if (!path.startsWith('/') || path.startsWith('//')) return '/';
+    return path;
+  } catch {
+    return '/';
+  }
+}
+
+function LoginPageInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [agreeToTerms, setAgreeToTerms] = useState(false);
@@ -34,7 +46,7 @@ export default function LoginPage() {
         setError(err.message);
         return;
       }
-      router.push('/');
+      router.push(safeRedirectPath(searchParams.get('redirectTo')));
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');
@@ -228,5 +240,24 @@ export default function LoginPage() {
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-background p-6">
+          <Card className="w-full max-w-sm">
+            <CardHeader className="text-center">
+              <CardTitle className="text-xl">Wanderbite</CardTitle>
+              <CardDescription>Loading…</CardDescription>
+            </CardHeader>
+          </Card>
+        </main>
+      }
+    >
+      <LoginPageInner />
+    </Suspense>
   );
 }

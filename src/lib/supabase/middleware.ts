@@ -1,6 +1,20 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
+const PROTECTED_ROUTES = [
+  '/dashboard',
+  '/billing',
+  '/challenges',
+  '/journey',
+  '/journal',
+  '/passport',
+  '/profile',
+  '/onboarding',
+  '/admin',
+  '/suggest',
+  '/restaurants',
+] as const;
+
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
 
@@ -40,9 +54,23 @@ export async function updateSession(request: NextRequest) {
     pathname === '/pricing' ||
     pathname.startsWith('/pricing/') ||
     pathname === '/partner' ||
-    pathname.startsWith('/partner/');
+    pathname.startsWith('/partner/') ||
+    pathname === '/roulette' ||
+    pathname.startsWith('/roulette/');
   if (isPublic) {
     return response;
+  }
+
+  const isProtected = PROTECTED_ROUTES.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`)
+  );
+  if (!user && isProtected) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set(
+      'redirectTo',
+      `${pathname}${request.nextUrl.search}`
+    );
+    return NextResponse.redirect(loginUrl);
   }
 
   if (user) {

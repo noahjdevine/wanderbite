@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, MapPin, User, HelpCircle } from 'lucide-react';
+import { Dices, Home, MapPin, User, HelpCircle, Stamp } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -11,12 +11,21 @@ type NavItem = {
   label: string;
   icon: LucideIcon;
   activePaths?: readonly string[];
+  /** Shown on mobile when `label` is shortened (e.g. tab bar space). */
+  ariaLabel?: string;
 };
 
 const ITEMS: NavItem[] = [
   { href: '/', label: 'Home', icon: Home },
   { href: '/how-it-works', label: 'How it Works', icon: HelpCircle },
+  {
+    href: '/roulette',
+    label: 'Roulette',
+    icon: Dices,
+    ariaLabel: 'Wanderbite Roulette',
+  },
   { href: '/restaurants', label: 'Restaurants', icon: MapPin },
+  { href: '/passport', label: 'Passport', icon: Stamp },
   {
     href: '/profile',
     label: 'Profile',
@@ -35,7 +44,7 @@ export function MobileNav() {
       aria-label="Mobile navigation"
     >
       <div className="flex items-center justify-between">
-        {ITEMS.map(({ href, label, icon: Icon, activePaths }) => {
+        {ITEMS.map(({ href, label, icon: Icon, activePaths, ariaLabel }) => {
           const isActive = activePaths
             ? activePaths.includes(pathname)
             : pathname === href;
@@ -43,6 +52,7 @@ export function MobileNav() {
             <Link
               key={href}
               href={href}
+              aria-label={ariaLabel}
               className={cn(
                 'flex flex-col items-center gap-1 min-w-0 flex-1 transition-colors',
                 isActive ? 'text-violet-600' : 'text-slate-500 hover:text-slate-700'

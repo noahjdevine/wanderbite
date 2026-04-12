@@ -2,6 +2,7 @@
 
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 
 // --- Types (aligned with schema) ---
@@ -58,6 +59,10 @@ export type GeneratedChallengeItem = {
   offer: { discount_amount_cents: number; min_spend_cents: number };
   /** Set when status is 'redeemed' (token from redemptions). */
   redemptionToken?: string | null;
+  /** Redemption row id when status is 'redeemed' (for Bite Notes, etc.). */
+  redemptionId?: string | null;
+  /** Aggregate Bite Note ratings for this restaurant (from all users). */
+  socialProof?: { avgRating: number | null; totalRatings: number };
 };
 
 export type GeneratedChallenge = {
@@ -87,7 +92,10 @@ export async function getCurrentChallenge(
     .maybeSingle();
 
   if (error || !cycle) return null;
-  const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
+  const items = await loadChallengeItemsWithRestaurants(
+    supabase,
+    (cycle as ChallengeCycleRow).id
+  );
   return { cycle: cycle as ChallengeCycleRow, items };
 }
 
@@ -123,6 +131,20 @@ export async function generateMonthlyChallenge(
 ): Promise<GenerateChallengeResult> {
   try {
     const supabase = getSupabaseAdmin();
+    const { data: subscriptionProfile } = await supabase
+      .from('user_profiles')
+      .select('subscription_status')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (subscriptionProfile?.subscription_status !== 'active') {
+      return {
+        ok: false,
+        error:
+          'An active Wanderbite subscription is required to generate challenges.',
+      };
+    }
+
     const now = new Date();
     const cycleMonth = startOfMonth(now);
     const cycleMonthStr = format(cycleMonth, 'yyyy-MM-dd');
@@ -145,7 +167,10 @@ export async function generateMonthlyChallenge(
       return { ok: false, error: `Failed to check existing cycle: ${cycleErr.message}` };
     }
     if (existingCycle) {
-      const items = await loadChallengeItemsWithRestaurants(supabase, existingCycle.id);
+      const items = await loadChallengeItemsWithRestaurants(
+        supabase,
+        (existingCycle as ChallengeCycleRow).id
+      );
       return {
         ok: true,
         data: { cycle: existingCycle as ChallengeCycleRow, items },
@@ -421,14 +446,22 @@ export async function generateMonthlyChallenge(
       return { ok: false, error: 'Failed to create challenge items.' };
     }
 
-    const items: GeneratedChallengeItem[] = (newItems as ChallengeItemRow[]).map((item, i) => ({
-      challengeItem: item,
-      restaurant: chosen[i],
-      offer: {
-        discount_amount_cents: offerByRestaurant.get(chosen[i].id)!.discount_amount_cents,
-        min_spend_cents: offerByRestaurant.get(chosen[i].id)!.min_spend_cents,
-      },
-    }));
+    const newRatingMap = await getRestaurantRatings(chosen.map((r) => r.id));
+    const items: GeneratedChallengeItem[] = (newItems as ChallengeItemRow[]).map((item, i) => {
+      const rest = chosen[i];
+      const stats = newRatingMap.get(rest.id);
+      return {
+        challengeItem: item,
+        restaurant: rest,
+        offer: {
+          discount_amount_cents: offerByRestaurant.get(rest.id)!.discount_amount_cents,
+          min_spend_cents: offerByRestaurant.get(rest.id)!.min_spend_cents,
+        },
+        socialProof: stats
+          ? { avgRating: stats.avgRating, totalRatings: stats.totalRatings }
+          : { avgRating: null, totalRatings: 0 },
+      };
+    });
 
     return {
       ok: true,
@@ -467,35 +500,47 @@ async function loadChallengeItemsWithRestaurants(
     (offers ?? []).map((o) => [(o as RestaurantOfferRow).restaurant_id, o as RestaurantOfferRow])
   );
 
+  // redemptions.token_hash is a SHA-256 digest of the WB- code, not the code itself.
+  // The display token is shown once at redeem time only; it is not recoverable from the DB.
+
   const redeemedItemIds = (items as ChallengeItemRow[])
     .filter((i) => i.status === 'redeemed')
     .map((i) => i.id);
-  const tokenByItemId = new Map<string, string>();
+  const redemptionIdByChallengeItemId = new Map<string, string>();
   if (redeemedItemIds.length > 0) {
-    const { data: redemptions } = await supabase
+    const { data: redemptionRows } = await supabase
       .from('redemptions')
-      .select('challenge_item_id, token_hash')
+      .select('id, challenge_item_id, created_at')
       .in('challenge_item_id', redeemedItemIds)
-      .eq('status', 'issued')
       .order('created_at', { ascending: false });
-    for (const r of redemptions ?? []) {
-      const row = r as { challenge_item_id: string; token_hash: string | null };
-      if (row.token_hash && !tokenByItemId.has(row.challenge_item_id)) {
-        tokenByItemId.set(row.challenge_item_id, row.token_hash);
+    for (const row of redemptionRows ?? []) {
+      const rr = row as { id: string; challenge_item_id: string };
+      if (!redemptionIdByChallengeItemId.has(rr.challenge_item_id)) {
+        redemptionIdByChallengeItemId.set(rr.challenge_item_id, rr.id);
       }
     }
   }
 
+  const ratingsMap = await getRestaurantRatings(restIds);
+
   return (items as ChallengeItemRow[]).map((item) => {
     const restaurant = restMap.get(item.restaurant_id)!;
     const offer = offerMap.get(item.restaurant_id);
+    const stats = ratingsMap.get(item.restaurant_id);
     return {
       challengeItem: item,
       restaurant,
       offer: offer
         ? { discount_amount_cents: offer.discount_amount_cents, min_spend_cents: offer.min_spend_cents }
         : { discount_amount_cents: 1000, min_spend_cents: 4000 },
-      redemptionToken: tokenByItemId.get(item.id) ?? null,
+      redemptionToken: null,
+      redemptionId:
+        item.status === 'redeemed'
+          ? redemptionIdByChallengeItemId.get(item.id) ?? null
+          : null,
+      socialProof: stats
+        ? { avgRating: stats.avgRating, totalRatings: stats.totalRatings }
+        : { avgRating: null, totalRatings: 0 },
     };
   });
 }

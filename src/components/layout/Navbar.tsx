@@ -13,7 +13,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, User as UserIcon } from 'lucide-react';
+import { ChevronDown, Dices, User as UserIcon } from 'lucide-react';
 
 export function Navbar() {
   const [user, setUser] = useState<User | null>(null);
@@ -64,6 +64,13 @@ export function Navbar() {
           >
             How it Works
           </Link>
+          <Link
+            href="/roulette"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <Dices className="size-4 shrink-0" aria-hidden />
+            Wanderbite Roulette
+          </Link>
           {user ? (
             <>
               <Link
@@ -77,6 +84,18 @@ export function Navbar() {
                 className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
                 My Journey
+              </Link>
+              <Link
+                href="/journal"
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Journal
+              </Link>
+              <Link
+                href="/passport"
+                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                Passport
               </Link>
             </>
           ) : (

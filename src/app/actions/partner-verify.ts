@@ -3,6 +3,7 @@
 import { cookies } from 'next/headers';
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { hashRedemptionToken } from '@/lib/redemption-token-hash';
 
 const PARTNER_COOKIE_NAME = 'partner_restaurant_id';
 
@@ -37,11 +38,12 @@ export async function verifyRedemptionToken(
   }
 
   const supabase = getSupabaseAdmin();
+  const tokenHash = hashRedemptionToken(trimmed);
 
   const { data: rows, error: searchErr } = await supabase
     .from('redemptions')
     .select('id, user_id, restaurant_id, status, verified_at')
-    .ilike('token_hash', trimmed)
+    .eq('token_hash', tokenHash)
     .limit(2);
 
   if (searchErr) {
@@ -185,11 +187,12 @@ export async function verifyRedemptionTokenForPartner(
   }
 
   const supabase = getSupabaseAdmin();
+  const tokenHash = hashRedemptionToken(trimmed);
 
   const { data: rows, error: searchErr } = await supabase
     .from('redemptions')
     .select('id, user_id, restaurant_id, status, verified_at')
-    .ilike('token_hash', trimmed)
+    .eq('token_hash', tokenHash)
     .limit(2);
 
   if (searchErr) {

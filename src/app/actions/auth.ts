@@ -1,6 +1,7 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { passwordResetLimiter } from '@/lib/ratelimit';
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
 
@@ -21,6 +22,16 @@ export async function sendPasswordResetEmail(
   }
   if (!baseUrl) {
     return { ok: false, error: 'NEXT_PUBLIC_BASE_URL is not set.' };
+  }
+
+  if (passwordResetLimiter) {
+    const { success } = await passwordResetLimiter.limit(trimmed);
+    if (!success) {
+      return {
+        ok: false,
+        error: 'Too many attempts. Please try again later.',
+      };
+    }
   }
 
   try {

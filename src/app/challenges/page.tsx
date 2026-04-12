@@ -3,6 +3,8 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getCurrentChallenge } from '@/app/actions/generate-challenge';
+import { calculateStreak } from '@/lib/streaks';
+import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
 
@@ -70,6 +72,18 @@ export default async function ChallengesPage() {
     );
   }
 
+  const streak = await calculateStreak(typedProfile.id);
+
+  const biteNotesRes = await getBiteNotes(typedProfile.id);
+  const biteNotesForDash =
+    biteNotesRes.ok
+      ? biteNotesRes.data.map((b) => ({
+          redemption_id: b.redemption_id,
+          note: b.note,
+          rating: b.rating,
+        }))
+      : [];
+
   let currentChallenge = null;
   try {
     currentChallenge = await getCurrentChallenge(typedProfile.id);
@@ -100,6 +114,8 @@ export default async function ChallengesPage() {
           }}
           marketId={market.id}
           currentChallenge={currentChallenge}
+          streak={streak}
+          biteNotes={biteNotesForDash}
         />
       </div>
     </main>

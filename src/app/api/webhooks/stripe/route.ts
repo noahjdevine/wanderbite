@@ -3,6 +3,23 @@ import type Stripe from 'stripe';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { sendSubscriptionConfirmationEmail } from '@/lib/resend';
 
+function stripeSubscriptionStatusToProfileStatus(
+  status: Stripe.Subscription.Status
+): string {
+  switch (status) {
+    case 'active':
+      return 'active';
+    case 'past_due':
+      return 'past_due';
+    case 'canceled':
+      return 'canceled';
+    case 'unpaid':
+      return 'past_due';
+    default:
+      return 'active';
+  }
+}
+
 export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
@@ -98,6 +115,73 @@ export async function POST(request: Request) {
         await supabase
           .from('user_profiles')
           .update({ subscription_status: 'canceled' })
+          .eq('stripe_customer_id', customerId);
+        break;
+      }
+
+      case 'invoice.payment_failed': {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId =
+          typeof invoice.customer === 'string'
+            ? invoice.customer
+            : invoice.customer?.id ?? null;
+
+        if (!customerId) break;
+
+        await supabase
+          .from('user_profiles')
+          .update({ subscription_status: 'past_due' })
+          .eq('stripe_customer_id', customerId);
+        break;
+      }
+
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        const customerId =
+          typeof invoice.customer === 'string'
+            ? invoice.customer
+            : invoice.customer?.id ?? null;
+
+        if (!customerId) break;
+
+        const periodEnd = invoice.period_end;
+        const currentPeriodEnd = periodEnd
+          ? new Date(periodEnd * 1000).toISOString()
+          : null;
+
+        await supabase
+          .from('user_profiles')
+          .update({
+            subscription_status: 'active',
+            current_period_end: currentPeriodEnd,
+          })
+          .eq('stripe_customer_id', customerId);
+        break;
+      }
+
+      case 'customer.subscription.updated': {
+        const subscription = event.data.object as Stripe.Subscription;
+        const customerId =
+          typeof subscription.customer === 'string'
+            ? subscription.customer
+            : subscription.customer?.id ?? null;
+
+        if (!customerId) break;
+
+        const subscriptionStatus = stripeSubscriptionStatusToProfileStatus(
+          subscription.status
+        );
+        const periodEnd = subscription.current_period_end;
+        const currentPeriodEnd = periodEnd
+          ? new Date(periodEnd * 1000).toISOString()
+          : null;
+
+        await supabase
+          .from('user_profiles')
+          .update({
+            subscription_status: subscriptionStatus,
+            current_period_end: currentPeriodEnd,
+          })
           .eq('stripe_customer_id', customerId);
         break;
       }
