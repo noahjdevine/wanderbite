@@ -149,7 +149,7 @@ async function awardBadgesForVerifiedCount(
     .in('badge_id', badgeIdsToAward);
 
   const existingSet = new Set(
-    (existing ?? []).map((r: { badge_id: string }) => r.badge_id)
+    (existing ?? []).map((r) => (r as { badge_id: string }).badge_id)
   );
   const newBadgeIds = badgeIdsToAward.filter((id) => !existingSet.has(id));
   if (newBadgeIds.length === 0) return [];
