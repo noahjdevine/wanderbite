@@ -72,6 +72,8 @@ export default async function ChallengesPage() {
     );
   }
 
+  const marketRow = market as { id: string };
+
   const streak = await calculateStreak(typedProfile.id);
 
   const biteNotesRes = await getBiteNotes(typedProfile.id);
@@ -112,7 +114,7 @@ export default async function ChallengesPage() {
             email: typedProfile.email,
             dietary_flags: typedProfile.dietary_flags,
           }}
-          marketId={market.id}
+          marketId={marketRow.id}
           currentChallenge={currentChallenge}
           streak={streak}
           biteNotes={biteNotesForDash}

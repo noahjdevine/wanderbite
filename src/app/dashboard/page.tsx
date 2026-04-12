@@ -68,6 +68,8 @@ export default async function DashboardPage() {
     );
   }
 
+  const marketRow = market as { id: string };
+
   let currentChallenge = null;
   try {
     currentChallenge = await getCurrentChallenge(typedProfile.id);
@@ -108,7 +110,7 @@ export default async function DashboardPage() {
             email: typedProfile.email,
             dietary_flags: typedProfile.dietary_flags,
           }}
-          marketId={market.id}
+          marketId={marketRow.id}
           currentChallenge={currentChallenge}
           streak={streak}
           biteNotes={biteNotesForDash}
