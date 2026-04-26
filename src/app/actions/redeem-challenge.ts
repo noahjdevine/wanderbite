@@ -2,8 +2,10 @@
 
 import { revalidatePath } from 'next/cache';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { encryptRedemptionCode } from '@/lib/redemption-crypto';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
 import { redeemLimiter } from '@/lib/ratelimit';
+import type { RedeemChallengeResult } from '@/types/redeem-challenge';
 
 const TOKEN_PREFIX = 'WB-';
 const TOKEN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I for readability
@@ -16,10 +18,6 @@ function generateRedemptionToken(): string {
   }
   return code;
 }
-
-export type RedeemChallengeResult =
-  | { ok: true; data: { token: string; redeemedAt: string } }
-  | { ok: false; error: string };
 
 /**
  * Issues a redemption for a challenge item: creates redemption record (status issued),
@@ -92,9 +90,10 @@ export async function redeemChallengeItem(
       return { ok: false, error: 'This challenge does not belong to you.' };
     }
 
-    // 3. Generate token, hash for DB, return raw token to client only
+    // 3. Generate token, hash for verification + encrypted copy for display recovery (parallel paths)
     const token = generateRedemptionToken();
     const tokenHash = hashRedemptionToken(token);
+    const { encrypted, iv } = encryptRedemptionCode(token);
 
     const { data: redemption, error: insertErr } = await supabase
       .from('redemptions')
@@ -103,6 +102,8 @@ export async function redeemChallengeItem(
         restaurant_id: challengeItem.restaurant_id,
         challenge_item_id: challengeItemId,
         token_hash: tokenHash,
+        encrypted_code: encrypted,
+        code_iv: iv,
         status: 'issued',
       })
       .select('created_at')

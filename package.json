@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:crypto": "tsx scripts/redemption-crypto-selftest.ts",
     "seed": "tsx scripts/seed.ts",
     "types:db": "supabase gen types typescript --project-id yiajoycgiyxjvznndjge --schema public > src/types/database.types.ts"
   },
