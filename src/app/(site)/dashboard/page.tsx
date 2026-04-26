@@ -47,7 +47,7 @@ export default async function DashboardPage() {
   };
 
   if (typedProfile.subscription_status !== 'active') {
-    redirect('/');
+    redirect('/pricing');
   }
 
   const { data: market, error: marketError } = await admin

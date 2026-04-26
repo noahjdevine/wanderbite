@@ -29,12 +29,28 @@ type BillingInterval = 'monthly' | 'annual';
 type PricingClientProps = {
   userId?: string | null;
   email?: string | null;
+  fullName?: string | null;
+  subscriptionStatus?: string | null;
 };
 
-export function PricingClient({ userId, email }: PricingClientProps) {
+function firstNameFromFullName(fullName: string | null | undefined): string | null {
+  const t = fullName?.trim();
+  if (!t) return null;
+  const first = t.split(/\s+/)[0]?.trim();
+  return first || null;
+}
+
+export function PricingClient({
+  userId,
+  email,
+  fullName,
+  subscriptionStatus,
+}: PricingClientProps) {
   const [loading, setLoading] = useState(false);
   const [billingInterval, setBillingInterval] = useState<BillingInterval>('monthly');
   const canSubscribe = userId && email?.trim();
+  const isActive = subscriptionStatus === 'active';
+  const firstName = firstNameFromFullName(fullName);
 
   async function handleJoinClub() {
     if (!canSubscribe) return;
@@ -59,10 +75,18 @@ export function PricingClient({ userId, email }: PricingClientProps) {
       {/* Header */}
       <header className="text-center">
         <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          Simple, Transparent Pricing.
+          {isActive
+            ? 'Your plan, your perks.'
+            : userId
+              ? `Welcome${firstName ? `, ${firstName}` : ''}! Pick your plan to start your first challenge.`
+              : 'Simple, Transparent Pricing.'}
         </h1>
         <p className="mt-3 text-lg text-muted-foreground">
-          Join the club and start saving immediately.
+          {isActive
+            ? 'Manage your subscription anytime.'
+            : userId
+              ? 'You’re one step away. Subscribe, then your challenges unlock.'
+              : 'Join the club and start saving immediately.'}
         </p>
       </header>
 
@@ -163,7 +187,11 @@ export function PricingClient({ userId, email }: PricingClientProps) {
           </div>
         </CardContent>
         <CardFooter className="justify-center">
-          {canSubscribe ? (
+          {isActive ? (
+            <Button size="lg" asChild className="w-full sm:w-auto">
+              <Link href="/billing">Manage my plan</Link>
+            </Button>
+          ) : canSubscribe ? (
             <Button
               size="lg"
               onClick={handleJoinClub}

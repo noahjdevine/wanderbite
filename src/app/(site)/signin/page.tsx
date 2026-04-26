@@ -87,14 +87,16 @@ function SignInInner() {
 
       const { data: profile } = await supabase
         .from('user_profiles')
-        .select('id')
+        .select('id, subscription_status')
         .eq('id', data.user.id)
         .maybeSingle();
 
       if (!profile) {
         router.push('/onboarding');
       } else {
-        router.push('/dashboard');
+        const sub =
+          (profile as { subscription_status: string | null }).subscription_status ?? null;
+        router.push(sub === 'active' ? '/challenges' : '/pricing');
       }
       router.refresh();
     } catch {

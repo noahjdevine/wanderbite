@@ -30,21 +30,31 @@ export async function completeOnboarding(
   const wantsCocktail = Boolean(data.wants_cocktail_experience);
 
   const admin = getSupabaseAdmin();
-  const { error: insertError } = await admin.from('user_profiles').insert({
-    id: user.id,
-    email: user.email ?? null,
-    dietary_flags: data.dietary_flags?.length ? data.dietary_flags : null,
-    distance_band: distanceBand,
-    wants_cocktail_experience: wantsCocktail,
-    role: 'subscriber',
-  });
+  // Idempotent: user may revisit onboarding or re-submit.
+  const { error: upsertError } = await admin
+    .from('user_profiles')
+    .upsert(
+      {
+        id: user.id,
+        email: user.email ?? null,
+        dietary_flags: data.dietary_flags?.length ? data.dietary_flags : null,
+        distance_band: distanceBand,
+        wants_cocktail_experience: wantsCocktail,
+        role: 'subscriber',
+      },
+      { onConflict: 'id' }
+    );
 
-  if (insertError) {
-    if (insertError.code === '23505') {
-      return { ok: false, error: 'Profile already exists.' };
-    }
-    return { ok: false, error: insertError.message };
+  if (upsertError) {
+    return { ok: false, error: upsertError.message };
   }
 
-  redirect('/dashboard');
+  const { data: profile } = await admin
+    .from('user_profiles')
+    .select('subscription_status')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const sub = (profile as { subscription_status: string | null } | null)?.subscription_status ?? null;
+  redirect(sub === 'active' ? '/challenges' : '/pricing');
 }
