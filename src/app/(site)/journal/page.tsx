@@ -39,7 +39,7 @@ export default async function JournalPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login?redirectTo=/journal');
+    redirect('/signin?redirectTo=/journal');
   }
 
   const res = await getBiteNotes(user.id);

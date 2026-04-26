@@ -30,7 +30,7 @@ const ITEMS: NavItem[] = [
     href: '/profile',
     label: 'Profile',
     icon: User,
-    activePaths: ['/profile', '/login'],
+    activePaths: ['/profile', '/login', '/signin', '/signup'],
   },
 ];
 

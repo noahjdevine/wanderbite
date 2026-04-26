@@ -23,7 +23,7 @@ export default async function BillingPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login');
+    redirect('/signin?redirectTo=/billing');
   }
 
   const admin = getSupabaseAdmin();

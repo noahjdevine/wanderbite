@@ -42,7 +42,7 @@ export default function ResetPasswordPage() {
         setError(err.message);
         return;
       }
-      router.push('/login?reset=success');
+      router.push('/signin?reset=success');
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');
@@ -132,7 +132,7 @@ export default function ResetPasswordPage() {
               {isLoading ? 'Updating…' : 'Update password'}
             </Button>
             <Button asChild variant="ghost" className="w-full">
-              <Link href="/login">Back to Log In</Link>
+              <Link href="/signin">Back to sign in</Link>
             </Button>
           </form>
         </CardContent>

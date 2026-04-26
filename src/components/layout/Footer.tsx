@@ -53,10 +53,16 @@ export function Footer() {
             Contact
           </Link>
           <Link
-            href="/login"
+            href="/signup"
             className="text-sm text-muted-foreground transition-colors hover:text-foreground"
           >
-            Log In
+            Sign up
+          </Link>
+          <Link
+            href="/signin"
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Sign in
           </Link>
         </nav>
       </div>

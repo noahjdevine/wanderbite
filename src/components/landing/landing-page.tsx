@@ -3,7 +3,7 @@ import { ClubSection } from '@/components/landing/club-section';
 import { HeroSlider } from '@/components/landing/hero-slider';
 
 type LandingPageProps = {
-  /** When provided, Club section shows Subscribe; otherwise Get Started → /login */
+  /** When provided, Club section shows Subscribe; otherwise Get Started → /signup */
   userId?: string | null;
   email?: string | null;
 };

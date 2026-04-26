@@ -41,8 +41,14 @@ export async function updateSession(request: NextRequest) {
 
   const pathname = request.nextUrl.pathname;
 
-  // Never run redirect logic for auth callback or login (matcher should exclude these; safety net)
-  if (pathname.startsWith('/auth/') || pathname === '/login') {
+  // Auth entry routes + callback: don't force session redirects here (matcher also skips many of these)
+  if (
+    pathname.startsWith('/auth/') ||
+    pathname === '/login' ||
+    pathname === '/signin' ||
+    pathname === '/signup' ||
+    pathname.startsWith('/signup/')
+  ) {
     return response;
   }
 
@@ -67,7 +73,7 @@ export async function updateSession(request: NextRequest) {
     (route) => pathname === route || pathname.startsWith(`${route}/`)
   );
   if (!user && isProtected) {
-    const loginUrl = new URL('/login', request.url);
+    const loginUrl = new URL('/signin', request.url);
     loginUrl.searchParams.set(
       'redirectTo',
       `${pathname}${request.nextUrl.search}`
@@ -81,7 +87,7 @@ export async function updateSession(request: NextRequest) {
 
   // Unauthenticated: redirect to login only for routes that require it (e.g. onboarding)
   if (pathname === '/onboarding') {
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(new URL('/signin', request.url));
   }
 
   return response;

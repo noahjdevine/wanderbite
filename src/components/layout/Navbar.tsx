@@ -39,7 +39,7 @@ export function Navbar() {
   async function handleSignOut() {
     const client = createClient();
     await client.auth.signOut();
-    router.push('/login');
+    router.push('/signin');
     router.refresh();
   }
 
@@ -186,9 +186,14 @@ export function Navbar() {
               </DropdownMenu>
             </>
           ) : (
-            <Button size="sm" asChild>
-              <Link href="/login">Log In</Link>
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="ghost" asChild className="hidden sm:inline-flex">
+                <Link href="/signin">Sign in</Link>
+              </Button>
+              <Button size="sm" asChild>
+                <Link href="/signup">Start your adventure</Link>
+              </Button>
+            </div>
           )}
         </div>
       </nav>

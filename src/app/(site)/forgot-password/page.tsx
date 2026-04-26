@@ -38,10 +38,10 @@ export default function ForgotPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
       <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-xl">Forgot Password</CardTitle>
-          <CardDescription>
-            Enter your email and we&apos;ll send you a link to reset your password.
+        <CardHeader className="text-center space-y-1">
+          <CardTitle className="text-2xl font-bold tracking-tight">Forgot it? Happens to the best of us.</CardTitle>
+          <CardDescription className="text-base">
+            Drop your email below and we&apos;ll send a reset link if we find your account.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -55,7 +55,7 @@ export default function ForgotPasswordPage() {
                 </AlertDescription>
               </Alert>
               <Button asChild className="w-full" variant="outline">
-                <Link href="/login">Back to Log In</Link>
+                <Link href="/signin">Back to sign in</Link>
               </Button>
             </>
           ) : (
@@ -85,7 +85,7 @@ export default function ForgotPasswordPage() {
                 {isLoading ? 'Sending…' : 'Send Reset Link'}
               </Button>
               <Button asChild variant="ghost" className="w-full">
-                <Link href="/login">Back to Log In</Link>
+                <Link href="/signin">Back to sign in</Link>
               </Button>
             </form>
           )}

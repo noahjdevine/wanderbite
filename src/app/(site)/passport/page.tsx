@@ -49,7 +49,7 @@ export default async function PassportPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login?redirectTo=/passport');
+    redirect('/signin?redirectTo=/passport');
   }
 
   const { data: profile } = await supabase

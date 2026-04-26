@@ -16,7 +16,7 @@ export default async function AdminPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login');
+    redirect('/signin');
   }
 
   const email = user.email?.trim().toLowerCase() ?? '';

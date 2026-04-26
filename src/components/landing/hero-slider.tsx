@@ -73,7 +73,7 @@ export function HeroSlider() {
         </p>
         <div className="mt-10">
           <Button size="lg" asChild className="shadow-lg">
-            <Link href="/login">Start Your Journey</Link>
+            <Link href="/signup">Start your adventure</Link>
           </Button>
         </div>
       </div>

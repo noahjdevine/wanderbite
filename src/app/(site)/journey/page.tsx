@@ -53,7 +53,7 @@ export default async function JourneyPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login');
+    redirect('/signin?redirectTo=/journey');
   }
 
   const admin = getSupabaseAdmin();

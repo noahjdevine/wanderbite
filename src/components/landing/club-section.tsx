@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { createCheckoutSession } from '@/app/actions/stripe';
 
 type ClubSectionProps = {
-  /** When provided, show real Subscribe button; otherwise "Get Started" → /login */
+  /** When provided, show real Subscribe button; otherwise "Get Started" → /signup */
   userId?: string | null;
   email?: string | null;
 };
@@ -71,7 +71,7 @@ export function ClubSection({ userId, email }: ClubSectionProps) {
                 </Button>
               ) : (
                 <Button size="lg" asChild>
-                  <Link href="/login">Get Started</Link>
+                  <Link href="/signup">Get Started</Link>
                 </Button>
               )}
             </CardFooter>

@@ -14,7 +14,7 @@ export default async function SuggestPage() {
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/login');
+    redirect('/signin?redirectTo=/suggest');
   }
 
   return (

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { completeOnboarding } from '@/app/actions/onboarding';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ export default function OnboardingPage() {
   const [dietaryFlags, setDietaryFlags] = useState<string[]>([]);
   const [distanceBand, setDistanceBand] = useState<string>('15_mi');
   const [wantsCocktailExperience, setWantsCocktailExperience] = useState(false);
+  const [confirmCocktailAge21, setConfirmCocktailAge21] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,6 +44,14 @@ export default function OnboardingPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+
+    if (wantsCocktailExperience && !confirmCocktailAge21) {
+      setError(
+        'Cocktail bar experiences are for guests 21+. Please confirm your age, or turn off cocktail experiences.'
+      );
+      return;
+    }
+
     setIsLoading(true);
     try {
       const result = await completeOnboarding({
@@ -61,9 +71,9 @@ export default function OnboardingPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-sm">
+      <Card className="w-full max-w-sm border-violet-200/60 shadow-md">
         <CardHeader className="text-center">
-          <CardTitle className="text-xl">Set your preferences</CardTitle>
+          <CardTitle className="text-xl font-bold">Dial in your tastes</CardTitle>
           <CardDescription>
             We&apos;ll use these to personalize your restaurant challenges.
           </CardDescription>
@@ -110,37 +120,63 @@ export default function OnboardingPage() {
               </select>
             </div>
 
-            <fieldset className="space-y-2">
+            <fieldset className="space-y-3">
               <label className="flex cursor-pointer items-start gap-3 rounded-md border border-input px-3 py-3 hover:bg-muted/50">
                 <input
                   type="checkbox"
                   checked={wantsCocktailExperience}
-                  onChange={(e) => setWantsCocktailExperience(e.target.checked)}
-                  className="mt-1 size-4 rounded border-input"
+                  onChange={(e) => {
+                    const on = e.target.checked;
+                    setWantsCocktailExperience(on);
+                    if (!on) setConfirmCocktailAge21(false);
+                  }}
+                  className="mt-1 size-4 shrink-0 rounded border-input"
                   disabled={isLoading}
                 />
                 <div>
-                  <span className="text-sm font-medium">Are you interested in Cocktail/Bar experiences?</span>
+                  <span className="text-sm font-medium">
+                    Want a cocktail bar or lounge in the mix?
+                  </span>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    If selected, we will curate 1 high-end cocktail bar or lounge experience for you per month.
+                    If yes, we&apos;ll include up to one curated cocktail experience per month.
                   </p>
                 </div>
               </label>
+
+              {wantsCocktailExperience ? (
+                <label className="flex cursor-pointer items-start gap-3 rounded-md border border-primary/30 bg-primary/5 px-3 py-3">
+                  <input
+                    type="checkbox"
+                    checked={confirmCocktailAge21}
+                    onChange={(e) => setConfirmCocktailAge21(e.target.checked)}
+                    className="mt-1 size-4 shrink-0 rounded border-input"
+                    disabled={isLoading}
+                  />
+                  <span className="text-sm leading-snug text-foreground">
+                    I am <strong>21 or older</strong> and understand cocktail experiences are for adults of legal
+                    drinking age. I agree to the{' '}
+                    <Link href="/terms" className="font-medium text-primary underline-offset-2 hover:underline">
+                      Terms
+                    </Link>{' '}
+                    and{' '}
+                    <Link href="/privacy" className="font-medium text-primary underline-offset-2 hover:underline">
+                      Privacy Policy
+                    </Link>{' '}
+                    as they apply to these experiences.
+                  </span>
+                </label>
+              ) : null}
             </fieldset>
 
             {error && (
               <Alert variant="destructive">
-                <AlertTitle>Error</AlertTitle>
+                <AlertTitle>Hold up</AlertTitle>
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isLoading}
-            >
-              {isLoading ? 'Saving…' : 'Start My Journey'}
+            <Button type="submit" className="h-11 w-full text-base font-semibold" disabled={isLoading}>
+              {isLoading ? 'Saving…' : 'Save & continue'}
             </Button>
           </form>
         </CardContent>

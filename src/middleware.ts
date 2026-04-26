@@ -16,6 +16,6 @@ export const config = {
      * - login (The Login Page - CRITICAL FIX)
      * - auth (The Auth API routes)
      */
-    '/((?!_next/static|_next/image|favicon.ico|images|login|auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|images|login|signin|signup(?:/.*)?|auth|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

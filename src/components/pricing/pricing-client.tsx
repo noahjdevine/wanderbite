@@ -174,7 +174,7 @@ export function PricingClient({ userId, email }: PricingClientProps) {
             </Button>
           ) : (
             <Button size="lg" asChild className="w-full sm:w-auto">
-              <Link href="/login">Join the Club</Link>
+              <Link href="/signup">Join the Club</Link>
             </Button>
           )}
         </CardFooter>

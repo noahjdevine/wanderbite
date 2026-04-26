@@ -1,12 +1,18 @@
 import { z } from 'zod';
 
-/** Sign-up validation. Password: 6-character minimum only (no special/uppercase/number required). */
-export const signUpSchema = z.object({
-  email: z.string().min(1, 'Please enter your email.').email('Please enter a valid email.'),
-  password: z.string().min(6, 'Password must be at least 6 characters.'),
-  agreeToTerms: z.literal(true, {
-    message: 'You must be 21+ and agree to the terms to use WanderBite.',
-  }),
-});
+/** Sign-up: legal attestation only (21+ is required on onboarding if cocktail experiences are selected). */
+export const signUpSchema = z
+  .object({
+    email: z.string().min(1, 'Please enter your email.').email('Please enter a valid email.'),
+    password: z.string().min(8, 'Use at least 8 characters.'),
+    confirmPassword: z.string().min(1, 'Confirm your password.'),
+    agreeToTerms: z.literal(true, {
+      message: 'Please agree to the Terms and Privacy Policy.',
+    }),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords don't match.",
+    path: ['confirmPassword'],
+  });
 
 export type SignUpInput = z.infer<typeof signUpSchema>;
