@@ -279,16 +279,19 @@ export function RouletteHero() {
     }
   }, [dietary, quickDietary, quickVibe, refineVibe, runCoastStop, timeOfDay]);
 
-  /** Mobile: smooth-scroll result into view after coast + reveal (avoids fighting the CSS transition). */
+  /** After reveal: mobile anchors result to top of viewport (avoids crowding spin button); desktop stays centered. */
   useEffect(() => {
     if (!result?.restaurantId) return;
     const prefersReduced =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isMobile =
+      typeof window !== 'undefined' &&
+      !window.matchMedia('(min-width: 768px)').matches;
     const id = window.setTimeout(() => {
       resultSectionRef.current?.scrollIntoView({
         behavior: prefersReduced ? 'auto' : 'smooth',
-        block: 'center',
+        block: isMobile ? 'start' : 'center',
       });
     }, 450);
     return () => clearTimeout(id);
@@ -390,7 +393,7 @@ export function RouletteHero() {
     >
       <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
         {/* Mobile: cap the "wheel stack" height so a slice of viewport hints at content below; desktop unchanged */}
-        <div className="flex w-full flex-col items-center text-center max-md:max-h-[min(70vh,600px)] max-md:min-h-0 md:max-h-none">
+        <div className="flex w-full flex-col items-center text-center max-md:max-h-[min(70vh,600px)] max-md:min-h-0 max-md:pb-8 md:max-h-none">
           <p className="text-sm font-semibold tracking-wide text-primary">
             FREE — No account needed
           </p>
@@ -518,10 +521,10 @@ export function RouletteHero() {
         {result ? (
           <div
             ref={resultSectionRef}
-            className="mt-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500"
+            className="relative z-0 mt-20 w-full max-w-md max-md:scroll-mt-28 max-md:border-t max-md:border-violet-200/70 max-md:pt-12 animate-in fade-in duration-500 md:mt-10 md:scroll-mt-0 md:border-t-0 md:pt-0 md:slide-in-from-bottom-4"
             key={result.restaurantId}
           >
-            <div className="rounded-2xl border border-violet-200/80 bg-white/95 p-6 text-left shadow-lg backdrop-blur-sm">
+            <div className="rounded-2xl border border-violet-200/80 bg-white/95 p-6 text-left shadow-lg backdrop-blur-sm max-md:shadow-xl max-md:ring-1 max-md:ring-violet-200/40 md:ring-0">
               <p className="text-sm font-medium text-muted-foreground">🎯 Tonight&apos;s Pick</p>
               <h3 className="mt-1 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
                 {result.restaurantName}

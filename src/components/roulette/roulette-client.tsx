@@ -244,10 +244,13 @@ export function RouletteClient() {
     const prefersReduced =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const isMobile =
+      typeof window !== 'undefined' &&
+      !window.matchMedia('(min-width: 768px)').matches;
     const id = window.setTimeout(() => {
       resultSectionRef.current?.scrollIntoView({
         behavior: prefersReduced ? 'auto' : 'smooth',
-        block: 'center',
+        block: isMobile ? 'start' : 'center',
       });
     }, 400);
     return () => clearTimeout(id);
@@ -394,7 +397,10 @@ export function RouletteClient() {
       )}
 
       {phase === 'result' && result && (
-        <div ref={resultSectionRef} className="flex flex-1 flex-col space-y-8">
+        <div
+          ref={resultSectionRef}
+          className="relative z-0 mt-16 flex flex-1 flex-col space-y-8 scroll-mt-6 max-md:border-t max-md:border-border/80 max-md:pt-10 md:mt-0 md:scroll-mt-0 md:border-t-0 md:pt-0"
+        >
           {showMobileScrollCue ? (
             <p className="hidden max-md:flex flex-col items-center gap-0.5 text-center text-xs font-semibold text-[#E85D26] animate-bounce">
               <span className="text-base leading-none" aria-hidden>
@@ -417,7 +423,7 @@ export function RouletteClient() {
 
           <RouletteResultPhoto key={result.restaurantId} result={result} />
 
-          <div className="rounded-xl border bg-card p-6 shadow-sm">
+          <div className="rounded-xl border bg-card p-6 shadow-sm max-md:shadow-lg max-md:ring-1 max-md:ring-border/60">
             <div className="mb-4 flex flex-wrap gap-1.5">
               {(result.cuisine_tags ?? []).length ? (
                 (result.cuisine_tags ?? []).map((tag) => (
