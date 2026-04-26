@@ -11,7 +11,16 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { ChevronDown, ExternalLink, Loader2, Share2 } from 'lucide-react';
+import {
+  ChevronDown,
+  ExternalLink,
+  Leaf,
+  Loader2,
+  MilkOff,
+  Share2,
+  ShieldCheck,
+} from 'lucide-react';
+import type { DietaryQuickFlag } from '@/lib/roulette-dietary';
 import { toast } from 'sonner';
 import { shareOrCopy } from '@/lib/share';
 import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
@@ -39,6 +48,16 @@ const VIBE_PILLS: { label: string; value: (typeof VIBES)[number] }[] = [
   { label: '🌶️ Adventurous', value: 'Adventurous' },
   { label: '⚡ Quick Bite', value: 'Quick Bite' },
   { label: '✨ Special Occasion', value: 'Special Occasion' },
+];
+
+const DIETARY_QUICK_PILLS: {
+  value: DietaryQuickFlag;
+  label: string;
+  Icon: typeof MilkOff;
+}[] = [
+  { value: 'dairy_free', label: 'Dairy-Free', Icon: MilkOff },
+  { value: 'vegan', label: 'Vegan', Icon: Leaf },
+  { value: 'halal', label: 'Halal', Icon: ShieldCheck },
 ];
 
 function RefinePillGroup<T extends string>({
@@ -89,8 +108,11 @@ export function RouletteHero() {
   /** Browser timer id — typed as number for DOM `setTimeout` return type. */
   const resultRevealTimeoutRef = useRef<number | null>(null);
   const coastEndTimeoutRef = useRef<number | null>(null);
+  const resultSectionRef = useRef<HTMLDivElement>(null);
+  const scrollCueHideTimeoutRef = useRef<number | null>(null);
 
   const [quickVibe, setQuickVibe] = useState<(typeof VIBES)[number] | null>(null);
+  const [quickDietary, setQuickDietary] = useState<DietaryQuickFlag[]>([]);
   const [refineVibe, setRefineVibe] = useState<(typeof VIBES)[number] | null>(null);
   const [timeOfDay, setTimeOfDay] = useState<(typeof TIMES)[number] | null>(null);
   const [dietary, setDietary] = useState<(typeof DIETARY)[number] | null>(null);
@@ -100,6 +122,8 @@ export function RouletteHero() {
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [typedReason, setTypedReason] = useState('');
+  /** Mobile-only: show bounce hint until result is in view or timeout. */
+  const [showMobileScrollCue, setShowMobileScrollCue] = useState(false);
 
   const mapsHref = useMemo(() => {
     if (!result?.restaurantName) return '#';
@@ -162,6 +186,7 @@ export function RouletteHero() {
       el.style.transform = 'rotate(0deg)';
     }
     setQuickVibe(null);
+    setQuickDietary([]);
     setRefineVibe(null);
     setTimeOfDay(null);
     setDietary(null);
@@ -170,6 +195,7 @@ export function RouletteHero() {
     setResult(null);
     setErrorMessage(null);
     setTypedReason('');
+    setShowMobileScrollCue(false);
   }, []);
 
   useEffect(() => {
@@ -192,6 +218,7 @@ export function RouletteHero() {
     setResult(null);
     setTypedReason('');
     setSpinning(true);
+    setShowMobileScrollCue(true);
     modeRef.current = 'fast';
 
     const vibeForApi =
@@ -207,6 +234,7 @@ export function RouletteHero() {
           vibe: vibeForApi,
           timeOfDay: timeOfDay ?? undefined,
           dietary: dietary ?? undefined,
+          dietaryQuick: quickDietary.length > 0 ? quickDietary : undefined,
         }),
       });
       const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
@@ -246,9 +274,75 @@ export function RouletteHero() {
     } catch (e) {
       modeRef.current = 'idle';
       setSpinning(false);
+      setShowMobileScrollCue(false);
       setErrorMessage(e instanceof Error ? e.message : 'Network error. Try again.');
     }
-  }, [dietary, quickVibe, refineVibe, runCoastStop, timeOfDay]);
+  }, [dietary, quickDietary, quickVibe, refineVibe, runCoastStop, timeOfDay]);
+
+  /** Mobile: smooth-scroll result into view after coast + reveal (avoids fighting the CSS transition). */
+  useEffect(() => {
+    if (!result?.restaurantId) return;
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const id = window.setTimeout(() => {
+      resultSectionRef.current?.scrollIntoView({
+        behavior: prefersReduced ? 'auto' : 'smooth',
+        block: 'center',
+      });
+    }, 450);
+    return () => clearTimeout(id);
+  }, [result?.restaurantId]);
+
+  /** Mobile: hide scroll cue when result is on-screen or after 4s. */
+  useEffect(() => {
+    if (!result?.restaurantId) return;
+    if (scrollCueHideTimeoutRef.current) {
+      clearTimeout(scrollCueHideTimeoutRef.current);
+      scrollCueHideTimeoutRef.current = null;
+    }
+    const el = resultSectionRef.current;
+    if (!el || typeof window === 'undefined') return;
+
+    const hide = () => {
+      setShowMobileScrollCue(false);
+      if (scrollCueHideTimeoutRef.current) {
+        clearTimeout(scrollCueHideTimeoutRef.current);
+        scrollCueHideTimeoutRef.current = null;
+      }
+    };
+
+    const mq = window.matchMedia('(min-width: 768px)');
+    if (mq.matches) {
+      hide();
+      return;
+    }
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      hide();
+    };
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting && e.intersectionRatio >= 0.12)) {
+          finish();
+        }
+      },
+      { threshold: [0, 0.12, 0.25] }
+    );
+    obs.observe(el);
+    scrollCueHideTimeoutRef.current = window.setTimeout(finish, 4000);
+    return () => {
+      obs.disconnect();
+      if (scrollCueHideTimeoutRef.current) {
+        clearTimeout(scrollCueHideTimeoutRef.current);
+        scrollCueHideTimeoutRef.current = null;
+      }
+    };
+  }, [result?.restaurantId]);
 
   useEffect(() => {
     if (!result?.reason) {
@@ -270,6 +364,7 @@ export function RouletteHero() {
     setResult(null);
     setErrorMessage(null);
     setTypedReason('');
+    setShowMobileScrollCue(false);
     modeRef.current = 'idle';
   }, []);
 
@@ -290,43 +385,45 @@ export function RouletteHero() {
   return (
     <section
       id="roulette"
-      className="relative flex min-h-[85vh] w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-[#f5f0ff] via-[#faf7ff] to-[#f0e8ff] px-4 pb-20 pt-8 md:px-8"
+      className="relative flex w-full flex-col items-center overflow-hidden bg-gradient-to-b from-[#f5f0ff] via-[#faf7ff] to-[#f0e8ff] px-4 pb-20 pt-8 max-md:min-h-0 max-md:justify-start md:min-h-[85vh] md:justify-center md:px-8"
       aria-label="Wanderbite Roulette"
     >
       <div className="mx-auto flex w-full max-w-lg flex-col items-center text-center">
-        <p className="text-sm font-semibold tracking-wide text-primary">
-          FREE — No account needed
-        </p>
-        <h2 className="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
-          Where should you eat tonight?
-        </h2>
-        <p className="mt-4 max-w-md text-base text-muted-foreground sm:text-lg">
-          Let Wanderbite Roulette decide. Powered by AI, built for adventure.
-        </p>
+        {/* Mobile: cap the "wheel stack" height so a slice of viewport hints at content below; desktop unchanged */}
+        <div className="flex w-full flex-col items-center text-center max-md:max-h-[min(70vh,600px)] max-md:min-h-0 md:max-h-none">
+          <p className="text-sm font-semibold tracking-wide text-primary">
+            FREE — No account needed
+          </p>
+          <h2 className="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
+            Where should you eat tonight?
+          </h2>
+          <p className="mt-4 max-w-md text-base text-muted-foreground sm:text-lg">
+            Let Wanderbite Roulette decide. Powered by AI, built for adventure.
+          </p>
 
-        <div className="relative mt-10 flex flex-col items-center">
-          <div
-            className="absolute -top-1 left-1/2 z-10 -translate-x-1/2"
-            aria-hidden
-          >
-            <div className="size-0 border-x-[10px] border-x-transparent border-b-[14px] border-b-primary drop-shadow-sm" />
-          </div>
-          <div
-            ref={wheelRef}
-            className="relative size-[200px] shrink-0 rounded-full shadow-lg ring-2 ring-primary/20"
-            style={{
-              transform: 'rotate(0deg)',
-              background:
-                'conic-gradient(from 0deg, #e8d3ff 0deg 45deg, #cda0ff 45deg 90deg, #e8d3ff 90deg 135deg, #cda0ff 135deg 180deg, #e8d3ff 180deg 225deg, #cda0ff 225deg 270deg, #e8d3ff 270deg 315deg, #cda0ff 315deg 360deg)',
-            }}
-          >
-            <div className="absolute inset-[22%] flex items-center justify-center rounded-full bg-white text-3xl shadow-inner ring-1 ring-violet-100">
-              🍴
+          <div className="relative mt-10 flex flex-col items-center md:mt-10">
+            <div
+              className="absolute -top-1 left-1/2 z-10 -translate-x-1/2"
+              aria-hidden
+            >
+              <div className="size-0 border-x-[10px] border-x-transparent border-b-[14px] border-b-primary drop-shadow-sm" />
+            </div>
+            <div
+              ref={wheelRef}
+              className="relative size-[200px] shrink-0 rounded-full shadow-lg ring-2 ring-primary/20"
+              style={{
+                transform: 'rotate(0deg)',
+                background:
+                  'conic-gradient(from 0deg, #e8d3ff 0deg 45deg, #cda0ff 45deg 90deg, #e8d3ff 90deg 135deg, #cda0ff 135deg 180deg, #e8d3ff 180deg 225deg, #cda0ff 225deg 270deg, #e8d3ff 270deg 315deg, #cda0ff 315deg 360deg)',
+              }}
+            >
+              <div className="absolute inset-[22%] flex items-center justify-center rounded-full bg-white text-3xl shadow-inner ring-1 ring-violet-100">
+                🍴
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-8 flex w-full max-w-md flex-wrap justify-center gap-2">
+          <div className="mt-8 flex w-full max-w-md flex-wrap justify-center gap-2">
           {VIBE_PILLS.map((pill) => {
             const on = quickVibe === pill.value;
             return (
@@ -347,24 +444,70 @@ export function RouletteHero() {
               </button>
             );
           })}
-        </div>
+          </div>
 
-        <Button
-          type="button"
-          size="lg"
-          disabled={spinning}
-          className="mt-8 h-12 min-w-[220px] rounded-full bg-primary px-8 text-base font-semibold text-primary-foreground shadow-md hover:bg-primary/90"
-          onClick={() => void spin()}
-        >
-          {spinning ? (
-            <>
-              <Loader2 className="mr-2 size-5 animate-spin" aria-hidden />
-              Spinning…
-            </>
-          ) : (
-            <>Spin the Wheel 🎲</>
-          )}
-        </Button>
+          <div className="mt-6 w-full max-w-md space-y-2">
+            <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Dietary (optional, multi-select)
+            </p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {DIETARY_QUICK_PILLS.map(({ value, label, Icon }) => {
+                const on = quickDietary.includes(value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() =>
+                      setQuickDietary((prev) =>
+                        prev.includes(value)
+                          ? prev.filter((f) => f !== value)
+                          : [...prev, value]
+                      )
+                    }
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                      on
+                        ? 'border-primary bg-primary/15 text-primary shadow-sm'
+                        : 'border-violet-200/80 bg-white/80 text-foreground hover:border-primary/50'
+                    )}
+                  >
+                    <Icon className="size-3.5 shrink-0" aria-hidden />
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <Button
+            type="button"
+            size="lg"
+            disabled={spinning}
+            className="mt-8 h-12 min-w-[220px] rounded-full bg-primary px-8 text-base font-semibold text-primary-foreground shadow-md hover:bg-primary/90"
+            onClick={() => void spin()}
+          >
+            {spinning ? (
+              <>
+                <Loader2 className="mr-2 size-5 animate-spin" aria-hidden />
+                Spinning…
+              </>
+            ) : (
+              <>Spin the Wheel 🎲</>
+            )}
+          </Button>
+
+          {showMobileScrollCue && (spinning || result) ? (
+            <p
+              className="mt-5 hidden max-md:flex flex-col items-center gap-0.5 text-xs font-semibold text-primary animate-bounce"
+              aria-live="polite"
+            >
+              <span className="text-base leading-none" aria-hidden>
+                ↓
+              </span>
+              <span>{result ? 'Scroll for your pick' : 'Your pick is on the way'}</span>
+            </p>
+          ) : null}
+        </div>
 
         {errorMessage ? (
           <p className="mt-4 max-w-md text-sm text-destructive" role="alert">
@@ -374,6 +517,7 @@ export function RouletteHero() {
 
         {result ? (
           <div
+            ref={resultSectionRef}
             className="mt-10 w-full max-w-md animate-in fade-in slide-in-from-bottom-4 duration-500"
             key={result.restaurantId}
           >
@@ -491,7 +635,7 @@ export function RouletteHero() {
 
       <a
         href="#landing-continue"
-        className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1 text-muted-foreground transition-colors hover:text-primary"
+        className="absolute bottom-6 left-1/2 hidden -translate-x-1/2 flex-col items-center gap-1 text-muted-foreground transition-colors hover:text-primary md:flex"
         aria-label="Scroll to more content"
       >
         <span className="text-xs font-medium">More below</span>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   RESTAURANT_IMAGE_PLACEHOLDER,
   restaurantDisplayImageUrl,
@@ -9,7 +9,14 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { ExternalLink, UtensilsCrossed } from 'lucide-react';
+import {
+  ExternalLink,
+  Leaf,
+  MilkOff,
+  ShieldCheck,
+  UtensilsCrossed,
+} from 'lucide-react';
+import type { DietaryQuickFlag } from '@/lib/roulette-dietary';
 
 const VIBES = [
   'Adventurous',
@@ -26,6 +33,16 @@ const DIETARY = [
   'Vegetarian-friendly',
   'Gluten-free options',
 ] as const;
+
+const DIETARY_QUICK_PILLS: {
+  value: DietaryQuickFlag;
+  label: string;
+  Icon: typeof MilkOff;
+}[] = [
+  { value: 'dairy_free', label: 'Dairy-Free', Icon: MilkOff },
+  { value: 'vegan', label: 'Vegan', Icon: Leaf },
+  { value: 'halal', label: 'Halal', Icon: ShieldCheck },
+];
 
 export type RouletteApiResult = {
   restaurantId: string;
@@ -106,7 +123,7 @@ function PillGroup<T extends string>({
   );
 }
 
-function SpinningWheel() {
+function SpinningWheel({ showMobileCue }: { showMobileCue?: boolean }) {
   return (
     <div className="flex flex-col items-center gap-6 py-8">
       <style>{`
@@ -135,17 +152,30 @@ function SpinningWheel() {
       </div>
       <p className="text-lg font-medium text-foreground">The wheel is spinning…</p>
       <p className="text-sm text-muted-foreground">Wanderbite Roulette is picking your spot.</p>
+      {showMobileCue ? (
+        <p className="mt-2 hidden max-md:flex flex-col items-center gap-0.5 text-xs font-semibold text-[#E85D26] animate-bounce">
+          <span className="text-base leading-none" aria-hidden>
+            ↓
+          </span>
+          <span>Your pick is on the way</span>
+        </p>
+      ) : null}
     </div>
   );
 }
 
 export function RouletteClient() {
+  const resultSectionRef = useRef<HTMLDivElement>(null);
+  const scrollCueHideTimeoutRef = useRef<number | null>(null);
+
   const [phase, setPhase] = useState<Phase>('form');
   const [vibe, setVibe] = useState<(typeof VIBES)[number] | null>(null);
+  const [quickDietary, setQuickDietary] = useState<DietaryQuickFlag[]>([]);
   const [timeOfDay, setTimeOfDay] = useState<(typeof TIMES)[number] | null>(null);
   const [dietary, setDietary] = useState<(typeof DIETARY)[number] | null>(null);
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showMobileScrollCue, setShowMobileScrollCue] = useState(false);
 
   const mapsHref = useMemo(() => {
     if (!result?.restaurantName) return '#';
@@ -155,6 +185,7 @@ export function RouletteClient() {
 
   const spin = useCallback(async () => {
     setPhase('loading');
+    setShowMobileScrollCue(true);
     setErrorMessage(null);
     setResult(null);
     try {
@@ -165,16 +196,19 @@ export function RouletteClient() {
           vibe: vibe ?? undefined,
           timeOfDay: timeOfDay ?? undefined,
           dietary: dietary ?? undefined,
+          dietaryQuick: quickDietary.length > 0 ? quickDietary : undefined,
         }),
       });
       const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
       if (!res.ok) {
         setErrorMessage(data.error ?? 'Something went wrong. Please try again.');
+        setShowMobileScrollCue(false);
         setPhase('error');
         return;
       }
       if (!data.restaurantId || !data.restaurantName || !data.reason) {
         setErrorMessage('We got an unexpected response. Please try Wanderbite Roulette again.');
+        setShowMobileScrollCue(false);
         setPhase('error');
         return;
       }
@@ -193,18 +227,79 @@ export function RouletteClient() {
       setPhase('result');
     } catch {
       setErrorMessage('Network error. Check your connection and try again.');
+      setShowMobileScrollCue(false);
       setPhase('error');
     }
-  }, [dietary, timeOfDay, vibe]);
+  }, [dietary, quickDietary, timeOfDay, vibe]);
 
   const spinAgain = useCallback(() => {
     setPhase('form');
     setResult(null);
     setErrorMessage(null);
+    setShowMobileScrollCue(false);
   }, []);
 
+  useEffect(() => {
+    if (phase !== 'result' || !result?.restaurantId) return;
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const id = window.setTimeout(() => {
+      resultSectionRef.current?.scrollIntoView({
+        behavior: prefersReduced ? 'auto' : 'smooth',
+        block: 'center',
+      });
+    }, 400);
+    return () => clearTimeout(id);
+  }, [phase, result?.restaurantId]);
+
+  useEffect(() => {
+    if (phase !== 'result' || !result?.restaurantId) return;
+    if (scrollCueHideTimeoutRef.current) {
+      clearTimeout(scrollCueHideTimeoutRef.current);
+      scrollCueHideTimeoutRef.current = null;
+    }
+    const el = resultSectionRef.current;
+    if (!el || typeof window === 'undefined') return;
+
+    const mq = window.matchMedia('(min-width: 768px)');
+    if (mq.matches) {
+      setShowMobileScrollCue(false);
+      return;
+    }
+
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setShowMobileScrollCue(false);
+      if (scrollCueHideTimeoutRef.current) {
+        clearTimeout(scrollCueHideTimeoutRef.current);
+        scrollCueHideTimeoutRef.current = null;
+      }
+    };
+
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting && e.intersectionRatio >= 0.12)) {
+          finish();
+        }
+      },
+      { threshold: [0, 0.12, 0.25] }
+    );
+    obs.observe(el);
+    scrollCueHideTimeoutRef.current = window.setTimeout(finish, 4000);
+    return () => {
+      obs.disconnect();
+      if (scrollCueHideTimeoutRef.current) {
+        clearTimeout(scrollCueHideTimeoutRef.current);
+        scrollCueHideTimeoutRef.current = null;
+      }
+    };
+  }, [phase, result?.restaurantId]);
+
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-lg flex-col px-4 py-12 sm:py-16">
+    <div className="mx-auto flex max-w-lg flex-col px-4 py-12 max-md:min-h-0 sm:py-16 md:min-h-[70vh]">
       {phase === 'form' && (
         <div className="flex flex-1 flex-col items-center justify-center space-y-10 text-center">
           <div className="space-y-3">
@@ -235,6 +330,39 @@ export function RouletteClient() {
               value={dietary}
               onChange={setDietary}
             />
+
+            <div className="space-y-2">
+              <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Quick dietary (multi-select)
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {DIETARY_QUICK_PILLS.map(({ value, label, Icon }) => {
+                  const on = quickDietary.includes(value);
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() =>
+                        setQuickDietary((prev) =>
+                          prev.includes(value)
+                            ? prev.filter((f) => f !== value)
+                            : [...prev, value]
+                        )
+                      }
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
+                        on
+                          ? 'border-[#E85D26] bg-[#E85D26] text-white shadow-sm'
+                          : 'border-border bg-background text-foreground hover:border-[#E85D26]/50'
+                      )}
+                    >
+                      <Icon className="size-3.5 shrink-0" aria-hidden />
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <Button
@@ -248,7 +376,7 @@ export function RouletteClient() {
         </div>
       )}
 
-      {phase === 'loading' && <SpinningWheel />}
+      {phase === 'loading' && <SpinningWheel showMobileCue />}
 
       {phase === 'error' && (
         <div className="flex flex-1 flex-col items-center justify-center space-y-6 text-center">
@@ -266,7 +394,15 @@ export function RouletteClient() {
       )}
 
       {phase === 'result' && result && (
-        <div className="flex flex-1 flex-col space-y-8">
+        <div ref={resultSectionRef} className="flex flex-1 flex-col space-y-8">
+          {showMobileScrollCue ? (
+            <p className="hidden max-md:flex flex-col items-center gap-0.5 text-center text-xs font-semibold text-[#E85D26] animate-bounce">
+              <span className="text-base leading-none" aria-hidden>
+                ↓
+              </span>
+              <span>Scroll for your pick</span>
+            </p>
+          ) : null}
           <div className="text-center">
             <p className="text-sm font-medium uppercase tracking-wide text-[#E85D26]">
               Wanderbite Roulette

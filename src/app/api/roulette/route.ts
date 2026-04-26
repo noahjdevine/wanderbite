@@ -1,5 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'crypto';
+import {
+  isDietaryQuickFlag,
+  restaurantMatchesDietaryQuick,
+  shuffleArray,
+  type DietaryQuickFlag,
+} from '@/lib/roulette-dietary';
 
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 const RATE_MAX = 10;
@@ -14,6 +21,9 @@ type RouletteRestaurant = {
   description: string | null;
   image_url: string | null;
   google_photo_url: string | null;
+  is_dairy_free?: boolean | null;
+  is_vegan?: boolean | null;
+  is_halal?: boolean | null;
 };
 
 type ClaudePick = {
@@ -115,12 +125,25 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { vibe?: string; timeOfDay?: string; dietary?: string };
+  type RouletteBody = {
+    vibe?: string;
+    timeOfDay?: string;
+    dietary?: string;
+    dietaryQuick?: unknown;
+  };
+  let body: RouletteBody;
   try {
-    body = (await request.json()) as typeof body;
+    body = (await request.json()) as RouletteBody;
   } catch {
     return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
+
+  const dietaryQuick: DietaryQuickFlag[] = Array.isArray(body.dietaryQuick)
+    ? body.dietaryQuick.filter(
+        (x): x is DietaryQuickFlag =>
+          typeof x === 'string' && isDietaryQuickFlag(x)
+      )
+    : [];
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -135,7 +158,7 @@ export async function POST(request: NextRequest) {
   const { data: rows, error: dbError } = await supabase
     .from('restaurants')
     .select(
-      'id, name, cuisine_tags, neighborhood, address, description, image_url, google_photo_url'
+      'id, name, cuisine_tags, neighborhood, address, description, image_url, google_photo_url, is_dairy_free, is_vegan, is_halal'
     )
     .eq('status', 'active');
 
@@ -147,12 +170,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const restaurants = (rows ?? []) as RouletteRestaurant[];
+  let restaurants = (rows ?? []) as RouletteRestaurant[];
   if (restaurants.length === 0) {
     return NextResponse.json(
       { error: 'No restaurants available right now.' },
       { status: 503 }
     );
+  }
+
+  if (dietaryQuick.length > 0) {
+    restaurants = restaurants.filter((r) =>
+      restaurantMatchesDietaryQuick(r, dietaryQuick)
+    );
+    if (restaurants.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            'No restaurants match those dietary filters yet. Try fewer options, or we may still be tagging partners — check back soon.',
+        },
+        { status: 404 }
+      );
+    }
   }
 
   if (!checkRateLimit(ip)) {
@@ -170,8 +208,10 @@ export async function POST(request: NextRequest) {
     dietary: body.dietary?.trim() || undefined,
   };
 
+  const shuffledForPrompt = shuffleArray(restaurants);
+
   const listJson = JSON.stringify(
-    restaurants.map((r) => ({
+    shuffledForPrompt.map((r) => ({
       id: r.id,
       name: r.name,
       cuisine_tags: r.cuisine_tags,
@@ -181,30 +221,42 @@ export async function POST(request: NextRequest) {
     }))
   );
 
+  const spinNonce = randomUUID();
+
+  const dietaryQuickLine =
+    dietaryQuick.length > 0
+      ? `Required dietary filters (ALL must be satisfied — list is pre-filtered): ${dietaryQuick.join(', ')}`
+      : null;
+
   const userPrefs = [
     params.vibe ? `Vibe: ${params.vibe}` : null,
     params.timeOfDay ? `Time of day: ${params.timeOfDay}` : null,
-    params.dietary ? `Dietary: ${params.dietary}` : null,
+    params.dietary ? `Dietary (refinement): ${params.dietary}` : null,
+    dietaryQuickLine,
   ]
     .filter(Boolean)
     .join('\n');
 
-  const systemUserPrompt = `You are Wanderbite Roulette, helping someone pick one restaurant for Austin.
+  const systemPrompt = `You are Wanderbite Roulette, recommending restaurants for a discovery app in Austin.
 
-Here is the complete JSON array of active Wanderbite partner restaurants (each has id, name, cuisine_tags, neighborhood, address, description):
-${listJson}
+Variety is critical: do NOT default to the same restaurant on repeated calls. Each user message is an independent spin with a unique random id—explore different options across the list. Lean toward discovery and rotation, not the single "most famous" pick every time.
 
-User preferences (each may be omitted — use your judgment when omitted):
-${userPrefs || '(No specific preferences — pick a standout match for a fun night out.)'}
+You will receive a JSON array of partner restaurants (order is randomized each request). Choose exactly ONE restaurant by its id from that array only.
 
-Rules:
-- Choose exactly ONE restaurant from the list by its id.
-- Return ONLY a single JSON object, no markdown fences, no commentary before or after.
-- Required keys: "restaurantId" (string uuid from the list), "restaurantName" (string), "reason" (2-4 sentences explaining why this pick fits their vibe/time/dietary choices).
-- Also include "vibeMatch" (one short phrase) and "suggestedDish" (one specific dish or order idea plausible for that restaurant).
+Return ONLY a single JSON object, no markdown fences, no commentary before or after.
+Required keys: "restaurantId" (string uuid from the list), "restaurantName" (string), "reason" (2-4 sentences explaining why this pick fits their vibe/time/dietary choices).
+Also include "vibeMatch" (one short phrase) and "suggestedDish" (one specific dish or order idea plausible for that restaurant).
 
 Valid JSON shape:
 {"restaurantId":"...","restaurantName":"...","reason":"...","vibeMatch":"...","suggestedDish":"..."}`;
+
+  const userPrompt = `Random spin id: ${spinNonce}
+
+Here is the JSON array of eligible Wanderbite partner restaurants (each has id, name, cuisine_tags, neighborhood, address, description):
+${listJson}
+
+User preferences (each line may be absent — use judgment when absent):
+${userPrefs || '(No specific preferences — pick a varied, fun standout for a night out.)'}`;
 
   let claudeText = '';
   try {
@@ -218,7 +270,9 @@ Valid JSON shape:
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
         max_tokens: 500,
-        messages: [{ role: 'user', content: systemUserPrompt }],
+        temperature: 1,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
       }),
     });
 

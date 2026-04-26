@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Dialog,
@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import { getProfileOnboardingCheck, updateProfileOnboarding } from '@/app/actions/profile';
 
 export function OnboardingModal() {
+  const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,17 @@ export function OnboardingModal() {
   const [username, setUsername] = useState('');
   const [address, setAddress] = useState('');
 
+  const suppressModal =
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/partner') ||
+    pathname.startsWith('/billing') ||
+    pathname.startsWith('/success');
+
   useEffect(() => {
+    if (suppressModal) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     getProfileOnboardingCheck().then((result) => {
       if (cancelled) return;
@@ -36,7 +47,7 @@ export function OnboardingModal() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [suppressModal]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,6 +74,7 @@ export function OnboardingModal() {
     }
   }
 
+  if (suppressModal) return null;
   if (loading) return null;
 
   return (
