@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
-import { OnboardingModal } from "@/components/onboarding/onboarding-modal";
 import "./globals.css";
 
 const outfit = Outfit({
@@ -39,7 +38,6 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${outfit.variable} font-sans antialiased`}>
         {children}
-        <OnboardingModal />
         <Toaster />
       </body>
     </html>

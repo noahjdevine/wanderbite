@@ -27,10 +27,10 @@ const ITEMS: NavItem[] = [
   { href: '/restaurants', label: 'Restaurants', icon: UtensilsCrossed },
   { href: '/passport', label: 'Passport', icon: Stamp },
   {
-    href: '/profile',
-    label: 'Profile',
+    href: '/account',
+    label: 'Account',
     icon: User,
-    activePaths: ['/profile', '/login', '/signin', '/signup'],
+    activePaths: ['/account', '/profile', '/login', '/signin', '/signup'],
   },
 ];
 

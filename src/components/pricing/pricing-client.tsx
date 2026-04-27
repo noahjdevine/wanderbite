@@ -15,14 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { createCheckoutSession } from '@/app/actions/stripe';
-
-const FEATURES = [
-  '$10 off at every spot',
-  'Curated selection',
-  'Cancel anytime',
-  'No expiration on unlocked rewards',
-  '1 Free Swap per month',
-];
+import { CLUB_PLAN_FEATURES } from '@/lib/club-plan-content';
 
 type BillingInterval = 'monthly' | 'annual';
 
@@ -151,7 +144,7 @@ export function PricingClient({
             </p>
           </div>
           <ul className="space-y-3">
-            {FEATURES.map((feature) => (
+            {CLUB_PLAN_FEATURES.map((feature) => (
               <li key={feature} className="flex items-center gap-3 text-sm">
                 <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <Check className="size-3" aria-hidden />

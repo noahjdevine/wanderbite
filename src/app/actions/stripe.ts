@@ -10,12 +10,18 @@ export type CreateCheckoutSessionResult =
   | { ok: true; url: string }
   | { ok: false; error: string };
 
+export type CreateCheckoutSessionOptions = {
+  /** Path + query only, e.g. `/onboarding?canceled=true`. Defaults to `/pricing?canceled=true`. */
+  cancelPath?: string;
+};
+
 /**
  * Creates a Stripe Checkout Session for subscription and returns the session URL.
  */
 export async function createCheckoutSession(
   userId: string,
-  email: string
+  email: string,
+  options?: CreateCheckoutSessionOptions
 ): Promise<CreateCheckoutSessionResult> {
   if (!priceId) {
     return { ok: false, error: 'Stripe price is not configured.' };
@@ -24,12 +30,15 @@ export async function createCheckoutSession(
     return { ok: false, error: 'NEXT_PUBLIC_BASE_URL is not set.' };
   }
 
+  const cancelPath = options?.cancelPath ?? '/pricing?canceled=true';
+  const cancel_url = `${baseUrl}${cancelPath.startsWith('/') ? cancelPath : `/${cancelPath}`}`;
+
   try {
     const session = await getStripe().checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${baseUrl}/challenges?checkout=success`,
-      cancel_url: `${baseUrl}/pricing?canceled=true`,
+      cancel_url,
       customer_email: email,
       metadata: { userId },
     });

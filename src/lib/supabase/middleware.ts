@@ -8,6 +8,7 @@ const PROTECTED_ROUTES = [
   '/journey',
   '/journal',
   '/passport',
+  '/account',
   '/profile',
   '/onboarding',
   '/admin',

@@ -171,7 +171,7 @@ export function Navbar() {
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
                   <DropdownMenuItem asChild>
-                    <Link href="/profile">Profile</Link>
+                    <Link href="/account">Account</Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link href="/billing">Billing</Link>
