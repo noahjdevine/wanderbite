@@ -17,6 +17,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import type { DietaryQuickFlag } from '@/lib/roulette-dietary';
+import { cuisineLabel, normalizeCuisineIds, type CuisineId } from '@/lib/cuisines';
 
 const VIBES = [
   'Adventurous',
@@ -171,11 +172,32 @@ export function RouletteClient() {
   const [phase, setPhase] = useState<Phase>('form');
   const [vibe, setVibe] = useState<(typeof VIBES)[number] | null>(null);
   const [quickDietary, setQuickDietary] = useState<DietaryQuickFlag[]>([]);
+  const [excludedCuisines, setExcludedCuisines] = useState<CuisineId[]>([]);
   const [timeOfDay, setTimeOfDay] = useState<(typeof TIMES)[number] | null>(null);
   const [dietary, setDietary] = useState<(typeof DIETARY)[number] | null>(null);
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showMobileScrollCue, setShowMobileScrollCue] = useState(false);
+
+  // Optional: if the user is logged in, honor their saved exclusions automatically.
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('wb_excluded_cuisines');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return;
+      setExcludedCuisines(normalizeCuisineIds(parsed));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const exclusionsSummary = useMemo(() => {
+    if (excludedCuisines.length === 0) return null;
+    const first = excludedCuisines.slice(0, 3).map(cuisineLabel);
+    const more = excludedCuisines.length - first.length;
+    return more > 0 ? `${first.join(', ')} +${more} more` : first.join(', ');
+  }, [excludedCuisines]);
 
   const mapsHref = useMemo(() => {
     if (!result?.restaurantName) return '#';
@@ -197,6 +219,7 @@ export function RouletteClient() {
           timeOfDay: timeOfDay ?? undefined,
           dietary: dietary ?? undefined,
           dietaryQuick: quickDietary.length > 0 ? quickDietary : undefined,
+          excludedCuisines: excludedCuisines.length > 0 ? excludedCuisines : undefined,
         }),
       });
       const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
@@ -230,7 +253,7 @@ export function RouletteClient() {
       setShowMobileScrollCue(false);
       setPhase('error');
     }
-  }, [dietary, quickDietary, timeOfDay, vibe]);
+  }, [dietary, excludedCuisines, quickDietary, timeOfDay, vibe]);
 
   const spinAgain = useCallback(() => {
     setPhase('form');
@@ -312,6 +335,14 @@ export function RouletteClient() {
             <p className="text-lg text-muted-foreground">
               Let Wanderbite Roulette decide.
             </p>
+            {exclusionsSummary ? (
+              <p className="text-sm text-muted-foreground">
+                Honoring your cuisine exclusions: <span className="font-medium text-foreground">{exclusionsSummary}</span>.{' '}
+                <Link href="/account" className="font-medium text-primary underline-offset-2 hover:underline">
+                  Edit
+                </Link>
+              </p>
+            ) : null}
           </div>
 
           <div className="w-full space-y-8">

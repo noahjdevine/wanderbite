@@ -96,12 +96,6 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
   return (
     <main className="min-h-screen bg-background px-4 py-10">
       <div className="mx-auto flex w-full max-w-xl flex-col items-center">
-        <Link href="/" className="mb-6 inline-flex items-center gap-2" aria-label="Wanderbite home">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="" className="h-9 w-9" />
-          <span className="text-lg font-semibold tracking-tight">Wanderbite</span>
-        </Link>
-
         <div className="w-full rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
           <ProgressIndicator currentStep={step} completed={completed} />
 

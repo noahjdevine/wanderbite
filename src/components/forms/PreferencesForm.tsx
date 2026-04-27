@@ -2,10 +2,12 @@
 
 import { useMemo, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { CuisineExclusionGrid } from '@/components/forms/CuisineExclusionGrid';
+import { normalizeCuisineIds, type CuisineId } from '@/lib/cuisines';
 
 export type PreferencesValues = {
   dietary_flags: string[];
-  vibe_tags: string[];
+  excluded_cuisines: CuisineId[];
   distance_band: string;
   wants_cocktail_experience: boolean;
 };
@@ -18,14 +20,6 @@ const DIETARY_OPTIONS: readonly { value: string; label: string }[] = [
   { value: 'kosher', label: 'Kosher' },
   { value: 'dairy_free', label: 'Dairy-Free' },
   { value: 'pescatarian', label: 'Pescatarian' },
-] as const;
-
-const VIBE_OPTIONS: readonly { value: string; label: string }[] = [
-  { value: 'adventurous', label: 'Adventurous' },
-  { value: 'comfort_food', label: 'Comfort food' },
-  { value: 'date_night', label: 'Date night' },
-  { value: 'quick_bite', label: 'Quick bite' },
-  { value: 'special_occasion', label: 'Special occasion' },
 ] as const;
 
 const DISTANCE_OPTIONS: readonly { value: string; label: string }[] = [
@@ -56,7 +50,7 @@ export function PreferencesForm({
     return JSON.stringify(values) !== JSON.stringify(initialValues);
   }, [initialValues, isDirty, values]);
 
-  function toggleList(key: 'dietary_flags' | 'vibe_tags', value: string) {
+  function toggleList(key: 'dietary_flags', value: string) {
     setValues((prev) => {
       const list = prev[key] ?? [];
       const on = list.includes(value);
@@ -72,6 +66,11 @@ export function PreferencesForm({
     setSaving(true);
     try {
       await onSubmit(values);
+      try {
+        window.localStorage.setItem('wb_excluded_cuisines', JSON.stringify(values.excluded_cuisines));
+      } catch {
+        // ignore (privacy mode / blocked storage)
+      }
       setSaved(true);
       window.setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -110,32 +109,20 @@ export function PreferencesForm({
         </div>
       </fieldset>
 
-      <fieldset className="space-y-3">
-        <legend className="text-sm font-medium">Vibe</legend>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {VIBE_OPTIONS.map((opt) => {
-            const on = values.vibe_tags.includes(opt.value);
-            return (
-              <label
-                key={opt.value}
-                className={cn(
-                  'flex cursor-pointer items-center gap-3 rounded-md border px-3 py-2 transition-colors',
-                  on ? 'border-primary/40 bg-primary/5' : 'border-input hover:bg-muted/50'
-                )}
-              >
-                <input
-                  type="checkbox"
-                  checked={on}
-                  onChange={() => toggleList('vibe_tags', opt.value)}
-                  className="size-4 rounded border-input"
-                  disabled={saving}
-                />
-                <span className="text-sm">{opt.label}</span>
-              </label>
-            );
-          })}
+      <section className="space-y-2">
+        <div className="space-y-1">
+          <h3 className="text-sm font-medium">Any cuisines you&apos;d rather skip?</h3>
+          <p className="text-xs text-muted-foreground">
+            Tell us what you don&apos;t enjoy and we&apos;ll never send you there. Leave blank if you&apos;re game for
+            anything.
+          </p>
         </div>
-      </fieldset>
+        <CuisineExclusionGrid
+          value={values.excluded_cuisines}
+          onChange={(next) => setValues((p) => ({ ...p, excluded_cuisines: normalizeCuisineIds(next) }))}
+          disabled={saving}
+        />
+      </section>
 
       <div className="space-y-2">
         <label htmlFor="distance" className="text-sm font-medium">

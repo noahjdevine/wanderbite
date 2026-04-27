@@ -4,6 +4,7 @@ import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
+import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
 // --- Types (aligned with schema) ---
 
@@ -179,10 +180,10 @@ export async function generateMonthlyChallenge(
       };
     }
 
-    // 2. User profile (allergy_flags, dietary_flags, wants_cocktail_experience)
+    // 2. User profile (allergy_flags, dietary_flags, excluded cuisines, wants_cocktail_experience)
     const { data: profile, error: profileErr } = await supabase
       .from('user_profiles')
-      .select('allergy_flags, dietary_flags, wants_cocktail_experience')
+      .select('allergy_flags, dietary_flags, excluded_cuisines, wants_cocktail_experience')
       .eq('id', userId)
       .maybeSingle();
 
@@ -191,6 +192,8 @@ export async function generateMonthlyChallenge(
     }
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
+    const excludedCuisines = ((profile as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ??
+      null) as string[] | null;
     const wantsCocktailExperience = Boolean((profile as { wants_cocktail_experience?: boolean } | null)?.wants_cocktail_experience);
 
     // 3. Restaurants in market with active offer
@@ -343,6 +346,14 @@ export async function generateMonthlyChallenge(
       const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
       if (dietaryConflict) return false;
       if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
+      if (
+        restaurantHasExcludedCuisine({
+          restaurantCuisineTags: restaurant.cuisine_tags,
+          excludedCuisineIds: excludedCuisines,
+        })
+      ) {
+        return false;
+      }
       if (swappedOutRestaurantIds.has(restaurant.id)) return false;
       const offer = offerByRestaurant.get(restaurant.id)!;
       const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
@@ -370,6 +381,18 @@ export async function generateMonthlyChallenge(
       if (inLast12.length >= 2) return false;
       return passesVarietyRules(restaurant);
     });
+
+    if (excludedCuisines?.length) {
+      if (eligible.length < 3) {
+        console.warn('[challenges] low candidate pool after cuisine exclusions', {
+          userId,
+          marketId,
+          excludedCuisines,
+          eligibleCount: eligible.length,
+          withOfferCount: withOffer.length,
+        });
+      }
+    }
 
     // Edge case: relax variety rules so user still gets 2 restaurants (exclude only last month)
     if (eligible.length < CHALLENGE_ITEMS_PER_MONTH) {

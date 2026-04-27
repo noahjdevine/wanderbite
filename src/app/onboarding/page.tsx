@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
+import { normalizeCuisineIds } from '@/lib/cuisines';
 
 export const dynamic = 'force-dynamic';
 
@@ -35,7 +36,7 @@ export default async function OnboardingPage() {
   const { data: profile } = await admin
     .from('user_profiles')
     .select(
-      'id, email, subscription_status, dietary_flags, distance_band, wants_cocktail_experience, cuisine_opt_out, username, address_street, address_city, address_state, address_zip'
+      'id, email, subscription_status, dietary_flags, excluded_cuisines, distance_band, wants_cocktail_experience, username, address_street, address_city, address_state, address_zip'
     )
     .eq('id', user.id)
     .maybeSingle();
@@ -50,9 +51,9 @@ export default async function OnboardingPage() {
     id: string;
     email: string | null;
     dietary_flags: string[] | null;
+    excluded_cuisines: string[] | null;
     distance_band: string | null;
     wants_cocktail_experience: boolean | null;
-    cuisine_opt_out: string[] | null;
     username: string | null;
     address_street: string | null;
     address_city: string | null;
@@ -75,7 +76,7 @@ export default async function OnboardingPage() {
         subscriptionStatus: sub,
         preferences: {
           dietary_flags: p?.dietary_flags ?? [],
-          vibe_tags: p?.cuisine_opt_out ?? [],
+          excluded_cuisines: normalizeCuisineIds(p?.excluded_cuisines ?? []),
           distance_band: p?.distance_band ?? '15_mi',
           wants_cocktail_experience: Boolean(p?.wants_cocktail_experience),
         },

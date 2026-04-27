@@ -7,6 +7,7 @@ import {
   shuffleArray,
   type DietaryQuickFlag,
 } from '@/lib/roulette-dietary';
+import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
 const RATE_WINDOW_MS = 60 * 60 * 1000;
 const RATE_MAX = 10;
@@ -130,6 +131,7 @@ export async function POST(request: NextRequest) {
     timeOfDay?: string;
     dietary?: string;
     dietaryQuick?: unknown;
+    excludedCuisines?: unknown;
   };
   let body: RouletteBody;
   try {
@@ -143,6 +145,10 @@ export async function POST(request: NextRequest) {
         (x): x is DietaryQuickFlag =>
           typeof x === 'string' && isDietaryQuickFlag(x)
       )
+    : [];
+
+  const excludedCuisines: string[] = Array.isArray(body.excludedCuisines)
+    ? body.excludedCuisines.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : [];
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -187,6 +193,25 @@ export async function POST(request: NextRequest) {
         {
           error:
             'No restaurants match those dietary filters yet. Try fewer options, or we may still be tagging partners — check back soon.',
+        },
+        { status: 404 }
+      );
+    }
+  }
+
+  if (excludedCuisines.length > 0) {
+    restaurants = restaurants.filter(
+      (r) =>
+        !restaurantHasExcludedCuisine({
+          restaurantCuisineTags: r.cuisine_tags,
+          excludedCuisineIds: excludedCuisines,
+        })
+    );
+    if (restaurants.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            'No restaurants match your exclusions right now. Try removing one exclusion, or we may still be tagging partners — check back soon.',
         },
         { status: 404 }
       );

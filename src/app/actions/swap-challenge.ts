@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
+import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
 // --- Types (aligned with schema) ---
 
@@ -152,10 +153,10 @@ export async function swapChallengeItem(
       }
     }
 
-    // 6. User profile (dietary_flags, allergy_flags)
+    // 6. User profile (dietary_flags, allergy_flags, excluded cuisines)
     const { data: profile, error: profileErr } = await supabase
       .from('user_profiles')
-      .select('allergy_flags, dietary_flags')
+      .select('allergy_flags, dietary_flags, excluded_cuisines')
       .eq('id', userId)
       .maybeSingle();
 
@@ -164,6 +165,8 @@ export async function swapChallengeItem(
     }
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
+    const excludedCuisines = ((profile as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ??
+      null) as string[] | null;
 
     // 7. Restaurants in market with active offer, excluding current + other assigned
     const { data: restaurants, error: restaurantsErr } = await supabase
@@ -236,6 +239,14 @@ export async function swapChallengeItem(
         return false;
       }
       if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
+      if (
+        restaurantHasExcludedCuisine({
+          restaurantCuisineTags: restaurant.cuisine_tags,
+          excludedCuisineIds: excludedCuisines,
+        })
+      ) {
+        return false;
+      }
 
       const userRedemptionsAtRestaurant = redemptions.filter(
         (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'

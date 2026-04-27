@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { AccountClient } from '@/components/account/AccountClient';
+import { normalizeCuisineIds } from '@/lib/cuisines';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export default async function AccountPage() {
   const { data: profile } = await admin
     .from('user_profiles')
     .select(
-      'id, email, full_name, username, dietary_flags, cuisine_opt_out, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
+      'id, email, full_name, username, dietary_flags, excluded_cuisines, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
     )
     .eq('id', user.id)
     .maybeSingle();
@@ -34,7 +35,7 @@ export default async function AccountPage() {
     full_name: string | null;
     username: string | null;
     dietary_flags: string[] | null;
-    cuisine_opt_out: string[] | null;
+    excluded_cuisines: string[] | null;
     distance_band: string | null;
     wants_cocktail_experience: boolean | null;
     address_street: string | null;
@@ -73,7 +74,7 @@ export default async function AccountPage() {
             currentPeriodEnd: p.current_period_end,
             preferences: {
               dietary_flags: p.dietary_flags ?? [],
-              vibe_tags: p.cuisine_opt_out ?? [],
+              excluded_cuisines: normalizeCuisineIds(p.excluded_cuisines ?? []),
               distance_band: p.distance_band ?? '15_mi',
               wants_cocktail_experience: Boolean(p.wants_cocktail_experience),
             },

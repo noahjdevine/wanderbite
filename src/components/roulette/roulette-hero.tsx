@@ -25,6 +25,7 @@ import { toast } from 'sonner';
 import { shareOrCopy } from '@/lib/share';
 import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
 import type { RouletteApiResult } from '@/components/roulette/roulette-client';
+import { cuisineLabel, normalizeCuisineIds, type CuisineId } from '@/lib/cuisines';
 
 const VIBES = [
   'Adventurous',
@@ -113,6 +114,7 @@ export function RouletteHero() {
 
   const [quickVibe, setQuickVibe] = useState<(typeof VIBES)[number] | null>(null);
   const [quickDietary, setQuickDietary] = useState<DietaryQuickFlag[]>([]);
+  const [excludedCuisines, setExcludedCuisines] = useState<CuisineId[]>([]);
   const [refineVibe, setRefineVibe] = useState<(typeof VIBES)[number] | null>(null);
   const [timeOfDay, setTimeOfDay] = useState<(typeof TIMES)[number] | null>(null);
   const [dietary, setDietary] = useState<(typeof DIETARY)[number] | null>(null);
@@ -145,6 +147,26 @@ export function RouletteHero() {
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
   }, []);
+
+  // Optional: honor saved exclusions (set by onboarding/account preferences).
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem('wb_excluded_cuisines');
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return;
+      setExcludedCuisines(normalizeCuisineIds(parsed));
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const exclusionsSummary = useMemo(() => {
+    if (excludedCuisines.length === 0) return null;
+    const first = excludedCuisines.slice(0, 3).map(cuisineLabel);
+    const more = excludedCuisines.length - first.length;
+    return more > 0 ? `${first.join(', ')} +${more} more` : first.join(', ');
+  }, [excludedCuisines]);
 
   const runCoastStop = useCallback(() => {
     const el = wheelRef.current;
@@ -235,6 +257,7 @@ export function RouletteHero() {
           timeOfDay: timeOfDay ?? undefined,
           dietary: dietary ?? undefined,
           dietaryQuick: quickDietary.length > 0 ? quickDietary : undefined,
+          excludedCuisines: excludedCuisines.length > 0 ? excludedCuisines : undefined,
         }),
       });
       const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
@@ -277,7 +300,7 @@ export function RouletteHero() {
       setShowMobileScrollCue(false);
       setErrorMessage(e instanceof Error ? e.message : 'Network error. Try again.');
     }
-  }, [dietary, quickDietary, quickVibe, refineVibe, runCoastStop, timeOfDay]);
+  }, [dietary, excludedCuisines, quickDietary, quickVibe, refineVibe, runCoastStop, timeOfDay]);
 
   /** After reveal: mobile anchors result to top of viewport (avoids crowding spin button); desktop stays centered. */
   useEffect(() => {
@@ -403,6 +426,15 @@ export function RouletteHero() {
           <p className="mt-4 max-w-md text-base text-muted-foreground sm:text-lg">
             Let Wanderbite Roulette decide. Powered by AI, built for adventure.
           </p>
+          {exclusionsSummary ? (
+            <p className="mt-2 max-w-md text-sm text-muted-foreground">
+              Honoring your cuisine exclusions:{' '}
+              <span className="font-medium text-foreground">{exclusionsSummary}</span>.{' '}
+              <Link href="/account" className="font-medium text-primary underline-offset-2 hover:underline">
+                Edit
+              </Link>
+            </p>
+          ) : null}
 
           <div className="relative mt-10 flex flex-col items-center md:mt-10">
             <div

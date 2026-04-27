@@ -44,7 +44,7 @@ function usernameOk(s: UsernameState): boolean {
 
 function validZip(zip: string): boolean {
   const t = zip.trim();
-  return /^\\d{5}(-\\d{4})?$/.test(t);
+  return /^\d{5}(-\d{4})?$/.test(t);
 }
 
 export function ProfileForm({
@@ -65,6 +65,7 @@ export function ProfileForm({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [touchedUsername, setTouchedUsername] = useState(false);
+  const [touchedZip, setTouchedZip] = useState(false);
   const [usernameState, setUsernameState] = useState<UsernameState>({ status: 'idle' });
   const debounceRef = useRef<number | null>(null);
 
@@ -74,6 +75,7 @@ export function ProfileForm({
   }, [initialValues, isDirty, values]);
 
   const zipOk = values.address.zip.trim().length === 0 ? false : validZip(values.address.zip);
+  const showZipError = touchedZip && values.address.zip.trim().length > 0 && !zipOk;
 
   // Debounced availability check
   useEffect(() => {
@@ -120,6 +122,7 @@ export function ProfileForm({
     e.preventDefault();
     setError(null);
     setSaved(false);
+    setTouchedZip(true);
 
     setSaving(true);
     try {
@@ -181,9 +184,10 @@ export function ProfileForm({
         <AddressFields
           value={values.address}
           onChange={(addr) => setValues((p) => ({ ...p, address: addr }))}
+          onZipBlur={() => setTouchedZip(true)}
           disabled={saving}
         />
-        {values.address.zip.trim().length > 0 && !zipOk ? (
+        {showZipError ? (
           <p className="text-sm text-destructive">ZIP must be 5 digits or ZIP+4 (e.g. 78701 or 78701-1234).</p>
         ) : null}
       </div>

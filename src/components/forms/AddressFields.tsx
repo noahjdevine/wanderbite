@@ -13,10 +13,12 @@ export function AddressFields({
   value,
   onChange,
   disabled,
+  onZipBlur,
 }: {
   value: AddressValues;
   onChange: (next: AddressValues) => void;
   disabled?: boolean;
+  onZipBlur?: () => void;
 }) {
   return (
     <div className="space-y-3">
@@ -84,6 +86,7 @@ export function AddressFields({
             inputMode="numeric"
             value={value.zip}
             onChange={(e) => onChange({ ...value, zip: e.target.value })}
+            onBlur={onZipBlur}
             placeholder="78701"
             autoComplete="postal-code"
             disabled={disabled}
