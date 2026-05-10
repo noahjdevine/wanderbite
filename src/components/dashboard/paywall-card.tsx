@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   Card,
@@ -68,23 +68,25 @@ export function PaywallCard({ userId, email }: PaywallCardProps) {
 }
 
 /**
- * Client component that shows a "Welcome!" toast when URL has ?success=true.
+ * Shows a welcome toast when returning from Stripe checkout (?checkout=success or legacy ?success=true).
  */
 export function SubscriptionSuccessToast() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const [shown, setShown] = useState(false);
 
   useEffect(() => {
     if (shown) return;
-    const success = searchParams.get('success');
-    if (success === 'true') {
-      toast.success('Welcome!');
+    const legacySuccess = searchParams.get('success');
+    const checkoutSuccess = searchParams.get('checkout');
+    if (legacySuccess === 'true' || checkoutSuccess === 'success') {
+      toast.success('Welcome to the Club!');
       setShown(true);
-      router.replace('/', { scroll: false });
+      router.replace(pathname || '/', { scroll: false });
       router.refresh();
     }
-  }, [searchParams, router, shown]);
+  }, [searchParams, router, pathname, shown]);
 
   return null;
 }

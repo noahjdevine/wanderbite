@@ -17,13 +17,16 @@ export default async function AccountPage() {
   }
 
   const admin = getSupabaseAdmin();
-  const { data: profile } = await admin
-    .from('user_profiles')
-    .select(
-      'id, email, full_name, username, dietary_flags, excluded_cuisines, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
-    )
-    .eq('id', user.id)
-    .maybeSingle();
+  const [{ data: profile }, { data: prefs }] = await Promise.all([
+    admin
+      .from('user_profiles')
+      .select(
+        'id, email, full_name, username, dietary_flags, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
+      )
+      .eq('id', user.id)
+      .maybeSingle(),
+    admin.from('user_preferences').select('excluded_cuisines').eq('user_id', user.id).maybeSingle(),
+  ]);
 
   if (!profile) {
     redirect('/onboarding');
@@ -35,7 +38,6 @@ export default async function AccountPage() {
     full_name: string | null;
     username: string | null;
     dietary_flags: string[] | null;
-    excluded_cuisines: string[] | null;
     distance_band: string | null;
     wants_cocktail_experience: boolean | null;
     address_street: string | null;
@@ -74,7 +76,9 @@ export default async function AccountPage() {
             currentPeriodEnd: p.current_period_end,
             preferences: {
               dietary_flags: p.dietary_flags ?? [],
-              excluded_cuisines: normalizeCuisineIds(p.excluded_cuisines ?? []),
+              excluded_cuisines: normalizeCuisineIds(
+                (prefs as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ?? []
+              ),
               distance_band: p.distance_band ?? '15_mi',
               wants_cocktail_experience: Boolean(p.wants_cocktail_experience),
             },

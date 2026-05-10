@@ -85,7 +85,7 @@ export async function POST(request: Request) {
             : null;
         }
 
-        await supabase
+        const { error: updateError } = await supabase
           .from('user_profiles')
           .update({
             stripe_customer_id: customerId,
@@ -93,6 +93,10 @@ export async function POST(request: Request) {
             current_period_end: currentPeriodEnd,
           })
           .eq('id', userId);
+
+        if (updateError) {
+          console.error('checkout.session.completed: profile update failed:', updateError.message);
+        }
 
         const customerEmail =
           session.customer_email ??

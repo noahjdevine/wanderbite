@@ -3,7 +3,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { passwordResetLimiter } from '@/lib/ratelimit';
 
-const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
+const baseUrl =
+  process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+  process.env.NEXT_PUBLIC_BASE_URL?.trim() ||
+  '';
 
 export type SendPasswordResetResult =
   | { ok: true }
@@ -21,7 +24,7 @@ export async function sendPasswordResetEmail(
     return { ok: false, error: 'Please enter your email address.' };
   }
   if (!baseUrl) {
-    return { ok: false, error: 'NEXT_PUBLIC_BASE_URL is not set.' };
+    return { ok: false, error: 'NEXT_PUBLIC_SITE_URL or NEXT_PUBLIC_BASE_URL is not set.' };
   }
 
   if (passwordResetLimiter) {

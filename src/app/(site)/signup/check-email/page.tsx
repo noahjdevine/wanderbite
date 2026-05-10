@@ -43,7 +43,7 @@ export default function CheckEmailPage() {
     setResendMsg(null);
     try {
       const supabase = createClient();
-      const redirectUrl = getEmailConfirmCallbackUrl(window.location.origin);
+      const redirectUrl = getEmailConfirmCallbackUrl();
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),

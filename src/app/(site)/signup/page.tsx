@@ -113,7 +113,7 @@ export default function SignUpPage() {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      const redirectUrl = getEmailConfirmCallbackUrl(window.location.origin);
+      const redirectUrl = getEmailConfirmCallbackUrl();
       const { data, error: err } = await supabase.auth.signUp({
         email: result.data.email,
         password: result.data.password,

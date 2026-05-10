@@ -37,7 +37,7 @@ export async function createCheckoutSession(
     const session = await getStripe().checkout.sessions.create({
       mode: 'subscription',
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${baseUrl}/challenges?checkout=success`,
+      success_url: `${baseUrl}/checkout/success`,
       cancel_url,
       customer_email: email,
       metadata: { userId },

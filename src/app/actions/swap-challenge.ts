@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
-import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
 // --- Types (aligned with schema) ---
 
@@ -153,20 +153,32 @@ export async function swapChallengeItem(
       }
     }
 
-    // 6. User profile (dietary_flags, allergy_flags, excluded cuisines)
-    const { data: profile, error: profileErr } = await supabase
-      .from('user_profiles')
-      .select('allergy_flags, dietary_flags, excluded_cuisines')
-      .eq('id', userId)
-      .maybeSingle();
+    // 6. User profile + cuisine exclusions (user_preferences)
+    const [{ data: profile, error: profileErr }, { data: prefsRow, error: prefsErr }] =
+      await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('allergy_flags, dietary_flags')
+          .eq('id', userId)
+          .maybeSingle(),
+        supabase
+          .from('user_preferences')
+          .select('excluded_cuisines')
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
 
     if (profileErr) {
       return { ok: false, error: `Failed to load profile: ${profileErr.message}` };
     }
+    if (prefsErr) {
+      return { ok: false, error: `Failed to load preferences: ${prefsErr.message}` };
+    }
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
-    const excludedCuisines = ((profile as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ??
-      null) as string[] | null;
+    const excludedCuisines = normalizeCuisineIds(
+      (prefsRow as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ?? []
+    );
 
     // 7. Restaurants in market with active offer, excluding current + other assigned
     const { data: restaurants, error: restaurantsErr } = await supabase

@@ -4,7 +4,7 @@ import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
-import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
 // --- Types (aligned with schema) ---
 
@@ -180,20 +180,32 @@ export async function generateMonthlyChallenge(
       };
     }
 
-    // 2. User profile (allergy_flags, dietary_flags, excluded cuisines, wants_cocktail_experience)
-    const { data: profile, error: profileErr } = await supabase
-      .from('user_profiles')
-      .select('allergy_flags, dietary_flags, excluded_cuisines, wants_cocktail_experience')
-      .eq('id', userId)
-      .maybeSingle();
+    // 2. User profile + cuisine exclusions (stored on user_preferences)
+    const [{ data: profile, error: profileErr }, { data: prefsRow, error: prefsErr }] =
+      await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select('allergy_flags, dietary_flags, wants_cocktail_experience')
+          .eq('id', userId)
+          .maybeSingle(),
+        supabase
+          .from('user_preferences')
+          .select('excluded_cuisines')
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
 
     if (profileErr) {
       return { ok: false, error: `Failed to load profile: ${profileErr.message}` };
     }
+    if (prefsErr) {
+      return { ok: false, error: `Failed to load preferences: ${prefsErr.message}` };
+    }
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
-    const excludedCuisines = ((profile as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ??
-      null) as string[] | null;
+    const excludedCuisines = normalizeCuisineIds(
+      (prefsRow as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ?? []
+    );
     const wantsCocktailExperience = Boolean((profile as { wants_cocktail_experience?: boolean } | null)?.wants_cocktail_experience);
 
     // 3. Restaurants in market with active offer

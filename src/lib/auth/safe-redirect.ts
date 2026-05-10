@@ -10,9 +10,30 @@ export function safeAuthRedirectPath(redirectTo: string | null | undefined, fall
   }
 }
 
-export const SIGNUP_EMAIL_CONFIRM_NEXT = '/onboarding';
+function trimTrailingSlash(url: string): string {
+  return url.replace(/\/$/, '');
+}
 
-export function getEmailConfirmCallbackUrl(origin: string): string {
-  const next = encodeURIComponent(SIGNUP_EMAIL_CONFIRM_NEXT);
-  return `${origin}/auth/callback?next=${next}`;
+/**
+ * Canonical origin for Supabase email links (`emailRedirectTo`).
+ * Prefer `NEXT_PUBLIC_SITE_URL` (or `NEXT_PUBLIC_BASE_URL`) in production so confirmation
+ * emails always point at your primary domain; falls back to `window.location.origin` on the client.
+ */
+export function getEmailConfirmCallbackUrl(): string {
+  const envBase =
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() || process.env.NEXT_PUBLIC_BASE_URL?.trim();
+  let origin: string;
+  if (envBase) {
+    origin = trimTrailingSlash(envBase);
+  } else if (typeof window !== 'undefined') {
+    origin = window.location.origin;
+  } else {
+    origin = '';
+  }
+  if (!origin) {
+    throw new Error(
+      'Cannot build auth callback URL: set NEXT_PUBLIC_SITE_URL or NEXT_PUBLIC_BASE_URL, or call from the browser.'
+    );
+  }
+  return `${origin}/auth/callback`;
 }

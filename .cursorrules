@@ -26,7 +26,7 @@ Refer to these table names exactly in SQL generation:
 1. **Assignment:** A user cannot be assigned a restaurant they have redeemed at in the last 6 months.
 2. **Frequency:** Max 2 redemptions per restaurant per rolling 12 months.
 3. **Swaps:** Only 1 swap allowed per `challenge_cycle`.
-4. **Safety:** If `user_preferences.dietary_flags` contains a flag (e.g., 'peanut'), NEVER assign a restaurant with that specific `allergy_flag`.
+4. **Safety:** If `user_profiles.dietary_flags` contains a flag (e.g., 'peanut'), NEVER assign a restaurant with that specific `allergy_flag`. Honor `user_preferences.excluded_cuisines` for cuisine opt-outs.
 
 ## Coding Guidelines
 - Use Supabase SSR client for all data fetching.

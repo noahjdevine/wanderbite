@@ -28,6 +28,11 @@ function SignInInner() {
     if (searchParams.get('reset') === 'success') {
       setResetSuccess(true);
     }
+    if (searchParams.get('error') === 'session') {
+      setError(
+        'That confirmation link is invalid or expired. Sign in below, or request a new confirmation email from the signup page.'
+      );
+    }
   }, [searchParams]);
 
   function validateEmail(): boolean {

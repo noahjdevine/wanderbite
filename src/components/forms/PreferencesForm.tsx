@@ -65,7 +65,10 @@ export function PreferencesForm({
 
     setSaving(true);
     try {
-      await onSubmit(values);
+      await onSubmit({
+        ...values,
+        excluded_cuisines: values.excluded_cuisines ?? [],
+      });
       try {
         window.localStorage.setItem('wb_excluded_cuisines', JSON.stringify(values.excluded_cuisines));
       } catch {
