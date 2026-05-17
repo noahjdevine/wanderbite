@@ -56,6 +56,7 @@ export type RouletteApiResult = {
   address: string | null;
   image_url: string | null;
   google_photo_url: string | null;
+  google_place_id: string | null;
 };
 
 type Phase = 'form' | 'loading' | 'result' | 'error';
@@ -63,6 +64,8 @@ type Phase = 'form' | 'loading' | 'result' | 'error';
 function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   const [src, setSrc] = useState(() =>
     restaurantDisplayImageUrl({
+      id: result.restaurantId,
+      google_place_id: result.google_place_id,
       google_photo_url: result.google_photo_url,
       image_url: result.image_url,
     })
@@ -246,6 +249,7 @@ export function RouletteClient() {
         address: data.address ?? null,
         image_url: data.image_url ?? null,
         google_photo_url: data.google_photo_url ?? null,
+        google_place_id: data.google_place_id ?? null,
       });
       setPhase('result');
     } catch {

@@ -1,199 +1,67 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-import type { User } from '@supabase/supabase-js';
-import { createClient } from '@/lib/supabase/client';
+import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { useSupabaseUser } from '@/hooks/use-supabase-user';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
-import { ChevronDown, Dices, UtensilsCrossed, User as UserIcon } from 'lucide-react';
-import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
+  MEMBER_NAV_ITEMS,
+  PUBLIC_NAV_ITEMS,
+  isNavItemActive,
+  resolveNavHref,
+} from '@/lib/nav-items';
+import { cn } from '@/lib/utils';
+import { AccountMenu } from '@/components/layout/account-menu';
+import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
 
 export function Navbar() {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const { user, loading } = useSupabaseUser();
   const pathname = usePathname();
-  const rouletteHref = pathname === '/' ? '/#roulette' : '/roulette';
-
-  useEffect(() => {
-    const client = createClient();
-    async function init() {
-      const { data: { user: u } } = await client.auth.getUser();
-      setUser(u ?? null);
-      setLoading(false);
-    }
-    init();
-    const { data: { subscription } } = client.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-
-  async function handleSignOut() {
-    const client = createClient();
-    await client.auth.signOut();
-    router.push('/signin');
-    router.refresh();
-  }
+  const items = user ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
 
   return (
     <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md md:flex">
-      <nav className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6 sm:gap-6">
-        {/* Left: Icon in pill + wordmark — always links to / */}
-        <div className="flex shrink-0 items-center">
-          <Link
-            href="/"
-            aria-label="Wanderbite"
-            onClick={(e) => {
-              if (pathname !== '/') return;
-              e.preventDefault();
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-              window.dispatchEvent(new Event(WANDERBITE_RESET_ROULETTE_EVENT));
-            }}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              textDecoration: 'none',
-            }}
-          >
-            <div
-              style={{
-                background: '#e8d3ff',
-                borderRadius: '10px',
-                padding: '4px 8px',
-              }}
-            >
-              <img
-                src="/logo.svg"
-                alt=""
-                style={{
-                  width: '32px',
-                  height: '32px',
-                  objectFit: 'contain',
-                  objectPosition: 'top',
-                  display: 'block',
-                }}
-              />
-            </div>
-            <span style={{ fontWeight: 600, fontSize: '16px', color: '#111111' }}>
-              Wanderbite
-            </span>
-          </Link>
+      <nav className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
+        <WanderbiteLogoLink />
+
+        <div className="flex min-w-0 flex-1 items-center justify-center gap-8">
+          {items.map((item) => {
+            const href = resolveNavHref(item, pathname);
+            const active = isNavItemActive(item, pathname);
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href + item.label}
+                href={href}
+                aria-label={item.ariaLabel}
+                className={cn(
+                  'inline-flex items-center gap-1.5 text-sm font-medium transition-colors',
+                  active
+                    ? 'text-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+              >
+                {Icon ? <Icon className="size-4 shrink-0" aria-hidden /> : null}
+                {item.label}
+              </Link>
+            );
+          })}
         </div>
 
-        {/* Center: Links */}
-        <div className="hidden min-w-0 flex-1 items-center justify-center gap-8 md:flex">
-          <Link
-            href="/how-it-works"
-            className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            How it Works
-          </Link>
-          <Link
-            href={rouletteHref}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Dices className="size-4 shrink-0" aria-hidden />
-            Wanderbite Roulette
-          </Link>
-          {user ? (
-            <>
-              <Link
-                href="/restaurants"
-                className="inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <UtensilsCrossed className="size-4 shrink-0" aria-hidden />
-                Restaurants
-              </Link>
-              <Link
-                href="/challenges"
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Challenges
-              </Link>
-              <Link
-                href="/journey"
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                My Journey
-              </Link>
-              <Link
-                href="/journal"
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Journal
-              </Link>
-              <Link
-                href="/passport"
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Passport
-              </Link>
-            </>
-          ) : (
-            <>
-              <Link
-                href="/restaurants"
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Restaurants
-              </Link>
-              <Link
-                href="/pricing"
-                className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                Pricing
-              </Link>
-            </>
-          )}
-        </div>
-
-        {/* Right: Auth */}
-        <div className="flex shrink-0 items-center justify-end gap-2 self-center">
+        <div className="flex shrink-0 items-center justify-end gap-2">
           {loading ? (
-            <div className="h-9 w-20 rounded-md bg-muted animate-pulse" />
+            <div className="h-9 w-24 animate-pulse rounded-md bg-muted" />
           ) : user ? (
-            <>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon-sm" className="gap-1.5 px-2">
-                    <UserIcon className="size-4" />
-                    <ChevronDown className="size-4 opacity-50" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end">
-                  <DropdownMenuItem asChild>
-                    <Link href="/account">Account</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/billing">Billing</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link href="/suggest">Suggest a Restaurant</Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleSignOut}>
-                    Sign Out
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </>
+            <AccountMenu />
           ) : (
-            <div className="flex items-center gap-2">
-              <Button size="sm" variant="ghost" asChild className="hidden sm:inline-flex">
-                <Link href="/signin">Sign in</Link>
+            <>
+              <Button size="sm" variant="outline" asChild>
+                <Link href="/signin">Sign In</Link>
               </Button>
               <Button size="sm" asChild>
-                <Link href="/signup">Start your adventure</Link>
+                <Link href="/signup">Start Your Adventure</Link>
               </Button>
-            </div>
+            </>
           )}
         </div>
       </nav>

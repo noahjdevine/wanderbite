@@ -10,7 +10,7 @@ export default function SiteLayout({
   return (
     <>
       <Navbar />
-      <div className="pb-20 md:pb-0">{children}</div>
+      <div className="pt-14 md:pt-0">{children}</div>
       <Footer />
       <MobileNav />
     </>

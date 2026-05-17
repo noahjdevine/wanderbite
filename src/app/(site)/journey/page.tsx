@@ -1,345 +1,53 @@
+import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { getUserStats } from '@/app/actions/get-user-stats';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
-import { Lock } from 'lucide-react';
+import { JourneyContent } from '@/components/journey/journey-content';
+import { MyJourneyHub } from '@/components/journey/my-journey-hub';
+import { JournalContent } from '@/components/journal/journal-content';
+import { PassportContent } from '@/components/passport/passport-content';
+import { parseMyJourneyView } from '@/lib/my-journey-views';
 
 export const dynamic = 'force-dynamic';
 
-const SAVINGS_PER_REDEMPTION_CENTS = 1000; // $10
-const CURRENT_STREAK_MOCK = 1;
+type JourneyPageProps = {
+  searchParams: Promise<{ view?: string | string[] }>;
+};
 
-/** Member perks by level; XP thresholds aligned with How It Works (300, 1000, 1500, 2500). */
-const QUARTERLY_BONUS = 'Automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
-const MILESTONE_PERKS = [
-  { level: 1, minXp: 300, title: 'The Explorer', perk: 'Free App or Drink (Show screen to server).' },
-  { level: 2, minXp: 1000, title: 'The Tastemaker', perk: 'Free Dessert or Specialty Cocktail.' },
-  { level: 3, minXp: 1500, title: 'The Connoisseur', perk: 'BOGO Entree (Buy 1 Get 1 Free).' },
-  { level: 4, minXp: 2500, title: 'The Local Legend', perk: 'Legend Swag Pack.' },
-] as const;
+function HubViewFallback() {
+  return (
+    <div className="mx-auto max-w-2xl animate-pulse space-y-4 py-8">
+      <div className="h-8 w-48 rounded-md bg-muted" />
+      <div className="h-40 rounded-lg bg-muted" />
+    </div>
+  );
+}
 
-/** Quarterly drawing: XP thresholds; reaching a level = entry into that tier’s drawing. */
-const QUARTERLY_DRAWING_LEVELS = [
-  { label: 'The Explorer', minXp: 300 },
-  { label: 'The Tastemaker', minXp: 1000 },
-  { label: 'The Connoisseur', minXp: 1500 },
-  { label: 'The Local Legend', minXp: 2500 },
-] as const;
+export default async function JourneyPage({ searchParams }: JourneyPageProps) {
+  const params = await searchParams;
+  const view = parseMyJourneyView(params.view);
 
-const QUARTERLY_DRAWING_MAX_XP = 2500;
-
-export default async function JourneyPage() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
   if (!user) {
-    redirect('/signin?redirectTo=/journey');
+    const redirectTo =
+      view === 'journey' ? '/journey' : `/journey?view=${view}`;
+    redirect(`/signin?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
-
-  const admin = getSupabaseAdmin();
-  const { data: profile } = await admin
-    .from('user_profiles')
-    .select('id, email')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  if (!profile) {
-    redirect('/onboarding');
-  }
-
-  const statsResult = await getUserStats(user.id);
-  if (!statsResult.ok) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <p className="text-destructive">{statsResult.error}</p>
-      </main>
-    );
-  }
-
-  const { data: stats } = statsResult;
-  const email = (profile as { email: string | null }).email ?? 'Signed in user';
-  const title = `Level ${stats.level} ${stats.currentLevelName}`;
-  const totalSavingsDollars =
-    (stats.redemptionCount * SAVINGS_PER_REDEMPTION_CENTS) / 100;
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-2xl space-y-8 p-6">
-        <h2 className="text-2xl font-bold tracking-tight text-foreground">
-          My Journey
-        </h2>
-
-        {/* XP Meter / Level */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">{email}</CardTitle>
-            <CardDescription>{title}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            <div className="flex items-center justify-between text-sm text-muted-foreground">
-              <span>
-                {stats.xp}
-                {stats.nextLevelXp != null
-                  ? ` / ${stats.nextLevelXp} XP`
-                  : ' XP (Max Level)'}
-              </span>
-              {stats.nextLevelXp != null && (
-                <span>
-                  {stats.nextLevelXp - stats.xp} XP to next level
-                </span>
-              )}
-            </div>
-            <Progress
-              value={stats.progressPercent}
-              max={100}
-              className="h-3"
-            />
-          </CardContent>
-        </Card>
-
-        {/* Current Level Benefits — guaranteed member perks */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Member Perks</CardTitle>
-            <CardDescription>
-              Benefits you’ve unlocked at your current level. Show your screen to the server to claim.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="space-y-3">
-              {MILESTONE_PERKS.map(({ level, minXp, title, perk }) => {
-                const unlocked = stats.xp >= minXp;
-                return (
-                  <li
-                    key={level}
-                    className={`flex items-center gap-3 rounded-lg border p-4 ${
-                      unlocked
-                        ? 'border-primary/30 bg-primary/5'
-                        : 'border-muted bg-muted/20 opacity-75'
-                    }`}
-                  >
-                    {unlocked ? (
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/20 text-primary" aria-hidden>
-                        ✓
-                      </span>
-                    ) : (
-                      <Lock className="size-5 shrink-0 text-muted-foreground" aria-hidden />
-                    )}
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className={`font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        Level {level} · {title}
-                      </p>
-                      <p className={`text-sm font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}>
-                        {perk}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {QUARTERLY_BONUS}
-                      </p>
-                    </div>
-                    {unlocked ? (
-                      <Badge variant="default" className="shrink-0">Unlocked</Badge>
-                    ) : (
-                      <Badge variant="secondary" className="shrink-0">Locked</Badge>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </CardContent>
-        </Card>
-
-        {/* Stat cards */}
-        <div className="grid gap-4 sm:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Total Savings</CardDescription>
-              <CardTitle className="text-2xl">
-                ${totalSavingsDollars.toFixed(0)}
-              </CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Places Visited</CardDescription>
-              <CardTitle className="text-2xl">{stats.redemptionCount}</CardTitle>
-            </CardHeader>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardDescription>Current Streak</CardDescription>
-              <CardTitle className="text-2xl">{CURRENT_STREAK_MOCK}</CardTitle>
-            </CardHeader>
-          </Card>
-        </div>
-
-        {/* Quarterly Giveaway Progress — long-term goal; entry into drawings, not guaranteed cash */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quarterly Giveaway Progress</CardTitle>
-            <CardDescription>
-              Reach XP milestones to earn automatic entry to win 1 of 5 Gift Cards given away each quarter.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">
-                  {stats.xp} / {QUARTERLY_DRAWING_MAX_XP} XP
-                </span>
-                <span className="font-medium text-foreground">
-                  {stats.xp >= QUARTERLY_DRAWING_MAX_XP
-                    ? 'Max level reached!'
-                    : `${QUARTERLY_DRAWING_MAX_XP - stats.xp} XP to max level`}
-                </span>
-              </div>
-              <Progress
-                value={Math.min(100, (stats.xp / QUARTERLY_DRAWING_MAX_XP) * 100)}
-                max={100}
-                className="h-4"
-              />
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {QUARTERLY_DRAWING_LEVELS.map((tier) => {
-                const reached = stats.xp >= tier.minXp;
-                return (
-                  <div
-                    key={tier.minXp}
-                    className={`rounded-xl border-2 p-4 text-center transition-colors ${
-                      reached
-                        ? 'border-primary bg-primary/5'
-                        : 'border-muted bg-muted/30'
-                    }`}
-                  >
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {tier.minXp} XP
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-foreground">
-                      {tier.label}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      Entry to win 1 of 5 Gift Cards
-                    </p>
-                    {reached ? (
-                      <Badge variant="default" className="mt-2 text-xs">
-                        Unlocked
-                      </Badge>
-                    ) : (
-                      <Badge variant="secondary" className="mt-2 text-xs">
-                        Locked
-                      </Badge>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Badges & Achievements */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Badges & Achievements</CardTitle>
-            <CardDescription>
-              Badges earned by completing adventures
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {stats.badges.map((b) => (
-                <Card
-                  key={b.id}
-                  className={
-                    b.isEarned
-                      ? ''
-                      : 'opacity-60 grayscale'
-                  }
-                >
-                  <CardContent className="flex items-start gap-4 pt-6">
-                    <span className="text-4xl" aria-hidden>
-                      {b.icon}
-                    </span>
-                    <div className="min-w-0 flex-1 space-y-1">
-                      <p className="font-medium">{b.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {b.isEarned ? b.description : 'Locked'}
-                      </p>
-                      {b.isEarned && b.awardedAt && (
-                        <p className="text-xs text-muted-foreground">
-                          Earned on {format(new Date(b.awardedAt), 'PP')}
-                        </p>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            {stats.badges.length === 0 && (
-              <p className="text-sm text-muted-foreground">
-                No badges available yet.
-              </p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Redemption History */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Redemption History</CardTitle>
-            <CardDescription>Restaurants you&apos;ve visited</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {stats.history.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No redemptions yet. Complete a challenge to see your history
-                here.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Restaurant Name</TableHead>
-                    <TableHead>Date Visited</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {stats.history.map((row, i) => (
-                    <TableRow key={i}>
-                      <TableCell className="font-medium">
-                        {row.restaurantName}
-                      </TableCell>
-                      <TableCell>{row.date}</TableCell>
-                      <TableCell>
-                        <Badge variant="secondary">Verified</Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </main>
+    <MyJourneyHub activeView={view}>
+      <Suspense fallback={<HubViewFallback />}>
+        {view === 'journey' ? (
+          <JourneyContent userId={user.id} />
+        ) : view === 'journal' ? (
+          <JournalContent userId={user.id} />
+        ) : (
+          <PassportContent userId={user.id} />
+        )}
+      </Suspense>
+    </MyJourneyHub>
   );
 }

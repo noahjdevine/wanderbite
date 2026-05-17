@@ -37,6 +37,8 @@ function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
   ];
   const description = restaurant.description ?? restaurant.address ?? null;
   const initialSrc = restaurantDisplayImageUrl({
+    id: restaurant.id,
+    google_place_id: restaurant.google_place_id,
     google_photo_url: restaurant.google_photo_url,
     image_url: restaurant.image_url,
   });

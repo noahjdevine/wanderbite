@@ -18,6 +18,7 @@ export type LocationRestaurant = {
   /** Optional thumbnail URL; when null, a placeholder is shown. */
   image_url?: string | null;
   google_photo_url?: string | null;
+  google_place_id?: string | null;
 };
 
 export default async function RestaurantsPage() {
@@ -26,7 +27,7 @@ export default async function RestaurantsPage() {
   const { data: rows, error } = await supabase
     .from('restaurants')
     .select(
-      'id, name, cuisine_tags, address, lat, lon, market_id, image_url, google_photo_url, markets(name)'
+      'id, name, cuisine_tags, address, lat, lon, market_id, image_url, google_photo_url, google_place_id, markets(name)'
     )
     .eq('status', 'active')
     .order('name');
@@ -61,6 +62,7 @@ export default async function RestaurantsPage() {
       lon: number | null;
       image_url: string | null;
       google_photo_url: string | null;
+      google_place_id: string | null;
       markets: { name: string } | { name: string }[] | null;
     };
     const market = Array.isArray(row.markets) ? row.markets[0] : row.markets;
@@ -77,6 +79,7 @@ export default async function RestaurantsPage() {
       lon: row.lon,
       image_url: row.image_url ?? null,
       google_photo_url: row.google_photo_url ?? null,
+      google_place_id: row.google_place_id ?? null,
     };
   });
 

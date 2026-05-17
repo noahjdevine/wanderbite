@@ -38,6 +38,8 @@ export async function updateProfile(data: {
   revalidatePath('/account');
   revalidatePath('/profile');
   revalidatePath('/journey');
+  revalidatePath('/journal');
+  revalidatePath('/passport');
   revalidatePath('/challenges');
   return { ok: true };
 }

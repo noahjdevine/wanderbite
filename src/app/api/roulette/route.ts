@@ -22,6 +22,7 @@ type RouletteRestaurant = {
   description: string | null;
   image_url: string | null;
   google_photo_url: string | null;
+  google_place_id: string | null;
   is_dairy_free?: boolean | null;
   is_vegan?: boolean | null;
   is_halal?: boolean | null;
@@ -164,7 +165,7 @@ export async function POST(request: NextRequest) {
   const { data: rows, error: dbError } = await supabase
     .from('restaurants')
     .select(
-      'id, name, cuisine_tags, neighborhood, address, description, image_url, google_photo_url, is_dairy_free, is_vegan, is_halal'
+      'id, name, cuisine_tags, neighborhood, address, description, image_url, google_photo_url, google_place_id, is_dairy_free, is_vegan, is_halal'
     )
     .eq('status', 'active');
 
@@ -342,5 +343,6 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
     address: chosen.address,
     image_url: chosen.image_url,
     google_photo_url: chosen.google_photo_url,
+    google_place_id: chosen.google_place_id,
   });
 }

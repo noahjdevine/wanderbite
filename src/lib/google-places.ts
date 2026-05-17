@@ -89,3 +89,60 @@ export async function findRestaurantPlace(
     return { placeId: null, photoUrl: null };
   }
 }
+
+export type PlacePhotoBytes = {
+  body: ArrayBuffer;
+  contentType: string;
+};
+
+/**
+ * Fetches the first Place photo for a stable google_place_id (server-side only).
+ * Photo references are short-lived; call this at request time, not from stored URLs.
+ */
+export async function fetchPlacePhotoBytes(
+  placeId: string
+): Promise<PlacePhotoBytes | null> {
+  const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
+  const pid = placeId.trim();
+  if (!key || !pid) return null;
+
+  try {
+    const detailsParams = new URLSearchParams({
+      place_id: pid,
+      fields: 'photos',
+      key,
+    });
+    const detailsRes = await fetch(
+      `https://maps.googleapis.com/maps/api/place/details/json?${detailsParams.toString()}`
+    );
+    if (!detailsRes.ok) return null;
+
+    const details = (await detailsRes.json()) as {
+      status?: string;
+      result?: { photos?: { photo_reference?: string }[] };
+    };
+    if (details.status !== 'OK') return null;
+
+    const ref = details.result?.photos?.[0]?.photo_reference;
+    if (!ref) return null;
+
+    const photoParams = new URLSearchParams({
+      maxwidth: '800',
+      photo_reference: ref,
+      key,
+    });
+    const photoRes = await fetch(
+      `https://maps.googleapis.com/maps/api/place/photo?${photoParams.toString()}`,
+      { redirect: 'follow' }
+    );
+    if (!photoRes.ok) return null;
+
+    const contentType = photoRes.headers.get('content-type') ?? 'image/jpeg';
+    const body = await photoRes.arrayBuffer();
+    if (!body.byteLength) return null;
+
+    return { body, contentType };
+  } catch {
+    return null;
+  }
+}

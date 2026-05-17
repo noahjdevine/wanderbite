@@ -73,6 +73,7 @@ export type PassportVisit = {
     neighborhood: string | null;
     image_url: string | null;
     google_photo_url: string | null;
+    google_place_id: string | null;
   };
 };
 
@@ -152,6 +153,8 @@ function PassportVisitRestaurantPhoto({
 }) {
   const [src, setSrc] = useState(() =>
     restaurantDisplayImageUrl({
+      id: restaurant.id,
+      google_place_id: restaurant.google_place_id,
       google_photo_url: restaurant.google_photo_url,
       image_url: restaurant.image_url,
     })
@@ -609,7 +612,7 @@ export function PassportClient({
                 <RestaurantReviews restaurantId={v.restaurant.id} className="pt-1" />
                 {!biteNoteForVisit(v, biteNotesByRestaurantId) ? (
                   <Link
-                    href="/journal"
+                    href="/journey?view=journal"
                     className="inline-block text-xs font-medium text-[#E85D26] underline-offset-2 hover:underline"
                   >
                     📝 Add note

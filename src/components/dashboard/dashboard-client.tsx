@@ -353,12 +353,12 @@ function RestaurantCard({
 
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
   const [dashImg, setDashImg] = useState(() =>
-    restaurantDisplayImageUrl(
-      item.restaurant as {
-        google_photo_url?: string | null;
-        image_url?: string | null;
-      }
-    )
+    restaurantDisplayImageUrl({
+      id: item.restaurant.id,
+      google_place_id: item.restaurant.google_place_id,
+      google_photo_url: item.restaurant.google_photo_url,
+      image_url: item.restaurant.image_url,
+    })
   );
 
   return (

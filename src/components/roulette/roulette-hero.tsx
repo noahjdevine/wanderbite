@@ -278,6 +278,7 @@ export function RouletteHero() {
         address: data.address ?? null,
         image_url: data.image_url ?? null,
         google_photo_url: data.google_photo_url ?? null,
+        google_place_id: data.google_place_id ?? null,
       };
       return picked;
     })();

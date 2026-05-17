@@ -21,6 +21,7 @@ type RestaurantRow = {
   org_id: string;
   image_url?: string | null;
   google_photo_url?: string | null;
+  google_place_id?: string | null;
 };
 
 type RestaurantOfferRow = {
@@ -213,7 +214,7 @@ export async function generateMonthlyChallenge(
     const { data: restaurants, error: restErr } = await supabase
       .from('restaurants')
       .select(
-        'id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, image_url, google_photo_url'
+        'id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, image_url, google_photo_url, google_place_id'
       )
       .eq('market_id', marketId)
       .eq('status', 'active');
