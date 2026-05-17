@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import type { CookieOptions } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { trackSignupCompleted } from '@/app/actions/auth';
 import { safeAuthRedirectPath } from '@/lib/auth/safe-redirect';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
 
     if (!profile) {
+      await trackSignupCompleted(user.id);
       return redirectWithSessionCookies('/onboarding');
     }
 

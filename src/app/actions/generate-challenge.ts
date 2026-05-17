@@ -1,5 +1,6 @@
 'use server';
 
+import * as Sentry from '@sentry/nextjs';
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
@@ -509,6 +510,7 @@ export async function generateMonthlyChallenge(
       data: { cycle, items },
     };
   } catch (e) {
+    Sentry.captureException(e);
     const message = e instanceof Error ? e.message : 'Unknown error';
     return { ok: false, error: `Assignment failed: ${message}` };
   }

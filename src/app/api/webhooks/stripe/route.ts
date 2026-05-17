@@ -1,7 +1,9 @@
+import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { captureEvent } from '@/lib/posthog-server';
 import { sendSubscriptionConfirmationEmail } from '@/lib/resend';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 function stripeSubscriptionStatusToProfileStatus(
   status: Stripe.Subscription.Status
@@ -96,6 +98,10 @@ export async function POST(request: Request) {
 
         if (updateError) {
           console.error('checkout.session.completed: profile update failed:', updateError.message);
+        } else {
+          await captureEvent(userId, 'subscription_started', {
+            stripe_customer_id: customerId,
+          });
         }
 
         const customerEmail =
@@ -116,10 +122,23 @@ export async function POST(request: Request) {
 
         if (!customerId) break;
 
+        const { data: canceledProfile } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('stripe_customer_id', customerId)
+          .maybeSingle();
+
         await supabase
           .from('user_profiles')
           .update({ subscription_status: 'canceled' })
           .eq('stripe_customer_id', customerId);
+
+        const canceledUserId = (canceledProfile as { id: string } | null)?.id;
+        if (canceledUserId) {
+          await captureEvent(canceledUserId, 'subscription_canceled', {
+            stripe_customer_id: customerId,
+          });
+        }
         break;
       }
 
@@ -195,6 +214,7 @@ export async function POST(request: Request) {
         break;
     }
   } catch (err) {
+    Sentry.captureException(err);
     console.error('Webhook handler error:', err);
     return NextResponse.json(
       { error: 'Webhook handler failed' },

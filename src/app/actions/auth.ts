@@ -1,5 +1,6 @@
 'use server';
 
+import { captureEvent } from '@/lib/posthog-server';
 import { createClient } from '@/lib/supabase/server';
 import { passwordResetLimiter } from '@/lib/ratelimit';
 
@@ -11,6 +12,11 @@ const baseUrl =
 export type SendPasswordResetResult =
   | { ok: true }
   | { ok: false; error: string };
+
+/** Fired when email confirmation completes and the user lands with a session. */
+export async function trackSignupCompleted(userId: string): Promise<void> {
+  await captureEvent(userId, 'signup_completed');
+}
 
 /**
  * Sends a password reset email via Supabase Auth.
