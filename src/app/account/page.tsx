@@ -33,7 +33,18 @@ export default async function AccountPage() {
     redirect('/onboarding');
   }
 
-  const p = profile;
+  const p = profile as {
+    id: string;
+    email: string | null;
+    full_name: string | null;
+    username: string | null;
+    dietary_flags: string[] | null;
+    distance_band: string | null;
+    wants_cocktail_experience: boolean | null;
+    address: string | null;
+    subscription_status: string | null;
+    current_period_end: string | null;
+  };
 
   const hasProfile = Boolean(p.username?.trim()) && Boolean(p.address?.trim());
 

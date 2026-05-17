@@ -133,8 +133,9 @@ export async function POST(request: Request) {
           .update({ subscription_status: 'canceled' })
           .eq('stripe_customer_id', customerId);
 
-        if (canceledProfile?.id) {
-          await captureEvent(canceledProfile.id, 'subscription_canceled', {
+        const canceledUserId = (canceledProfile as { id: string } | null)?.id;
+        if (canceledUserId) {
+          await captureEvent(canceledUserId, 'subscription_canceled', {
             stripe_customer_id: customerId,
           });
         }

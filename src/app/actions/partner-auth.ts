@@ -43,13 +43,14 @@ export async function loginPartner(
     return { ok: false, error: 'Restaurant not found.' };
   }
 
-  const validPin = await verifyPartnerPin(trimmedPin, restaurant.pin_hash);
+  const row = restaurant as { id: string; name: string; pin_hash: string | null };
+  const validPin = await verifyPartnerPin(trimmedPin, row.pin_hash);
   if (!validPin) {
     return { ok: false, error: 'Invalid PIN.' };
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(PARTNER_COOKIE_NAME, restaurant.id, {
+  cookieStore.set(PARTNER_COOKIE_NAME, row.id, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -57,7 +58,7 @@ export async function loginPartner(
     path: '/',
   });
 
-  return { ok: true, restaurantName: restaurant.name };
+  return { ok: true, restaurantName: row.name };
 }
 
 export type PartnerSession =
