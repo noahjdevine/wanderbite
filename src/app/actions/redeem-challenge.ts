@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { captureEvent } from '@/lib/posthog-server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { encryptRedemptionCode } from '@/lib/redemption-crypto';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
@@ -127,6 +128,11 @@ export async function redeemChallengeItem(
 
     const redeemedAt =
       (redemption as { created_at: string } | null)?.created_at ?? new Date().toISOString();
+
+    await captureEvent(userId, 'challenge_redeemed', {
+      challenge_item_id: challengeItemId,
+      restaurant_id: challengeItem.restaurant_id,
+    });
 
     return {
       ok: true,

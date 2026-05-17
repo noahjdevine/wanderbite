@@ -1,8 +1,9 @@
 'use server';
 
 import { cookies } from 'next/headers';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { verifyPartnerPin } from '@/lib/partner-pin';
 import { partnerLoginLimiter } from '@/lib/ratelimit';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const PARTNER_COOKIE_NAME = 'partner_restaurant_id';
 const PARTNER_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
@@ -34,7 +35,7 @@ export async function loginPartner(
   const admin = getSupabaseAdmin();
   const { data: restaurant, error } = await admin
     .from('restaurants')
-    .select('id, name, pin')
+    .select('id, name, pin_hash')
     .eq('id', restaurantId)
     .maybeSingle();
 
@@ -42,13 +43,13 @@ export async function loginPartner(
     return { ok: false, error: 'Restaurant not found.' };
   }
 
-  const r = restaurant as { id: string; name: string; pin: string | null };
-  if (!r.pin || r.pin.trim() !== trimmedPin) {
+  const validPin = await verifyPartnerPin(trimmedPin, restaurant.pin_hash);
+  if (!validPin) {
     return { ok: false, error: 'Invalid PIN.' };
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(PARTNER_COOKIE_NAME, r.id, {
+  cookieStore.set(PARTNER_COOKIE_NAME, restaurant.id, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
@@ -56,7 +57,7 @@ export async function loginPartner(
     path: '/',
   });
 
-  return { ok: true, restaurantName: r.name };
+  return { ok: true, restaurantName: restaurant.name };
 }
 
 export type PartnerSession =
