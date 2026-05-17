@@ -1,7 +1,6 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { normalizeCuisineIds } from '@/lib/cuisines';
 
 export async function updatePreferences(values: {
@@ -17,10 +16,10 @@ export async function updatePreferences(values: {
     } = await supabase.auth.getUser();
     if (!user) return { ok: false, error: 'You must be signed in.' };
 
-    const admin = getSupabaseAdmin();
     const excluded = normalizeCuisineIds(values.excluded_cuisines ?? []);
 
-    const { error: profileError } = await admin.from('user_profiles').upsert(
+    // Use the signed-in user's client (RLS) so writes match policies on user_profiles + user_preferences.
+    const { error: profileError } = await supabase.from('user_profiles').upsert(
       {
         id: user.id,
         email: user.email ?? null,
@@ -34,7 +33,7 @@ export async function updatePreferences(values: {
 
     if (profileError) return { ok: false, error: profileError.message };
 
-    const { error: prefsError } = await admin.from('user_preferences').upsert(
+    const { error: prefsError } = await supabase.from('user_preferences').upsert(
       {
         user_id: user.id,
         excluded_cuisines: excluded,

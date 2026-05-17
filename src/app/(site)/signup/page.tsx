@@ -6,7 +6,6 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { signUpSchema } from '@/lib/validations/auth';
-import { getEmailConfirmCallbackUrl } from '@/lib/auth/safe-redirect';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -113,11 +112,12 @@ export default function SignUpPage() {
     setIsLoading(true);
     try {
       const supabase = createClient();
-      const redirectUrl = getEmailConfirmCallbackUrl();
       const { data, error: err } = await supabase.auth.signUp({
         email: result.data.email,
         password: result.data.password,
-        options: { emailRedirectTo: redirectUrl },
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
       if (err) {
         setError(err.message);

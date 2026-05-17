@@ -5,6 +5,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import type { UserPreferencesRow } from '@/types/user-preferences';
 
 // --- Types (aligned with schema) ---
 
@@ -204,7 +205,7 @@ export async function generateMonthlyChallenge(
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
     const excludedCuisines = normalizeCuisineIds(
-      (prefsRow as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ?? []
+      (prefsRow as UserPreferencesRow | null)?.excluded_cuisines ?? []
     );
     const wantsCocktailExperience = Boolean((profile as { wants_cocktail_experience?: boolean } | null)?.wants_cocktail_experience);
 

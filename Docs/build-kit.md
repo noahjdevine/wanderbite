@@ -14,7 +14,8 @@
 - **restaurant_orgs**: id, name, market_id
 - **restaurants**: id, org_id, market_id, name, cuisine_tags, address, lat, lon, location (PostGIS), status
 - **restaurant_offers**: id, restaurant_id, discount_amount_cents, min_spend_cents, max_redemptions_per_month, active
-- **user_profiles**: id (→ auth.users), email, role, dietary_flags, allergy_flags, cuisine_opt_out, distance_band
+- **user_profiles**: id (→ auth.users), email, role, dietary_flags, allergy_flags, distance_band, …
+- **user_preferences**: user_id (→ user_profiles), excluded_cuisines
 - **challenge_cycles**: id, user_id, cycle_month, status, swap_count_used
 - **challenge_items**: id, cycle_id, restaurant_id, slot_number, status (assigned/swapped_out/redeemed), swapped_from_item_id
 - **redemptions**: id, user_id, restaurant_id, challenge_item_id, token_hash, status, verified_at

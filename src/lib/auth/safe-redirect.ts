@@ -14,26 +14,23 @@ function trimTrailingSlash(url: string): string {
   return url.replace(/\/$/, '');
 }
 
+const PRODUCTION_FALLBACK_ORIGIN = 'https://wanderbite.co';
+
 /**
- * Canonical origin for Supabase email links (`emailRedirectTo`).
- * Prefer `NEXT_PUBLIC_SITE_URL` (or `NEXT_PUBLIC_BASE_URL`) in production so confirmation
- * emails always point at your primary domain; falls back to `window.location.origin` on the client.
+ * Absolute URL for Supabase `emailRedirectTo` (signUp, resend).
+ *
+ * - **Browser:** `${window.location.origin}/auth/callback` so the link matches the host used at signup.
+ * - **Server:** env (`NEXT_PUBLIC_SITE_URL` / `NEXT_PUBLIC_BASE_URL`), then production fallback so
+ *   confirmation emails still target `/auth/callback` on the real site if env is missing in CI.
  */
 export function getEmailConfirmCallbackUrl(): string {
+  if (typeof window !== 'undefined') {
+    return `${window.location.origin}/auth/callback`;
+  }
+
   const envBase =
-    process.env.NEXT_PUBLIC_SITE_URL?.trim() || process.env.NEXT_PUBLIC_BASE_URL?.trim();
-  let origin: string;
-  if (envBase) {
-    origin = trimTrailingSlash(envBase);
-  } else if (typeof window !== 'undefined') {
-    origin = window.location.origin;
-  } else {
-    origin = '';
-  }
-  if (!origin) {
-    throw new Error(
-      'Cannot build auth callback URL: set NEXT_PUBLIC_SITE_URL or NEXT_PUBLIC_BASE_URL, or call from the browser.'
-    );
-  }
-  return `${origin}/auth/callback`;
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_BASE_URL?.trim() ||
+    PRODUCTION_FALLBACK_ORIGIN;
+  return `${trimTrailingSlash(envBase)}/auth/callback`;
 }

@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { AccountClient } from '@/components/account/AccountClient';
 import { normalizeCuisineIds } from '@/lib/cuisines';
+import type { UserPreferencesRow } from '@/types/user-preferences';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,7 +78,7 @@ export default async function AccountPage() {
             preferences: {
               dietary_flags: p.dietary_flags ?? [],
               excluded_cuisines: normalizeCuisineIds(
-                (prefs as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ?? []
+                (prefs as UserPreferencesRow | null)?.excluded_cuisines ?? []
               ),
               distance_band: p.distance_band ?? '15_mi',
               wants_cocktail_experience: Boolean(p.wants_cocktail_experience),

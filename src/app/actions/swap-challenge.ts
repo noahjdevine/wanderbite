@@ -5,6 +5,7 @@ import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import type { UserPreferencesRow } from '@/types/user-preferences';
 
 // --- Types (aligned with schema) ---
 
@@ -177,7 +178,7 @@ export async function swapChallengeItem(
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
     const excludedCuisines = normalizeCuisineIds(
-      (prefsRow as { excluded_cuisines?: string[] | null } | null)?.excluded_cuisines ?? []
+      (prefsRow as UserPreferencesRow | null)?.excluded_cuisines ?? []
     );
 
     // 7. Restaurants in market with active offer, excluding current + other assigned

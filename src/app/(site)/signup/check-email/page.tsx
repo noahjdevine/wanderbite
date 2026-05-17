@@ -4,7 +4,6 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Loader2, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { getEmailConfirmCallbackUrl } from '@/lib/auth/safe-redirect';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
@@ -43,11 +42,12 @@ export default function CheckEmailPage() {
     setResendMsg(null);
     try {
       const supabase = createClient();
-      const redirectUrl = getEmailConfirmCallbackUrl();
       const { error } = await supabase.auth.resend({
         type: 'signup',
         email: email.trim(),
-        options: { emailRedirectTo: redirectUrl },
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
       });
       if (error) {
         setResendErr(error.message);
