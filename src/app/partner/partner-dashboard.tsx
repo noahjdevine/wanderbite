@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -27,11 +28,13 @@ import type { PartnerAnalyticsResult } from '@/app/actions/partner-auth';
 
 type PartnerDashboardProps = {
   restaurantName: string;
+  restaurantSlug: string;
   analytics: PartnerAnalyticsResult | null;
 };
 
 export function PartnerDashboard({
   restaurantName,
+  restaurantSlug,
   analytics,
 }: PartnerDashboardProps) {
   const router = useRouter();
@@ -99,9 +102,14 @@ export function PartnerDashboard({
             {restaurantName}
           </p>
         </div>
-        <Button variant="ghost" size="sm" onClick={handleLogout}>
-          Log out
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="default" size="sm" asChild>
+            <Link href={`/partner/${restaurantSlug}/redeem`}>Redeem mode</Link>
+          </Button>
+          <Button variant="ghost" size="sm" onClick={handleLogout}>
+            Log out
+          </Button>
+        </div>
       </header>
 
       {/* Redeem Code — prominent at top */}

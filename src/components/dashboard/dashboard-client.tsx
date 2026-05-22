@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -33,6 +34,7 @@ import {
 } from '@/app/actions/generate-challenge';
 import { swapChallengeItem } from '@/app/actions/swap-challenge';
 import { redeemChallengeItem } from '@/app/actions/redeem-challenge';
+import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import {
   getBadgeProgress,
   getNextBadgeMilestoneMonths,
@@ -338,10 +340,20 @@ function RestaurantCard({
     item.offer.discount_amount_cents,
     item.offer.min_spend_cents
   );
-  const discountDollars = item.offer.discount_amount_cents / 100;
   const isAssigned = item.challengeItem.status === 'assigned';
   const isRedeemed = item.challengeItem.status === 'redeemed';
-  const token = item.redemptionToken ?? null;
+  const [displayCode, setDisplayCode] = useState<string | null>(item.redemptionToken ?? null);
+
+  useEffect(() => {
+    if (!isRedeemed || !item.redemptionId) return;
+    let cancelled = false;
+    void getRedemptionCode(item.redemptionId).then((code) => {
+      if (!cancelled && code) setDisplayCode(code);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isRedeemed, item.redemptionId, item.redemptionToken]);
   const hasCoords =
     item.restaurant.lat != null &&
     item.restaurant.lon != null &&
@@ -424,13 +436,23 @@ function RestaurantCard({
             />
           )}
         <RestaurantReviews restaurantId={item.restaurant.id} />
-        {isRedeemed && token && (
-          <div className="rounded-lg border-2 border-green-600 bg-green-50 p-4 dark:border-green-500 dark:bg-green-950/30">
-            <p className="text-center text-lg font-mono font-bold tracking-wide text-green-800 dark:text-green-200">
-              CODE: {token}
-            </p>
-            <p className="mt-1 text-center text-sm text-green-700 dark:text-green-300">
-              Show to server for ${discountDollars} off
+        {isRedeemed && item.redemptionId && (
+          <div className="space-y-3">
+            {displayCode && (
+              <div className="rounded-lg border-2 border-green-600 bg-green-50 p-3 dark:border-green-500 dark:bg-green-950/30">
+                <p className="text-center font-mono text-lg font-bold tracking-wide text-green-800 dark:text-green-200">
+                  {displayCode}
+                </p>
+              </div>
+            )}
+            <Button variant="default" className="w-full gap-2" asChild>
+              <Link href={`/challenges/show/${item.redemptionId}`}>
+                <Ticket className="size-4" aria-hidden />
+                Show code to server
+              </Link>
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Open full-screen QR + code for your server to scan or type.
             </p>
           </div>
         )}
@@ -564,8 +586,7 @@ export function DashboardClient({
     try {
       const result = await redeemChallengeItem(challengeItemId, testUser.id);
       if (result.ok) {
-        toast.success(`Redeemed! Show code ${result.data.token} to your server.`);
-        router.refresh();
+        router.push(`/challenges/show/${result.data.redemptionId}`);
       } else {
         toast.error(result.error);
       }

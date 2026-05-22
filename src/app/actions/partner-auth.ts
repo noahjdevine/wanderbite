@@ -2,11 +2,13 @@
 
 import { cookies } from 'next/headers';
 import { verifyPartnerPin } from '@/lib/partner-pin';
+import {
+  PARTNER_COOKIE_KIOSK_MAX_AGE,
+  PARTNER_COOKIE_MAX_AGE,
+  PARTNER_COOKIE_NAME,
+} from '@/lib/partner-session';
 import { partnerLoginLimiter } from '@/lib/ratelimit';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-
-const PARTNER_COOKIE_NAME = 'partner_restaurant_id';
-const PARTNER_COOKIE_MAX_AGE = 60 * 60 * 24 * 7; // 7 days
 
 export type PartnerLoginResult =
   | { ok: true; restaurantName: string }
@@ -15,7 +17,8 @@ export type PartnerLoginResult =
 /** Verify restaurant PIN and set partner session cookie. */
 export async function loginPartner(
   restaurantId: string,
-  pin: string
+  pin: string,
+  options?: { rememberDevice?: boolean }
 ): Promise<PartnerLoginResult> {
   const trimmedPin = pin?.trim();
   if (!restaurantId || !trimmedPin) {
@@ -50,11 +53,12 @@ export async function loginPartner(
   }
 
   const cookieStore = await cookies();
+  const maxAge = options?.rememberDevice ? PARTNER_COOKIE_KIOSK_MAX_AGE : PARTNER_COOKIE_MAX_AGE;
   cookieStore.set(PARTNER_COOKIE_NAME, row.id, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: PARTNER_COOKIE_MAX_AGE,
+    maxAge,
     path: '/',
   });
 
