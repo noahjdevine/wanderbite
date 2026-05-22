@@ -328,7 +328,8 @@ export async function swapChallengeItem(
       return { ok: false, error: `Failed to increment swap count: ${updateCycleErr.message}` };
     }
 
-    revalidatePath('/');
+    revalidatePath('/dashboard');
+    revalidatePath('/challenges');
 
     const offer = offerByRestaurant.get(replacement.id)!;
     return {

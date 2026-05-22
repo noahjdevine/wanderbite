@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/issue-monthly-challenges",
+      "schedule": "1 0 1 * *"
+    },
+    {
+      "path": "/api/cron/reset-swap-counters",
+      "schedule": "5 0 1 * *"
+    },
+    {
+      "path": "/api/cron/stripe-reconcile",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}
