@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PricingFaq } from '@/components/pricing/pricing-faq';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 86400;
 
 /** Level-up XP thresholds and perks (align with Journey / get-user-stats). */
 const QUARTERLY_BONUS = 'an automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';

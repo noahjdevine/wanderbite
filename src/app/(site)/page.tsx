@@ -4,7 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { LandingPage } from '@/components/landing/landing-page';
 import { RouletteHero } from '@/components/roulette/roulette-hero';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 3600;
 
 /**
  * Home: public marketing landing only.

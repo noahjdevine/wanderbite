@@ -124,7 +124,8 @@ export async function redeemChallengeItem(
       return { ok: false, error: `Failed to mark item as redeemed: ${updateErr.message}` };
     }
 
-    revalidatePath('/');
+    revalidatePath('/dashboard');
+    revalidatePath('/challenges');
 
     const redeemedAt =
       (redemption as { created_at: string } | null)?.created_at ?? new Date().toISOString();

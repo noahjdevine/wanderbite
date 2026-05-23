@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { PricingClient } from '@/components/pricing/pricing-client';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 86400;
 
 export default async function PricingPage() {
   const supabase = await createClient();

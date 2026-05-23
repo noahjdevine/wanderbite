@@ -3,24 +3,11 @@ import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { captureEvent } from '@/lib/posthog-server';
 import { sendSubscriptionConfirmationEmail } from '@/lib/resend';
+import {
+  stripePeriodEndIso,
+  stripeSubscriptionStatusToProfileStatus,
+} from '@/lib/stripe-subscription';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-
-function stripeSubscriptionStatusToProfileStatus(
-  status: Stripe.Subscription.Status
-): string {
-  switch (status) {
-    case 'active':
-      return 'active';
-    case 'past_due':
-      return 'past_due';
-    case 'canceled':
-      return 'canceled';
-    case 'unpaid':
-      return 'past_due';
-    default:
-      return 'active';
-  }
-}
 
 export async function POST(request: Request) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -80,11 +67,7 @@ export async function POST(request: Request) {
               : session.subscription.id;
           const { getStripe } = await import('@/lib/stripe');
           const raw = await getStripe().subscriptions.retrieve(subId);
-          const subscription = raw as unknown as { current_period_end?: number | null };
-          const periodEnd = subscription.current_period_end;
-          currentPeriodEnd = periodEnd
-            ? new Date(periodEnd * 1000).toISOString()
-            : null;
+          currentPeriodEnd = stripePeriodEndIso(raw);
         }
 
         const { error: updateError } = await supabase
@@ -194,10 +177,7 @@ export async function POST(request: Request) {
         const subscriptionStatus = stripeSubscriptionStatusToProfileStatus(
           subscription.status
         );
-        const periodEnd = (subscription as any).current_period_end ?? subscription.items?.data?.[0]?.current_period_end ?? null;
-        const currentPeriodEnd = periodEnd
-          ? new Date(periodEnd * 1000).toISOString()
-          : null;
+        const currentPeriodEnd = stripePeriodEndIso(subscription);
 
         await supabase
           .from('user_profiles')

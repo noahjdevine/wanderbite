@@ -1,7 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { LocationsClient } from '@/components/locations/locations-client';
 
-export const dynamic = 'force-dynamic';
+export const revalidate = 1800;
 
 /** Restaurants list: accessible to all logged-in users (including active/trial subscribers). No subscription gate. */
 
