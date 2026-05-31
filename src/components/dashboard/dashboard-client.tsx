@@ -50,12 +50,6 @@ import {
   restaurantDisplayImageUrl,
 } from '@/lib/restaurant-image';
 
-type TestUser = {
-  id: string;
-  email: string | null;
-  dietary_flags: string[] | null;
-};
-
 export type DashboardStreakStats = {
   currentStreak: number;
   longestStreak: number;
@@ -63,7 +57,6 @@ export type DashboardStreakStats = {
 };
 
 type DashboardClientProps = {
-  testUser: TestUser;
   marketId: string;
   currentChallenge: GeneratedChallenge | null;
   streak: DashboardStreakStats;
