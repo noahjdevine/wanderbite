@@ -17,7 +17,7 @@ const TOKEN_LENGTH = 5;
 function generateRedemptionToken(): string {
   let code = TOKEN_PREFIX;
   for (let i = 0; i < TOKEN_LENGTH; i++) {
-    code += TOKEN_CHARS[randomInt(TOKEN_CHARS.length)];
+    code += TOKEN_CHARS[randomInt(0, TOKEN_CHARS.length)];
   }
   return code;
 }
