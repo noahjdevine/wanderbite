@@ -1,18 +1,34 @@
-# WANDERBITE PROJECT CONTEXT
+---
+description: WanderBite product domain knowledge — vision, database schema, and business rules. Foundational context for all work in this repo.
+alwaysApply: true
+---
+
+# WANDERBITE — PRODUCT & DOMAIN
+
+> Scope of this file: WHAT the product is. Build conventions, architecture,
+> routes, and coding discipline live in `conventions.mdc`. Server Action
+> security invariants live in `server-actions.mdc`.
 
 ## Project Vision
-Wanderbite is a gamified restaurant discovery app. 
+Wanderbite is a gamified restaurant discovery app.
 - Users ($15/mo) receive 2 random "Challenges" (restaurants) per month.
 - Users can swap 1 challenge per month.
 - Users get $10 off $40+ spend at assigned restaurants.
 - Logic is "Safety First" (Allergies) then "Discovery" (Random assignment).
 
-## Tech Stack
-- Frontend: Next.js (App Router), TypeScript, Tailwind CSS, Shadcn/UI
-- Backend: Supabase (Postgres, Auth, Edge Functions)
-- Payments: Stripe
-
 ## Database Schema (Key Tables)
+
+> ⚠️ VERIFY AND CORRECT THIS SECTION BEFORE RELYING ON IT, THEN DELETE THIS NOTE.
+> The table list below appears simplified and may not match the live schema.
+> It lists a single `users (id, email, role, preferences_json)` table, but:
+>   - Business Rule #4 (below) references `user_profiles.dietary_flags` and
+>     `user_preferences.excluded_cuisines`.
+>   - The PR plan references `user_profiles.role`.
+> So identity/preferences data likely lives in separate `user_profiles` and
+> `user_preferences` tables, not in `users`. Open your Supabase Table Editor,
+> confirm the real table/column names, and rewrite the list to match. If left
+> stale, the agent will generate queries against the wrong tables/columns.
+
 Refer to these table names exactly in SQL generation:
 - `markets` (id, name, status)
 - `users` (id, email, role, preferences_json)
@@ -27,10 +43,3 @@ Refer to these table names exactly in SQL generation:
 2. **Frequency:** Max 2 redemptions per restaurant per rolling 12 months.
 3. **Swaps:** Only 1 swap allowed per `challenge_cycle`.
 4. **Safety:** If `user_profiles.dietary_flags` contains a flag (e.g., 'peanut'), NEVER assign a restaurant with that specific `allergy_flag`. Honor `user_preferences.excluded_cuisines` for cuisine opt-outs.
-
-## Coding Guidelines
-- Use Supabase SSR client for all data fetching.
-- Use Shadcn/UI for components.
-- Always use `date-fns` for date manipulation.
-- Implement Row Level Security (RLS) policies in every SQL migration.
-- DO NOT use `any` types; strictly type the Supabase return data.

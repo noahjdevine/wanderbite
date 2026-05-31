@@ -1,0 +1,38 @@
+---
+description: WanderBite Server Action security & conventions. Apply when editing or creating Server Actions, cron handlers, or shared challenge/auth lib code.
+globs:
+  - src/app/actions/**
+  - src/app/api/cron/**
+  - src/lib/challenges/**
+  - src/lib/auth/**
+alwaysApply: false
+---
+
+# Server Action Security & Conventions (WanderBite)
+
+## Identity & auth — non-negotiable
+- A Server Action MUST NOT accept `userId`, `email`, or any caller-supplied identity as a parameter. Identity is derived from the session, never trusted from the client.
+- At the top of every protected Server Action:
+  ```ts
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  ```
+  Then use `auth.userId` / `auth.email` throughout.
+- `requireUser()` lives in `@/lib/auth/require-user` and is the single source of truth. Do not reimplement session reads inline anywhere else.
+- Ownership checks (e.g. `cycle.user_id !== auth.userId`) stay as defense-in-depth AFTER the auth gate. Never remove them.
+
+## Crons are a separate, trusted path
+- Cron handlers under `src/app/api/cron/**` act on behalf of users and ARE allowed to pass `userId` directly.
+- They call the shared `*ForUser(userId, ...)` functions in `src/lib/challenges/**`, NOT the session-gated Server Actions.
+- Never route a cron through `requireUser()`. Never add `requireUser()` to a `*ForUser` lib function. These two paths must stay separate.
+
+## Do not touch
+- Supabase RLS policies.
+- The redemption token storage format or hash function (token stays `WB-XXXXX`; hashing unchanged).
+- Existing return shapes and error strings of Server Actions — change signatures only as explicitly specified in the task.
+
+## Hygiene
+- Crypto: use `crypto.randomInt` (from `node:crypto`) — never `Math.random()` — for tokens, codes, or anything security-relevant.
+- Keep diffs minimal. Do not reformat, rename, or "improve" code outside the requested change. If you spot an unrelated issue, mention it in your summary instead of editing it.
+- After any edit, run `npm run lint && npx tsc --noEmit` and report the result. Fix what you broke; do not silence errors with `any`, `@ts-ignore`, or `eslint-disable`.
+- Every exported function in a file that starts with `'use server'` is a public HTTP endpoint. Do not leave unused exported functions in action files.

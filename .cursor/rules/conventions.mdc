@@ -1,0 +1,76 @@
+---
+description: Wanderbite web app conventions, architecture, and guardrails. How we build in this repo.
+alwaysApply: true
+---
+
+# Working rules (whole engagement)
+
+1. For each task, create a feature branch off `main` named `fix/<short-description>`. Never commit directly to main.
+2. Before any code change, post a 2–4 sentence plan describing what you'll edit and why.
+3. After each non-trivial change, run `npm run lint` and `npx tsc --noEmit` for fast feedback; fix any failure before continuing. Run the full `npm run build` once before opening the PR (not after every change — it's slow).
+4. If a task touches `supabase/migrations`, after creating the migration tell me the exact `supabase db push` (or equivalent) command to run, and wait for me to confirm before assuming the schema changed. Then run `npm run types:db` to regenerate types.
+5. When a task is done, commit with a clear message (`fix(redeem): require active subscription`), then summarize: what changed, what files, what I should test manually.
+6. Never run `git push`, never run anything that costs money (Stripe live mode, Resend bulk sends), and never install a new npm dependency on your own. If a task needs a new package, STOP, tell me which package and why, and give me the install command to run myself.
+7. If a fix is bigger than expected, stop and tell me — don't expand scope silently.
+
+---
+
+# Wanderbite (wanderbite-web)
+
+Next.js 16 App Router + React 19 + TypeScript + Tailwind + shadcn/ui + Supabase.
+
+## Layout & routes
+
+- **Marketing/member UI**: `src/app/(site)/` — uses `Navbar` + `MobileNav` from `(site)/layout.tsx`.
+- **Onboarding**: `src/app/onboarding/` — own layout; **no site nav** (do not add Navbar there).
+- **Partner portal**: `src/app/partner/` — separate from member site.
+- **Auth entry**: `/signin`, `/signup` (not `/login` for primary CTAs).
+
+## Navigation (single source of truth)
+
+Import tab lists from `src/lib/nav-items.ts` only — **never** duplicate nav links in `Navbar.tsx` / `MobileNav.tsx`.
+
+| Auth | Tabs |
+|------|------|
+| Public | Home, How it Works, Wanderbite Roulette, Restaurants, Pricing |
+| Member | Wanderbite Roulette, Restaurants, Challenges, My Journey |
+
+- Desktop and mobile must match within the same auth state.
+- Logged-in nav **replaces** public nav (not additive).
+- Public right side: Sign In (`/signin`) + Start Your Adventure (`/signup`).
+- Logged-in right side: `AccountMenu` only (no auth CTAs).
+- Mobile: top bar + hamburger drawer; **Start Your Adventure stays in the top bar** when logged out.
+
+## Do not break: `/challenges`
+
+`/challenges` is the post-signup/payment/onboarding destination. **Do not** rename, relocate, or wrap this route. Auth callback, Stripe success, and onboarding completion depend on it.
+
+## My Journey hub
+
+- Hub route: `/journey` with sub-views via `?view=journal` | `?view=passport` (default = Journey).
+- Reuse `JourneyContent`, `JournalContent`, `PassportContent` — reorganize, don't rebuild.
+- Legacy `/journal` and `/passport` redirect into the hub; keep redirects if those routes exist.
+
+## Restaurant images
+
+- Use `restaurantDisplayImageUrl()` from `src/lib/restaurant-image.ts`.
+- Google photos: proxy `/api/restaurant-image/[id]` via `google_place_id` — **do not** hotlink stored `google_photo_url` (references expire).
+- Manual override: `image_url` wins. Placeholder: `/images/restaurant-placeholder.jpg`.
+- Restaurant **cards/thumbnails** use `<img>`, not `next/image` (no remotePatterns needed).
+  - (Known future exception: PR 5 intentionally switches the marketing **hero slider** to `next/image` with `images.remotePatterns`. That's the hero only — cards stay on `<img>`.)
+
+## Supabase
+
+- Browser: `createClient()` from `src/lib/supabase/client`.
+- Server components/actions: `createClient()` from `src/lib/supabase/server`.
+- Admin/elevated: `getSupabaseAdmin()` from `src/lib/supabase-admin`.
+- Route protection: `src/lib/supabase/middleware.ts` + root `middleware.ts`.
+
+## Code changes
+
+- Minimal, task-focused diffs; match existing naming and patterns.
+- Don't edit `.env*` or commit secrets.
+- Use `date-fns` for all date manipulation.
+- Use shadcn/ui for UI components.
+- Strictly type Supabase return data; do NOT use `any` types.
+- RLS: include Row Level Security policies in every NEW SQL migration. Do NOT modify EXISTING RLS policies during a refactor unless the task explicitly says to.
