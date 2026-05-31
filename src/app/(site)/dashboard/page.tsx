@@ -72,7 +72,7 @@ export default async function DashboardPage() {
 
   let currentChallenge = null;
   try {
-    currentChallenge = await getCurrentChallenge(typedProfile.id);
+    currentChallenge = await getCurrentChallenge();
   } catch {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">

@@ -508,7 +508,6 @@ function RestaurantCard({
 }
 
 export function DashboardClient({
-  testUser,
   marketId,
   currentChallenge,
   streak,
@@ -522,7 +521,7 @@ export function DashboardClient({
   async function handleGenerate() {
     setIsGenerating(true);
     try {
-      const result = await generateMonthlyChallenge(testUser.id, marketId);
+      const result = await generateMonthlyChallenge(marketId);
       if (result.ok) {
         toast.success('Challenge generated!');
         router.refresh();

@@ -2,7 +2,7 @@ import { format, startOfMonth } from 'date-fns';
 import { NextResponse } from 'next/server';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { beginCronRun, completeCronRun } from '@/lib/cron-runs';
-import { generateMonthlyChallenge } from '@/lib/challenges/generate';
+import { generateMonthlyChallengeForUser } from '@/lib/challenges/generate';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const result = await generateMonthlyChallenge(userId, marketId);
+      const result = await generateMonthlyChallengeForUser(userId, marketId);
       if (result.ok) {
         succeeded++;
         outcomes.push({ userId, status: 'succeeded' });
