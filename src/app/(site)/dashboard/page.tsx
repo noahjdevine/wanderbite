@@ -85,7 +85,7 @@ export default async function DashboardPage() {
 
   const streak = await calculateStreak(typedProfile.id);
 
-  const biteNotesRes = await getBiteNotes(typedProfile.id);
+  const biteNotesRes = await getBiteNotes();
   const biteNotesForDash =
     biteNotesRes.ok
       ? biteNotesRes.data.map((b) => ({

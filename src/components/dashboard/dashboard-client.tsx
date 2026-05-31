@@ -126,11 +126,9 @@ function StarRow({
 }
 
 function BiteNotesInline({
-  userId,
   redemptionId,
   saved,
 }: {
-  userId: string;
   redemptionId: string;
   saved: BiteNoteSummary | undefined;
 }) {
@@ -160,7 +158,7 @@ function BiteNotesInline({
     if (!saved?.id) return;
     setVisibilitySaving(true);
     try {
-      const res = await toggleNoteVisibility(saved.id, userId, next);
+      const res = await toggleNoteVisibility(saved.id, next);
       if (res.ok) {
         setPublicLocal(next);
         toast.success(next ? 'Your review is now public' : 'Your review is now private');
@@ -178,7 +176,6 @@ function BiteNotesInline({
     try {
       const res = await saveBiteNote(
         redemptionId,
-        userId,
         text,
         rating,
         formIsPublic
@@ -317,7 +314,6 @@ type RestaurantCardProps = {
   isRedeeming: boolean;
   onSwap: (challengeItemId: string) => void;
   onRedeem: (challengeItemId: string) => void;
-  userId: string;
   biteNote?: BiteNoteSummary;
 };
 
@@ -329,7 +325,6 @@ function RestaurantCard({
   isRedeeming,
   onSwap,
   onRedeem,
-  userId,
   biteNote,
 }: RestaurantCardProps) {
   const isExpired = Date.now() - new Date(cycleCreatedAt).getTime() > THIRTY_DAYS_MS;
@@ -436,7 +431,6 @@ function RestaurantCard({
         )}
         {isRedeemed && item.redemptionId && (
           <BiteNotesInline
-            userId={userId}
             redemptionId={item.redemptionId}
             saved={biteNote}
           />
@@ -545,7 +539,7 @@ export function DashboardClient({
   async function handleSwap(challengeItemId: string) {
     setSwappingItemId(challengeItemId);
     try {
-      const result = await swapChallengeItem(challengeItemId, testUser.id);
+      const result = await swapChallengeItem(challengeItemId);
       if (result.ok) {
         toast.success(`Swapped to ${result.data.newRestaurant.name}`);
         router.refresh();
@@ -562,7 +556,7 @@ export function DashboardClient({
   async function handleRedeem(challengeItemId: string) {
     setRedeemingItemId(challengeItemId);
     try {
-      const result = await redeemChallengeItem(challengeItemId, testUser.id);
+      const result = await redeemChallengeItem(challengeItemId);
       if (result.ok) {
         toast.success(`Redeemed! Show code ${result.data.token} to your server.`);
         router.refresh();
@@ -684,7 +678,6 @@ export function DashboardClient({
                 isRedeeming={redeemingItemId === item.challengeItem.id}
                 onSwap={handleSwap}
                 onRedeem={handleRedeem}
-                userId={testUser.id}
                 biteNote={
                   item.redemptionId
                     ? biteNoteByRedemptionId.get(item.redemptionId)

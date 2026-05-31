@@ -28,12 +28,8 @@ function StarDisplay({ rating }: { rating: number }) {
   );
 }
 
-type JournalContentProps = {
-  userId: string;
-};
-
-export async function JournalContent({ userId }: JournalContentProps) {
-  const res = await getBiteNotes(userId);
+export async function JournalContent() {
+  const res = await getBiteNotes();
   if (!res.ok) {
     return <p className="text-destructive">{res.error}</p>;
   }

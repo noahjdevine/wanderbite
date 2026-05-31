@@ -117,7 +117,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
   const uniqueRestaurantIds = [...new Set(visits.map((v) => v.restaurant.id))];
   const [streak, biteRes, ratingMap] = await Promise.all([
     calculateStreak(userId),
-    getBiteNotes(userId),
+    getBiteNotes(),
     getRestaurantRatings(uniqueRestaurantIds),
   ]);
 

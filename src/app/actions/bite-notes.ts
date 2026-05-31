@@ -1,6 +1,7 @@
 'use server';
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireUser } from '@/lib/auth/require-user';
 
 /** Minimal fields for dashboard cards (keyed by redemption). */
 export type BiteNoteSummary = {
@@ -56,11 +57,13 @@ function maskAuthorLabel(username: string | null, email: string | null): string 
 
 export async function saveBiteNote(
   redemptionId: string,
-  userId: string,
   note: string,
   rating: number,
   isPublic?: boolean
 ): Promise<SaveBiteNoteResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   const trimmed = note?.trim() ?? '';
   if (trimmed.length > NOTE_MAX) {
     return { ok: false, error: `Note must be ${NOTE_MAX} characters or less.` };
@@ -80,14 +83,14 @@ export async function saveBiteNote(
     return { ok: false, error: 'Redemption not found.' };
   }
   const r = redemption as { id: string; user_id: string; restaurant_id: string };
-  if (r.user_id !== userId) {
+  if (r.user_id !== auth.userId) {
     return { ok: false, error: 'You can only add notes to your own visits.' };
   }
 
   const now = new Date().toISOString();
   const { error: upsertErr } = await admin.from('bite_notes').upsert(
     {
-      user_id: userId,
+      user_id: auth.userId,
       redemption_id: r.id,
       restaurant_id: r.restaurant_id,
       note: trimmed.length ? trimmed : null,
@@ -158,9 +161,11 @@ export async function getPublicReviews(
 
 export async function toggleNoteVisibility(
   noteId: string,
-  userId: string,
   isPublic: boolean
 ): Promise<ToggleNoteVisibilityResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   const admin = getSupabaseAdmin();
   const { data: row, error: selErr } = await admin
     .from('bite_notes')
@@ -172,7 +177,7 @@ export async function toggleNoteVisibility(
     return { ok: false, error: 'Note not found.' };
   }
   const n = row as { id: string; user_id: string };
-  if (n.user_id !== userId) {
+  if (n.user_id !== auth.userId) {
     return { ok: false, error: 'You can only change visibility on your own notes.' };
   }
 
@@ -181,7 +186,7 @@ export async function toggleNoteVisibility(
     .from('bite_notes')
     .update({ is_public: isPublic, updated_at: now })
     .eq('id', noteId)
-    .eq('user_id', userId);
+    .eq('user_id', auth.userId);
 
   if (updErr) {
     return { ok: false, error: updErr.message };
@@ -194,7 +199,10 @@ export type GetBiteNotesResult =
   | { ok: false; error: string };
 
 /** All bite notes for the user with restaurant name and address. */
-export async function getBiteNotes(userId: string): Promise<GetBiteNotesResult> {
+export async function getBiteNotes(): Promise<GetBiteNotesResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   const admin = getSupabaseAdmin();
   const { data: rows, error } = await admin
     .from('bite_notes')
@@ -214,7 +222,7 @@ export async function getBiteNotes(userId: string): Promise<GetBiteNotesResult> 
       )
     `
     )
-    .eq('user_id', userId)
+    .eq('user_id', auth.userId)
     .order('created_at', { ascending: false });
 
   if (error) {

@@ -1,11 +1,13 @@
 'use server';
 
+import { randomInt } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { captureEvent } from '@/lib/posthog-server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { encryptRedemptionCode } from '@/lib/redemption-crypto';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
 import { redeemLimiter } from '@/lib/ratelimit';
+import { requireUser } from '@/lib/auth/require-user';
 import type { RedeemChallengeResult } from '@/types/redeem-challenge';
 
 const TOKEN_PREFIX = 'WB-';
@@ -15,7 +17,7 @@ const TOKEN_LENGTH = 5;
 function generateRedemptionToken(): string {
   let code = TOKEN_PREFIX;
   for (let i = 0; i < TOKEN_LENGTH; i++) {
-    code += TOKEN_CHARS[Math.floor(Math.random() * TOKEN_CHARS.length)];
+    code += TOKEN_CHARS[randomInt(TOKEN_CHARS.length)];
   }
   return code;
 }
@@ -25,12 +27,14 @@ function generateRedemptionToken(): string {
  * updates item to redeemed, returns token and timestamp.
  */
 export async function redeemChallengeItem(
-  challengeItemId: string,
-  userId: string
+  challengeItemId: string
 ): Promise<RedeemChallengeResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   try {
     if (redeemLimiter) {
-      const { success } = await redeemLimiter.limit(userId);
+      const { success } = await redeemLimiter.limit(auth.userId);
       if (!success) {
         return {
           ok: false,
@@ -87,7 +91,7 @@ export async function redeemChallengeItem(
     }
 
     const cycleRow = cycle as { id: string; user_id: string };
-    if (cycleRow.user_id !== userId) {
+    if (cycleRow.user_id !== auth.userId) {
       return { ok: false, error: 'This challenge does not belong to you.' };
     }
 
@@ -99,7 +103,7 @@ export async function redeemChallengeItem(
     const { data: redemption, error: insertErr } = await supabase
       .from('redemptions')
       .insert({
-        user_id: userId,
+        user_id: auth.userId,
         restaurant_id: challengeItem.restaurant_id,
         challenge_item_id: challengeItemId,
         token_hash: tokenHash,
@@ -130,7 +134,7 @@ export async function redeemChallengeItem(
     const redeemedAt =
       (redemption as { created_at: string } | null)?.created_at ?? new Date().toISOString();
 
-    await captureEvent(userId, 'challenge_redeemed', {
+    await captureEvent(auth.userId, 'challenge_redeemed', {
       challenge_item_id: challengeItemId,
       restaurant_id: challengeItem.restaurant_id,
     });

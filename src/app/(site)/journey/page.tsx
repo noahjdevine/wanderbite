@@ -43,7 +43,7 @@ export default async function JourneyPage({ searchParams }: JourneyPageProps) {
         {view === 'journey' ? (
           <JourneyContent userId={user.id} />
         ) : view === 'journal' ? (
-          <JournalContent userId={user.id} />
+          <JournalContent />
         ) : (
           <PassportContent userId={user.id} />
         )}
