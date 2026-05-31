@@ -2,13 +2,7 @@ import { UtensilsCrossed, Ticket, TrendingUp } from 'lucide-react';
 import { ClubSection } from '@/components/landing/club-section';
 import { HeroSlider } from '@/components/landing/hero-slider';
 
-type LandingPageProps = {
-  /** When provided, Club section shows Subscribe; otherwise Get Started → /signup */
-  userId?: string | null;
-  email?: string | null;
-};
-
-export function LandingPage({ userId, email }: LandingPageProps) {
+export function LandingPage() {
   return (
     <main className="min-h-screen bg-background">
       <div id="landing-continue">
@@ -56,7 +50,7 @@ export function LandingPage({ userId, email }: LandingPageProps) {
         </section>
 
         {/* Club / Pricing */}
-        <ClubSection userId={userId} email={email} />
+        <ClubSection />
       </div>
     </main>
   );

@@ -47,10 +47,9 @@ export function PricingClient({
 
   async function handleJoinClub() {
     if (!canSubscribe) return;
-    const safeEmail = email?.trim() ?? '';
     setLoading(true);
     try {
-      const result = await createCheckoutSession(userId!, safeEmail);
+      const result = await createCheckoutSession();
       if (result.ok) {
         window.location.href = result.url;
         return;

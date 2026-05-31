@@ -94,7 +94,7 @@ export default async function BillingPage() {
                 <p className="text-sm text-muted-foreground">
                   Update your payment method, view invoices, or cancel anytime in the Stripe portal.
                 </p>
-                <ManageSubscriptionButton userId={typedProfile.id} />
+                <ManageSubscriptionButton />
               </>
             ) : (
               <>

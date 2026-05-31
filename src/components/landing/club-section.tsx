@@ -13,23 +13,18 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { createCheckoutSession } from '@/app/actions/stripe';
+import { useSupabaseUser } from '@/hooks/use-supabase-user';
 
-type ClubSectionProps = {
-  /** When provided, show real Subscribe button; otherwise "Get Started" → /signup */
-  userId?: string | null;
-  email?: string | null;
-};
-
-export function ClubSection({ userId, email }: ClubSectionProps) {
+export function ClubSection() {
+  const { user } = useSupabaseUser();
   const [loading, setLoading] = useState(false);
-  const canSubscribe = userId && email?.trim();
+  const isSignedIn = Boolean(user);
 
   async function handleSubscribe() {
-    if (!canSubscribe) return;
-    const safeEmail = email?.trim() ?? '';
+    if (!isSignedIn) return;
     setLoading(true);
     try {
-      const result = await createCheckoutSession(userId, safeEmail);
+      const result = await createCheckoutSession();
       if (result.ok) {
         window.location.href = result.url;
         return;
@@ -65,7 +60,7 @@ export function ClubSection({ userId, email }: ClubSectionProps) {
               </p>
             </CardContent>
             <CardFooter className="justify-center">
-              {canSubscribe ? (
+              {isSignedIn ? (
                 <Button onClick={handleSubscribe} disabled={loading} size="lg">
                   {loading ? 'Redirecting…' : 'Subscribe for $15/mo'}
                 </Button>

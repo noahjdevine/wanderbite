@@ -15,11 +15,10 @@ import { Button } from '@/components/ui/button';
 import { createCheckoutSession } from '@/app/actions/stripe';
 
 type PaywallCardProps = {
-  userId: string;
   email: string | null;
 };
 
-export function PaywallCard({ userId, email }: PaywallCardProps) {
+export function PaywallCard({ email }: PaywallCardProps) {
   const [loading, setLoading] = useState(false);
 
   async function handleSubscribe() {
@@ -30,7 +29,7 @@ export function PaywallCard({ userId, email }: PaywallCardProps) {
     }
     setLoading(true);
     try {
-      const result = await createCheckoutSession(userId, safeEmail);
+      const result = await createCheckoutSession();
       if (result.ok) {
         window.location.href = result.url;
         return;
