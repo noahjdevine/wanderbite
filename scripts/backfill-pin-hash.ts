@@ -1,6 +1,8 @@
-import 'dotenv/config';
-
+import dotenv from 'dotenv';
+import path from 'path';
 import { createClient } from '@supabase/supabase-js';
+
+dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 import { hashPartnerPin } from '../src/lib/partner-pin';
 
