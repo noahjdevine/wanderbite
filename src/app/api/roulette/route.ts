@@ -208,6 +208,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // byId and the pickRandom(restaurants) fallback intentionally keep the FULL
+  // post-filter set; only Claude's candidate list is capped to bound prompt size.
   const byId = new Map(restaurants.map((r) => [r.id, r]));
 
   const params = {
@@ -216,7 +218,8 @@ export async function POST(request: NextRequest) {
     dietary: body.dietary?.trim() || undefined,
   };
 
-  const shuffledForPrompt = shuffleArray(restaurants);
+  const MAX_RESTAURANTS_IN_PROMPT = 50;
+  const shuffledForPrompt = shuffleArray(restaurants).slice(0, MAX_RESTAURANTS_IN_PROMPT);
 
   const listJson = JSON.stringify(
     shuffledForPrompt.map((r) => ({
