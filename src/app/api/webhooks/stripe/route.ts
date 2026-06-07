@@ -194,8 +194,9 @@ export async function POST(request: Request) {
         break;
     }
   } catch (err) {
-    Sentry.captureException(err);
+    Sentry.captureException(err, { tags: { webhook: 'stripe' } });
     console.error('Webhook handler error:', err);
+    await Sentry.flush(2000);
     return NextResponse.json(
       { error: 'Webhook handler failed' },
       { status: 500 }
