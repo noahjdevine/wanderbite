@@ -8,10 +8,7 @@ import {
   type DietaryQuickFlag,
 } from '@/lib/roulette-dietary';
 import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
-
-const RATE_WINDOW_MS = 60 * 60 * 1000;
-const RATE_MAX = 10;
-const rateBuckets = new Map<string, { count: number; resetAt: number }>();
+import { rouletteLimiter } from '@/lib/ratelimit';
 
 type RouletteRestaurant = {
   id: string;
@@ -43,18 +40,6 @@ function getClientIp(request: NextRequest): string {
     if (first) return first;
   }
   return request.headers.get('x-real-ip') ?? 'unknown';
-}
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  let bucket = rateBuckets.get(ip);
-  if (!bucket || now >= bucket.resetAt) {
-    rateBuckets.set(ip, { count: 1, resetAt: now + RATE_WINDOW_MS });
-    return true;
-  }
-  if (bucket.count >= RATE_MAX) return false;
-  bucket.count += 1;
-  return true;
 }
 
 function pickRandom<T>(arr: T[]): T {
@@ -110,12 +95,6 @@ function parseClaudeJson(text: string): ClaudePick | null {
 }
 
 export async function POST(request: NextRequest) {
-  console.log(
-    'ANTHROPIC_API_KEY present:',
-    !!process.env.ANTHROPIC_API_KEY
-  );
-  console.log('Supabase URL present:', !!process.env.NEXT_PUBLIC_SUPABASE_URL);
-
   const ip = getClientIp(request);
 
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -219,11 +198,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (!checkRateLimit(ip)) {
-    return NextResponse.json(
-      { error: 'Too many spins! Come back in an hour.' },
-      { status: 429 }
-    );
+  if (rouletteLimiter) {
+    const { success } = await rouletteLimiter.limit(ip);
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Too many spins! Come back in an hour.' },
+        { status: 429 }
+      );
+    }
   }
 
   const byId = new Map(restaurants.map((r) => [r.id, r]));
