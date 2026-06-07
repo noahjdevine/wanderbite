@@ -29,7 +29,7 @@ export default async function AdminPage() {
   const { data: rows, error } = await admin
     .from('restaurants')
     .select(
-      'id, name, slug, address, description, cuisine_tags, price_range, neighborhood, image_url, google_photo_url, verification_code, pin, status'
+      'id, name, slug, address, description, cuisine_tags, price_range, neighborhood, image_url, google_photo_url, pin_hash, status'
     )
     .order('name');
 
@@ -87,8 +87,7 @@ export default async function AdminPage() {
     neighborhood: string | null;
     image_url: string | null;
     google_photo_url: string | null;
-    verification_code: string | null;
-    pin: string | null;
+    pin_hash: string | null;
     status: string;
   };
   const restaurants = (rows ?? []).map((r) => {
@@ -104,8 +103,7 @@ export default async function AdminPage() {
       neighborhood: row.neighborhood ?? null,
       image_url: row.image_url ?? null,
       google_photo_url: row.google_photo_url ?? null,
-      verification_code: row.verification_code ?? null,
-      pin: row.pin ?? null,
+      pin_hash: row.pin_hash ?? null,
       status: row.status,
     };
   });
