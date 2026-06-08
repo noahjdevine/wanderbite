@@ -1,4 +1,5 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import type { Json } from '@/types/database.types';
 
 export type CronRunStatus = 'running' | 'success' | 'failed';
 
@@ -22,7 +23,7 @@ export async function completeCronRun(
   runId: number | null,
   params: {
     status: Exclude<CronRunStatus, 'running'>;
-    result?: unknown;
+    result?: Json;
     error?: string;
   }
 ): Promise<void> {

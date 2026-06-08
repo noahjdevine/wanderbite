@@ -1,8 +1,9 @@
+import * as Sentry from '@sentry/nextjs';
 import { format, startOfMonth } from 'date-fns';
 import { NextResponse } from 'next/server';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { beginCronRun, completeCronRun } from '@/lib/cron-runs';
-import { generateMonthlyChallenge } from '@/lib/challenges/generate';
+import { generateMonthlyChallengeForUser } from '@/lib/challenges/generate';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
@@ -69,7 +70,7 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const result = await generateMonthlyChallenge(userId, marketId);
+      const result = await generateMonthlyChallengeForUser(userId, marketId);
       if (result.ok) {
         succeeded++;
         outcomes.push({ userId, status: 'succeeded' });
@@ -77,6 +78,11 @@ export async function GET(request: Request) {
         failed++;
         outcomes.push({ userId, status: 'failed', error: result.error });
         console.error(`[cron] issue-monthly-challenges failed for ${userId}:`, result.error);
+        Sentry.captureMessage(`Challenge generation failed for user`, {
+          level: 'warning',
+          tags: { cron: 'issue-monthly-challenges', userId },
+          extra: { error: result.error },
+        });
       }
     }
 
@@ -89,7 +95,9 @@ export async function GET(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[cron] issue-monthly-challenges:', err);
+    Sentry.captureException(err, { tags: { cron: 'issue-monthly-challenges' } });
     await completeCronRun(runId, { status: 'failed', error: message });
+    await Sentry.flush(2000);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

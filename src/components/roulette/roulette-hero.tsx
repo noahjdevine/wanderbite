@@ -10,96 +10,31 @@ import {
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
-import {
-  ChevronDown,
-  ExternalLink,
-  Leaf,
-  Loader2,
-  MilkOff,
-  Share2,
-  ShieldCheck,
-} from 'lucide-react';
-import type { DietaryQuickFlag } from '@/lib/roulette-dietary';
+import { ChevronDown, ExternalLink, Loader2, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { shareOrCopy } from '@/lib/share';
 import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
 import type { RouletteApiResult } from '@/components/roulette/roulette-client';
 import { cuisineLabel, normalizeCuisineIds, type CuisineId } from '@/lib/cuisines';
+import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
+import {
+  buildRouletteSpinBody,
+  type RoulettePriceRange,
+  type RouletteTime,
+  type RouletteVibe,
+} from '@/lib/roulette-options';
+import {
+  RouletteOptionsFields,
+  type RouletteSelections,
+} from '@/components/roulette/roulette-options-fields';
 
-const VIBES = [
-  'Adventurous',
-  'Comfort Food',
-  'Date Night',
-  'Quick Bite',
-  'Special Occasion',
-] as const;
-
-const TIMES = ['Lunch', 'Dinner', 'Late Night'] as const;
-
-const DIETARY = [
-  'No restrictions',
-  'Vegetarian-friendly',
-  'Gluten-free options',
-] as const;
-
-const VIBE_PILLS: { label: string; value: (typeof VIBES)[number] }[] = [
-  { label: '🍕 Comfort Food', value: 'Comfort Food' },
-  { label: '🥂 Date Night', value: 'Date Night' },
-  { label: '🌶️ Adventurous', value: 'Adventurous' },
-  { label: '⚡ Quick Bite', value: 'Quick Bite' },
-  { label: '✨ Special Occasion', value: 'Special Occasion' },
-];
-
-const DIETARY_QUICK_PILLS: {
-  value: DietaryQuickFlag;
-  label: string;
-  Icon: typeof MilkOff;
-}[] = [
-  { value: 'dairy_free', label: 'Dairy-Free', Icon: MilkOff },
-  { value: 'vegan', label: 'Vegan', Icon: Leaf },
-  { value: 'halal', label: 'Halal', Icon: ShieldCheck },
-];
-
-function RefinePillGroup<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T | null;
-  onChange: (next: T | null) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <div className="flex flex-wrap justify-center gap-2">
-        {options.map((opt) => {
-          const selected = value === opt;
-          return (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => onChange(selected ? null : opt)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                selected
-                  ? 'border-primary bg-primary/15 text-primary shadow-sm'
-                  : 'border-border bg-background text-foreground hover:border-primary/40'
-              )}
-            >
-              {opt}
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+const EMPTY_SELECTIONS: RouletteSelections = {
+  vibe: null,
+  timeOfDay: null,
+  dietaryFlags: [],
+  priceRange: null,
+  preferredCuisine: null,
+};
 
 export function RouletteHero() {
   const wheelRef = useRef<HTMLDivElement>(null);
@@ -112,15 +47,10 @@ export function RouletteHero() {
   const resultSectionRef = useRef<HTMLDivElement>(null);
   const scrollCueHideTimeoutRef = useRef<number | null>(null);
 
-  const [quickVibe, setQuickVibe] = useState<(typeof VIBES)[number] | null>(null);
-  const [quickDietary, setQuickDietary] = useState<DietaryQuickFlag[]>([]);
+  const [selections, setSelections] = useState<RouletteSelections>(EMPTY_SELECTIONS);
   const [excludedCuisines, setExcludedCuisines] = useState<CuisineId[]>([]);
-  const [refineVibe, setRefineVibe] = useState<(typeof VIBES)[number] | null>(null);
-  const [timeOfDay, setTimeOfDay] = useState<(typeof TIMES)[number] | null>(null);
-  const [dietary, setDietary] = useState<(typeof DIETARY)[number] | null>(null);
 
   const [spinning, setSpinning] = useState(false);
-  const [allowRefine, setAllowRefine] = useState(false);
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [typedReason, setTypedReason] = useState('');
@@ -207,13 +137,8 @@ export function RouletteHero() {
       el.style.transition = 'none';
       el.style.transform = 'rotate(0deg)';
     }
-    setQuickVibe(null);
-    setQuickDietary([]);
-    setRefineVibe(null);
-    setTimeOfDay(null);
-    setDietary(null);
+    setSelections(EMPTY_SELECTIONS);
     setSpinning(false);
-    setAllowRefine(false);
     setResult(null);
     setErrorMessage(null);
     setTypedReason('');
@@ -243,22 +168,22 @@ export function RouletteHero() {
     setShowMobileScrollCue(true);
     modeRef.current = 'fast';
 
-    const vibeForApi =
-      refineVibe ?? quickVibe ?? undefined;
-
     const minWait = new Promise<void>((r) => setTimeout(r, 2000));
 
     const fetchPromise = (async () => {
       const res = await fetch('/api/roulette', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          vibe: vibeForApi,
-          timeOfDay: timeOfDay ?? undefined,
-          dietary: dietary ?? undefined,
-          dietaryQuick: quickDietary.length > 0 ? quickDietary : undefined,
-          excludedCuisines: excludedCuisines.length > 0 ? excludedCuisines : undefined,
-        }),
+        body: JSON.stringify(
+          buildRouletteSpinBody({
+            vibe: selections.vibe as RouletteVibe | null,
+            timeOfDay: selections.timeOfDay as RouletteTime | null,
+            dietaryFlags: selections.dietaryFlags as RouletteDietaryFlag[],
+            excludedCuisines,
+            priceRange: selections.priceRange as RoulettePriceRange | null,
+            preferredCuisine: selections.preferredCuisine,
+          })
+        ),
       });
       const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
       if (!res.ok) {
@@ -292,7 +217,6 @@ export function RouletteHero() {
       resultRevealTimeoutRef.current = window.setTimeout(() => {
         resultRevealTimeoutRef.current = null;
         setResult(data);
-        setAllowRefine(true);
         setSpinning(false);
       }, 2600);
     } catch (e) {
@@ -301,7 +225,7 @@ export function RouletteHero() {
       setShowMobileScrollCue(false);
       setErrorMessage(e instanceof Error ? e.message : 'Network error. Try again.');
     }
-  }, [dietary, excludedCuisines, quickDietary, quickVibe, refineVibe, runCoastStop, timeOfDay]);
+  }, [excludedCuisines, runCoastStop, selections]);
 
   /** After reveal: mobile anchors result to top of viewport (avoids crowding spin button); desktop stays centered. */
   useEffect(() => {
@@ -427,16 +351,6 @@ export function RouletteHero() {
           <p className="mt-4 max-w-md text-base text-muted-foreground sm:text-lg">
             Let Wanderbite Roulette decide. Powered by AI, built for adventure.
           </p>
-          {exclusionsSummary ? (
-            <p className="mt-2 max-w-md text-sm text-muted-foreground">
-              Honoring your cuisine exclusions:{' '}
-              <span className="font-medium text-foreground">{exclusionsSummary}</span>.{' '}
-              <Link href="/account" className="font-medium text-primary underline-offset-2 hover:underline">
-                Edit
-              </Link>
-            </p>
-          ) : null}
-
           <div className="relative mt-10 flex flex-col items-center md:mt-10">
             <div
               className="absolute -top-1 left-1/2 z-10 -translate-x-1/2"
@@ -459,60 +373,15 @@ export function RouletteHero() {
             </div>
           </div>
 
-          <div className="mt-8 flex w-full max-w-md flex-wrap justify-center gap-2">
-          {VIBE_PILLS.map((pill) => {
-            const on = quickVibe === pill.value;
-            return (
-              <button
-                key={pill.value}
-                type="button"
-                onClick={() =>
-                  setQuickVibe((v) => (v === pill.value ? null : pill.value))
-                }
-                className={cn(
-                  'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                  on
-                    ? 'border-primary bg-primary/15 text-primary shadow-sm'
-                    : 'border-violet-200/80 bg-white/80 text-foreground hover:border-primary/50'
-                )}
-              >
-                {pill.label}
-              </button>
-            );
-          })}
-          </div>
-
-          <div className="mt-6 w-full max-w-md space-y-2">
-            <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Dietary (optional, multi-select)
-            </p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {DIETARY_QUICK_PILLS.map(({ value, label, Icon }) => {
-                const on = quickDietary.includes(value);
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    onClick={() =>
-                      setQuickDietary((prev) =>
-                        prev.includes(value)
-                          ? prev.filter((f) => f !== value)
-                          : [...prev, value]
-                      )
-                    }
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                      on
-                        ? 'border-primary bg-primary/15 text-primary shadow-sm'
-                        : 'border-violet-200/80 bg-white/80 text-foreground hover:border-primary/50'
-                    )}
-                  >
-                    <Icon className="size-3.5 shrink-0" aria-hidden />
-                    {label}
-                  </button>
-                );
-              })}
-            </div>
+          <div className="mt-8 w-full max-w-md">
+            <RouletteOptionsFields
+              variant="hero"
+              selections={selections}
+              onChange={(patch) =>
+                setSelections((prev) => ({ ...prev, ...patch }))
+              }
+              exclusionsSummary={exclusionsSummary}
+            />
           </div>
 
           <Button
@@ -642,31 +511,6 @@ export function RouletteHero() {
           </div>
         ) : null}
 
-        {allowRefine ? (
-          <div className="mt-10 w-full max-w-md space-y-6 border-t border-violet-200/60 pt-8">
-            <p className="text-center text-sm font-semibold text-foreground">
-              Want more? Refine your spin:
-            </p>
-            <RefinePillGroup
-              label="Vibe (optional)"
-              options={VIBES}
-              value={refineVibe}
-              onChange={setRefineVibe}
-            />
-            <RefinePillGroup
-              label="Time (optional)"
-              options={TIMES}
-              value={timeOfDay}
-              onChange={setTimeOfDay}
-            />
-            <RefinePillGroup
-              label="Dietary (optional)"
-              options={DIETARY}
-              value={dietary}
-              onChange={setDietary}
-            />
-          </div>
-        ) : null}
       </div>
 
       <a

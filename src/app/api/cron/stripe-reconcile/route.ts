@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { verifyCronAuth } from '@/lib/cron-auth';
@@ -103,6 +104,11 @@ export async function GET(request: Request) {
             `[cron] stripe-reconcile update failed for ${row.id}:`,
             updateError.message
           );
+          Sentry.captureMessage('Stripe reconcile failed to update user_profile', {
+            level: 'warning',
+            tags: { cron: 'stripe-reconcile', userId: row.id },
+            extra: { error: updateError.message, stripeCustomerId: customerId },
+          });
         } else {
           fixed.push(record);
         }
@@ -134,7 +140,9 @@ export async function GET(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('[cron] stripe-reconcile:', err);
+    Sentry.captureException(err, { tags: { cron: 'stripe-reconcile' } });
     await completeCronRun(runId, { status: 'failed', error: message });
+    await Sentry.flush(2000);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

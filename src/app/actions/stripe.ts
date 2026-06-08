@@ -2,6 +2,7 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getStripe } from '@/lib/stripe';
+import { requireUser } from '@/lib/auth/require-user';
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
 const priceId = process.env.STRIPE_PRICE_ID ?? '';
@@ -19,15 +20,19 @@ export type CreateCheckoutSessionOptions = {
  * Creates a Stripe Checkout Session for subscription and returns the session URL.
  */
 export async function createCheckoutSession(
-  userId: string,
-  email: string,
   options?: CreateCheckoutSessionOptions
 ): Promise<CreateCheckoutSessionResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   if (!priceId) {
     return { ok: false, error: 'Stripe price is not configured.' };
   }
   if (!baseUrl) {
     return { ok: false, error: 'NEXT_PUBLIC_BASE_URL is not set.' };
+  }
+  if (auth.email === null) {
+    return { ok: false, error: 'Your account has no email on file.' };
   }
 
   const cancelPath = options?.cancelPath ?? '/pricing?canceled=true';
@@ -39,8 +44,8 @@ export async function createCheckoutSession(
       line_items: [{ price: priceId, quantity: 1 }],
       success_url: `${baseUrl}/checkout/success`,
       cancel_url,
-      customer_email: email,
-      metadata: { userId },
+      customer_email: auth.email,
+      metadata: { userId: auth.userId },
     });
 
     const url = session.url;
@@ -61,9 +66,10 @@ export type CreateBillingPortalSessionResult =
 /**
  * Creates a Stripe Customer Portal session so the user can manage subscription and payment methods.
  */
-export async function createBillingPortalSession(
-  userId: string
-): Promise<CreateBillingPortalSessionResult> {
+export async function createBillingPortalSession(): Promise<CreateBillingPortalSessionResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   if (!baseUrl) {
     return { ok: false, error: 'NEXT_PUBLIC_BASE_URL is not set.' };
   }
@@ -72,7 +78,7 @@ export async function createBillingPortalSession(
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
     .select('stripe_customer_id')
-    .eq('id', userId)
+    .eq('id', auth.userId)
     .maybeSingle();
 
   if (profileError || !profile) {

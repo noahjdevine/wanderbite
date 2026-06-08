@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { createClient } from '@/lib/supabase/server';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
+import { hashPartnerPin } from '@/lib/partner-pin';
 
 const SUPER_ADMIN_EMAIL = 'noah@wanderbite.com';
 
@@ -55,7 +56,8 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
     const neighborhood = (formData.get('neighborhood') as string)?.trim() ?? null;
     const image_url = (formData.get('image_url') as string)?.trim() ?? null;
     const verification_code = (formData.get('verification_code') as string)?.trim() ?? null;
-    const pin = (formData.get('pin') as string)?.trim() ?? null;
+    const pinRaw = (formData.get('pin') as string)?.trim() ?? '';
+    const pin_hash = pinRaw ? await hashPartnerPin(pinRaw) : null;
 
     const { data: org, error: orgErr } = await supabase
       .from('restaurant_orgs')
@@ -84,7 +86,7 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
       neighborhood,
       image_url,
       verification_code,
-      pin: pin || null,
+      pin_hash,
       status: 'active',
     });
 

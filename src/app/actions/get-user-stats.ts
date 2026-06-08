@@ -2,6 +2,7 @@
 
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireUser } from '@/lib/auth/require-user';
 
 const XP_PER_REDEMPTION = 100;
 
@@ -100,14 +101,17 @@ function getLevelInfo(xp: number): {
 /**
  * Fetches user stats: XP, level, and redemption history.
  */
-export async function getUserStats(userId: string): Promise<GetUserStatsResult> {
+export async function getUserStats(): Promise<GetUserStatsResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   try {
     const supabase = getSupabaseAdmin();
 
     const { data: redemptions, error } = await supabase
       .from('redemptions')
       .select('restaurant_id, verified_at, restaurants(name)')
-      .eq('user_id', userId)
+      .eq('user_id', auth.userId)
       .eq('status', 'verified')
       .order('verified_at', { ascending: false });
 
@@ -145,7 +149,7 @@ export async function getUserStats(userId: string): Promise<GetUserStatsResult> 
     const { data: userBadges, error: userBadgesErr } = await supabase
       .from('user_badges')
       .select('badge_id, awarded_at')
-      .eq('user_id', userId);
+      .eq('user_id', auth.userId);
 
     const userBadgesMap = new Map<string, string>();
     if (!userBadgesErr && userBadges) {

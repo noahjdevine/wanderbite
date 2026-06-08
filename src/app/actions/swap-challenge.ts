@@ -1,8 +1,10 @@
 'use server';
 
+import { randomInt } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireUser } from '@/lib/auth/require-user';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import type { UserPreferencesRow } from '@/types/user-preferences';
@@ -63,7 +65,7 @@ export type SwapChallengeResult =
 /** Shuffle array and return first element (for picking one replacement). */
 function pickOne<T>(array: T[]): T | undefined {
   if (array.length === 0) return undefined;
-  const i = Math.floor(Math.random() * array.length);
+  const i = randomInt(array.length);
   return array[i];
 }
 
@@ -72,9 +74,11 @@ function pickOne<T>(array: T[]): T | undefined {
  * Enforces: cycle belongs to user, swap_count_used < 1, same safety/cooldown filters.
  */
 export async function swapChallengeItem(
-  challengeItemId: string,
-  userId: string
+  challengeItemId: string
 ): Promise<SwapChallengeResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+
   try {
     const supabase = getSupabaseAdmin();
     const now = new Date();
@@ -118,8 +122,8 @@ export async function swapChallengeItem(
 
     const challengeCycle = cycle as ChallengeCycleRow;
 
-    // 3. Ensure cycle belongs to userId
-    if (challengeCycle.user_id !== userId) {
+    // 3. Ensure cycle belongs to the authenticated user
+    if (challengeCycle.user_id !== auth.userId) {
       return { ok: false, error: 'This challenge does not belong to you.' };
     }
 
@@ -160,12 +164,12 @@ export async function swapChallengeItem(
         supabase
           .from('user_profiles')
           .select('allergy_flags, dietary_flags')
-          .eq('id', userId)
+          .eq('id', auth.userId)
           .maybeSingle(),
         supabase
           .from('user_preferences')
           .select('excluded_cuisines')
-          .eq('user_id', userId)
+          .eq('user_id', auth.userId)
           .maybeSingle(),
       ]);
 
@@ -222,7 +226,7 @@ export async function swapChallengeItem(
     const { data: userRedemptions, error: redErr } = await supabase
       .from('redemptions')
       .select('id, restaurant_id, status, verified_at, created_at')
-      .eq('user_id', userId);
+      .eq('user_id', auth.userId);
 
     if (redErr) {
       return { ok: false, error: `Failed to load redemptions: ${redErr.message}` };

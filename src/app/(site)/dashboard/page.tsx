@@ -23,7 +23,7 @@ export default async function DashboardPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, email, dietary_flags, subscription_status')
+    .select('id, subscription_status')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -41,8 +41,6 @@ export default async function DashboardPage() {
 
   const typedProfile = profile as {
     id: string;
-    email: string | null;
-    dietary_flags: string[] | null;
     subscription_status: string | null;
   };
 
@@ -72,7 +70,7 @@ export default async function DashboardPage() {
 
   let currentChallenge = null;
   try {
-    currentChallenge = await getCurrentChallenge(typedProfile.id);
+    currentChallenge = await getCurrentChallenge();
   } catch {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
@@ -85,7 +83,7 @@ export default async function DashboardPage() {
 
   const streak = await calculateStreak(typedProfile.id);
 
-  const biteNotesRes = await getBiteNotes(typedProfile.id);
+  const biteNotesRes = await getBiteNotes();
   const biteNotesForDash =
     biteNotesRes.ok
       ? biteNotesRes.data.map((b) => ({
@@ -107,11 +105,6 @@ export default async function DashboardPage() {
           Culinary Adventure Awaits
         </h1>
         <DashboardClient
-          testUser={{
-            id: typedProfile.id,
-            email: typedProfile.email,
-            dietary_flags: typedProfile.dietary_flags,
-          }}
           marketId={marketRow.id}
           currentChallenge={currentChallenge}
           streak={streak}

@@ -81,7 +81,7 @@ export function AccountClient({
             : 'Status: No active subscription'}
         </p>
         <div className="mt-6">
-          <ManageSubscriptionButton userId={initial.userId} />
+          <ManageSubscriptionButton />
         </div>
       </section>
 

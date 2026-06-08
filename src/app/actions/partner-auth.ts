@@ -1,6 +1,6 @@
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { verifyPartnerPin } from '@/lib/partner-pin';
 import { partnerLoginLimiter } from '@/lib/ratelimit';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -23,7 +23,11 @@ export async function loginPartner(
   }
 
   if (partnerLoginLimiter) {
-    const { success } = await partnerLoginLimiter.limit(restaurantId);
+    const hdrs = await headers();
+    const forwarded = hdrs.get('x-forwarded-for') ?? '';
+    const ip = forwarded.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
+    const key = `${restaurantId}:${ip}`;
+    const { success } = await partnerLoginLimiter.limit(key);
     if (!success) {
       return {
         ok: false,

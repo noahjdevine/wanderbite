@@ -58,7 +58,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
     redirect('/onboarding');
   }
 
-  const statsResult = await getUserStats(userId);
+  const statsResult = await getUserStats();
   if (!statsResult.ok) {
     return <p className="text-destructive">{statsResult.error}</p>;
   }

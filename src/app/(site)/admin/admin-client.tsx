@@ -54,8 +54,7 @@ type RestaurantRow = {
   neighborhood: string | null;
   image_url: string | null;
   google_photo_url: string | null;
-  verification_code: string | null;
-  pin: string | null;
+  pin_hash: string | null;
   status: string;
 };
 
@@ -857,7 +856,7 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
                       </TableCell>
                       <TableCell className="text-sm">{r.neighborhood ?? '—'}</TableCell>
                       <TableCell className="text-sm">{r.price_range ?? '—'}</TableCell>
-                      <TableCell className="text-sm">{r.pin ? 'Yes' : '—'}</TableCell>
+                      <TableCell className="text-sm">{r.pin_hash ? 'Yes' : '—'}</TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-2">
                           <Button

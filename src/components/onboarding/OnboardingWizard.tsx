@@ -79,8 +79,7 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
     setJoining(true);
     setCheckoutCanceled(false);
     try {
-      const safeEmail = initial.email?.trim() ?? '';
-      const res = await createCheckoutSession(initial.userId, safeEmail, {
+      const res = await createCheckoutSession({
         cancelPath: '/onboarding?canceled=true',
       });
       if (!res.ok) {

@@ -5,17 +5,13 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { createBillingPortalSession } from '@/app/actions/stripe';
 
-type ManageSubscriptionButtonProps = {
-  userId: string;
-};
-
-export function ManageSubscriptionButton({ userId }: ManageSubscriptionButtonProps) {
+export function ManageSubscriptionButton() {
   const [loading, setLoading] = useState(false);
 
   async function handleManage() {
     setLoading(true);
     try {
-      const result = await createBillingPortalSession(userId);
+      const result = await createBillingPortalSession();
       if (result.ok) {
         window.location.href = result.url;
         return;

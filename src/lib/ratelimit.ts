@@ -42,3 +42,12 @@ export const passwordResetLimiter = redis
       prefix: 'wanderbite:password-reset',
     })
   : null;
+
+/** 10 spins per hour per IP. Roulette is expensive (DB read + LLM call). */
+export const rouletteLimiter = redis
+  ? new Ratelimit({
+      redis,
+      limiter: Ratelimit.slidingWindow(10, '1 h'),
+      prefix: 'wanderbite:roulette',
+    })
+  : null;

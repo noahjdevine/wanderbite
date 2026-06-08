@@ -1,4 +1,5 @@
 ﻿
+import { randomInt } from 'node:crypto';
 import * as Sentry from '@sentry/nextjs';
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -83,7 +84,7 @@ export type GenerateChallengeResult =
  * Fetches the current month's challenge for a user (for display).
  * Returns null if no active cycle for this month.
  */
-export async function getCurrentChallenge(
+export async function getCurrentChallengeForUser(
   userId: string
 ): Promise<GeneratedChallenge | null> {
   const supabase = getSupabaseAdmin();
@@ -104,11 +105,17 @@ export async function getCurrentChallenge(
   return { cycle: cycle as ChallengeCycleRow, items };
 }
 
-/** Shuffle array in place (FisherΓÇôYates) and return. */
+/** Unbiased FisherΓÇôYates shuffle over a copy of the input.
+ *
+ * Restaurant selection, NOT a security token. We use a crypto RNG (node:crypto
+ * `randomInt`, which is rejection-sampled and therefore free of modulo bias)
+ * only to satisfy the `src/lib/challenges/**` crypto rule while keeping the
+ * distribution uniform.
+ */
 function shuffle<T>(array: T[]): T[] {
   const out = [...array];
   for (let i = out.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = randomInt(i + 1);
     [out[i], out[j]] = [out[j], out[i]];
   }
   return out;
@@ -130,7 +137,7 @@ const CHALLENGE_ITEMS_PER_MONTH = 2;
  * 6-month cooldown, 2 redemptions/restaurant/12mo, capacity.
  * Generates exactly CHALLENGE_ITEMS_PER_MONTH distinct restaurants (no duplicates).
  */
-export async function generateMonthlyChallenge(
+export async function generateMonthlyChallengeForUser(
   userId: string,
   marketId: string
 ): Promise<GenerateChallengeResult> {
