@@ -19,11 +19,6 @@ export type NavItem = {
   activePaths?: readonly string[];
 };
 
-/** Resolve Wanderbite Roulette link (homepage anchor vs standalone page). */
-export function resolveRouletteHref(pathname: string): string {
-  return pathname === '/' ? '/#roulette' : '/roulette';
-}
-
 /** Public nav — identical on desktop and mobile when logged out. */
 export const PUBLIC_NAV_ITEMS: NavItem[] = [
   { href: '/', label: 'Home', icon: Home },
@@ -56,10 +51,7 @@ export const MEMBER_NAV_ITEMS: NavItem[] = [
   },
 ];
 
-export function resolveNavHref(item: NavItem, pathname: string): string {
-  if (item.href === '/roulette') {
-    return resolveRouletteHref(pathname);
-  }
+export function resolveNavHref(item: NavItem): string {
   return item.href;
 }
 

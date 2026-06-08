@@ -17,6 +17,7 @@ import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-event
 import type { RouletteApiResult } from '@/components/roulette/roulette-client';
 import { cuisineLabel, normalizeCuisineIds, type CuisineId } from '@/lib/cuisines';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
+import { postRouletteSpin } from '@/lib/roulette-api-client';
 import {
   buildRouletteSpinBody,
   type RoulettePriceRange,
@@ -171,41 +172,20 @@ export function RouletteHero() {
     const minWait = new Promise<void>((r) => setTimeout(r, 2000));
 
     const fetchPromise = (async () => {
-      const res = await fetch('/api/roulette', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          buildRouletteSpinBody({
-            vibe: selections.vibe as RouletteVibe | null,
-            timeOfDay: selections.timeOfDay as RouletteTime | null,
-            dietaryFlags: selections.dietaryFlags as RouletteDietaryFlag[],
-            excludedCuisines,
-            priceRange: selections.priceRange as RoulettePriceRange | null,
-            preferredCuisine: selections.preferredCuisine,
-          })
-        ),
-      });
-      const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
-      if (!res.ok) {
-        throw new Error(data.error ?? 'Something went wrong. Please try again.');
+      const result = await postRouletteSpin(
+        buildRouletteSpinBody({
+          vibe: selections.vibe as RouletteVibe | null,
+          timeOfDay: selections.timeOfDay as RouletteTime | null,
+          dietaryFlags: selections.dietaryFlags as RouletteDietaryFlag[],
+          excludedCuisines,
+          priceRange: selections.priceRange as RoulettePriceRange | null,
+          preferredCuisine: selections.preferredCuisine,
+        })
+      );
+      if (!result.ok) {
+        throw new Error(result.error);
       }
-      if (!data.restaurantId || !data.restaurantName || !data.reason) {
-        throw new Error('We got an unexpected response. Please try again.');
-      }
-      const picked: RouletteApiResult = {
-        restaurantId: data.restaurantId,
-        restaurantName: data.restaurantName,
-        reason: data.reason,
-        vibeMatch: data.vibeMatch ?? null,
-        suggestedDish: data.suggestedDish ?? null,
-        cuisine_tags: data.cuisine_tags ?? null,
-        neighborhood: data.neighborhood ?? null,
-        address: data.address ?? null,
-        image_url: data.image_url ?? null,
-        google_photo_url: data.google_photo_url ?? null,
-        google_place_id: data.google_place_id ?? null,
-      };
-      return picked;
+      return result.data;
     })();
 
     try {

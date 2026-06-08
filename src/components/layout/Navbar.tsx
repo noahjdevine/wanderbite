@@ -26,7 +26,7 @@ export function Navbar() {
 
         <div className="flex min-w-0 flex-1 items-center justify-center gap-8">
           {items.map((item) => {
-            const href = resolveNavHref(item, pathname);
+            const href = resolveNavHref(item);
             const active = isNavItemActive(item, pathname);
             const Icon = item.icon;
             return (
