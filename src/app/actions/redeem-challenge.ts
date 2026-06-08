@@ -6,7 +6,7 @@ import { captureEvent } from '@/lib/posthog-server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { encryptRedemptionCode } from '@/lib/redemption-crypto';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
-import { redeemLimiter } from '@/lib/ratelimit';
+import { checkRateLimit, redeemLimiter } from '@/lib/ratelimit';
 import { requireUser } from '@/lib/auth/require-user';
 import type { RedeemChallengeResult } from '@/types/redeem-challenge';
 
@@ -33,14 +33,12 @@ export async function redeemChallengeItem(
   if (!auth.ok) return { ok: false, error: auth.error };
 
   try {
-    if (redeemLimiter) {
-      const { success } = await redeemLimiter.limit(auth.userId);
-      if (!success) {
-        return {
-          ok: false,
-          error: 'Too many attempts. Please try again later.',
-        };
-      }
+    const redeemAllowed = await checkRateLimit(redeemLimiter, auth.userId);
+    if (!redeemAllowed) {
+      return {
+        ok: false,
+        error: 'Too many attempts. Please try again later.',
+      };
     }
 
     const supabase = getSupabaseAdmin();

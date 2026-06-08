@@ -2,7 +2,7 @@
 
 import { captureEvent } from '@/lib/posthog-server';
 import { createClient } from '@/lib/supabase/server';
-import { passwordResetLimiter } from '@/lib/ratelimit';
+import { checkRateLimit, passwordResetLimiter } from '@/lib/ratelimit';
 
 const baseUrl =
   process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
@@ -33,14 +33,12 @@ export async function sendPasswordResetEmail(
     return { ok: false, error: 'NEXT_PUBLIC_SITE_URL or NEXT_PUBLIC_BASE_URL is not set.' };
   }
 
-  if (passwordResetLimiter) {
-    const { success } = await passwordResetLimiter.limit(trimmed);
-    if (!success) {
-      return {
-        ok: false,
-        error: 'Too many attempts. Please try again later.',
-      };
-    }
+  const resetAllowed = await checkRateLimit(passwordResetLimiter, trimmed);
+  if (!resetAllowed) {
+    return {
+      ok: false,
+      error: 'Too many attempts. Please try again later.',
+    };
   }
 
   try {

@@ -2,7 +2,7 @@
 
 import { cookies, headers } from 'next/headers';
 import { verifyPartnerPin } from '@/lib/partner-pin';
-import { partnerLoginLimiter } from '@/lib/ratelimit';
+import { checkRateLimit, partnerLoginLimiter } from '@/lib/ratelimit';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 const PARTNER_COOKIE_NAME = 'partner_restaurant_id';
@@ -22,18 +22,18 @@ export async function loginPartner(
     return { ok: false, error: 'Select a restaurant and enter your PIN.' };
   }
 
-  if (partnerLoginLimiter) {
-    const hdrs = await headers();
-    const forwarded = hdrs.get('x-forwarded-for') ?? '';
-    const ip = forwarded.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
-    const key = `${restaurantId}:${ip}`;
-    const { success } = await partnerLoginLimiter.limit(key);
-    if (!success) {
-      return {
-        ok: false,
-        error: 'Too many attempts. Please try again later.',
-      };
-    }
+  const hdrs = await headers();
+  const forwarded = hdrs.get('x-forwarded-for') ?? '';
+  const ip = forwarded.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
+  const loginAllowed = await checkRateLimit(
+    partnerLoginLimiter,
+    `${restaurantId}:${ip}`
+  );
+  if (!loginAllowed) {
+    return {
+      ok: false,
+      error: 'Too many attempts. Please try again later.',
+    };
   }
 
   const admin = getSupabaseAdmin();

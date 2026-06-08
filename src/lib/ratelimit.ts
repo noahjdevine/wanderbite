@@ -1,20 +1,22 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 
-const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
+const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
 
-if (!redisUrl) {
+if (!redisUrl || !redisToken) {
   console.warn(
-    '[ratelimit] UPSTASH_REDIS_REST_URL is not set; rate limiting disabled.'
+    '[ratelimit] UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN is not set; rate limiting disabled.'
   );
 }
 
-const redis = redisUrl
-  ? new Redis({
-      url: redisUrl,
-      token: process.env.UPSTASH_REDIS_REST_TOKEN ?? '',
-    })
-  : null;
+const redis =
+  redisUrl && redisToken
+    ? new Redis({
+        url: redisUrl,
+        token: redisToken,
+      })
+    : null;
 
 /** 5 attempts per 15 minutes (keyed by caller, e.g. restaurantId for partner login). */
 export const partnerLoginLimiter = redis
@@ -51,3 +53,21 @@ export const rouletteLimiter = redis
       prefix: 'wanderbite:roulette',
     })
   : null;
+
+/**
+ * Returns true when the request should proceed.
+ * On Upstash auth/outage errors, fails open so product flows keep working.
+ */
+export async function checkRateLimit(
+  limiter: Ratelimit | null,
+  key: string
+): Promise<boolean> {
+  if (!limiter) return true;
+  try {
+    const { success } = await limiter.limit(key);
+    return success;
+  } catch (err) {
+    console.error('[ratelimit] Upstash error — allowing request:', err);
+    return true;
+  }
+}

@@ -13,7 +13,7 @@ import {
   restaurantHasExcludedCuisine,
 } from '@/lib/cuisines';
 import { isRoulettePriceRange } from '@/lib/roulette-options';
-import { rouletteLimiter } from '@/lib/ratelimit';
+import { checkRateLimit, rouletteLimiter } from '@/lib/ratelimit';
 
 export const dynamic = 'force-dynamic';
 /** Claude + DB can exceed the default 10s serverless limit on cold starts. */
@@ -169,14 +169,12 @@ export async function POST(request: NextRequest) {
     ? body.excludedCuisines.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : [];
 
-  if (rouletteLimiter) {
-    const { success } = await rouletteLimiter.limit(ip);
-    if (!success) {
-      return NextResponse.json(
-        { error: 'Too many spins! Come back in an hour.' },
-        { status: 429 }
-      );
-    }
+  const spinAllowed = await checkRateLimit(rouletteLimiter, ip);
+  if (!spinAllowed) {
+    return NextResponse.json(
+      { error: 'Too many spins! Come back in an hour.' },
+      { status: 429 }
+    );
   }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
