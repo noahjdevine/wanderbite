@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { ExternalLink, UtensilsCrossed } from 'lucide-react';
 import { normalizeCuisineIds, cuisineLabel, type CuisineId } from '@/lib/cuisines';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
+import { postRouletteSpin } from '@/lib/roulette-api-client';
 import { buildRouletteSpinBody } from '@/lib/roulette-options';
 import type { RoulettePriceRange, RouletteTime, RouletteVibe } from '@/lib/roulette-options';
 import {
@@ -151,46 +152,23 @@ export function RouletteClient() {
     setErrorMessage(null);
     setResult(null);
     try {
-      const res = await fetch('/api/roulette', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(
-          buildRouletteSpinBody({
-            vibe: selections.vibe as RouletteVibe | null,
-            timeOfDay: selections.timeOfDay as RouletteTime | null,
-            dietaryFlags: selections.dietaryFlags as RouletteDietaryFlag[],
-            excludedCuisines,
-            priceRange: selections.priceRange as RoulettePriceRange | null,
-            preferredCuisine: selections.preferredCuisine,
-          })
-        ),
-      });
-      const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
-      if (!res.ok) {
-        setErrorMessage(data.error ?? 'Something went wrong. Please try again.');
+      const spinResult = await postRouletteSpin(
+        buildRouletteSpinBody({
+          vibe: selections.vibe as RouletteVibe | null,
+          timeOfDay: selections.timeOfDay as RouletteTime | null,
+          dietaryFlags: selections.dietaryFlags as RouletteDietaryFlag[],
+          excludedCuisines,
+          priceRange: selections.priceRange as RoulettePriceRange | null,
+          preferredCuisine: selections.preferredCuisine,
+        })
+      );
+      if (!spinResult.ok) {
+        setErrorMessage(spinResult.error);
         setShowMobileScrollCue(false);
         setPhase('error');
         return;
       }
-      if (!data.restaurantId || !data.restaurantName || !data.reason) {
-        setErrorMessage('We got an unexpected response. Please try Wanderbite Roulette again.');
-        setShowMobileScrollCue(false);
-        setPhase('error');
-        return;
-      }
-      setResult({
-        restaurantId: data.restaurantId,
-        restaurantName: data.restaurantName,
-        reason: data.reason,
-        vibeMatch: data.vibeMatch ?? null,
-        suggestedDish: data.suggestedDish ?? null,
-        cuisine_tags: data.cuisine_tags ?? null,
-        neighborhood: data.neighborhood ?? null,
-        address: data.address ?? null,
-        image_url: data.image_url ?? null,
-        google_photo_url: data.google_photo_url ?? null,
-        google_place_id: data.google_place_id ?? null,
-      });
+      setResult(spinResult.data);
       setPhase('result');
     } catch {
       setErrorMessage('Network error. Check your connection and try again.');

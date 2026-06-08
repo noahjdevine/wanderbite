@@ -91,7 +91,7 @@ export function MobileNav() {
           >
             <ul className="space-y-1">
               {items.map((item) => {
-                const href = resolveNavHref(item, pathname);
+                const href = resolveNavHref(item);
                 const active = isNavItemActive(item, pathname);
                 const Icon = item.icon;
                 return (

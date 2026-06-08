@@ -15,6 +15,10 @@ import {
 import { isRoulettePriceRange } from '@/lib/roulette-options';
 import { rouletteLimiter } from '@/lib/ratelimit';
 
+export const dynamic = 'force-dynamic';
+/** Claude + DB can exceed the default 10s serverless limit on cold starts. */
+export const maxDuration = 60;
+
 type RouletteRestaurant = {
   id: string;
   name: string;
@@ -101,6 +105,7 @@ function parseClaudeJson(text: string): ClaudePick | null {
 }
 
 export async function POST(request: NextRequest) {
+  try {
   const ip = getClientIp(request);
 
   const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
@@ -356,4 +361,11 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
     google_photo_url: chosen.google_photo_url,
     google_place_id: chosen.google_place_id,
   });
+  } catch (err) {
+    console.error('[roulette] unhandled:', err);
+    return NextResponse.json(
+      { error: 'Something went wrong. Please try again.' },
+      { status: 500 }
+    );
+  }
 }
