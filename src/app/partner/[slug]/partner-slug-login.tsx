@@ -10,14 +10,21 @@ import { loginPartner } from '@/app/actions/partner-auth';
 type PartnerSlugLoginProps = {
   restaurantId: string;
   restaurantName: string;
+  mode?: 'dashboard' | 'redeem';
+  redirectSlug?: string;
+  initialCode?: string | null;
 };
 
 export function PartnerSlugLogin({
   restaurantId,
   restaurantName,
+  mode = 'dashboard',
+  redirectSlug,
+  initialCode,
 }: PartnerSlugLoginProps) {
   const router = useRouter();
   const [pin, setPin] = useState('');
+  const [rememberDevice, setRememberDevice] = useState(mode === 'redeem');
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -29,10 +36,17 @@ export function PartnerSlugLogin({
     }
     setLoading(true);
     try {
-      const result = await loginPartner(restaurantId, trimmed);
+      const result = await loginPartner(restaurantId, trimmed, { rememberDevice });
       if (result.ok) {
         toast.success(`Welcome, ${result.restaurantName}`);
-        router.refresh();
+        if (mode === 'redeem' && redirectSlug) {
+          const params = initialCode
+            ? `?code=${encodeURIComponent(initialCode.trim().toUpperCase())}`
+            : '';
+          router.push(`/partner/${redirectSlug}/redeem${params}`);
+        } else {
+          router.refresh();
+        }
       } else {
         const err = result.error ?? '';
         toast.error(
@@ -42,9 +56,7 @@ export function PartnerSlugLogin({
         );
       }
     } catch {
-      toast.error(
-        'Invalid PIN. Please contact support@wanderbite.com'
-      );
+      toast.error('Invalid PIN. Please contact support@wanderbite.com');
     } finally {
       setLoading(false);
     }
@@ -57,7 +69,9 @@ export function PartnerSlugLogin({
           Welcome, {restaurantName}
         </p>
         <p className="text-sm text-muted-foreground">
-          Enter your PIN to access your Wanderbite partner dashboard
+          {mode === 'redeem'
+            ? 'Sign in to verify guest codes (bookmark this page for your host stand).'
+            : 'Enter your PIN to access your Wanderbite partner dashboard'}
         </p>
       </CardHeader>
       <CardContent>
@@ -81,6 +95,16 @@ export function PartnerSlugLogin({
               disabled={loading}
             />
           </div>
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={rememberDevice}
+              onChange={(e) => setRememberDevice(e.target.checked)}
+              className="mt-0.5"
+              disabled={loading}
+            />
+            <span>Keep me signed in on this device (recommended for host iPad)</span>
+          </label>
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? 'Logging in…' : 'Log In'}
           </Button>

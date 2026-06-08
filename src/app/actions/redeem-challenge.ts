@@ -111,7 +111,7 @@ export async function redeemChallengeItem(
         code_iv: iv,
         status: 'issued',
       })
-      .select('created_at')
+      .select('id, created_at')
       .single();
 
     if (insertErr) {
@@ -132,7 +132,13 @@ export async function redeemChallengeItem(
     revalidatePath('/challenges');
 
     const redeemedAt =
-      (redemption as { created_at: string } | null)?.created_at ?? new Date().toISOString();
+      (redemption as { created_at: string; id: string } | null)?.created_at ??
+      new Date().toISOString();
+    const redemptionId = (redemption as { id: string } | null)?.id;
+
+    if (!redemptionId) {
+      return { ok: false, error: 'Failed to create redemption.' };
+    }
 
     await captureEvent(auth.userId, 'challenge_redeemed', {
       challenge_item_id: challengeItemId,
@@ -141,7 +147,7 @@ export async function redeemChallengeItem(
 
     return {
       ok: true,
-      data: { token, redeemedAt },
+      data: { token, redeemedAt, redemptionId },
     };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
