@@ -19,6 +19,9 @@ export const dynamic = 'force-dynamic';
 /** Claude + DB can exceed the default 10s serverless limit on cold starts. */
 export const maxDuration = 60;
 
+/** Stay under Vercel Hobby's ~10s cap; fall back to a random pick if Claude is slow. */
+const ANTHROPIC_TIMEOUT_MS = 7_000;
+
 type RouletteRestaurant = {
   id: string;
   name: string;
@@ -104,6 +107,19 @@ function parseClaudeJson(text: string): ClaudePick | null {
   return null;
 }
 
+function extractAnthropicText(raw: string): string {
+  if (!raw.trim()) return '';
+  try {
+    const anthropicJson = JSON.parse(raw) as {
+      content?: { type: string; text?: string }[];
+    };
+    const block = anthropicJson.content?.find((c) => c.type === 'text');
+    return block?.text ?? '';
+  } catch {
+    return '';
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
   const ip = getClientIp(request);
@@ -152,6 +168,16 @@ export async function POST(request: NextRequest) {
   const excludedCuisines: string[] = Array.isArray(body.excludedCuisines)
     ? body.excludedCuisines.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
     : [];
+
+  if (rouletteLimiter) {
+    const { success } = await rouletteLimiter.limit(ip);
+    if (!success) {
+      return NextResponse.json(
+        { error: 'Too many spins! Come back in an hour.' },
+        { status: 429 }
+      );
+    }
+  }
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -216,16 +242,6 @@ export async function POST(request: NextRequest) {
             'No restaurants match your exclusions right now. Try removing one exclusion, or we may still be tagging partners — check back soon.',
         },
         { status: 404 }
-      );
-    }
-  }
-
-  if (rouletteLimiter) {
-    const { success } = await rouletteLimiter.limit(ip);
-    if (!success) {
-      return NextResponse.json(
-        { error: 'Too many spins! Come back in an hour.' },
-        { status: 429 }
       );
     }
   }
@@ -301,6 +317,8 @@ User preferences (each line may be absent — use judgment when absent):
 ${userPrefs || '(No specific preferences — pick a varied, fun standout for a night out.)'}`;
 
   let claudeText = '';
+  const anthropicController = new AbortController();
+  const anthropicTimeout = setTimeout(() => anthropicController.abort(), ANTHROPIC_TIMEOUT_MS);
   try {
     const anthropicRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -311,26 +329,28 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 500,
+        max_tokens: 300,
         temperature: 1,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       }),
+      signal: anthropicController.signal,
     });
 
+    const anthropicRaw = await anthropicRes.text();
     if (!anthropicRes.ok) {
-      const errText = await anthropicRes.text();
-      console.error('[roulette] anthropic', anthropicRes.status, errText.slice(0, 500));
+      console.error('[roulette] anthropic', anthropicRes.status, anthropicRaw.slice(0, 500));
       throw new Error('anthropic_failed');
     }
 
-    const anthropicJson = (await anthropicRes.json()) as {
-      content?: { type: string; text?: string }[];
-    };
-    const block = anthropicJson.content?.find((c) => c.type === 'text');
-    claudeText = block?.text ?? '';
-  } catch {
+    claudeText = extractAnthropicText(anthropicRaw);
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      console.warn('[roulette] anthropic timeout — using random fallback');
+    }
     claudeText = '';
+  } finally {
+    clearTimeout(anthropicTimeout);
   }
 
   let pick = claudeText ? parseClaudeJson(claudeText) : null;
