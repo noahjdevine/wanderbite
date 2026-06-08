@@ -8,42 +8,15 @@ import {
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { cn } from '@/lib/utils';
+import { ExternalLink, UtensilsCrossed } from 'lucide-react';
+import { normalizeCuisineIds, cuisineLabel, type CuisineId } from '@/lib/cuisines';
+import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
+import { buildRouletteSpinBody } from '@/lib/roulette-options';
+import type { RoulettePriceRange, RouletteTime, RouletteVibe } from '@/lib/roulette-options';
 import {
-  ExternalLink,
-  Leaf,
-  MilkOff,
-  ShieldCheck,
-  UtensilsCrossed,
-} from 'lucide-react';
-import type { DietaryQuickFlag } from '@/lib/roulette-dietary';
-import { cuisineLabel, normalizeCuisineIds, type CuisineId } from '@/lib/cuisines';
-
-const VIBES = [
-  'Adventurous',
-  'Comfort Food',
-  'Date Night',
-  'Quick Bite',
-  'Special Occasion',
-] as const;
-
-const TIMES = ['Lunch', 'Dinner', 'Late Night'] as const;
-
-const DIETARY = [
-  'No restrictions',
-  'Vegetarian-friendly',
-  'Gluten-free options',
-] as const;
-
-const DIETARY_QUICK_PILLS: {
-  value: DietaryQuickFlag;
-  label: string;
-  Icon: typeof MilkOff;
-}[] = [
-  { value: 'dairy_free', label: 'Dairy-Free', Icon: MilkOff },
-  { value: 'vegan', label: 'Vegan', Icon: Leaf },
-  { value: 'halal', label: 'Halal', Icon: ShieldCheck },
-];
+  RouletteOptionsFields,
+  type RouletteSelections,
+} from '@/components/roulette/roulette-options-fields';
 
 export type RouletteApiResult = {
   restaurantId: string;
@@ -60,6 +33,14 @@ export type RouletteApiResult = {
 };
 
 type Phase = 'form' | 'loading' | 'result' | 'error';
+
+const EMPTY_SELECTIONS: RouletteSelections = {
+  vibe: null,
+  timeOfDay: null,
+  dietaryFlags: [],
+  priceRange: null,
+  preferredCuisine: null,
+};
 
 function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   const [src, setSrc] = useState(() =>
@@ -83,46 +64,6 @@ function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
         style={{ objectFit: 'cover' }}
         onError={() => setSrc(RESTAURANT_IMAGE_PLACEHOLDER)}
       />
-    </div>
-  );
-}
-
-function PillGroup<T extends string>({
-  label,
-  options,
-  value,
-  onChange,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T | null;
-  onChange: (next: T | null) => void;
-}) {
-  return (
-    <div className="space-y-2">
-      <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
-      <div className="flex flex-wrap justify-center gap-2">
-        {options.map((opt) => {
-          const selected = value === opt;
-          return (
-            <button
-              key={opt}
-              type="button"
-              onClick={() => onChange(selected ? null : opt)}
-              className={cn(
-                'rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                selected
-                  ? 'border-[#E85D26] bg-[#E85D26] text-white shadow-sm'
-                  : 'border-border bg-background text-foreground hover:border-[#E85D26]/50'
-              )}
-            >
-              {opt}
-            </button>
-          );
-        })}
-      </div>
     </div>
   );
 }
@@ -173,16 +114,12 @@ export function RouletteClient() {
   const scrollCueHideTimeoutRef = useRef<number | null>(null);
 
   const [phase, setPhase] = useState<Phase>('form');
-  const [vibe, setVibe] = useState<(typeof VIBES)[number] | null>(null);
-  const [quickDietary, setQuickDietary] = useState<DietaryQuickFlag[]>([]);
+  const [selections, setSelections] = useState<RouletteSelections>(EMPTY_SELECTIONS);
   const [excludedCuisines, setExcludedCuisines] = useState<CuisineId[]>([]);
-  const [timeOfDay, setTimeOfDay] = useState<(typeof TIMES)[number] | null>(null);
-  const [dietary, setDietary] = useState<(typeof DIETARY)[number] | null>(null);
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showMobileScrollCue, setShowMobileScrollCue] = useState(false);
 
-  // Optional: if the user is logged in, honor their saved exclusions automatically.
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem('wb_excluded_cuisines');
@@ -217,13 +154,16 @@ export function RouletteClient() {
       const res = await fetch('/api/roulette', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          vibe: vibe ?? undefined,
-          timeOfDay: timeOfDay ?? undefined,
-          dietary: dietary ?? undefined,
-          dietaryQuick: quickDietary.length > 0 ? quickDietary : undefined,
-          excludedCuisines: excludedCuisines.length > 0 ? excludedCuisines : undefined,
-        }),
+        body: JSON.stringify(
+          buildRouletteSpinBody({
+            vibe: selections.vibe as RouletteVibe | null,
+            timeOfDay: selections.timeOfDay as RouletteTime | null,
+            dietaryFlags: selections.dietaryFlags as RouletteDietaryFlag[],
+            excludedCuisines,
+            priceRange: selections.priceRange as RoulettePriceRange | null,
+            preferredCuisine: selections.preferredCuisine,
+          })
+        ),
       });
       const data = (await res.json()) as { error?: string } & Partial<RouletteApiResult>;
       if (!res.ok) {
@@ -257,7 +197,7 @@ export function RouletteClient() {
       setShowMobileScrollCue(false);
       setPhase('error');
     }
-  }, [dietary, excludedCuisines, quickDietary, timeOfDay, vibe]);
+  }, [excludedCuisines, selections]);
 
   const spinAgain = useCallback(() => {
     setPhase('form');
@@ -339,69 +279,16 @@ export function RouletteClient() {
             <p className="text-lg text-muted-foreground">
               Let Wanderbite Roulette decide.
             </p>
-            {exclusionsSummary ? (
-              <p className="text-sm text-muted-foreground">
-                Honoring your cuisine exclusions: <span className="font-medium text-foreground">{exclusionsSummary}</span>.{' '}
-                <Link href="/account" className="font-medium text-primary underline-offset-2 hover:underline">
-                  Edit
-                </Link>
-              </p>
-            ) : null}
           </div>
 
-          <div className="w-full space-y-8">
-            <PillGroup
-              label="Vibe (optional)"
-              options={VIBES}
-              value={vibe}
-              onChange={setVibe}
-            />
-            <PillGroup
-              label="Time (optional)"
-              options={TIMES}
-              value={timeOfDay}
-              onChange={setTimeOfDay}
-            />
-            <PillGroup
-              label="Dietary (optional)"
-              options={DIETARY}
-              value={dietary}
-              onChange={setDietary}
-            />
-
-            <div className="space-y-2">
-              <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Quick dietary (multi-select)
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {DIETARY_QUICK_PILLS.map(({ value, label, Icon }) => {
-                  const on = quickDietary.includes(value);
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() =>
-                        setQuickDietary((prev) =>
-                          prev.includes(value)
-                            ? prev.filter((f) => f !== value)
-                            : [...prev, value]
-                        )
-                      }
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors',
-                        on
-                          ? 'border-[#E85D26] bg-[#E85D26] text-white shadow-sm'
-                          : 'border-border bg-background text-foreground hover:border-[#E85D26]/50'
-                      )}
-                    >
-                      <Icon className="size-3.5 shrink-0" aria-hidden />
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
+          <RouletteOptionsFields
+            variant="page"
+            selections={selections}
+            onChange={(patch) =>
+              setSelections((prev) => ({ ...prev, ...patch }))
+            }
+            exclusionsSummary={exclusionsSummary}
+          />
 
           <Button
             type="button"

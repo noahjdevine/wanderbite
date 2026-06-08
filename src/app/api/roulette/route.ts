@@ -2,12 +2,17 @@ import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import {
-  isDietaryQuickFlag,
+  isRouletteDietaryFlag,
   restaurantMatchesDietaryQuick,
   shuffleArray,
-  type DietaryQuickFlag,
+  type RouletteDietaryFlag,
 } from '@/lib/roulette-dietary';
-import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import {
+  cuisineLabel,
+  isCuisineId,
+  restaurantHasExcludedCuisine,
+} from '@/lib/cuisines';
+import { isRoulettePriceRange } from '@/lib/roulette-options';
 import { rouletteLimiter } from '@/lib/ratelimit';
 
 type RouletteRestaurant = {
@@ -17,6 +22,7 @@ type RouletteRestaurant = {
   neighborhood: string | null;
   address: string | null;
   description: string | null;
+  price_range: string | null;
   image_url: string | null;
   google_photo_url: string | null;
   google_place_id: string | null;
@@ -109,9 +115,10 @@ export async function POST(request: NextRequest) {
   type RouletteBody = {
     vibe?: string;
     timeOfDay?: string;
-    dietary?: string;
     dietaryQuick?: unknown;
     excludedCuisines?: unknown;
+    priceRange?: string;
+    preferredCuisine?: string;
   };
   let body: RouletteBody;
   try {
@@ -120,12 +127,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
   }
 
-  const dietaryQuick: DietaryQuickFlag[] = Array.isArray(body.dietaryQuick)
+  const dietaryQuick: RouletteDietaryFlag[] = Array.isArray(body.dietaryQuick)
     ? body.dietaryQuick.filter(
-        (x): x is DietaryQuickFlag =>
-          typeof x === 'string' && isDietaryQuickFlag(x)
+        (x): x is RouletteDietaryFlag =>
+          typeof x === 'string' && isRouletteDietaryFlag(x)
       )
     : [];
+
+  const priceRange =
+    typeof body.priceRange === 'string' && isRoulettePriceRange(body.priceRange)
+      ? body.priceRange
+      : undefined;
+
+  const preferredCuisine =
+    typeof body.preferredCuisine === 'string' && isCuisineId(body.preferredCuisine)
+      ? body.preferredCuisine
+      : undefined;
 
   const excludedCuisines: string[] = Array.isArray(body.excludedCuisines)
     ? body.excludedCuisines.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
@@ -144,7 +161,7 @@ export async function POST(request: NextRequest) {
   const { data: rows, error: dbError } = await supabase
     .from('restaurants')
     .select(
-      'id, name, cuisine_tags, neighborhood, address, description, image_url, google_photo_url, google_place_id, is_dairy_free, is_vegan, is_halal'
+      'id, name, cuisine_tags, neighborhood, address, description, price_range, image_url, google_photo_url, google_place_id, is_dairy_free, is_vegan, is_halal'
     )
     .eq('status', 'active');
 
@@ -215,7 +232,6 @@ export async function POST(request: NextRequest) {
   const params = {
     vibe: body.vibe?.trim() || undefined,
     timeOfDay: body.timeOfDay?.trim() || undefined,
-    dietary: body.dietary?.trim() || undefined,
   };
 
   const MAX_RESTAURANTS_IN_PROMPT = 50;
@@ -229,6 +245,7 @@ export async function POST(request: NextRequest) {
       neighborhood: r.neighborhood,
       address: r.address,
       description: r.description,
+      price_range: r.price_range,
     }))
   );
 
@@ -239,11 +256,20 @@ export async function POST(request: NextRequest) {
       ? `Required dietary filters (ALL must be satisfied — list is pre-filtered): ${dietaryQuick.join(', ')}`
       : null;
 
+  const priceLine = priceRange
+    ? `Price preference (soft — prefer restaurants near ${priceRange} tier when possible): ${priceRange}`
+    : null;
+
+  const cuisineLine = preferredCuisine
+    ? `Preferred cuisine (soft — lean toward this style when possible): ${cuisineLabel(preferredCuisine)}`
+    : null;
+
   const userPrefs = [
     params.vibe ? `Vibe: ${params.vibe}` : null,
     params.timeOfDay ? `Time of day: ${params.timeOfDay}` : null,
-    params.dietary ? `Dietary (refinement): ${params.dietary}` : null,
     dietaryQuickLine,
+    priceLine,
+    cuisineLine,
   ]
     .filter(Boolean)
     .join('\n');
@@ -263,7 +289,7 @@ Valid JSON shape:
 
   const userPrompt = `Random spin id: ${spinNonce}
 
-Here is the JSON array of eligible Wanderbite partner restaurants (each has id, name, cuisine_tags, neighborhood, address, description):
+Here is the JSON array of eligible Wanderbite partner restaurants (each has id, name, cuisine_tags, neighborhood, address, description, price_range):
 ${listJson}
 
 User preferences (each line may be absent — use judgment when absent):

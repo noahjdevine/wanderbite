@@ -8,11 +8,39 @@ export function shuffleArray<T>(items: readonly T[]): T[] {
   return a;
 }
 
-/** Quick dietary filters for Wanderbite Roulette (API + UI). */
-export type DietaryQuickFlag = 'dairy_free' | 'vegan' | 'halal';
+/**
+ * Dietary & religion flags for Wanderbite Roulette.
+ * Aligned with account `dietary_flags`; hard-filtered server-side before Claude.
+ */
+export type RouletteDietaryFlag =
+  | 'vegetarian'
+  | 'vegan'
+  | 'gluten_free'
+  | 'halal'
+  | 'kosher'
+  | 'dairy_free'
+  | 'pescatarian';
 
+/** @deprecated Use RouletteDietaryFlag */
+export type DietaryQuickFlag = RouletteDietaryFlag;
+
+const ROULETTE_DIETARY_FLAGS = new Set<RouletteDietaryFlag>([
+  'vegetarian',
+  'vegan',
+  'gluten_free',
+  'halal',
+  'kosher',
+  'dairy_free',
+  'pescatarian',
+]);
+
+export function isRouletteDietaryFlag(s: string): s is RouletteDietaryFlag {
+  return ROULETTE_DIETARY_FLAGS.has(s as RouletteDietaryFlag);
+}
+
+/** @deprecated Use isRouletteDietaryFlag */
 export function isDietaryQuickFlag(s: string): s is DietaryQuickFlag {
-  return s === 'dairy_free' || s === 'vegan' || s === 'halal';
+  return isRouletteDietaryFlag(s);
 }
 
 export type RestaurantDietaryFields = {
@@ -24,12 +52,11 @@ export type RestaurantDietaryFields = {
 
 /**
  * True if the restaurant satisfies every selected flag.
- * Uses boolean columns when true; otherwise falls back to cuisine_tags substrings
- * so spins work before admin backfills flags.
+ * Uses boolean columns when set; otherwise falls back to cuisine_tags substrings.
  */
 export function restaurantMatchesDietaryQuick(
   r: RestaurantDietaryFields,
-  flags: DietaryQuickFlag[]
+  flags: RouletteDietaryFlag[]
 ): boolean {
   if (!flags.length) return true;
   const tags = (r.cuisine_tags ?? []).map((t) => t.toLowerCase());
@@ -39,6 +66,18 @@ export function restaurantMatchesDietaryQuick(
     if (f === 'vegan') {
       if (
         r.is_vegan === true ||
+        tagHas('vegan') ||
+        tagHas('plant-based') ||
+        tagHas('plant based')
+      ) {
+        continue;
+      }
+      return false;
+    }
+    if (f === 'vegetarian') {
+      if (
+        r.is_vegan === true ||
+        tagHas('vegetarian') ||
         tagHas('vegan') ||
         tagHas('plant-based') ||
         tagHas('plant based')
@@ -59,8 +98,34 @@ export function restaurantMatchesDietaryQuick(
       }
       return false;
     }
+    if (f === 'gluten_free') {
+      if (
+        tagHas('gluten-free') ||
+        tagHas('gluten free') ||
+        tagHas('gf ') ||
+        tagHas('celiac')
+      ) {
+        continue;
+      }
+      return false;
+    }
     if (f === 'halal') {
       if (r.is_halal === true || tagHas('halal')) continue;
+      return false;
+    }
+    if (f === 'kosher') {
+      if (tagHas('kosher')) continue;
+      return false;
+    }
+    if (f === 'pescatarian') {
+      if (
+        tagHas('pescatarian') ||
+        tagHas('seafood') ||
+        tagHas('fish') ||
+        tagHas('sushi')
+      ) {
+        continue;
+      }
       return false;
     }
   }
