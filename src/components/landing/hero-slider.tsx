@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 
@@ -47,12 +48,14 @@ export function HeroSlider() {
           }}
           aria-hidden={activeIndex !== index}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             src={slide.src}
             alt=""
-            className="h-full w-full object-cover"
-            fetchPriority={index === 0 ? 'high' : undefined}
+            fill
+            sizes="100vw"
+            priority={index === 0}
+            quality={75}
+            className="object-cover"
           />
         </div>
       ))}

@@ -12,13 +12,18 @@ const outfit = Outfit({
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
 };
 
 export const metadata: Metadata = {
-  title: "Wanderbite",
-  description: "Dining adventures, curated for you.",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "https://wanderbite.co"
+  ),
+  title: {
+    default: "Wanderbite — Dining adventures, curated for you.",
+    template: "%s · Wanderbite",
+  },
+  description:
+    "Stop arguing about where to eat. Get two curated restaurant challenges a month, save $10 at each, and discover your next favorite spot.",
   icons: {
     icon: "/Wanderbite-logo.svg",
     apple: "/apple-touch-icon.png",
@@ -27,6 +32,18 @@ export const metadata: Metadata = {
     capable: true,
     title: "WanderBite",
     statusBarStyle: "black-translucent",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Wanderbite",
+    title: "Wanderbite — Dining adventures, curated for you.",
+    description:
+      "Two curated restaurant challenges every month. $10 off each. Earn badges as you explore.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Wanderbite — Dining adventures, curated for you.",
+    description: "Two curated restaurant challenges every month. $10 off each.",
   },
 };
 
