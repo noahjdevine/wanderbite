@@ -56,6 +56,7 @@ export async function postRouletteSpin(
         cuisine_tags: data.cuisine_tags ?? null,
         neighborhood: data.neighborhood ?? null,
         address: data.address ?? null,
+        price_range: data.price_range ?? null,
         image_url: data.image_url ?? null,
         google_photo_url: data.google_photo_url ?? null,
         google_place_id: data.google_place_id ?? null,
