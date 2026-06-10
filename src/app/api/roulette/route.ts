@@ -377,6 +377,7 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
     cuisine_tags: chosen.cuisine_tags,
     neighborhood: chosen.neighborhood,
     address: chosen.address,
+    price_range: chosen.price_range,
     image_url: chosen.image_url,
     google_photo_url: chosen.google_photo_url,
     google_place_id: chosen.google_place_id,
