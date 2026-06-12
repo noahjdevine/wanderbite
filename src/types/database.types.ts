@@ -389,6 +389,7 @@ export type Database = {
           price_range: string | null
           slug: string | null
           status: string | null
+          updated_at: string | null
           verification_code: string | null
         }
         Insert: {
@@ -414,6 +415,7 @@ export type Database = {
           price_range?: string | null
           slug?: string | null
           status?: string | null
+          updated_at?: string | null
           verification_code?: string | null
         }
         Update: {
@@ -439,6 +441,7 @@ export type Database = {
           price_range?: string | null
           slug?: string | null
           status?: string | null
+          updated_at?: string | null
           verification_code?: string | null
         }
         Relationships: [
