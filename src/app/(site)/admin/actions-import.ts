@@ -12,7 +12,7 @@ import {
 } from '@/lib/google-places-import';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 
-const SUPER_ADMIN_EMAIL = 'noah@wanderbite.com';
+const SUPER_ADMIN_EMAIL = 'devine.noah@gmail.com';
 
 async function checkAdminPermissions() {
   const supabase = await createClient();
