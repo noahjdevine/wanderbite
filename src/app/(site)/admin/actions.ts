@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { assertAdmin } from '@/lib/auth/assert-admin';
+import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 import { hashPartnerPin } from '@/lib/partner-pin';
@@ -31,7 +32,7 @@ function parseCuisineTags(cuisine: string): string[] {
 
 export async function addRestaurant(formData: FormData): Promise<AddRestaurantResult> {
   try {
-    const _auth = await checkAdminPermissions();
+    const auth = await checkAdminPermissions();
 
     const supabase = getSupabaseAdmin();
 
@@ -107,6 +108,13 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
 
     revalidatePath('/admin');
     revalidatePath('/restaurants');
+    await logAdminAction({
+      actorUserId: auth.userId,
+      action: 'restaurant.create',
+      targetType: 'restaurant',
+      targetId: (newRestaurant as { id: string } | null)?.id,
+      metadata: { name, slug, marketId },
+    });
     return { ok: true, partnerUrl: `/partner/${slug}` };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
@@ -119,8 +127,9 @@ export async function generateMissingSlugs(): Promise<{
   updated: number;
   error?: string;
 }> {
+  let auth;
   try {
-    const _auth = await checkAdminPermissions();
+    auth = await checkAdminPermissions();
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unauthorized';
     return { ok: false, updated: 0, error: message };
@@ -151,12 +160,20 @@ export async function generateMissingSlugs(): Promise<{
 
   revalidatePath('/admin');
   revalidatePath('/restaurants');
+  if (updated > 0) {
+    await logAdminAction({
+      actorUserId: auth.userId,
+      action: 'restaurant.slugs_generated',
+      targetType: 'restaurants',
+      metadata: { updated },
+    });
+  }
   return { ok: true, updated };
 }
 
 export async function deleteRestaurant(restaurantId: string): Promise<DeleteRestaurantResult> {
   try {
-    const _auth = await checkAdminPermissions();
+    const auth = await checkAdminPermissions();
 
     const supabase = getSupabaseAdmin();
 
@@ -182,6 +199,13 @@ export async function deleteRestaurant(restaurantId: string): Promise<DeleteRest
 
     revalidatePath('/admin');
     revalidatePath('/restaurants');
+    await logAdminAction({
+      actorUserId: auth.userId,
+      action: 'restaurant.delete',
+      targetType: 'restaurant',
+      targetId: restaurantId,
+      metadata: { orgId, deletedOffers: true },
+    });
     return { ok: true };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';

@@ -1,6 +1,7 @@
 'use server';
 
 import { assertAdmin } from '@/lib/auth/assert-admin';
+import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { findRestaurantPlace } from '@/lib/google-places';
 
@@ -48,6 +49,14 @@ export async function enrichSingleRestaurant(
     return { ok: false, error: updErr.message };
   }
 
+  await logAdminAction({
+    actorUserId: auth.userId,
+    action: 'restaurant.enrich',
+    targetType: 'restaurant',
+    targetId: restaurantId,
+    metadata: { placeId, photoUrl },
+  });
+
   return { ok: true, photoUrl };
 }
 
@@ -89,6 +98,13 @@ export async function enrichAllRestaurants(): Promise<{
     else failed += 1;
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
+
+  await logAdminAction({
+    actorUserId: auth.userId,
+    action: 'restaurant.enrich_bulk',
+    targetType: 'restaurants',
+    metadata: { updated, failed, total: list.length },
+  });
 
   return { ok: true, updated, failed };
 }
