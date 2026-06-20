@@ -33,6 +33,17 @@ function SignInInner() {
         'That confirmation link is invalid or expired. Sign in below, or request a new confirmation email from the signup page.'
       );
     }
+    const redirectTo = searchParams.get('redirectTo');
+    if (redirectTo) {
+      try {
+        sessionStorage.setItem(
+          'wb_auth_redirect',
+          safeAuthRedirectPath(redirectTo, '/')
+        );
+      } catch {
+        /* ignore storage errors */
+      }
+    }
   }, [searchParams]);
 
   function validateEmail(): boolean {
@@ -83,10 +94,20 @@ function SignInInner() {
         return;
       }
 
-      const explicit = searchParams.get('redirectTo');
+      const explicit =
+        searchParams.get('redirectTo') ??
+        (typeof window !== 'undefined'
+          ? sessionStorage.getItem('wb_auth_redirect')
+          : null);
       if (explicit) {
-        router.push(safeAuthRedirectPath(explicit, '/dashboard'));
-        router.refresh();
+        const target = safeAuthRedirectPath(explicit, '/dashboard');
+        try {
+          sessionStorage.removeItem('wb_auth_redirect');
+        } catch {
+          /* ignore */
+        }
+        // Full navigation so /admin (and other protected routes) receive session cookies.
+        window.location.assign(target);
         return;
       }
 
