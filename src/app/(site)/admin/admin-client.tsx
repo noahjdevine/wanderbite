@@ -69,11 +69,22 @@ type UserRow = {
 type AdminClientProps = {
   restaurants: RestaurantRow[];
   users: UserRow[];
+  auditEntries: {
+    id: number;
+    actorEmail: string;
+    action: string;
+    target: string;
+    createdAt: string;
+  }[];
 };
 
 const PRICE_OPTIONS = ['$', '$$', '$$$', '$$$$'];
 
-export function AdminClient({ restaurants: initialRestaurants, users }: AdminClientProps) {
+export function AdminClient({
+  restaurants: initialRestaurants,
+  users,
+  auditEntries,
+}: AdminClientProps) {
   const router = useRouter();
   const [restaurants, setRestaurants] = useState(initialRestaurants);
   const [adding, setAdding] = useState(false);
@@ -913,6 +924,43 @@ export function AdminClient({ restaurants: initialRestaurants, users }: AdminCli
                       <TableCell className="text-sm">{u.full_name}</TableCell>
                       <TableCell className="text-sm">{u.username}</TableCell>
                       <TableCell className="text-sm">{u.subscription_status}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-violet-200">
+        <CardHeader>
+          <CardTitle className="text-primary">Recent Admin Activity</CardTitle>
+          <CardDescription>Last 25 admin mutations.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {auditEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No admin actions recorded yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>When</TableHead>
+                    <TableHead>Who</TableHead>
+                    <TableHead>Action</TableHead>
+                    <TableHead>Target</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {auditEntries.map((entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell className="text-sm">{entry.createdAt}</TableCell>
+                      <TableCell className="text-sm">{entry.actorEmail}</TableCell>
+                      <TableCell className="font-mono text-sm">{entry.action}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {entry.target}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

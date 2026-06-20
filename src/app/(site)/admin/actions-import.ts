@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { assertAdmin } from '@/lib/auth/assert-admin';
+import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { PlaceDetails, PlaceResult } from '@/lib/google-places-import';
 import {
@@ -29,8 +30,9 @@ export async function attachGoogleMetadataToLatestRestaurantByName(
   google_place_id: string,
   google_photo_url: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  let auth;
   try {
-    await checkAdminPermissions();
+    auth = await checkAdminPermissions();
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unauthorized';
     return { ok: false, error: message };
@@ -90,6 +92,13 @@ export async function attachGoogleMetadataToLatestRestaurantByName(
 
   revalidatePath('/admin');
   revalidatePath('/restaurants');
+  await logAdminAction({
+    actorUserId: auth.userId,
+    action: 'restaurant.import',
+    targetType: 'restaurant',
+    targetId: id,
+    metadata: { source: 'google_places', placeId, name: trimmedName },
+  });
   return { ok: true };
 }
 

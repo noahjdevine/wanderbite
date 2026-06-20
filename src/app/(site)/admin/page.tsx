@@ -101,6 +101,61 @@ export default async function AdminPage() {
     };
   });
 
+  const { data: auditRows } = await admin
+    .from('admin_audit_log')
+    .select('id, actor_user_id, action, target_type, target_id, metadata, created_at')
+    .order('created_at', { ascending: false })
+    .limit(25);
+
+  const actorIds = [
+    ...new Set(
+      (auditRows ?? [])
+        .map((r) => (r as { actor_user_id: string | null }).actor_user_id)
+        .filter((x): x is string => Boolean(x))
+    ),
+  ];
+
+  const { data: actorProfiles } = actorIds.length
+    ? await admin.from('user_profiles').select('id, email').in('id', actorIds)
+    : { data: [] };
+
+  const emailByActorId = new Map(
+    ((actorProfiles ?? []) as { id: string; email: string | null }[]).map((p) => [
+      p.id,
+      p.email,
+    ])
+  );
+
+  type AuditRow = {
+    id: number;
+    actor_user_id: string | null;
+    action: string;
+    target_type: string;
+    target_id: string | null;
+    metadata: Record<string, unknown> | null;
+    created_at: string;
+  };
+
+  const auditEntries = (auditRows ?? []).map((r) => {
+    const row = r as AuditRow;
+    return {
+      id: row.id,
+      actorEmail: row.actor_user_id
+        ? (emailByActorId.get(row.actor_user_id) ?? '—')
+        : '—',
+      action: row.action,
+      target: row.target_id
+        ? `${row.target_type}/${row.target_id}`
+        : row.target_type,
+      createdAt: new Date(row.created_at).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      }),
+    };
+  });
+
   return (
     <main className="min-h-screen bg-background px-4 py-10">
       <div className="mx-auto max-w-4xl">
@@ -117,7 +172,7 @@ export default async function AdminPage() {
             <Link href="/">Back to app</Link>
           </Button>
         </div>
-        <AdminClient restaurants={restaurants} users={users} />
+        <AdminClient restaurants={restaurants} users={users} auditEntries={auditEntries} />
       </div>
     </main>
   );
