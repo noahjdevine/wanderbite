@@ -45,10 +45,11 @@ export async function sendPasswordResetEmail(
 
   try {
     const supabase = await createClient();
-    // Recovery emails use redirectTo (not emailRedirectTo). Use /reset-password — not /auth/callback,
-    // or the post-login smart redirect would skip the password form.
+    // Recovery emails use redirectTo pointing at /auth/recovery (no query params —
+    // survives Supabase redirect URL allow-list matching).
+    const recoveryUrl = `${baseUrl.replace(/\/$/, '')}/auth/recovery`;
     const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo: `${baseUrl.replace(/\/$/, '')}/reset-password`,
+      redirectTo: recoveryUrl,
     });
     if (error) {
       return { ok: false, error: error.message };

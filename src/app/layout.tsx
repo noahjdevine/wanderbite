@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Outfit } from "next/font/google";
 import { PostHogProvider } from "@/components/providers/posthog-provider";
+import { RecoveryRedirect } from "@/components/auth/recovery-redirect";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -56,6 +57,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${outfit.variable} font-sans antialiased`}>
         <PostHogProvider>
+          <RecoveryRedirect />
           {children}
           <Toaster />
         </PostHogProvider>

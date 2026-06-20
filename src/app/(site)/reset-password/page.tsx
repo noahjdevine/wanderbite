@@ -72,6 +72,7 @@ export default function ResetPasswordPage() {
         setError(err.message);
         return;
       }
+      await supabase.auth.signOut();
       router.push('/signin?reset=success');
       router.refresh();
     } catch {
