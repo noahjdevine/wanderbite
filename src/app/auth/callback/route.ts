@@ -10,7 +10,11 @@ export async function GET(request: NextRequest) {
   const code = requestUrl.searchParams.get('code');
   const authType = requestUrl.searchParams.get('type');
   const origin = requestUrl.origin;
-  const next = safeAuthRedirectPath(requestUrl.searchParams.get('next'), '/');
+  const next = safeAuthRedirectPath(
+    requestUrl.searchParams.get('next') ??
+      requestUrl.searchParams.get('redirect_to'),
+    '/'
+  );
 
   if (!code) {
     return NextResponse.redirect(new URL(next, origin));
@@ -48,9 +52,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(new URL('/signin?error=session', origin));
   }
 
-  // Password recovery links must land on the reset form, not smart-routing.
-  if (authType === 'recovery') {
+  // Password recovery: always show the reset form (never smart-route to /challenges).
+  if (authType === 'recovery' || next === '/reset-password') {
     return redirectWithSessionCookies('/reset-password');
+  }
+
+  // Honor explicit next= for other auth flows (e.g. custom redirects).
+  if (next !== '/') {
+    return redirectWithSessionCookies(next);
   }
 
   // Smart routing after PKCE exchange:

@@ -42,6 +42,21 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const pathname = request.nextUrl.pathname;
+  const code = request.nextUrl.searchParams.get('code');
+  const authType = request.nextUrl.searchParams.get('type');
+
+  // Recovery emails sometimes land on / (Site URL fallback) instead of /auth/callback.
+  if (
+    code &&
+    authType === 'recovery' &&
+    pathname !== '/auth/callback' &&
+    pathname !== '/reset-password'
+  ) {
+    const callbackUrl = request.nextUrl.clone();
+    callbackUrl.pathname = '/auth/callback';
+    callbackUrl.searchParams.set('next', '/reset-password');
+    return NextResponse.redirect(callbackUrl);
+  }
 
   // Auth entry routes + callback: don't force session redirects here (matcher also skips many of these)
   if (
