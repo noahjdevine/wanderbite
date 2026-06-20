@@ -110,7 +110,7 @@ export async function searchRestaurantsFromGoogle(
 ): Promise<
   { ok: true; results: PlaceResult[] } | { ok: false; error: string }
 > {
-  console.log('Searching Google Places for:', query);
+  console.warn('Searching Google Places for:', query);
 
   try {
     await checkAdminPermissions();
@@ -136,13 +136,13 @@ export async function searchRestaurantsFromGoogle(
     { lat, lng },
     key
   );
-  console.log('Google Places request URL:', maskGoogleApiKeyInUrl(url, key));
+  console.warn('Google Places request URL:', maskGoogleApiKeyInUrl(url, key));
 
   try {
     const results = await searchPlaces(trimmedQuery, cityTrim, { lat, lng }, {
       onResponse: ({ httpStatus, bodyText }) => {
-        console.log('Google Places raw response status:', httpStatus);
-        console.log('Google Places raw response body:', bodyText);
+        console.warn('Google Places raw response status:', httpStatus);
+        console.warn('Google Places raw response body:', bodyText);
       },
     });
 

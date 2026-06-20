@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { Star } from 'lucide-react';
 import { getPublicReviews, type PublicReview } from '@/app/actions/bite-notes';
@@ -37,20 +37,25 @@ export function RestaurantReviews({ restaurantId, className }: Props) {
   const [reviews, setReviews] = useState<PublicReview[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setError(null);
-    const res = await getPublicReviews(restaurantId);
-    if (res.ok) {
-      setReviews(res.data);
-    } else {
-      setReviews([]);
-      setError(res.error);
-    }
-  }, [restaurantId]);
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    let cancelled = false;
+
+    void (async () => {
+      const res = await getPublicReviews(restaurantId);
+      if (cancelled) return;
+      if (res.ok) {
+        setReviews(res.data);
+        setError(null);
+      } else {
+        setReviews([]);
+        setError(res.error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [restaurantId]);
 
   return (
     <div className={cn('space-y-2 text-left', className)}>

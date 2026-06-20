@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { MapPin, UtensilsCrossed } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -35,7 +35,9 @@ function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
     ...(restaurant.cuisine_tags ?? []),
     ...(restaurant.neighborhood ? [restaurant.neighborhood] : []),
   ];
-  const description = restaurant.description ?? restaurant.address ?? null;
+  const description =
+    restaurant.description?.trim() ||
+    'Wanderbite partner — visit to discover.';
   const initialSrc = restaurantDisplayImageUrl({
     id: restaurant.id,
     google_place_id: restaurant.google_place_id,
@@ -91,11 +93,7 @@ function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
         )}
       </CardHeader>
       <CardContent className="pt-0">
-        {description && (
-          <p className="text-sm text-muted-foreground line-clamp-3">
-            {description}
-          </p>
-        )}
+        <p className="text-sm text-muted-foreground line-clamp-3">{description}</p>
       </CardContent>
     </Card>
   );

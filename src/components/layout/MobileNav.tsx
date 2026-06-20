@@ -21,15 +21,24 @@ export function MobileNav() {
   const { user, loading } = useSupabaseUser();
   const pathname = usePathname();
   const router = useRouter();
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerState, setDrawerState] = useState({ pathname, open: false });
 
   const items = user ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
 
-  const closeDrawer = useCallback(() => setDrawerOpen(false), []);
+  const drawerOpen =
+    drawerState.pathname === pathname ? drawerState.open : false;
 
-  useEffect(() => {
-    closeDrawer();
-  }, [pathname, closeDrawer]);
+  const closeDrawer = useCallback(() => {
+    setDrawerState({ pathname, open: false });
+  }, [pathname]);
+
+  const toggleDrawer = useCallback(() => {
+    setDrawerState((prev) =>
+      prev.pathname === pathname
+        ? { pathname, open: !prev.open }
+        : { pathname, open: true }
+    );
+  }, [pathname]);
 
   useEffect(() => {
     if (!drawerOpen) return;
@@ -70,7 +79,7 @@ export function MobileNav() {
             size="icon-sm"
             aria-expanded={drawerOpen}
             aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
-            onClick={() => setDrawerOpen((o) => !o)}
+            onClick={toggleDrawer}
           >
             {drawerOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </Button>

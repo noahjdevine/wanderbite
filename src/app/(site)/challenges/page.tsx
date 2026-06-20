@@ -89,7 +89,7 @@ export default async function ChallengesPage() {
   let currentChallenge = null;
   try {
     currentChallenge = await getCurrentChallenge();
-  } catch (err) {
+  } catch {
     return (
       <main className="flex min-h-screen items-center justify-center p-6">
         <p className="text-destructive">

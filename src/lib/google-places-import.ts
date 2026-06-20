@@ -185,7 +185,7 @@ export async function searchPlaces(
   if (!q) return [];
 
   const url = buildGooglePlacesTextSearchUrl(q, city, center, key);
-  console.log(
+  console.warn(
     '[searchPlaces] URL (key masked):',
     maskGoogleApiKeyInUrl(url, key)
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -73,19 +73,19 @@ export function SubscriptionSuccessToast() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [shown, setShown] = useState(false);
+  const toastShown = useRef(false);
 
   useEffect(() => {
-    if (shown) return;
+    if (toastShown.current) return;
     const legacySuccess = searchParams.get('success');
     const checkoutSuccess = searchParams.get('checkout');
     if (legacySuccess === 'true' || checkoutSuccess === 'success') {
+      toastShown.current = true;
       toast.success('Welcome to the Club!');
-      setShown(true);
       router.replace(pathname || '/', { scroll: false });
       router.refresh();
     }
-  }, [searchParams, router, pathname, shown]);
+  }, [searchParams, router, pathname]);
 
   return null;
 }

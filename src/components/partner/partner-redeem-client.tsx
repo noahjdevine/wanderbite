@@ -65,7 +65,10 @@ export function PartnerRedeemClient({
   useEffect(() => {
     if (!autoVerify || !initialCode || autoRan.current) return;
     autoRan.current = true;
-    void runVerify(initialCode);
+    const timerId = window.setTimeout(() => {
+      void runVerify(initialCode);
+    }, 0);
+    return () => window.clearTimeout(timerId);
   }, [autoVerify, initialCode, runVerify]);
 
   async function handleSubmit(e: React.FormEvent) {

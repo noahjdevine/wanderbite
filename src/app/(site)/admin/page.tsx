@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import Link from 'next/link';
 import { assertAdmin } from '@/lib/auth/assert-admin';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import type { Database } from '@/types/database.types';
 import { Button } from '@/components/ui/button';
 import { AdminClient } from './admin-client';
 
@@ -51,15 +52,12 @@ export default async function AdminPage() {
     );
   }
 
-  type UserRow = {
-    id: string;
-    email: string | null;
-    full_name: string | null;
-    username: string | null;
-    subscription_status: string | null;
-  };
+  type UserRow = Pick<
+    Database['public']['Tables']['user_profiles']['Row'],
+    'id' | 'email' | 'full_name' | 'username' | 'subscription_status'
+  >;
   const users = (userRows ?? []).map((r) => {
-    const row = r as unknown as UserRow;
+    const row = r as UserRow;
     return {
       id: row.id,
       email: row.email ?? '—',
@@ -69,22 +67,23 @@ export default async function AdminPage() {
     };
   });
 
-  type RestaurantRow = {
-    id: string;
-    name: string;
-    slug: string | null;
-    address: string | null;
-    description: string | null;
-    cuisine_tags: string[] | null;
-    price_range: string | null;
-    neighborhood: string | null;
-    image_url: string | null;
-    google_photo_url: string | null;
-    pin_hash: string | null;
-    status: string;
-  };
+  type RestaurantRow = Pick<
+    Database['public']['Tables']['restaurants']['Row'],
+    | 'id'
+    | 'name'
+    | 'slug'
+    | 'address'
+    | 'description'
+    | 'cuisine_tags'
+    | 'price_range'
+    | 'neighborhood'
+    | 'image_url'
+    | 'google_photo_url'
+    | 'pin_hash'
+    | 'status'
+  >;
   const restaurants = (rows ?? []).map((r) => {
-    const row = r as unknown as RestaurantRow;
+    const row = r as RestaurantRow;
     return {
       id: row.id,
       name: row.name,
@@ -97,7 +96,7 @@ export default async function AdminPage() {
       image_url: row.image_url ?? null,
       google_photo_url: row.google_photo_url ?? null,
       pin_hash: row.pin_hash ?? null,
-      status: row.status,
+      status: row.status ?? 'active',
     };
   });
 

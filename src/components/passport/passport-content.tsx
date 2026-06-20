@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { calculateStreak, getStreakBadgeForLongest } from '@/lib/streaks';
+import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import {
   PassportClient,
   type PassportBiteNoteEntry,
@@ -89,11 +90,10 @@ export async function PassportContent({ userId }: PassportContentProps) {
     );
   }
 
-  const redemptionData = (redemptionRows ?? []) as unknown as RedemptionRow[];
+  const redemptionData = (redemptionRows ?? []) as RedemptionRow[];
   const visits: PassportVisit[] = redemptionData
     .map((r) => {
-      const rel = r.restaurants;
-      const restaurant = Array.isArray(rel) ? rel[0] : rel;
+      const restaurant = unwrapJoin(r.restaurants);
       if (!restaurant?.id) return null;
       return {
         id: r.id,
