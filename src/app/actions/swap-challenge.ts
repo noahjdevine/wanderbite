@@ -2,7 +2,7 @@
 
 import { randomInt } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
-import { startOfMonth, subMonths, subYears, format } from 'date-fns';
+import { startOfMonth, subMonths, subYears } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
@@ -250,7 +250,7 @@ export async function swapChallengeItem(
     const eligible = withOffer.filter((restaurant) => {
       const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
       if (dietaryConflict) {
-        console.log(
+        console.warn(
           `[Swap] Filtered out ${restaurant.name} due to ${dietaryConflict.flag} conflict (overlapping tags: ${dietaryConflict.conflictingTags.join(', ')})`
         );
         return false;
@@ -307,7 +307,7 @@ export async function swapChallengeItem(
       return { ok: false, error: `Failed to mark item as swapped: ${updateItemErr.message}` };
     }
 
-    const { data: newItem, error: insertItemErr } = await supabase
+    const { error: insertItemErr } = await supabase
       .from('challenge_items')
       .insert({
         cycle_id: challengeCycle.id,

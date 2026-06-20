@@ -12,7 +12,7 @@ const TIMEOUT_MS = 30_000;
 export function CheckoutSuccessClient() {
   const router = useRouter();
   const [phase, setPhase] = useState<'polling' | 'timeout'>('polling');
-  const startRef = useRef<number>(Date.now());
+  const startRef = useRef<number>(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const clearPoll = useCallback(() => {
@@ -55,7 +55,6 @@ export function CheckoutSuccessClient() {
 
   useEffect(() => {
     startRef.current = Date.now();
-    setPhase('polling');
 
     const tick = async () => {
       const elapsed = Date.now() - startRef.current;

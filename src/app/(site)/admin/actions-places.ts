@@ -93,7 +93,7 @@ export async function enrichAllRestaurants(): Promise<{
   for (const r of list) {
     const res = await enrichSingleRestaurant(r.id);
     const photoUrl = res.ok ? res.photoUrl : undefined;
-    console.log('Enriching:', r.name, '→', photoUrl ?? 'not found');
+    console.warn('Enriching:', r.name, '→', photoUrl ?? 'not found');
     if (res.ok) updated += 1;
     else failed += 1;
     await new Promise((resolve) => setTimeout(resolve, 300));

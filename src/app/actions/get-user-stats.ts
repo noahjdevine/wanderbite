@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
+import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 
 const XP_PER_REDEMPTION = 100;
 
@@ -126,16 +127,17 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
       getLevelInfo(xp);
 
     const history: UserStatsHistoryItem[] = list.map((row) => {
-      const r = row as unknown as {
+      const r = row as {
         restaurant_id: string;
         verified_at: string | null;
-        restaurants: { name: string } | null;
+        restaurants: { name: string } | { name: string }[] | null;
       };
+      const restaurantRel = unwrapJoin(r.restaurants);
       const date = r.verified_at
         ? format(new Date(r.verified_at), 'PP')
         : '—';
       const restaurantName =
-        r.restaurants?.name ?? 'Unknown restaurant';
+        restaurantRel?.name ?? 'Unknown restaurant';
       return { restaurantName, date };
     });
 

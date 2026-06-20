@@ -51,7 +51,7 @@ export function ProfileForm({
   initialValues,
   onSubmit,
   submitLabel,
-  currentUserId,
+  currentUserId: _currentUserId,
   isDirty,
 }: {
   initialValues: ProfileValues;

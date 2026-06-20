@@ -322,7 +322,8 @@ function RestaurantCard({
   onRedeem,
   biteNote,
 }: RestaurantCardProps) {
-  const isExpired = Date.now() - new Date(cycleCreatedAt).getTime() > THIRTY_DAYS_MS;
+  const [nowMs] = useState(() => Date.now());
+  const isExpired = nowMs - new Date(cycleCreatedAt).getTime() > THIRTY_DAYS_MS;
   const tags = item.restaurant.cuisine_tags ?? [];
   const offerText = formatOffer(
     item.offer.discount_amount_cents,
