@@ -13,7 +13,7 @@ export default async function AdminPage() {
     redirect(
       auth.error === 'You must be signed in.'
         ? '/signin?redirectTo=/admin'
-        : '/'
+        : '/challenges'
     );
   }
 
