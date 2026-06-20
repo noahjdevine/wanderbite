@@ -1,12 +1,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { assertAdmin } from '@/lib/auth/assert-admin';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { createClient } from '@/lib/supabase/server';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 import { hashPartnerPin } from '@/lib/partner-pin';
-
-const SUPER_ADMIN_EMAIL = 'devine.noah@gmail.com';
 
 export type AddRestaurantResult =
   | { ok: true; partnerUrl: string }
@@ -17,12 +15,11 @@ export type DeleteRestaurantResult =
   | { ok: false; error: string };
 
 async function checkAdminPermissions() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-
-  if (!user || user.email?.toLowerCase() !== SUPER_ADMIN_EMAIL) {
-    throw new Error('Unauthorized: You are not the admin.');
+  const auth = await assertAdmin();
+  if (!auth.ok) {
+    throw new Error(auth.error);
   }
+  return auth;
 }
 
 function parseCuisineTags(cuisine: string): string[] {
@@ -34,7 +31,7 @@ function parseCuisineTags(cuisine: string): string[] {
 
 export async function addRestaurant(formData: FormData): Promise<AddRestaurantResult> {
   try {
-    await checkAdminPermissions();
+    const _auth = await checkAdminPermissions();
 
     const supabase = getSupabaseAdmin();
 
@@ -123,7 +120,7 @@ export async function generateMissingSlugs(): Promise<{
   error?: string;
 }> {
   try {
-    await checkAdminPermissions();
+    const _auth = await checkAdminPermissions();
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unauthorized';
     return { ok: false, updated: 0, error: message };
@@ -159,7 +156,7 @@ export async function generateMissingSlugs(): Promise<{
 
 export async function deleteRestaurant(restaurantId: string): Promise<DeleteRestaurantResult> {
   try {
-    await checkAdminPermissions();
+    const _auth = await checkAdminPermissions();
 
     const supabase = getSupabaseAdmin();
 

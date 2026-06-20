@@ -1,11 +1,17 @@
 'use server';
 
+import { assertAdmin } from '@/lib/auth/assert-admin';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { findRestaurantPlace } from '@/lib/google-places';
 
 export async function enrichSingleRestaurant(
   restaurantId: string
 ): Promise<{ ok: boolean; photoUrl?: string; error?: string }> {
+  const auth = await assertAdmin();
+  if (!auth.ok) {
+    return { ok: false, error: auth.error };
+  }
+
   const admin = getSupabaseAdmin();
   const { data: row, error } = await admin
     .from('restaurants')
@@ -51,6 +57,11 @@ export async function enrichAllRestaurants(): Promise<{
   failed: number;
   error?: string;
 }> {
+  const auth = await assertAdmin();
+  if (!auth.ok) {
+    return { ok: false, updated: 0, failed: 0, error: auth.error };
+  }
+
   const admin = getSupabaseAdmin();
   const { data: rows, error } = await admin
     .from('restaurants')
