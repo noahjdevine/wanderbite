@@ -45,17 +45,24 @@ export async function updateSession(request: NextRequest) {
   const code = request.nextUrl.searchParams.get('code');
   const authType = request.nextUrl.searchParams.get('type');
 
-  // Recovery emails sometimes land on / (Site URL fallback) instead of /auth/callback.
+  // Recovery emails that fall back to Site URL (?code= on /) → dedicated handler.
+  if (code && pathname === '/') {
+    const recoveryUrl = request.nextUrl.clone();
+    recoveryUrl.pathname = '/auth/recovery';
+    return NextResponse.redirect(recoveryUrl);
+  }
+
+  // Recovery with explicit type=recovery on any non-handler path.
   if (
     code &&
     authType === 'recovery' &&
     pathname !== '/auth/callback' &&
+    pathname !== '/auth/recovery' &&
     pathname !== '/reset-password'
   ) {
-    const callbackUrl = request.nextUrl.clone();
-    callbackUrl.pathname = '/auth/callback';
-    callbackUrl.searchParams.set('next', '/reset-password');
-    return NextResponse.redirect(callbackUrl);
+    const recoveryUrl = request.nextUrl.clone();
+    recoveryUrl.pathname = '/auth/recovery';
+    return NextResponse.redirect(recoveryUrl);
   }
 
   // Auth entry routes + callback: don't force session redirects here (matcher also skips many of these)

@@ -45,11 +45,11 @@ export async function sendPasswordResetEmail(
 
   try {
     const supabase = await createClient();
-    // Recovery emails use redirectTo (not emailRedirectTo). Route through /auth/callback
-    // with next=/reset-password so PKCE exchange happens server-side, then land on the form.
-    const resetCallback = `${baseUrl.replace(/\/$/, '')}/auth/callback?next=${encodeURIComponent('/reset-password')}`;
+    // Recovery emails use redirectTo pointing at /auth/recovery (no query params —
+    // survives Supabase redirect URL allow-list matching).
+    const recoveryUrl = `${baseUrl.replace(/\/$/, '')}/auth/recovery`;
     const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
-      redirectTo: resetCallback,
+      redirectTo: recoveryUrl,
     });
     if (error) {
       return { ok: false, error: error.message };
