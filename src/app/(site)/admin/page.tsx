@@ -7,7 +7,7 @@ import { AdminClient } from './admin-client';
 
 export const dynamic = 'force-dynamic';
 
-const SUPER_ADMIN_EMAIL = 'noah@wanderbite.com';
+const SUPER_ADMIN_EMAIL = 'devine.noah@gmail.com';
 
 export default async function AdminPage() {
   const supabase = await createClient();

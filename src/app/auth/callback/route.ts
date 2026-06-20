@@ -8,6 +8,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get('code');
+  const authType = requestUrl.searchParams.get('type');
   const origin = requestUrl.origin;
   const next = safeAuthRedirectPath(requestUrl.searchParams.get('next'), '/');
 
@@ -45,6 +46,11 @@ export async function GET(request: NextRequest) {
   if (exchangeError) {
     console.error('auth/callback exchangeCodeForSession:', exchangeError.message);
     return NextResponse.redirect(new URL('/signin?error=session', origin));
+  }
+
+  // Password recovery links must land on the reset form, not smart-routing.
+  if (authType === 'recovery') {
+    return redirectWithSessionCookies('/reset-password');
   }
 
   // Smart routing after PKCE exchange:

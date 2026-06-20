@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 import { hashPartnerPin } from '@/lib/partner-pin';
 
-const SUPER_ADMIN_EMAIL = 'noah@wanderbite.com';
+const SUPER_ADMIN_EMAIL = 'devine.noah@gmail.com';
 
 export type AddRestaurantResult =
   | { ok: true; partnerUrl: string }
