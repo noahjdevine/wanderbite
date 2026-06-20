@@ -1,27 +1,20 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/server';
+import { assertAdmin } from '@/lib/auth/assert-admin';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { Button } from '@/components/ui/button';
 import { AdminClient } from './admin-client';
 
 export const dynamic = 'force-dynamic';
 
-const SUPER_ADMIN_EMAIL = 'devine.noah@gmail.com';
-
 export default async function AdminPage() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    redirect('/signin');
-  }
-
-  const email = user.email?.trim().toLowerCase() ?? '';
-  if (email !== SUPER_ADMIN_EMAIL) {
-    redirect('/');
+  const auth = await assertAdmin();
+  if (!auth.ok) {
+    redirect(
+      auth.error === 'You must be signed in.'
+        ? '/signin?redirectTo=/admin'
+        : '/'
+    );
   }
 
   const admin = getSupabaseAdmin();

@@ -1,7 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
+import { assertAdmin } from '@/lib/auth/assert-admin';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { PlaceDetails, PlaceResult } from '@/lib/google-places-import';
 import {
@@ -12,17 +12,12 @@ import {
 } from '@/lib/google-places-import';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 
-const SUPER_ADMIN_EMAIL = 'devine.noah@gmail.com';
-
 async function checkAdminPermissions() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user || user.email?.toLowerCase() !== SUPER_ADMIN_EMAIL) {
-    throw new Error('Unauthorized: You are not the admin.');
+  const auth = await assertAdmin();
+  if (!auth.ok) {
+    throw new Error(auth.error);
   }
+  return auth;
 }
 
 /**
