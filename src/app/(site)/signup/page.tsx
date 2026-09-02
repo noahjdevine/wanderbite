@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PasswordField } from '@/components/auth/password-field';
 import { cn } from '@/lib/utils';
+import { SIGNUP_EARLY_ACCESS_MESSAGE } from '@/lib/checkout-copy';
 
 const PENDING_EMAIL_KEY = 'wanderbite_pending_signup_email';
 
@@ -145,6 +146,9 @@ export default function SignUpPage() {
           <CardDescription className="text-base">
             Create your account in under a minute.
           </CardDescription>
+          <p className="text-sm text-muted-foreground" role="status">
+            {SIGNUP_EARLY_ACCESS_MESSAGE}
+          </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

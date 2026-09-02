@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -11,37 +11,13 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { createCheckoutSession } from '@/app/actions/stripe';
+import { LaunchHoldNotice } from '@/components/launch-hold-notice';
 
 type PaywallCardProps = {
   email: string | null;
 };
 
-export function PaywallCard({ email }: PaywallCardProps) {
-  const [loading, setLoading] = useState(false);
-
-  async function handleSubscribe() {
-    const safeEmail = email?.trim() || undefined;
-    if (!safeEmail) {
-      toast.error('Please add an email in your profile to subscribe.');
-      return;
-    }
-    setLoading(true);
-    try {
-      const result = await createCheckoutSession();
-      if (result.ok) {
-        window.location.href = result.url;
-        return;
-      }
-      toast.error(result.error);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
-  }
-
+export function PaywallCard({ email: _email }: PaywallCardProps) {
   return (
     <div className="flex min-h-[50vh] flex-col items-center justify-center p-6">
       <Card className="w-full max-w-md">
@@ -53,13 +29,11 @@ export function PaywallCard({ email }: PaywallCardProps) {
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Just $15/mo (That&apos;s $20 in value!)
+            Just $15/mo (That&apos;s $20 in value!) when checkout reopens.
           </p>
         </CardContent>
         <CardFooter>
-          <Button onClick={handleSubscribe} disabled={loading}>
-            {loading ? 'Redirecting…' : 'Subscribe for $15/mo'}
-          </Button>
+          <LaunchHoldNotice />
         </CardFooter>
       </Card>
     </div>

@@ -2,7 +2,6 @@ import { redirect } from 'next/navigation';
 import { format } from 'date-fns';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { Button } from '@/components/ui/button';
 import {
   Card,
   CardContent,
@@ -10,8 +9,9 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import Link from 'next/link';
 import { CreditCard } from 'lucide-react';
+import { LaunchHoldNotice } from '@/components/launch-hold-notice';
+import { BILLING_INACTIVE_HOLD_COPY } from '@/lib/checkout-copy';
 import { ManageSubscriptionButton } from './manage-subscription-button';
 
 export const dynamic = 'force-dynamic';
@@ -98,12 +98,8 @@ export default async function BillingPage() {
               </>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">
-                  You’re not subscribed yet. Join the club to unlock monthly dining adventures, $10 off each spot, and member perks.
-                </p>
-                <Button asChild className="w-full">
-                  <Link href="/pricing">Upgrade to Member ($15/mo)</Link>
-                </Button>
+                <p className="text-sm text-muted-foreground">{BILLING_INACTIVE_HOLD_COPY}</p>
+                <LaunchHoldNotice />
               </>
             )}
           </CardContent>

@@ -15,7 +15,7 @@ export function ProgressIndicator({
   const steps: { n: WizardStep; label: string }[] = [
     { n: 1, label: 'Preferences' },
     { n: 2, label: 'Profile' },
-    { n: 3, label: 'Subscribe' },
+    { n: 3, label: 'Plan' },
   ];
 
   return (

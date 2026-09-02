@@ -3,6 +3,10 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getStripe } from '@/lib/stripe';
 import { requireUser } from '@/lib/auth/require-user';
+import {
+  CHECKOUT_UNAVAILABLE_MESSAGE,
+  isCheckoutEnabled,
+} from '@/lib/checkout-enabled';
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
 const priceId = process.env.STRIPE_PRICE_ID ?? '';
@@ -22,6 +26,10 @@ export type CreateCheckoutSessionOptions = {
 export async function createCheckoutSession(
   options?: CreateCheckoutSessionOptions
 ): Promise<CreateCheckoutSessionResult> {
+  if (!isCheckoutEnabled()) {
+    return { ok: false, error: CHECKOUT_UNAVAILABLE_MESSAGE };
+  }
+
   const auth = await requireUser();
   if (!auth.ok) return { ok: false, error: auth.error };
 
