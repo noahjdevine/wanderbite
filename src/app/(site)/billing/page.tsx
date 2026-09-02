@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/card';
 import { CreditCard } from 'lucide-react';
 import { LaunchHoldNotice } from '@/components/launch-hold-notice';
+import { BILLING_INACTIVE_HOLD_COPY } from '@/lib/checkout-copy';
 import { ManageSubscriptionButton } from './manage-subscription-button';
 
 export const dynamic = 'force-dynamic';
@@ -97,10 +98,7 @@ export default async function BillingPage() {
               </>
             ) : (
               <>
-                <p className="text-sm text-muted-foreground">
-                  Paid membership checkout is paused. Existing members can still manage or cancel
-                  below once they have a Stripe customer on file.
-                </p>
+                <p className="text-sm text-muted-foreground">{BILLING_INACTIVE_HOLD_COPY}</p>
                 <LaunchHoldNotice />
               </>
             )}

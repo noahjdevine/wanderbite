@@ -2,7 +2,7 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Checkout hold
 
-Paid Checkout is disabled unless `CHECKOUT_ENABLED` is the exact string `true`. Leave it unset in production until launch unfreeze. See [Docs/checkout-hold.md](Docs/checkout-hold.md). Existing subscribers can still manage or cancel in the Stripe Customer Portal.
+Paid Checkout is disabled unless `CHECKOUT_ENABLED` is the exact string `true`. Production stays frozen. Local/preview may enable checkout only with Stripe test-mode keys, a test Price, and test webhooks — never live keys for preview E2E. To re-freeze, remove `CHECKOUT_ENABLED` or set it to anything except exact lowercase `true`. See [Docs/checkout-hold.md](Docs/checkout-hold.md). Active subscribers can still manage or cancel in the Stripe Customer Portal.
 
 ## Getting Started
 
