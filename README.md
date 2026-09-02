@@ -1,5 +1,9 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Checkout hold
+
+Paid Checkout is disabled unless `CHECKOUT_ENABLED` is the exact string `true`. Leave it unset in production until launch unfreeze. See [Docs/checkout-hold.md](Docs/checkout-hold.md). Existing subscribers can still manage or cancel in the Stripe Customer Portal.
+
 ## Getting Started
 
 First, run the development server:

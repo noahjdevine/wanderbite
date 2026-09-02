@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { toast } from 'sonner';
 import {
   Card,
   CardContent,
@@ -12,30 +10,12 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { createCheckoutSession } from '@/app/actions/stripe';
+import { LaunchHoldNotice } from '@/components/launch-hold-notice';
 import { useSupabaseUser } from '@/hooks/use-supabase-user';
 
 export function ClubSection() {
   const { user } = useSupabaseUser();
-  const [loading, setLoading] = useState(false);
   const isSignedIn = Boolean(user);
-
-  async function handleSubscribe() {
-    if (!isSignedIn) return;
-    setLoading(true);
-    try {
-      const result = await createCheckoutSession();
-      if (result.ok) {
-        window.location.href = result.url;
-        return;
-      }
-      toast.error(result.error);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <section className="py-20" id="club">
@@ -56,19 +36,16 @@ export function ClubSection() {
             </CardHeader>
             <CardContent className="text-center">
               <p className="text-lg font-medium text-foreground">
-                Just $15/mo (That&apos;s $20 in value!)
+                Just $15/mo (That&apos;s $20 in value!) when checkout reopens.
               </p>
             </CardContent>
-            <CardFooter className="justify-center">
-              {isSignedIn ? (
-                <Button onClick={handleSubscribe} disabled={loading} size="lg">
-                  {loading ? 'Redirecting…' : 'Subscribe for $15/mo'}
+            <CardFooter className="flex flex-col gap-3">
+              <LaunchHoldNotice />
+              {!isSignedIn ? (
+                <Button size="lg" variant="outline" asChild>
+                  <Link href="/signup">Create a free account</Link>
                 </Button>
-              ) : (
-                <Button size="lg" asChild>
-                  <Link href="/signup">Get Started</Link>
-                </Button>
-              )}
+              ) : null}
             </CardFooter>
           </Card>
         </div>

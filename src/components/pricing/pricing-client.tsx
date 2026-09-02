@@ -1,8 +1,6 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { toast } from 'sonner';
 import { Check } from 'lucide-react';
 import {
   Card,
@@ -13,11 +11,8 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { createCheckoutSession } from '@/app/actions/stripe';
+import { LaunchHoldNotice } from '@/components/launch-hold-notice';
 import { CLUB_PLAN_FEATURES } from '@/lib/club-plan-content';
-
-type BillingInterval = 'monthly' | 'annual';
 
 type PricingClientProps = {
   userId?: string | null;
@@ -35,87 +30,31 @@ function firstNameFromFullName(fullName: string | null | undefined): string | nu
 
 export function PricingClient({
   userId,
-  email,
+  email: _email,
   fullName,
   subscriptionStatus,
 }: PricingClientProps) {
-  const [loading, setLoading] = useState(false);
-  const [billingInterval, setBillingInterval] = useState<BillingInterval>('monthly');
-  const canSubscribe = userId && email?.trim();
   const isActive = subscriptionStatus === 'active';
   const firstName = firstNameFromFullName(fullName);
 
-  async function handleJoinClub() {
-    if (!canSubscribe) return;
-    setLoading(true);
-    try {
-      const result = await createCheckoutSession();
-      if (result.ok) {
-        window.location.href = result.url;
-        return;
-      }
-      toast.error(result.error);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
     <div className="mx-auto max-w-2xl">
-      {/* Header */}
       <header className="text-center">
         <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
           {isActive
             ? 'Your plan, your perks.'
             : userId
-              ? `Welcome${firstName ? `, ${firstName}` : ''}! Pick your plan to start your first challenge.`
+              ? `Welcome${firstName ? `, ${firstName}` : ''}! Membership checkout is paused.`
               : 'Simple, Transparent Pricing.'}
         </h1>
         <p className="mt-3 text-lg text-muted-foreground">
           {isActive
             ? 'Manage your subscription anytime.'
-            : userId
-              ? 'You’re one step away. Subscribe, then your challenges unlock.'
-              : 'Join the club and start saving immediately.'}
+            : 'Paid checkout is launching soon. You can still create a free account.'}
         </p>
       </header>
 
-      {/* Billing interval toggle */}
-      <div className="mt-10 flex justify-center">
-        <div
-          role="group"
-          aria-label="Billing interval"
-          className="inline-flex rounded-lg border border-input bg-muted/50 p-1"
-        >
-          <button
-            type="button"
-            onClick={() => setBillingInterval('monthly')}
-            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              billingInterval === 'monthly'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Monthly
-          </button>
-          <button
-            type="button"
-            onClick={() => setBillingInterval('annual')}
-            className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-              billingInterval === 'annual'
-                ? 'bg-background text-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            Annual
-          </button>
-        </div>
-      </div>
-
-      {/* Main Card */}
-      <Card className="mt-6 border-2 shadow-lg">
+      <Card className="mt-10 border-2 shadow-lg">
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Wanderbite Club</CardTitle>
           <CardDescription className="text-base">
@@ -124,22 +63,11 @@ export function PricingClient({
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="text-center">
-            {billingInterval === 'monthly' ? (
-              <p className="text-4xl font-bold tracking-tight text-primary">
-                $15<span className="text-lg font-normal text-muted-foreground">/month</span>
-              </p>
-            ) : (
-              <div className="flex flex-wrap items-center justify-center gap-2">
-                <p className="text-4xl font-bold tracking-tight text-primary">
-                  $120<span className="text-lg font-normal text-muted-foreground">/year</span>
-                </p>
-                <Badge variant="secondary" className="text-xs">
-                  Save $60 a year!
-                </Badge>
-              </div>
-            )}
+            <p className="text-4xl font-bold tracking-tight text-primary">
+              $15<span className="text-lg font-normal text-muted-foreground">/month</span>
+            </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Includes 2 Curated Adventures per month ($20+ value).
+              Includes 2 Curated Adventures per month ($20+ value). Coming soon.
             </p>
           </div>
           <ul className="space-y-3">
@@ -155,14 +83,14 @@ export function PricingClient({
 
           <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
             <p>
-              Plan: $15/month (billed monthly). Auto-renews until canceled. Includes 2 challenges/month
-              and 1 swap/month. Cancel anytime in Settings → Manage Subscription; cancellation takes
-              effect at the end of your current billing period. No partial refunds. Discount redemptions
-              are subject to restaurant terms (including $10 off $40+ before tax/tip, non-stackable,
-              and in-person confirmation).
+              Plan (when checkout reopens): $15/month (billed monthly). Auto-renews until canceled.
+              Includes 2 challenges/month and 1 swap/month. Cancel anytime in Settings → Manage
+              Subscription; cancellation takes effect at the end of your current billing period. No
+              partial refunds. Discount redemptions are subject to restaurant terms (including $10 off
+              $40+ before tax/tip, non-stackable, and in-person confirmation).
             </p>
             <p>
-              By subscribing, you agree to our{' '}
+              By creating an account, you agree to our{' '}
               <Link href="/terms" className="underline hover:text-foreground">
                 Terms of Service
               </Link>
@@ -178,24 +106,20 @@ export function PricingClient({
             </p>
           </div>
         </CardContent>
-        <CardFooter className="justify-center">
+        <CardFooter className="flex flex-col gap-3">
           {isActive ? (
             <Button size="lg" asChild className="w-full sm:w-auto">
               <Link href="/billing">Manage my plan</Link>
             </Button>
-          ) : canSubscribe ? (
-            <Button
-              size="lg"
-              onClick={handleJoinClub}
-              disabled={loading}
-              className="w-full sm:w-auto"
-            >
-              {loading ? 'Redirecting…' : 'Join the Club'}
-            </Button>
           ) : (
-            <Button size="lg" asChild className="w-full sm:w-auto">
-              <Link href="/signup">Join the Club</Link>
-            </Button>
+            <>
+              <LaunchHoldNotice />
+              {!userId ? (
+                <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
+                  <Link href="/signup">Create a free account</Link>
+                </Button>
+              ) : null}
+            </>
           )}
         </CardFooter>
       </Card>
