@@ -2,10 +2,11 @@
 
 ## Scope and status
 
-Work is local on `fix/ops-03-schema-reconciliation`, based on
-`886288b7adea6d474bd04ed41905101763dac403`. The G0 checkout freeze is unchanged.
-No commit, push, deployment, package installation, hosted SQL mutation, or
-migration-history repair is authorized by this work.
+G1 is committed and pushed on `fix/ops-03-schema-reconciliation`. Commit
+`092f93925042c13dc009b5b8ff81ec8ce4c96172` is based on
+`886288b7adea6d474bd04ed41905101763dac403` and is under review in draft pull
+request #16. The G0 checkout freeze is unchanged, and no website deployment or
+package installation was performed as part of G1.
 
 This is intended project documentation. The separate untracked `Docs/audit/`
 and `supabase/.temp/` are not part of this change and must not be swept into a commit.
@@ -89,20 +90,25 @@ ordinary `postgres` migration role, not the bootstrap superuser.
 
 `.github/workflows/ci.yml` has a separate database-contract job. It prepares the
 pinned image on an ephemeral GitHub runner, then runs exactly `npm run test:db`
-without application secrets. This workflow has been edited locally, not run or
-published to GitHub. Making it a required merge check is a separate repository
-settings change requiring approval.
+without application secrets. The workflow is published on the G1 branch and is
+triggered by pull request #16. Making it a required merge check is a separate
+repository settings change requiring approval.
 
-## Read-only production comparison: 2 September 2026
+## Production reconciliation and verification
 
-Project `yiajoycgiyxjvznndjge` was inspected with SELECTs inside read-only
-transactions. No customer records or audit entries were retrieved.
+Project `yiajoycgiyxjvznndjge` was first inspected on 2 September 2026 with
+SELECTs inside read-only transactions. No customer records or audit entries were
+retrieved. Before any production write, schema equivalence and the minimum
+aggregate backfill invariant were rechecked, a protected backup was restored in
+an isolated local database, and the project owner was confirmed as recovery
+owner.
 
 - `markets.slug` is `text NOT NULL`, with no default. No production backfill is
   needed to add NOT NULL while this constraint remains in place.
-- Migration history contains 001–017 and 021–024. Versions 025 and 026 are absent,
-  although their database objects exist. The five pending G1 migrations are also
-  unrecorded, as expected.
+- Migration history originally contained 001–017 and 021–024. Versions 025 and
+  026 were absent even though their database objects already existed. After the
+  equivalence checks passed, only the 025/026 history entries were reconciled as
+  applied.
 - **025:** bucket name/public flag/5 MiB limit/JPEG-PNG-WebP types, all three
   Storage policies (including roles and predicates), nullable restaurant
   `updated_at DEFAULT now()`, trigger event/body and function configuration match
@@ -114,25 +120,21 @@ transactions. No customer records or audit entries were retrieved.
   enabled RLS and the single authenticated admin-read policy match the file.
   Existing broad legacy grants remain; this is not a permissions-hardening pass.
 
-### Proposed production sequence — NOT authorized or performed
+### Completed production sequence
 
-1. Review and approve the final local diff and test evidence. Confirm backups and
-   a recovery owner before any hosted change. Recheck the above metadata because
-   this snapshot can become stale.
-2. Separately approve a read-only aggregate check of the 025 timestamp backfill
-   invariant. If objects or data differ, propose a targeted forward correction;
-   do not blindly rerun old files or mark mismatched migrations as applied.
-3. If equivalence is accepted, request explicit approval to repair **only** the
-   025/026 history entries as applied. This changes history, not application data,
-   but is still a production write. Inspect the installed CLI's repair help and
-   verify the linked target before executing. No repair command has been run.
-4. Request separate approval to apply the reviewed pending G1 migrations. Confirm
-   the plan does not reapply 025/026 and does not include unrelated migrations.
-5. After approved application, compare hosted types/schema/history, check signup
-   and structured profile persistence in the intended test environment, Journey
-   badge display, existing-member `/challenges` and `/billing`/portal access.
-   Confirm checkout remains fail-closed unless the exact approved test-only
-   environment enables it. Do not enable production Checkout as part of G1.
+1. The 025/026 schema-equivalence checks and minimum aggregate backfill check
+   passed immediately before the history change.
+2. A protected backup and isolated restore rehearsal were verified, with the
+   project owner confirmed as recovery owner.
+3. Only migration-history entries 025 and 026 were marked as applied, and the
+   resulting history was verified before G1 continued.
+4. The five reviewed G1 migrations were applied together in one guarded
+   transaction with their matching history entries. The operation did not
+   reapply 025/026 or include unrelated migrations.
+5. Postflight verification found exactly 28 expected migration-history rows and
+   confirmed the structured address columns/index, subscription constraints,
+   badge policies and glyphs, cron RLS, and required market slug. Checkout stayed
+   fail-closed throughout; no website deployment was performed.
 
 ## Boundaries and remaining uncertainty
 
@@ -151,7 +153,7 @@ does not use that folder and has no network bindings at all.
 
 - `npm run lint`: PASS, zero errors and seven existing script console warnings.
 - `npx --no-install tsc --noEmit`: PASS.
-- `npm test`: PASS, 63 tests across eight files, including the unchanged G0 tests.
+- `npm test`: PASS, 64 tests across eight files, including the unchanged G0 tests.
 - `npm run test:db`: PASS on two fresh disposable databases; the final run also
   verifies preservation of an already-earned badge and its award timestamp.
 - `npm run build`: PASS. The sandboxed attempt could not fetch the existing
@@ -162,9 +164,12 @@ does not use that folder and has no network bindings at all.
 - `git diff --check`: PASS. New G1 files were also checked for trailing whitespace.
 - No disposable test containers remain. The existing sibling practice database
   is still on `127.0.0.1:55432`; its data and containers were not changed.
-- HEAD is unchanged; the staging area is empty. Checkout/billing/challenges/
-  onboarding sources, `.env.example`, checkout-hold documentation and historical
-  migrations 001/003/025/026 are unchanged.
+- G1 implementation commit
+  `092f93925042c13dc009b5b8ff81ec8ce4c96172` and this documentation follow-up
+  are pushed on `origin/fix/ops-03-schema-reconciliation`, the head branch for
+  draft pull request #16. Checkout/billing/challenges/onboarding sources,
+  `.env.example`, checkout-hold documentation and historical migrations
+  001/003/025/026 are unchanged.
 
 The first harness attempts caught a Docker tmpfs metadata assumption and a
 test-only Storage ownership mismatch. Both were fixed; failed run containers
@@ -172,12 +177,10 @@ were disposed of without touching existing databases.
 
 ### Complete G1 working-tree file manifest
 
-There are 19 project files below, including work that was present before this
-implementation turn. In particular, `src/types/database.types.ts`,
-`src/lib/schema-contract.ts`, and the badge/cron initial G1 migrations were
-preserved; the existing contract test and profile migration comment were refined.
-Do not mistake `git diff --stat` alone for the full patch: most G1 files are still
-untracked. Review them too; do not use a blanket staging command.
+The G1 implementation commit contains the 19 project files below. In particular,
+`src/types/database.types.ts`, `src/lib/schema-contract.ts`, and the badge/cron
+initial G1 migrations were preserved; the existing contract test and profile
+migration comment were refined.
 
 ```text
 .github/workflows/ci.yml
