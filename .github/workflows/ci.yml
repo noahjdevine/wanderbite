@@ -7,6 +7,27 @@ on:
     branches: [main]
 
 jobs:
+  database-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Prepare pinned database image on disposable CI runner
+        run: docker pull public.ecr.aws/supabase/postgres:17.6.1.134
+      - name: Replay migrations and test database contract
+        run: npm run test:db
+
   ci:
     runs-on: ubuntu-latest
     timeout-minutes: 10
