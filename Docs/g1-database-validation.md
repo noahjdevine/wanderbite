@@ -91,8 +91,9 @@ ordinary `postgres` migration role, not the bootstrap superuser.
 `.github/workflows/ci.yml` has a separate database-contract job. It prepares the
 pinned image on an ephemeral GitHub runner, then runs exactly `npm run test:db`
 without application secrets. The workflow is published on the G1 branch and is
-triggered by pull request #16. Making it a required merge check is a separate
-repository settings change requiring approval.
+configured for pull requests targeting `main`; draft pull request #16 is the
+current review vehicle. Making it a required merge check is a separate repository
+settings change requiring approval.
 
 ## Production reconciliation and verification
 
