@@ -567,6 +567,10 @@ export type Database = {
       user_profiles: {
         Row: {
           address: string | null
+          address_city: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip: string | null
           allergy_flags: string[] | null
           current_period_end: string | null
           dietary_flags: string[] | null
@@ -585,6 +589,10 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           allergy_flags?: string[] | null
           current_period_end?: string | null
           dietary_flags?: string[] | null
@@ -603,6 +611,10 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           allergy_flags?: string[] | null
           current_period_end?: string | null
           dietary_flags?: string[] | null

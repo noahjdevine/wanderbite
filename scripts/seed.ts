@@ -24,6 +24,7 @@ async function seed() {
     .from('markets')
     .insert({
       name: 'McKinney, TX',
+      slug: 'mckinney-tx',
       timezone: 'America/Chicago',
       status: 'active',
     })

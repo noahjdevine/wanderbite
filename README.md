@@ -4,7 +4,16 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 Paid Checkout is disabled unless `CHECKOUT_ENABLED` is the exact string `true`. Production stays frozen. Local/preview may enable checkout only with Stripe test-mode keys, a test Price, and test webhooks — never live keys for preview E2E. To re-freeze, remove `CHECKOUT_ENABLED` or set it to anything except exact lowercase `true`. See [Docs/checkout-hold.md](Docs/checkout-hold.md). Active subscribers can still manage or cancel in the Stripe Customer Portal.
 
-## Getting Started
+## Database contract checks (G1)
+
+With Docker running and the documented test image already present, run `npm run test:db`.
+It replays migrations in a disposable, network-isolated database and checks column
+types, required fields, badge/cron access, and safe forward corrections. It never
+loads the app's environment files or targets a hosted database. See
+[Docs/g1-database-validation.md](Docs/g1-database-validation.md) for prerequisites,
+test boundaries, and the separate production migration-history approval gate.
+
+## Local website
 
 First, run the development server:
 
