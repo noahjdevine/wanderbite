@@ -47,6 +47,17 @@ describe('OPS-03 schema contract', () => {
     }
   });
 
+  it('does not rewrite historical profile update grants for SEC-01', () => {
+    const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
+    const g2 = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260906012137_user_profiles_privilege_grants.sql'),
+      'utf8',
+    );
+    expect(initial).toMatch(/create policy "Users can update own profile"/);
+    expect(g2).toMatch(/revoke insert,\s*update on table public\.user_profiles from anon, authenticated/i);
+    expect(g2).not.toMatch(/grant (insert|update) on table public\.user_profiles/i);
+  });
+
   it('does not rewrite historical migrations for billing or address columns', () => {
     const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
     expect(initial).not.toMatch(/subscription_status/);

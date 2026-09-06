@@ -44,7 +44,6 @@ export async function updateProfileStructured(values: {
           address_city: city,
           address_state: state,
           address_zip: zip,
-          role: 'subscriber',
         },
         { onConflict: 'id' }
       );

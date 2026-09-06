@@ -31,15 +31,8 @@ export async function completeOnboarding(
 
   const admin = getSupabaseAdmin();
 
-  const { data: existing } = await admin
-    .from('user_profiles')
-    .select('role')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  const existingRole = (existing as { role: string | null } | null)?.role;
-
   // Idempotent: user may revisit onboarding or re-submit.
+  // Do not write role or other privileged columns; new rows default to subscriber.
   const { error: upsertError } = await admin
     .from('user_profiles')
     .upsert(
@@ -49,7 +42,6 @@ export async function completeOnboarding(
         dietary_flags: data.dietary_flags?.length ? data.dietary_flags : null,
         distance_band: distanceBand,
         wants_cocktail_experience: wantsCocktail,
-        ...(existingRole !== 'admin' ? { role: 'subscriber' as const } : {}),
       },
       { onConflict: 'id' }
     );

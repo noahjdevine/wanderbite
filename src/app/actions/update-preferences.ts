@@ -26,7 +26,6 @@ export async function updatePreferences(values: {
         dietary_flags: values.dietary_flags?.length ? values.dietary_flags : null,
         distance_band: values.distance_band,
         wants_cocktail_experience: Boolean(values.wants_cocktail_experience),
-        role: 'subscriber',
       },
       { onConflict: 'id' }
     );
