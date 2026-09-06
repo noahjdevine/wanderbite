@@ -1,11 +1,10 @@
 'use server';
 
-import { cookies } from 'next/headers';
 import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
-
-const PARTNER_COOKIE_NAME = 'partner_restaurant_id';
+import { PARTNER_SESSION_EXPIRED_MESSAGE } from '@/lib/partner-session';
+import { requirePartnerSession } from '@/lib/require-partner-session';
 
 const BADGE_ID_TO_NAME: Record<string, string> = {
   first_bite: 'First Bite',
@@ -87,11 +86,11 @@ async function awardBadgesForVerifiedCount(
 export async function verifyRedemptionTokenForPartner(
   token: string
 ): Promise<VerifyRedemptionResult> {
-  const cookieStore = await cookies();
-  const partnerRestaurantId = cookieStore.get(PARTNER_COOKIE_NAME)?.value;
-  if (!partnerRestaurantId) {
-    return { success: false, message: 'Partner session expired. Please log in again.' };
+  const session = await requirePartnerSession();
+  if (!session.ok) {
+    return { success: false, message: PARTNER_SESSION_EXPIRED_MESSAGE };
   }
+  const partnerRestaurantId = session.restaurantId;
 
   const trimmed = token?.trim();
   if (!trimmed) {

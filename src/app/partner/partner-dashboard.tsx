@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
+import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import type { PartnerAnalyticsResult } from '@/app/actions/partner-auth';
 
@@ -86,7 +87,11 @@ export function PartnerDashboard({
   }
 
   async function handleLogout() {
-    await logoutPartner();
+    const result = await logoutPartner();
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
     router.refresh();
   }
 

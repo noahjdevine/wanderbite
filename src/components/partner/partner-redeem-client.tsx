@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
+import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 
 type VerifyState =
@@ -77,7 +78,11 @@ export function PartnerRedeemClient({
   }
 
   async function handleLogout() {
-    await logoutPartner();
+    const result = await logoutPartner();
+    if (!result.ok) {
+      toast.error(result.error);
+      return;
+    }
     router.refresh();
   }
 

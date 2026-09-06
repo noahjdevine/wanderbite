@@ -3,10 +3,21 @@
 import { cookies, headers } from 'next/headers';
 import { verifyPartnerPin } from '@/lib/partner-pin';
 import {
+  LEGACY_PARTNER_COOKIE_NAME,
+  PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE,
   PARTNER_COOKIE_KIOSK_MAX_AGE,
   PARTNER_COOKIE_MAX_AGE,
-  PARTNER_COOKIE_NAME,
+  PARTNER_LOGOUT_FAILED_MESSAGE,
+  PARTNER_SESSION_COOKIE_NAME,
+  PARTNER_SESSION_EXPIRED_MESSAGE,
+  PARTNER_SESSION_START_FAILED_MESSAGE,
+  generatePartnerSessionToken,
+  hashPartnerSessionToken,
+  partnerSessionCookieExpireOptions,
+  partnerSessionCookieOptions,
+  sessionExpiresAt,
 } from '@/lib/partner-session';
+import { requirePartnerSession } from '@/lib/require-partner-session';
 import { partnerLoginLimiter } from '@/lib/ratelimit';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
@@ -14,7 +25,18 @@ export type PartnerLoginResult =
   | { ok: true; restaurantName: string }
   | { ok: false; error: string };
 
-/** Verify restaurant PIN and set partner session cookie. */
+export type PartnerLogoutResult =
+  | { ok: true }
+  | { ok: false; error: string };
+
+async function expireNamedPartnerCookie(
+  cookieStore: Awaited<ReturnType<typeof cookies>>,
+  name: string,
+) {
+  cookieStore.set(name, '', partnerSessionCookieExpireOptions());
+}
+
+/** Verify restaurant PIN and set hashed partner session cookie. */
 export async function loginPartner(
   restaurantId: string,
   pin: string,
@@ -42,8 +64,9 @@ export async function loginPartner(
   const admin = getSupabaseAdmin();
   const { data: restaurant, error } = await admin
     .from('restaurants')
-    .select('id, name, pin_hash')
+    .select('id, name, pin_hash, status')
     .eq('id', restaurantId)
+    .eq('status', 'active')
     .maybeSingle();
 
   if (error || !restaurant) {
@@ -57,15 +80,46 @@ export async function loginPartner(
   }
 
   const cookieStore = await cookies();
+  const previousToken = cookieStore.get(PARTNER_SESSION_COOKIE_NAME)?.value;
+  const previousHash = previousToken ? hashPartnerSessionToken(previousToken) : null;
+
   const maxAge = options?.rememberDevice ? PARTNER_COOKIE_KIOSK_MAX_AGE : PARTNER_COOKIE_MAX_AGE;
-  cookieStore.set(PARTNER_COOKIE_NAME, row.id, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    maxAge,
-    path: '/',
+  const { token, tokenHash } = generatePartnerSessionToken();
+  const { error: insertError } = await admin.from('partner_sessions').insert({
+    token_hash: tokenHash,
+    restaurant_id: row.id,
+    expires_at: sessionExpiresAt(maxAge),
   });
 
+  if (insertError) {
+    console.error('partner session insert failed');
+    return { ok: false, error: PARTNER_SESSION_START_FAILED_MESSAGE };
+  }
+
+  try {
+    cookieStore.set(PARTNER_SESSION_COOKIE_NAME, token, partnerSessionCookieOptions(maxAge));
+  } catch {
+    const { error: rollbackError } = await admin
+      .from('partner_sessions')
+      .delete()
+      .eq('token_hash', tokenHash);
+    if (rollbackError) {
+      console.error('partner session cookie-set rollback failed');
+    }
+    return { ok: false, error: PARTNER_SESSION_START_FAILED_MESSAGE };
+  }
+
+  if (previousHash && previousHash !== tokenHash) {
+    const { error: revokeError } = await admin
+      .from('partner_sessions')
+      .delete()
+      .eq('token_hash', previousHash);
+    if (revokeError) {
+      console.error('previous partner session revoke failed after login');
+    }
+  }
+
+  expireNamedPartnerCookie(cookieStore, LEGACY_PARTNER_COOKIE_NAME);
   return { ok: true, restaurantName: row.name };
 }
 
@@ -73,38 +127,51 @@ export type PartnerSession =
   | { ok: true; restaurantId: string; restaurantName: string }
   | { ok: false };
 
-/** Read current partner session from cookie. */
+/** Read current partner session from the opaque cookie. */
 export async function getPartnerSession(): Promise<PartnerSession> {
-  const cookieStore = await cookies();
-  const restaurantId = cookieStore.get(PARTNER_COOKIE_NAME)?.value;
-  if (!restaurantId) return { ok: false };
-
-  const admin = getSupabaseAdmin();
-  const { data: restaurant } = await admin
-    .from('restaurants')
-    .select('id, name')
-    .eq('id', restaurantId)
-    .maybeSingle();
-
-  if (!restaurant) return { ok: false };
-  const r = restaurant as { id: string; name: string };
-  return { ok: true, restaurantId: r.id, restaurantName: r.name };
+  const session = await requirePartnerSession();
+  if (!session.ok) return { ok: false };
+  return {
+    ok: true,
+    restaurantId: session.restaurantId,
+    restaurantName: session.restaurantName,
+  };
 }
 
 /** Clear partner session (logout). */
-export async function logoutPartner(): Promise<void> {
+export async function logoutPartner(): Promise<PartnerLogoutResult> {
   const cookieStore = await cookies();
-  cookieStore.delete(PARTNER_COOKIE_NAME);
+  const token = cookieStore.get(PARTNER_SESSION_COOKIE_NAME)?.value;
+  const tokenHash = token ? hashPartnerSessionToken(token) : null;
+
+  if (tokenHash) {
+    const admin = getSupabaseAdmin();
+    const { error } = await admin
+      .from('partner_sessions')
+      .delete()
+      .eq('token_hash', tokenHash);
+    if (error) {
+      console.error('partner session logout delete failed');
+      return { ok: false, error: PARTNER_LOGOUT_FAILED_MESSAGE };
+    }
+  }
+
+  expireNamedPartnerCookie(cookieStore, PARTNER_SESSION_COOKIE_NAME);
+  expireNamedPartnerCookie(cookieStore, LEGACY_PARTNER_COOKIE_NAME);
+  return { ok: true };
 }
 
 export type PartnerStatsResult =
   | { ok: true; totalRedemptionsThisMonth: number }
   | { ok: false; error: string };
 
-/** Total verified redemptions for this restaurant in the current month. */
-export async function getPartnerRedemptionsThisMonth(
-  restaurantId: string
-): Promise<PartnerStatsResult> {
+/** Total verified redemptions for the session restaurant in the current month. */
+export async function getPartnerRedemptionsThisMonth(): Promise<PartnerStatsResult> {
+  const session = await requirePartnerSession();
+  if (!session.ok) {
+    return { ok: false, error: PARTNER_SESSION_EXPIRED_MESSAGE };
+  }
+
   const admin = getSupabaseAdmin();
   const startOfMonth = new Date();
   startOfMonth.setDate(1);
@@ -114,11 +181,14 @@ export async function getPartnerRedemptionsThisMonth(
   const { count, error } = await admin
     .from('redemptions')
     .select('*', { count: 'exact', head: true })
-    .eq('restaurant_id', restaurantId)
+    .eq('restaurant_id', session.restaurantId)
     .eq('status', 'verified')
     .gte('verified_at', isoStart);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    console.error('partner monthly redemptions query failed');
+    return { ok: false, error: PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE };
+  }
   return { ok: true, totalRedemptionsThisMonth: count ?? 0 };
 }
 
@@ -145,12 +215,15 @@ export type PartnerAnalyticsResult =
 /**
  * Fetches analytics for the partner dashboard: revenue estimate, 6-month volume, recent guests.
  */
-export async function getPartnerAnalytics(
-  restaurantId: string
-): Promise<PartnerAnalyticsResult> {
+export async function getPartnerAnalytics(): Promise<PartnerAnalyticsResult> {
+  const session = await requirePartnerSession();
+  if (!session.ok) {
+    return { ok: false, error: PARTNER_SESSION_EXPIRED_MESSAGE };
+  }
+
+  const restaurantId = session.restaurantId;
   const admin = getSupabaseAdmin();
 
-  // Start of current month (UTC) for "this month" and 6-month window
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const sixMonthsAgo = new Date(now);
@@ -158,14 +231,16 @@ export async function getPartnerAnalytics(
   const isoSixMonthsAgo = sixMonthsAgo.toISOString();
   const isoStartOfMonth = startOfMonth.toISOString();
 
-  // Total verified redemptions (all time) for revenue
   const { count: totalVerified, error: countErr } = await admin
     .from('redemptions')
     .select('*', { count: 'exact', head: true })
     .eq('restaurant_id', restaurantId)
     .eq('status', 'verified');
 
-  if (countErr) return { ok: false, error: countErr.message };
+  if (countErr) {
+    console.error('partner analytics all-time count failed');
+    return { ok: false, error: PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE };
+  }
   const total = totalVerified ?? 0;
   const revenueFormatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
@@ -174,7 +249,6 @@ export async function getPartnerAnalytics(
     maximumFractionDigits: 0,
   }).format(total * AVG_TICKET_SIZE);
 
-  // This month count
   const { count: thisMonthCount, error: monthErr } = await admin
     .from('redemptions')
     .select('*', { count: 'exact', head: true })
@@ -182,9 +256,11 @@ export async function getPartnerAnalytics(
     .eq('status', 'verified')
     .gte('verified_at', isoStartOfMonth);
 
-  if (monthErr) return { ok: false, error: monthErr.message };
+  if (monthErr) {
+    console.error('partner analytics month count failed');
+    return { ok: false, error: PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE };
+  }
 
-  // Last 6 months: fetch verified redemptions with verified_at in range, then group by month
   const { data: lastSixMonthsRows, error: histErr } = await admin
     .from('redemptions')
     .select('verified_at')
@@ -192,7 +268,10 @@ export async function getPartnerAnalytics(
     .eq('status', 'verified')
     .gte('verified_at', isoSixMonthsAgo);
 
-  if (histErr) return { ok: false, error: histErr.message };
+  if (histErr) {
+    console.error('partner analytics history query failed');
+    return { ok: false, error: PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE };
+  }
 
   const monthCounts: Record<string, number> = {};
   const monthLabels: string[] = [];
@@ -204,8 +283,8 @@ export async function getPartnerAnalytics(
     monthLabels.push(label);
   }
 
-  for (const row of lastSixMonthsRows ?? []) {
-    const r = row as { verified_at: string };
+  for (const histRow of lastSixMonthsRows ?? []) {
+    const r = histRow as { verified_at: string };
     const date = new Date(r.verified_at);
     const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
     if (monthCounts[key] !== undefined) monthCounts[key]++;
@@ -217,7 +296,6 @@ export async function getPartnerAnalytics(
     return { monthLabel, count: monthCounts[key] ?? 0 };
   });
 
-  // Recent customers: last 5–10 verified redemptions with user email
   const { data: recentRows, error: recentErr } = await admin
     .from('redemptions')
     .select('verified_at, user_id')
@@ -226,7 +304,10 @@ export async function getPartnerAnalytics(
     .order('verified_at', { ascending: false })
     .limit(10);
 
-  if (recentErr) return { ok: false, error: recentErr.message };
+  if (recentErr) {
+    console.error('partner analytics recent guests query failed');
+    return { ok: false, error: PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE };
+  }
 
   const userIds = [
     ...new Set(
@@ -242,13 +323,13 @@ export async function getPartnerAnalytics(
       .select('id, email')
       .in('id', userIds);
     for (const p of profiles ?? []) {
-      const row = p as { id: string; email: string | null };
-      emailByUserId[row.id] = row.email ?? null;
+      const profileRow = p as { id: string; email: string | null };
+      emailByUserId[profileRow.id] = profileRow.email ?? null;
     }
   }
 
-  const recentCustomers = (recentRows ?? []).map((row: unknown) => {
-    const r = row as { verified_at: string; user_id: string | null };
+  const recentCustomers = (recentRows ?? []).map((recent: unknown) => {
+    const r = recent as { verified_at: string; user_id: string | null };
     const email = r.user_id ? emailByUserId[r.user_id] ?? null : null;
     return {
       emailMasked: maskEmail(email),

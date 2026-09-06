@@ -62,13 +62,13 @@ export default async function PartnerSlugPage({ params }: PageProps) {
   const session = await getPartnerSession();
 
   if (session.ok && session.restaurantId === restaurant.id) {
-    const analytics = await getPartnerAnalytics(session.restaurantId);
+    const analytics = await getPartnerAnalytics();
     return (
       <div className="mx-auto max-w-4xl px-6 py-12">
         <PartnerDashboard
           restaurantName={session.restaurantName}
           restaurantSlug={restaurant.slug}
-          analytics={analytics.ok ? analytics : null}
+          analytics={analytics}
         />
       </div>
     );

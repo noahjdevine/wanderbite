@@ -58,6 +58,18 @@ describe('OPS-03 schema contract', () => {
     expect(g2).not.toMatch(/grant (insert|update) on table public\.user_profiles/i);
   });
 
+  it('does not rewrite historical migrations for hashed partner sessions', () => {
+    const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
+    const g3 = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260906195909_partner_sessions.sql'),
+      'utf8',
+    );
+    expect(initial).not.toMatch(/partner_sessions/);
+    expect(g3).toMatch(/create table public\.partner_sessions/);
+    expect(g3).toMatch(/revoke all on table public\.partner_sessions/i);
+    expect(g3).toMatch(/grant select, insert, delete on table public\.partner_sessions/i);
+  });
+
   it('does not rewrite historical migrations for billing or address columns', () => {
     const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
     expect(initial).not.toMatch(/subscription_status/);
