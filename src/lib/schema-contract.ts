@@ -53,6 +53,7 @@ export const SCHEMA_CONTRACT = {
     'error',
   ],
   markets: ['id', 'name', 'timezone', 'status', 'slug', 'state', 'country', 'currency'],
+  partner_sessions: ['token_hash', 'restaurant_id', 'created_at', 'expires_at'],
   redemptions: [
     'id',
     'user_id',

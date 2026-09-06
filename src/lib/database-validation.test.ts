@@ -24,14 +24,20 @@ describe('local database validation safeguards', () => {
       'supabase/migrations/20260902225901_markets_slug_required.sql'), 'utf8');
     const g2 = readFileSync(path.join(root,
       'supabase/migrations/20260906012137_user_profiles_privilege_grants.sql'), 'utf8');
+    const g3 = readFileSync(path.join(root,
+      'supabase/migrations/20260906195909_partner_sessions.sql'), 'utf8');
     const sql = migration.replace(/--[^\n]*/g, '');
     const g2Sql = g2.replace(/--[^\n]*/g, '').replace(/\$\$[\s\S]*?\$\$/g, ' FUNCTION_BODY ');
+    const g3Sql = g3.replace(/--[^\n]*/g, '');
     expect(sql).not.toMatch(/^\s*(begin|start\s+transaction|commit|rollback|end)\b/im);
     expect(g2Sql).not.toMatch(/^\s*(begin|start\s+transaction|commit|rollback)\b/im);
+    expect(g3Sql).not.toMatch(/^\s*(begin|start\s+transaction|commit|rollback)\b/im);
     expect(sql).toContain("set local lock_timeout = '5s'");
     expect(sql).toContain("set local statement_timeout = '30s'");
     expect(g2Sql).toContain("set local lock_timeout = '5s'");
     expect(g2Sql).toContain("set local statement_timeout = '30s'");
+    expect(g3Sql).toContain("set local lock_timeout = '5s'");
+    expect(g3Sql).toContain("set local statement_timeout = '30s'");
     expect(migrationPsqlArgs()).toContain('--single-transaction');
     expect(migrationPsqlArgs()).toContain('--file=-');
     expect(migrationPsqlArgs()).toContain('ON_ERROR_STOP=1');
