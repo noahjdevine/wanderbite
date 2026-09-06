@@ -22,10 +22,16 @@ describe('local database validation safeguards', () => {
   it('leaves migration transactions to the runner and wraps direct psql replay', () => {
     const migration = readFileSync(path.join(root,
       'supabase/migrations/20260902225901_markets_slug_required.sql'), 'utf8');
+    const g2 = readFileSync(path.join(root,
+      'supabase/migrations/20260906012137_user_profiles_privilege_grants.sql'), 'utf8');
     const sql = migration.replace(/--[^\n]*/g, '');
+    const g2Sql = g2.replace(/--[^\n]*/g, '').replace(/\$\$[\s\S]*?\$\$/g, ' FUNCTION_BODY ');
     expect(sql).not.toMatch(/^\s*(begin|start\s+transaction|commit|rollback|end)\b/im);
+    expect(g2Sql).not.toMatch(/^\s*(begin|start\s+transaction|commit|rollback)\b/im);
     expect(sql).toContain("set local lock_timeout = '5s'");
     expect(sql).toContain("set local statement_timeout = '30s'");
+    expect(g2Sql).toContain("set local lock_timeout = '5s'");
+    expect(g2Sql).toContain("set local statement_timeout = '30s'");
     expect(migrationPsqlArgs()).toContain('--single-transaction');
     expect(migrationPsqlArgs()).toContain('--file=-');
     expect(migrationPsqlArgs()).toContain('ON_ERROR_STOP=1');
