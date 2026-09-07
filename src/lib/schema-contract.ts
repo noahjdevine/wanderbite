@@ -65,6 +65,7 @@ export const SCHEMA_CONTRACT = {
     'created_at',
     'encrypted_code',
     'code_iv',
+    'expires_at',
   ],
   restaurant_offers: [
     'id',

@@ -8,6 +8,7 @@ import { encryptRedemptionCode } from '@/lib/redemption-crypto';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
 import { redeemLimiter } from '@/lib/ratelimit';
 import { requireUser } from '@/lib/auth/require-user';
+import { redemptionExpiresAt } from '@/lib/redemption-expiry';
 import type { RedeemChallengeResult } from '@/types/redeem-challenge';
 
 const TOKEN_PREFIX = 'WB-';
@@ -110,6 +111,7 @@ export async function redeemChallengeItem(
         encrypted_code: encrypted,
         code_iv: iv,
         status: 'issued',
+        expires_at: redemptionExpiresAt().toISOString(),
       })
       .select('id, created_at')
       .single();

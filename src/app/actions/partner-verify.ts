@@ -1,10 +1,17 @@
 'use server';
 
 import { format } from 'date-fns';
+import { headers } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
 import { PARTNER_SESSION_EXPIRED_MESSAGE } from '@/lib/partner-session';
 import { requirePartnerSession } from '@/lib/require-partner-session';
+import {
+  VERIFY_THROTTLED_MESSAGE,
+  VERIFY_UNAVAILABLE_MESSAGE,
+  enforcePartnerVerifyLimit,
+} from '@/lib/partner-verify-limit';
+import { reportVerifyIntegrityError } from '@/lib/report-verify-integrity-error';
 
 const BADGE_ID_TO_NAME: Record<string, string> = {
   first_bite: 'First Bite',
@@ -12,6 +19,10 @@ const BADGE_ID_TO_NAME: Record<string, string> = {
   high_five: 'High Five',
   wanderer: 'The Wanderer',
 };
+
+const VERIFY_FAILED_MESSAGE = 'Verification failed. Please try again later.';
+const DUPLICATE_ISSUED_REDEMPTIONS_ERROR =
+  'duplicate issued redemptions for token_hash';
 
 export type VerifyRedemptionResult =
   | {
@@ -24,6 +35,29 @@ export type VerifyRedemptionResult =
       newBadgesEarned: string[];
     }
   | { success: false; message: string };
+
+type RedemptionLookupRow = {
+  id: string;
+  user_id: string;
+  restaurant_id: string;
+  status: string;
+  verified_at: string | null;
+  expires_at: string;
+};
+
+function clientIpFromHeaders(hdrs: Awaited<ReturnType<typeof headers>>): string {
+  const forwarded = hdrs.get('x-forwarded-for') ?? '';
+  return forwarded.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
+}
+
+function isDuplicateIssuedError(message: string | undefined): boolean {
+  return (message ?? '').includes(DUPLICATE_ISSUED_REDEMPTIONS_ERROR);
+}
+
+async function recordIntegrityFailure(detail: string): Promise<VerifyRedemptionResult> {
+  reportVerifyIntegrityError(detail);
+  return { success: false, message: VERIFY_FAILED_MESSAGE };
+}
 
 /**
  * Count verified redemptions for user, determine which badges to award,
@@ -78,10 +112,35 @@ async function awardBadgesForVerifiedCount(
   return newBadgeIds.map((id) => BADGE_ID_TO_NAME[id] ?? id);
 }
 
+function messageForUnclaimedRow(
+  redemption: RedemptionLookupRow,
+  partnerRestaurantId: string,
+): string {
+  if (redemption.restaurant_id !== partnerRestaurantId) {
+    return 'This code is not for your restaurant.';
+  }
+  if (redemption.status === 'verified') {
+    const usedAt = redemption.verified_at
+      ? format(new Date(redemption.verified_at), 'PPp')
+      : 'a previous time';
+    return `This code was already used on ${usedAt}.`;
+  }
+  if (redemption.status === 'expired') {
+    return 'Code expired';
+  }
+  if (
+    redemption.status === 'issued' &&
+    new Date(redemption.expires_at).getTime() <= Date.now()
+  ) {
+    return 'Code expired';
+  }
+  return 'Invalid code';
+}
+
 /**
  * Partner Portal: verify a customer code. Only succeeds if the redemption is for
  * the restaurant in the partner session cookie. Uses service role (bypasses RLS);
- * authorization is enforced by server-side PIN-verified session.
+ * authorization is enforced by hashed partner session + atomic RPC.
  */
 export async function verifyRedemptionTokenForPartner(
   token: string
@@ -92,6 +151,18 @@ export async function verifyRedemptionTokenForPartner(
   }
   const partnerRestaurantId = session.restaurantId;
 
+  const hdrs = await headers();
+  const limitResult = await enforcePartnerVerifyLimit({
+    sessionTokenHash: session.tokenHash,
+    ip: clientIpFromHeaders(hdrs),
+  });
+  if (limitResult === 'unavailable') {
+    return { success: false, message: VERIFY_UNAVAILABLE_MESSAGE };
+  }
+  if (limitResult === 'throttled') {
+    return { success: false, message: VERIFY_THROTTLED_MESSAGE };
+  }
+
   const trimmed = token?.trim();
   if (!trimmed) {
     return { success: false, message: 'Invalid code' };
@@ -100,80 +171,81 @@ export async function verifyRedemptionTokenForPartner(
   const supabase = getSupabaseAdmin();
   const tokenHash = hashRedemptionToken(trimmed);
 
+  const { data, error: rpcError } = await supabase.rpc('verify_redemption', {
+    p_token_hash: tokenHash,
+    p_restaurant_id: partnerRestaurantId,
+  });
+
+  if (rpcError) {
+    if (isDuplicateIssuedError(rpcError.message)) {
+      return recordIntegrityFailure(rpcError.message);
+    }
+    return { success: false, message: VERIFY_FAILED_MESSAGE };
+  }
+
+  const claimed = Array.isArray(data) ? data : data ? [data] : [];
+  if (claimed.length > 1) {
+    return recordIntegrityFailure(
+      `${DUPLICATE_ISSUED_REDEMPTIONS_ERROR} (rpc returned ${claimed.length} rows)`,
+    );
+  }
+
+  if (claimed.length === 1) {
+    const redemption = claimed[0];
+    if (!redemption.user_id || !redemption.restaurant_id) {
+      return { success: false, message: VERIFY_FAILED_MESSAGE };
+    }
+
+    const verifiedAtIso = redemption.verified_at ?? new Date().toISOString();
+    const { data: profile } = await supabase
+      .from('user_profiles')
+      .select('email')
+      .eq('id', redemption.user_id)
+      .maybeSingle();
+
+    const { data: restaurant } = await supabase
+      .from('restaurants')
+      .select('name')
+      .eq('id', redemption.restaurant_id)
+      .maybeSingle();
+
+    const email = (profile as { email: string | null } | null)?.email ?? null;
+    const restaurantName =
+      (restaurant as { name: string } | null)?.name ?? 'Unknown restaurant';
+    const verifiedAt = format(new Date(verifiedAtIso), 'PPp');
+
+    const newBadgesEarned = await awardBadgesForVerifiedCount(
+      supabase,
+      redemption.user_id
+    );
+
+    return {
+      success: true,
+      redemptionDetails: { email, restaurantName, verifiedAt },
+      newBadgesEarned,
+    };
+  }
+
   const { data: rows, error: searchErr } = await supabase
     .from('redemptions')
-    .select('id, user_id, restaurant_id, status, verified_at')
+    .select('id, user_id, restaurant_id, status, verified_at, expires_at')
     .eq('token_hash', tokenHash)
     .limit(2);
 
   if (searchErr) {
-    return { success: false, message: 'Verification failed. Please try again.' };
+    return { success: false, message: VERIFY_FAILED_MESSAGE };
   }
   if (!rows?.length) {
     return { success: false, message: 'Invalid code' };
   }
-
-  const redemption = rows[0] as {
-    id: string;
-    user_id: string;
-    restaurant_id: string;
-    status: string;
-    verified_at: string | null;
-  };
-
-  if (redemption.restaurant_id !== partnerRestaurantId) {
-    return { success: false, message: 'This code is not for your restaurant.' };
+  if (rows.length > 1) {
+    return recordIntegrityFailure(
+      `${DUPLICATE_ISSUED_REDEMPTIONS_ERROR} (lookup returned ${rows.length} rows)`,
+    );
   }
-
-  if (redemption.status === 'verified') {
-    const usedAt = redemption.verified_at
-      ? format(new Date(redemption.verified_at), 'PPp')
-      : 'a previous time';
-    return {
-      success: false,
-      message: `This code was already used on ${usedAt}.`,
-    };
-  }
-
-  if (redemption.status === 'expired') {
-    return { success: false, message: 'Code expired' };
-  }
-
-  const now = new Date().toISOString();
-  const { error: updateErr } = await supabase
-    .from('redemptions')
-    .update({ status: 'verified', verified_at: now })
-    .eq('id', redemption.id);
-
-  if (updateErr) {
-    return { success: false, message: 'Verification failed. Please try again.' };
-  }
-
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('email')
-    .eq('id', redemption.user_id)
-    .maybeSingle();
-
-  const { data: restaurant } = await supabase
-    .from('restaurants')
-    .select('name')
-    .eq('id', redemption.restaurant_id)
-    .maybeSingle();
-
-  const email = (profile as { email: string | null } | null)?.email ?? null;
-  const restaurantName =
-    (restaurant as { name: string } | null)?.name ?? 'Unknown restaurant';
-  const verifiedAt = format(new Date(now), 'PPp');
-
-  const newBadgesEarned = await awardBadgesForVerifiedCount(
-    supabase,
-    redemption.user_id
-  );
 
   return {
-    success: true,
-    redemptionDetails: { email, restaurantName, verifiedAt },
-    newBadgesEarned,
+    success: false,
+    message: messageForUnclaimedRow(rows[0] as RedemptionLookupRow, partnerRestaurantId),
   };
 }

@@ -70,6 +70,18 @@ describe('OPS-03 schema contract', () => {
     expect(g3).toMatch(/grant select, insert, delete on table public\.partner_sessions/i);
   });
 
+  it('does not rewrite historical migrations for redemption verify RPC', () => {
+    const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
+    const g6 = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260907174245_redemptions_verify_rpc.sql'),
+      'utf8',
+    );
+    expect(initial).not.toMatch(/verify_redemption/);
+    expect(g6).toMatch(/add column expires_at timestamptz/);
+    expect(g6).toMatch(/create or replace function public.verify_redemption/);
+    expect(g6).toMatch(/grant execute on function public.verify_redemption/i);
+  });
+
   it('does not rewrite historical migrations for billing or address columns', () => {
     const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
     expect(initial).not.toMatch(/subscription_status/);
