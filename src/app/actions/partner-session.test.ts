@@ -37,6 +37,7 @@ type RedemptionRow = {
   status: string;
   token_hash: string;
   verified_at: string | null;
+  expires_at: string;
 };
 
 const state = vi.hoisted(() => ({
@@ -49,6 +50,7 @@ const state = vi.hoisted(() => ({
   restaurants: new Map<string, RestaurantRow>(),
   redemptions: [] as RedemptionRow[],
   redemptionRestaurantIds: [] as string[],
+  rpcCalls: [] as { fn: string; args: Record<string, string> }[],
   cookieSets: [] as { name: string; value: string; options: Record<string, unknown> }[],
 }));
 
@@ -73,8 +75,14 @@ vi.mock('next/headers', () => ({
   }),
 }));
 
+vi.mock('@/lib/report-verify-integrity-error', () => ({
+  reportVerifyIntegrityError: vi.fn(),
+}));
+
 vi.mock('@/lib/ratelimit', () => ({
   partnerLoginLimiter: null,
+  partnerVerifySessionLimiter: null,
+  partnerVerifyIpLimiter: null,
 }));
 
 vi.mock('@/lib/partner-pin', () => ({
@@ -188,7 +196,35 @@ vi.mock('@/lib/supabase-admin', () => {
     };
   }
 
-  return { getSupabaseAdmin: () => ({ from }) };
+  async function rpc(fn: string, args: { p_token_hash: string; p_restaurant_id: string }) {
+    state.rpcCalls.push({ fn, args });
+    if (fn !== 'verify_redemption') {
+      return { data: null, error: { message: 'unknown rpc' } };
+    }
+    const now = Date.now();
+    const matching = state.redemptions.filter(
+      (row) =>
+        row.token_hash === args.p_token_hash &&
+        row.restaurant_id === args.p_restaurant_id &&
+        row.status === 'issued' &&
+        new Date(row.expires_at).getTime() > now,
+    );
+    if (matching.length > 1) {
+      return {
+        data: null,
+        error: { message: 'duplicate issued redemptions for token_hash', code: '23514' },
+      };
+    }
+    if (matching.length === 0) {
+      return { data: [], error: null };
+    }
+    const row = matching[0];
+    row.status = 'verified';
+    row.verified_at = new Date().toISOString();
+    return { data: [{ ...row }], error: null };
+  }
+
+  return { getSupabaseAdmin: () => ({ from, rpc }) };
 });
 
 function seedRestaurants() {
@@ -234,6 +270,7 @@ describe('requirePartnerSession', () => {
     state.restaurants = new Map();
     state.redemptions = [];
     state.redemptionRestaurantIds = [];
+    state.rpcCalls = [];
     state.cookieSets = [];
     seedRestaurants();
   });
@@ -286,6 +323,7 @@ describe('loginPartner and logoutPartner', () => {
     state.restaurants = new Map();
     state.redemptions = [];
     state.redemptionRestaurantIds = [];
+    state.rpcCalls = [];
     state.cookieSets = [];
     seedRestaurants();
   });
@@ -405,6 +443,7 @@ describe('session-bound partner analytics and verify', () => {
     state.restaurants = new Map();
     state.redemptions = [];
     state.redemptionRestaurantIds = [];
+    state.rpcCalls = [];
     state.cookieSets = [];
     seedRestaurants();
   });
@@ -448,6 +487,7 @@ describe('session-bound partner analytics and verify', () => {
       status: 'issued',
       token_hash: hashRedemptionToken(code),
       verified_at: null,
+      expires_at: new Date(Date.now() + 86_400_000).toISOString(),
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     await expect(verifyRedemptionTokenForPartner(code)).resolves.toEqual({

@@ -305,6 +305,7 @@ export type Database = {
           code_iv: string | null
           created_at: string | null
           encrypted_code: string | null
+          expires_at: string
           id: string
           restaurant_id: string | null
           status: string | null
@@ -317,6 +318,7 @@ export type Database = {
           code_iv?: string | null
           created_at?: string | null
           encrypted_code?: string | null
+          expires_at?: string
           id?: string
           restaurant_id?: string | null
           status?: string | null
@@ -329,6 +331,7 @@ export type Database = {
           code_iv?: string | null
           created_at?: string | null
           encrypted_code?: string | null
+          expires_at?: string
           id?: string
           restaurant_id?: string | null
           status?: string | null
@@ -1600,6 +1603,28 @@ export type Database = {
           table_name: string
         }
         Returns: string
+      }
+      verify_redemption: {
+        Args: { p_restaurant_id: string; p_token_hash: string }
+        Returns: {
+          challenge_item_id: string | null
+          code_iv: string | null
+          created_at: string | null
+          encrypted_code: string | null
+          expires_at: string
+          id: string
+          restaurant_id: string | null
+          status: string | null
+          token_hash: string | null
+          user_id: string | null
+          verified_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "redemptions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
     }
     Enums: {
