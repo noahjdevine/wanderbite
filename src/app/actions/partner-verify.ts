@@ -21,7 +21,7 @@ const BADGE_ID_TO_NAME: Record<string, string> = {
 };
 
 const VERIFY_FAILED_MESSAGE = 'Verification failed. Please try again later.';
-export const DUPLICATE_ISSUED_REDEMPTIONS_ERROR =
+const DUPLICATE_ISSUED_REDEMPTIONS_ERROR =
   'duplicate issued redemptions for token_hash';
 
 export type VerifyRedemptionResult =
