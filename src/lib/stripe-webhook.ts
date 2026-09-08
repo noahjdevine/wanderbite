@@ -107,9 +107,9 @@ export async function insertStripeEvent(
   const { data, error } = await supabase.rpc('insert_stripe_event', {
     p_event_id: event.id,
     p_event_type: event.type,
-    p_object_id: objectId(event),
+    p_object_id: objectId(event) ?? '',
     p_livemode: event.livemode,
-    p_api_version: event.api_version,
+    p_api_version: event.api_version ?? '',
     p_stripe_created: new Date(event.created * 1000).toISOString(),
     p_payload: asJson(event),
   });

@@ -582,6 +582,60 @@ export type Database = {
         }
         Relationships: []
       }
+      stripe_events: {
+        Row: {
+          api_version: string | null
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          event_id: string
+          event_type: string
+          last_error: string | null
+          livemode: boolean
+          object_id: string | null
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          status: string
+          stripe_created: string
+        }
+        Insert: {
+          api_version?: string | null
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          event_id: string
+          event_type: string
+          last_error?: string | null
+          livemode: boolean
+          object_id?: string | null
+          payload: Json
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          stripe_created: string
+        }
+        Update: {
+          api_version?: string | null
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          event_id?: string
+          event_type?: string
+          last_error?: string | null
+          livemode?: boolean
+          object_id?: string | null
+          payload?: Json
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          stripe_created?: string
+        }
+        Relationships: []
+      }
       user_badges: {
         Row: {
           awarded_at: string | null
@@ -700,60 +754,6 @@ export type Database = {
           subscription_status?: string | null
           username?: string | null
           wants_cocktail_experience?: boolean | null
-        }
-        Relationships: []
-      }
-      stripe_events: {
-        Row: {
-          api_version: string | null
-          attempts: number
-          available_at: string
-          claim_token: string | null
-          claimed_at: string | null
-          event_id: string
-          event_type: string
-          last_error: string | null
-          livemode: boolean
-          object_id: string | null
-          payload: Json
-          processed_at: string | null
-          received_at: string
-          status: string
-          stripe_created: string
-        }
-        Insert: {
-          api_version?: string | null
-          attempts?: number
-          available_at?: string
-          claim_token?: string | null
-          claimed_at?: string | null
-          event_id: string
-          event_type: string
-          last_error?: string | null
-          livemode: boolean
-          object_id?: string | null
-          payload: Json
-          processed_at?: string | null
-          received_at?: string
-          status?: string
-          stripe_created: string
-        }
-        Update: {
-          api_version?: string | null
-          attempts?: number
-          available_at?: string
-          claim_token?: string | null
-          claimed_at?: string | null
-          event_id?: string
-          event_type?: string
-          last_error?: string | null
-          livemode?: boolean
-          object_id?: string | null
-          payload?: Json
-          processed_at?: string | null
-          received_at?: string
-          status?: string
-          stripe_created?: string
         }
         Relationships: []
       }
@@ -1037,6 +1037,67 @@ export type Database = {
             }
             Returns: string
           }
+      claim_stripe_event: {
+        Args: { p_event_id: string; p_token: string }
+        Returns: boolean
+      }
+      claim_stripe_events_batch: {
+        Args: { p_limit: number; p_token: string }
+        Returns: {
+          api_version: string | null
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          event_id: string
+          event_type: string
+          last_error: string | null
+          livemode: boolean
+          object_id: string | null
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          status: string
+          stripe_created: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "stripe_events"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_webhook_outbox_batch: {
+        Args: { p_limit: number; p_token: string }
+        Returns: {
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          effect_key: string
+          effect_type: string
+          last_error: string | null
+          payload: Json
+          sent_at: string | null
+          source_event_id: string
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "webhook_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      complete_stripe_event: {
+        Args: { p_event_id: string; p_token: string }
+        Returns: boolean
+      }
+      complete_webhook_outbox: {
+        Args: { p_effect_key: string; p_token: string }
+        Returns: boolean
+      }
       current_user_is_admin: { Args: never; Returns: boolean }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:
@@ -1070,7 +1131,24 @@ export type Database = {
         | { Args: { schema_name: string; table_name: string }; Returns: string }
         | { Args: { table_name: string }; Returns: string }
       enablelongtransactions: { Args: never; Returns: string }
+      enqueue_webhook_outbox: {
+        Args: {
+          p_effect_key: string
+          p_effect_type: string
+          p_payload: Json
+          p_source_event_id: string
+        }
+        Returns: boolean
+      }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      fail_stripe_event: {
+        Args: { p_error: string; p_event_id: string; p_token: string }
+        Returns: boolean
+      }
+      fail_webhook_outbox: {
+        Args: { p_effect_key: string; p_error: string; p_token: string }
+        Returns: boolean
+      }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -1170,6 +1248,40 @@ export type Database = {
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
       gettransactionid: { Args: never; Returns: unknown }
+      insert_stripe_event: {
+        Args: {
+          p_api_version: string
+          p_event_id: string
+          p_event_type: string
+          p_livemode: boolean
+          p_object_id: string
+          p_payload: Json
+          p_stripe_created: string
+        }
+        Returns: {
+          api_version: string | null
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          event_id: string
+          event_type: string
+          last_error: string | null
+          livemode: boolean
+          object_id: string | null
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          status: string
+          stripe_created: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "stripe_events"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
       longtransactionsenabled: { Args: never; Returns: boolean }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
@@ -1211,6 +1323,7 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      purge_stripe_event_payloads: { Args: never; Returns: number }
       st_3dclosestpoint: {
         Args: { geom1: unknown; geom2: unknown }
         Returns: unknown
@@ -1803,114 +1916,6 @@ export type Database = {
         }
         Returns: string
       }
-      claim_stripe_event: {
-        Args: { p_event_id: string; p_token: string }
-        Returns: boolean
-      }
-      claim_stripe_events_batch: {
-        Args: { p_limit: number; p_token: string }
-        Returns: {
-          api_version: string | null
-          attempts: number
-          available_at: string
-          claim_token: string | null
-          claimed_at: string | null
-          event_id: string
-          event_type: string
-          last_error: string | null
-          livemode: boolean
-          object_id: string | null
-          payload: Json
-          processed_at: string | null
-          received_at: string
-          status: string
-          stripe_created: string
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "stripe_events"
-          isOneToOne: false
-          isSetofReturn: true
-        }
-      }
-      claim_webhook_outbox_batch: {
-        Args: { p_limit: number; p_token: string }
-        Returns: {
-          attempts: number
-          available_at: string
-          claim_token: string | null
-          claimed_at: string | null
-          created_at: string
-          effect_key: string
-          effect_type: string
-          last_error: string | null
-          payload: Json
-          sent_at: string | null
-          source_event_id: string
-          status: string
-        }[]
-        SetofOptions: {
-          from: "*"
-          to: "webhook_outbox"
-          isOneToOne: false
-          isSetofReturn: true
-        }
-      }
-      complete_stripe_event: {
-        Args: { p_event_id: string; p_token: string }
-        Returns: boolean
-      }
-      complete_webhook_outbox: {
-        Args: { p_effect_key: string; p_token: string }
-        Returns: boolean
-      }
-      enqueue_webhook_outbox: {
-        Args: {
-          p_effect_key: string
-          p_effect_type: string
-          p_payload: Json
-          p_source_event_id: string
-        }
-        Returns: boolean
-      }
-      fail_stripe_event: {
-        Args: { p_event_id: string; p_error: string; p_token: string }
-        Returns: boolean
-      }
-      fail_webhook_outbox: {
-        Args: { p_effect_key: string; p_error: string; p_token: string }
-        Returns: boolean
-      }
-      insert_stripe_event: {
-        Args: {
-          p_api_version: string | null
-          p_event_id: string
-          p_event_type: string
-          p_livemode: boolean
-          p_object_id: string | null
-          p_payload: Json
-          p_stripe_created: string
-        }
-        Returns: {
-          api_version: string | null
-          attempts: number
-          available_at: string
-          claim_token: string | null
-          claimed_at: string | null
-          event_id: string
-          event_type: string
-          last_error: string | null
-          livemode: boolean
-          object_id: string | null
-          payload: Json
-          processed_at: string | null
-          received_at: string
-          status: string
-          stripe_created: string
-        }
-      }
-      purge_stripe_event_payloads: { Args: never; Returns: number }
-      webhook_error_text: { Args: { p_error: string }; Returns: string }
       verify_redemption: {
         Args: { p_restaurant_id: string; p_token_hash: string }
         Returns: {
@@ -1933,6 +1938,7 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      webhook_error_text: { Args: { p_error: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
