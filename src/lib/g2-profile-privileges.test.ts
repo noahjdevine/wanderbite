@@ -108,6 +108,7 @@ describe('G2 member profile write payloads', () => {
     expect(upsert.mock.calls[0][0]).not.toHaveProperty('role');
     expect(upsert.mock.calls[0][0]).not.toHaveProperty('is_admin');
     expect(upsert.mock.calls[0][0]).not.toHaveProperty('subscription_status');
+    expect(upsert.mock.calls[0][0]).not.toHaveProperty('stripe_subscription_id');
   });
 
   it('omits privileged columns from structured profile upserts', async () => {
