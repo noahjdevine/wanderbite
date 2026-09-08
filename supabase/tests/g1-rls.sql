@@ -46,8 +46,10 @@ do $$ declare changed integer; begin
     raise exception 'FAIL: another member award is visible'; end if;
   if public.current_user_is_admin() is distinct from false then
     raise exception 'FAIL: helper returns wrong caller flag'; end if;
-  if exists (select 1 from public.cron_runs) then
-    raise exception 'FAIL: member can read operational runs'; end if;
+  begin
+    perform 1 from public.cron_runs;
+    raise exception 'FAIL: member can read operational runs';
+  exception when insufficient_privilege then null; end;
   begin
     insert into public.user_badges (user_id, badge_id)
       values (auth.uid(), 'high_five');
@@ -84,8 +86,10 @@ do $$ begin
     raise exception 'FAIL: public badge catalog is not readable'; end if;
   if exists (select 1 from public.user_badges) then
     raise exception 'FAIL: anonymous awards access'; end if;
-  if exists (select 1 from public.cron_runs) then
-    raise exception 'FAIL: anonymous operational data access'; end if;
+  begin
+    perform 1 from public.cron_runs;
+    raise exception 'FAIL: anonymous operational data access';
+  exception when insufficient_privilege then null; end;
   if public.current_user_is_admin() is distinct from false then
     raise exception 'FAIL: anonymous admin helper'; end if;
 end $$;

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { buildPartnerRedeemScanUrl } from '@/lib/partner-redeem-url';
 
 const ROOT = path.resolve(__dirname, '../..');
-const LATEST_MIGRATION = '20260907174245_redemptions_verify_rpc.sql';
+const G6_MIGRATION = '20260907174245_redemptions_verify_rpc.sql';
 
 function source(rel: string): string {
   return readFileSync(path.join(ROOT, rel), 'utf8');
@@ -21,7 +21,7 @@ describe('G7 SEC-05 source contracts', () => {
     const files = readdirSync(path.join(ROOT, 'supabase/migrations'))
       .filter((name) => name.endsWith('.sql'))
       .sort();
-    expect(files.at(-1)).toBe(LATEST_MIGRATION);
+    expect(files).toContain(G6_MIGRATION);
     expect(files.some((name) => /sec-05|strip.query|g7/i.test(name))).toBe(false);
   });
 

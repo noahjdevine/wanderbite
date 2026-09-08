@@ -5,13 +5,18 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
-// Use service_role so seed bypasses RLS (recommended for seeding)
+// Service role is required: G8 revoked client writes on markets/orgs/restaurants.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('❌ Missing NEXT_PUBLIC_SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY (or ANON key) in .env.local');
+if (!supabaseUrl) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL in .env.local');
+  process.exit(1);
+}
+if (!supabaseServiceKey) {
+  console.error(
+    'Missing SUPABASE_SERVICE_ROLE_KEY in .env.local. Seed cannot use the anon key after G8 table grants.'
+  );
   process.exit(1);
 }
 

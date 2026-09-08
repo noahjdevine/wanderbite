@@ -95,7 +95,7 @@ export default async function AdminPage() {
       neighborhood: row.neighborhood ?? null,
       image_url: row.image_url ?? null,
       google_photo_url: row.google_photo_url ?? null,
-      pin_hash: row.pin_hash ?? null,
+      has_pin: Boolean(row.pin_hash),
       status: row.status ?? 'active',
     };
   });
