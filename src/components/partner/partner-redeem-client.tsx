@@ -8,6 +8,11 @@ import { Button } from '@/components/ui/button';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
+import {
+  consumePendingRedeemCode,
+  persistAndStripPartnerRedeemCode,
+  takePartnerRedeemCodeForVerify,
+} from '@/lib/pending-redeem-storage';
 
 type VerifyState =
   | { status: 'idle' }
@@ -23,14 +28,12 @@ type PartnerRedeemClientProps = {
   restaurantName: string;
   slug: string;
   initialCode?: string | null;
-  autoVerify?: boolean;
 };
 
 export function PartnerRedeemClient({
   restaurantName,
   slug,
   initialCode,
-  autoVerify = false,
 }: PartnerRedeemClientProps) {
   const router = useRouter();
   const [code, setCode] = useState(() => (initialCode ? normalizeCode(initialCode) : ''));
@@ -41,6 +44,7 @@ export function PartnerRedeemClient({
     const trimmed = normalizeCode(rawCode);
     if (!trimmed) return;
 
+    consumePendingRedeemCode(slug);
     setState({ status: 'verifying' });
     try {
       const res = await verifyRedemptionTokenForPartner(trimmed);
@@ -61,16 +65,20 @@ export function PartnerRedeemClient({
         message: 'Verification failed. Please try again.',
       });
     }
-  }, [router]);
+  }, [router, slug]);
 
   useEffect(() => {
-    if (!autoVerify || !initialCode || autoRan.current) return;
+    const fromQuery = new URLSearchParams(window.location.search).get('code');
+    persistAndStripPartnerRedeemCode(slug, initialCode || fromQuery);
+    if (autoRan.current) return;
+    const pending = takePartnerRedeemCodeForVerify(slug, initialCode || fromQuery);
+    if (!pending) return;
     autoRan.current = true;
     const timerId = window.setTimeout(() => {
-      void runVerify(initialCode);
+      void runVerify(pending);
     }, 0);
     return () => window.clearTimeout(timerId);
-  }, [autoVerify, initialCode, runVerify]);
+  }, [slug, initialCode, runVerify]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

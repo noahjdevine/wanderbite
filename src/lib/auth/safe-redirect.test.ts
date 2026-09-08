@@ -32,6 +32,20 @@ describe('safeAuthRedirectPath', () => {
     expect(safeAuthRedirectPath('/dashboard')).toBe('/dashboard');
     expect(safeAuthRedirectPath('/restaurants/some-slug')).toBe('/restaurants/some-slug');
     expect(safeAuthRedirectPath('/billing?session=xyz')).toBe('/billing?session=xyz');
+    expect(safeAuthRedirectPath('/challenges?code=secret')).toBe('/challenges');
+    expect(safeAuthRedirectPath('/challenges?code=secret&checkout=success')).toBe(
+      '/challenges?checkout=success',
+    );
+    expect(safeAuthRedirectPath('/reset-password?type=recovery')).toBe(
+      '/reset-password?type=recovery',
+    );
+    expect(safeAuthRedirectPath('/reset-password?code=abc&type=recovery')).toBe(
+      '/reset-password',
+    );
+    expect(safeAuthRedirectPath('/journey?view=journal#section')).toBe(
+      '/journey?view=journal#section',
+    );
+    expect(safeAuthRedirectPath('/#access_token=tok&type=recovery')).toBe('/');
   });
 
   it('uses the supplied fallback instead of the default', () => {
@@ -42,6 +56,8 @@ describe('safeAuthRedirectPath', () => {
   it('handles URL-encoded paths gracefully', () => {
     expect(safeAuthRedirectPath('%2Fchallenges')).toBe('/challenges');
     expect(safeAuthRedirectPath('/profile%20settings')).toBe('/profile settings');
+    expect(safeAuthRedirectPath('%2Fchallenges%3Fcode%3Dsecret')).toBe('/challenges');
+    expect(safeAuthRedirectPath('%2Fbilling%3Fsession%3Dxyz')).toBe('/billing?session=xyz');
   });
 
   it('returns the fallback when decodeURIComponent throws', () => {

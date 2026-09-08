@@ -17,7 +17,9 @@ export function RecoveryRedirect() {
 
     const hash = window.location.hash;
     if (hash.includes('type=recovery')) {
-      router.replace(`/reset-password${hash}`);
+      if (pathname !== '/reset-password') {
+        window.location.replace(`/reset-password${hash}`);
+      }
       return;
     }
 

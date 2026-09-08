@@ -7,6 +7,10 @@ import { createClient } from '@/lib/supabase/client';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  stripConsumedRecoveryHash,
+  takeAuthSecretsAndStripAddressBar,
+} from '@/lib/sensitive-url';
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -20,17 +24,28 @@ export default function ResetPasswordPage() {
     const supabase = createClient();
 
     async function initSession() {
-      const params = new URLSearchParams(window.location.search);
-      const code = params.get('code');
+      const { code, tokenHash } = takeAuthSecretsAndStripAddressBar();
 
       if (code) {
         const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code);
         if (exchangeError) {
+          stripConsumedRecoveryHash();
           setHasSession(false);
           return;
         }
-        window.history.replaceState({}, '', '/reset-password');
+      } else if (tokenHash) {
+        const { error: otpError } = await supabase.auth.verifyOtp({
+          type: 'recovery',
+          token_hash: tokenHash,
+        });
+        if (otpError) {
+          stripConsumedRecoveryHash();
+          setHasSession(false);
+          return;
+        }
       }
+
+      stripConsumedRecoveryHash();
 
       const {
         data: { session },

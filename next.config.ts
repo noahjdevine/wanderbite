@@ -21,6 +21,14 @@ const nextConfig: NextConfig = {
     contentSecurityPolicy:
       "default-src 'self'; script-src 'none'; sandbox;",
   },
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [{ key: "Referrer-Policy", value: "strict-origin" }],
+      },
+    ];
+  },
 };
 
 export default withSentryConfig(nextConfig, {

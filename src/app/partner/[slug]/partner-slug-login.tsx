@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { loginPartner } from '@/app/actions/partner-auth';
+import { persistAndStripPartnerRedeemCode } from '@/lib/pending-redeem-storage';
 
 type PartnerSlugLoginProps = {
   restaurantId: string;
@@ -27,6 +28,12 @@ export function PartnerSlugLogin({
   const [rememberDevice, setRememberDevice] = useState(mode === 'redeem');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (mode !== 'redeem' || !redirectSlug) return;
+    const fromQuery = new URLSearchParams(window.location.search).get('code');
+    persistAndStripPartnerRedeemCode(redirectSlug, fromQuery || initialCode);
+  }, [mode, redirectSlug, initialCode]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const trimmed = pin.trim();
@@ -40,10 +47,7 @@ export function PartnerSlugLogin({
       if (result.ok) {
         toast.success(`Welcome, ${result.restaurantName}`);
         if (mode === 'redeem' && redirectSlug) {
-          const params = initialCode
-            ? `?code=${encodeURIComponent(initialCode.trim().toUpperCase())}`
-            : '';
-          router.push(`/partner/${redirectSlug}/redeem${params}`);
+          router.replace(`/partner/${redirectSlug}/redeem`);
         } else {
           router.refresh();
         }

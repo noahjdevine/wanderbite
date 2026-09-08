@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { sanitizeBrowserPath } from '@/lib/sensitive-url';
 
 const PROTECTED_ROUTES = [
   '/checkout',
@@ -100,7 +101,7 @@ export async function updateSession(request: NextRequest) {
     const loginUrl = new URL('/signin', request.url);
     loginUrl.searchParams.set(
       'redirectTo',
-      `${pathname}${request.nextUrl.search}`
+      sanitizeBrowserPath(pathname, request.nextUrl.search)
     );
     return NextResponse.redirect(loginUrl);
   }
