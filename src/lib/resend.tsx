@@ -18,12 +18,16 @@ const FROM = 'Wanderbite <noreply@wanderbite.com>';
 
 /**
  * Sends the post-checkout subscription confirmation email.
- * No-op if RESEND_API_KEY is not set (logs and returns).
+ * Missing API key or a Resend `{ error }` result is a delivery failure.
+ * Pass the stable outbox effect_key as idempotencyKey (24-hour Resend retention).
  */
-export async function sendSubscriptionConfirmationEmail(to: string): Promise<void> {
+export async function sendSubscriptionConfirmationEmail(
+  to: string,
+  idempotencyKey: string
+): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!resendApiKey) {
-    console.warn('RESEND_API_KEY not set; skipping subscription confirmation email');
-    return;
+    console.warn('RESEND_API_KEY not set; confirmation email cannot send');
+    return { ok: false, error: 'RESEND_API_KEY not configured' };
   }
 
   const resend = new Resend(resendApiKey);
@@ -34,16 +38,28 @@ export async function sendSubscriptionConfirmationEmail(to: string): Promise<voi
     );
     const text = toPlainText(html);
 
-    await resend.emails.send({
-      from: FROM,
-      to: [to],
-      subject: 'Your Wanderbite subscription is active',
-      html,
-      text,
-    });
+    const { data, error } = await resend.emails.send(
+      {
+        from: FROM,
+        to: [to],
+        subject: 'Your Wanderbite subscription is active',
+        html,
+        text,
+      },
+      { idempotencyKey }
+    );
+
+    if (error || !data) {
+      const message = error?.message ?? 'Resend returned no data';
+      console.error('Failed to send subscription confirmation email:', message);
+      return { ok: false, error: message };
+    }
+
+    return { ok: true };
   } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
     console.error('Failed to send subscription confirmation email:', err);
-    // Do not throw — webhook should still return 200 so Stripe doesn't retry
+    return { ok: false, error: message };
   }
 }
 

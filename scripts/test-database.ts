@@ -88,6 +88,7 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g3-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g6-verify.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g8-rls.sql'), 'utf8')) + '\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g9-ledger.sql'), 'utf8')) + '\n');
   // Exercise the exact migrations on populated pre-fix shapes, then roll back.
   const slug = readFileSync(path.join(root, 'supabase/migrations/20260902225901_markets_slug_required.sql'), 'utf8');
   const icons = readFileSync(path.join(root, 'supabase/migrations/20260902225902_badge_icon_glyphs.sql'), 'utf8');

@@ -53,7 +53,9 @@ export async function createCheckoutSession(
       success_url: `${baseUrl}/checkout/success`,
       cancel_url,
       customer_email: auth.email,
+      client_reference_id: auth.userId,
       metadata: { userId: auth.userId },
+      subscription_data: { metadata: { userId: auth.userId } },
     });
 
     const url = session.url;

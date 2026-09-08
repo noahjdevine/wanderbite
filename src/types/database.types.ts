@@ -650,6 +650,7 @@ export type Database = {
           phone_number: string | null
           role: string | null
           stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           subscription_status: string | null
           username: string | null
           wants_cocktail_experience: boolean | null
@@ -672,6 +673,7 @@ export type Database = {
           phone_number?: string | null
           role?: string | null
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           subscription_status?: string | null
           username?: string | null
           wants_cocktail_experience?: boolean | null
@@ -694,11 +696,119 @@ export type Database = {
           phone_number?: string | null
           role?: string | null
           stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           subscription_status?: string | null
           username?: string | null
           wants_cocktail_experience?: boolean | null
         }
         Relationships: []
+      }
+      stripe_events: {
+        Row: {
+          api_version: string | null
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          event_id: string
+          event_type: string
+          last_error: string | null
+          livemode: boolean
+          object_id: string | null
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          status: string
+          stripe_created: string
+        }
+        Insert: {
+          api_version?: string | null
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          event_id: string
+          event_type: string
+          last_error?: string | null
+          livemode: boolean
+          object_id?: string | null
+          payload: Json
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          stripe_created: string
+        }
+        Update: {
+          api_version?: string | null
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          event_id?: string
+          event_type?: string
+          last_error?: string | null
+          livemode?: boolean
+          object_id?: string | null
+          payload?: Json
+          processed_at?: string | null
+          received_at?: string
+          status?: string
+          stripe_created?: string
+        }
+        Relationships: []
+      }
+      webhook_outbox: {
+        Row: {
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          effect_key: string
+          effect_type: string
+          last_error: string | null
+          payload: Json
+          sent_at: string | null
+          source_event_id: string
+          status: string
+        }
+        Insert: {
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          effect_key: string
+          effect_type: string
+          last_error?: string | null
+          payload?: Json
+          sent_at?: string | null
+          source_event_id: string
+          status?: string
+        }
+        Update: {
+          attempts?: number
+          available_at?: string
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          effect_key?: string
+          effect_type?: string
+          last_error?: string | null
+          payload?: Json
+          sent_at?: string | null
+          source_event_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "webhook_outbox_source_event_id_fkey"
+            columns: ["source_event_id"]
+            isOneToOne: false
+            referencedRelation: "stripe_events"
+            referencedColumns: ["event_id"]
+          },
+        ]
       }
     }
     Views: {
@@ -1693,6 +1803,114 @@ export type Database = {
         }
         Returns: string
       }
+      claim_stripe_event: {
+        Args: { p_event_id: string; p_token: string }
+        Returns: boolean
+      }
+      claim_stripe_events_batch: {
+        Args: { p_limit: number; p_token: string }
+        Returns: {
+          api_version: string | null
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          event_id: string
+          event_type: string
+          last_error: string | null
+          livemode: boolean
+          object_id: string | null
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          status: string
+          stripe_created: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "stripe_events"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      claim_webhook_outbox_batch: {
+        Args: { p_limit: number; p_token: string }
+        Returns: {
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          effect_key: string
+          effect_type: string
+          last_error: string | null
+          payload: Json
+          sent_at: string | null
+          source_event_id: string
+          status: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "webhook_outbox"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      complete_stripe_event: {
+        Args: { p_event_id: string; p_token: string }
+        Returns: boolean
+      }
+      complete_webhook_outbox: {
+        Args: { p_effect_key: string; p_token: string }
+        Returns: boolean
+      }
+      enqueue_webhook_outbox: {
+        Args: {
+          p_effect_key: string
+          p_effect_type: string
+          p_payload: Json
+          p_source_event_id: string
+        }
+        Returns: boolean
+      }
+      fail_stripe_event: {
+        Args: { p_event_id: string; p_error: string; p_token: string }
+        Returns: boolean
+      }
+      fail_webhook_outbox: {
+        Args: { p_effect_key: string; p_error: string; p_token: string }
+        Returns: boolean
+      }
+      insert_stripe_event: {
+        Args: {
+          p_api_version: string | null
+          p_event_id: string
+          p_event_type: string
+          p_livemode: boolean
+          p_object_id: string | null
+          p_payload: Json
+          p_stripe_created: string
+        }
+        Returns: {
+          api_version: string | null
+          attempts: number
+          available_at: string
+          claim_token: string | null
+          claimed_at: string | null
+          event_id: string
+          event_type: string
+          last_error: string | null
+          livemode: boolean
+          object_id: string | null
+          payload: Json
+          processed_at: string | null
+          received_at: string
+          status: string
+          stripe_created: string
+        }
+      }
+      purge_stripe_event_payloads: { Args: never; Returns: number }
+      webhook_error_text: { Args: { p_error: string }; Returns: string }
       verify_redemption: {
         Args: { p_restaurant_id: string; p_token_hash: string }
         Returns: {

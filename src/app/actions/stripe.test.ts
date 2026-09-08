@@ -73,6 +73,13 @@ describe('createCheckoutSession (G0 freeze)', () => {
     const result = await createCheckoutSession();
     expect(result).toEqual({ ok: true, url: 'https://checkout.stripe.com/test' });
     expect(checkoutSessionsCreate).toHaveBeenCalledTimes(1);
+    expect(checkoutSessionsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        client_reference_id: 'user-1',
+        metadata: { userId: 'user-1' },
+        subscription_data: { metadata: { userId: 'user-1' } },
+      }),
+    );
   });
 });
 

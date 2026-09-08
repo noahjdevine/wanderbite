@@ -33,6 +33,7 @@ export async function GET(request: Request) {
     const mismatches: MismatchRecord[] = [];
     const fixed: MismatchRecord[] = [];
     let scanned = 0;
+    let mappingErrors = 0;
 
     let startingAfter: string | undefined;
     let hasMore = true;
@@ -55,7 +56,7 @@ export async function GET(request: Request) {
 
         const { data: profile } = await admin
           .from('user_profiles')
-          .select('id, subscription_status, current_period_end')
+          .select('id, subscription_status, current_period_end, stripe_subscription_id')
           .eq('stripe_customer_id', customerId)
           .maybeSingle();
 
@@ -65,9 +66,28 @@ export async function GET(request: Request) {
           id: string;
           subscription_status: string | null;
           current_period_end: string | null;
+          stripe_subscription_id: string | null;
         };
 
-        const expectedStatus = stripeSubscriptionStatusToProfileStatus(subscription.status);
+        if (row.stripe_subscription_id && row.stripe_subscription_id !== subscription.id) {
+          continue;
+        }
+
+        let expectedStatus: string;
+        try {
+          expectedStatus = stripeSubscriptionStatusToProfileStatus(subscription.status);
+        } catch (err) {
+          mappingErrors += 1;
+          console.error(
+            `[cron] stripe-reconcile unknown status for ${row.id}:`,
+            err instanceof Error ? err.message : err
+          );
+          Sentry.captureException(err, {
+            tags: { cron: 'stripe-reconcile', userId: row.id },
+            extra: { stripeStatus: subscription.status, stripeCustomerId: customerId },
+          });
+          continue;
+        }
         const expectedPeriodEnd = stripePeriodEndIso(subscription);
 
         const statusMismatch = row.subscription_status !== expectedStatus;
@@ -126,9 +146,22 @@ export async function GET(request: Request) {
       scanned,
       mismatchesFound: mismatches.length,
       fixed: fixed.length,
+      mappingErrors,
       mismatches,
       fixedRecords: fixed,
     };
+
+    if (mappingErrors > 0) {
+      await completeCronRun(runId, {
+        status: 'failed',
+        result,
+        error: `Unknown Stripe subscription status count=${mappingErrors}`,
+      });
+      return NextResponse.json(
+        { scanned, mismatchesFound: mismatches.length, fixed: fixed.length, mappingErrors },
+        { status: 500 }
+      );
+    }
 
     await completeCronRun(runId, { status: 'success', result });
 
@@ -136,6 +169,7 @@ export async function GET(request: Request) {
       scanned,
       mismatchesFound: mismatches.length,
       fixed: fixed.length,
+      mappingErrors,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
