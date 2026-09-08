@@ -115,6 +115,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "bite_notes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "bite_notes_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -196,6 +203,13 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
             referencedColumns: ["id"]
           },
           {
@@ -297,6 +311,13 @@ export type Database = {
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "partner_sessions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       redemptions: {
@@ -355,6 +376,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "redemptions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "redemptions_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
@@ -397,6 +425,13 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_offers_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
             referencedColumns: ["id"]
           },
         ]
@@ -706,6 +741,60 @@ export type Database = {
           f_table_schema?: unknown
           srid?: number | null
           type?: string | null
+        }
+        Relationships: []
+      }
+      restaurants_public: {
+        Row: {
+          address: string | null
+          cuisine_tags: string[] | null
+          description: string | null
+          google_photo_url: string | null
+          google_place_id: string | null
+          id: string | null
+          image_url: string | null
+          is_dairy_free: boolean | null
+          is_halal: boolean | null
+          is_vegan: boolean | null
+          name: string | null
+          neighborhood: string | null
+          price_range: string | null
+          slug: string | null
+          status: string | null
+        }
+        Insert: {
+          address?: string | null
+          cuisine_tags?: string[] | null
+          description?: string | null
+          google_photo_url?: string | null
+          google_place_id?: string | null
+          id?: string | null
+          image_url?: string | null
+          is_dairy_free?: boolean | null
+          is_halal?: boolean | null
+          is_vegan?: boolean | null
+          name?: string | null
+          neighborhood?: string | null
+          price_range?: string | null
+          slug?: string | null
+          status?: string | null
+        }
+        Update: {
+          address?: string | null
+          cuisine_tags?: string[] | null
+          description?: string | null
+          google_photo_url?: string | null
+          google_place_id?: string | null
+          id?: string | null
+          image_url?: string | null
+          is_dairy_free?: boolean | null
+          is_halal?: boolean | null
+          is_vegan?: boolean | null
+          name?: string | null
+          neighborhood?: string | null
+          price_range?: string | null
+          slug?: string | null
+          status?: string | null
         }
         Relationships: []
       }
