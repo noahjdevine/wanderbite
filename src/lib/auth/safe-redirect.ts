@@ -1,10 +1,22 @@
+import { hashLooksLikeRecoverySession, sanitizeBrowserPath } from '@/lib/sensitive-url';
+
 /** Allow only same-origin relative paths for open-redirect-safe navigation. */
 export function safeAuthRedirectPath(redirectTo: string | null | undefined, fallback = '/'): string {
   if (!redirectTo?.trim()) return fallback;
   try {
     const path = decodeURIComponent(redirectTo.trim());
     if (!path.startsWith('/') || path.startsWith('//')) return fallback;
-    return path;
+    const q = path.indexOf('?');
+    const h = path.indexOf('#');
+    let pathnameEnd = path.length;
+    if (q >= 0) pathnameEnd = Math.min(pathnameEnd, q);
+    if (h >= 0) pathnameEnd = Math.min(pathnameEnd, h);
+    const pathname = path.slice(0, pathnameEnd) || '/';
+    const search = q >= 0 ? path.slice(q, h >= 0 && h > q ? h : undefined) : '';
+    const hash = h >= 0 ? path.slice(h) : '';
+    const cleaned = sanitizeBrowserPath(pathname, search);
+    if (!hash || hashLooksLikeRecoverySession(hash)) return cleaned;
+    return `${cleaned}${hash}`;
   } catch {
     return fallback;
   }

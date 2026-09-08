@@ -78,7 +78,6 @@ export default async function PartnerRedeemPage({ params, searchParams }: PagePr
       restaurantName={session.restaurantName}
       slug={restaurant.slug}
       initialCode={initialCode}
-      autoVerify={Boolean(initialCode)}
     />
   );
 }
