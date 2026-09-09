@@ -136,7 +136,7 @@ export type Database = {
           cycle_month: string | null
           id: string
           status: string | null
-          swap_count_used: number | null
+          swap_count_used: number
           user_id: string | null
         }
         Insert: {
@@ -144,7 +144,7 @@ export type Database = {
           cycle_month?: string | null
           id?: string
           status?: string | null
-          swap_count_used?: number | null
+          swap_count_used?: number
           user_id?: string | null
         }
         Update: {
@@ -152,7 +152,7 @@ export type Database = {
           cycle_month?: string | null
           id?: string
           status?: string | null
-          swap_count_used?: number | null
+          swap_count_used?: number
           user_id?: string | null
         }
         Relationships: [
@@ -364,7 +364,7 @@ export type Database = {
           {
             foreignKeyName: "redemptions_challenge_item_id_fkey"
             columns: ["challenge_item_id"]
-            isOneToOne: false
+            isOneToOne: true
             referencedRelation: "challenge_items"
             referencedColumns: ["id"]
           },
@@ -1149,6 +1149,18 @@ export type Database = {
         Args: { p_effect_key: string; p_error: string; p_token: string }
         Returns: boolean
       }
+      generate_challenge_cycle: {
+        Args: {
+          p_cycle_month: string
+          p_market_id: string
+          p_restaurant_ids: string[]
+          p_user_id: string
+        }
+        Returns: {
+          cycle_id: string
+          outcome: string
+        }[]
+      }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -1281,6 +1293,24 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      issue_challenge_redemption: {
+        Args: {
+          p_code_iv: string
+          p_encrypted_code: string
+          p_expires_at: string
+          p_item_id: string
+          p_token_hash: string
+          p_user_id: string
+        }
+        Returns: {
+          challenge_item_id: string
+          code_iv: string
+          created_at: string
+          encrypted_code: string
+          outcome: string
+          redemption_id: string
+        }[]
       }
       longtransactionsenabled: { Args: never; Returns: boolean }
       populate_geometry_columns:
@@ -1904,6 +1934,19 @@ export type Database = {
       st_wrapx: {
         Args: { geom: unknown; move: number; wrap: number }
         Returns: unknown
+      }
+      swap_challenge_item: {
+        Args: {
+          p_item_id: string
+          p_replacement_restaurant_id: string
+          p_user_id: string
+        }
+        Returns: {
+          outcome: string
+          replacement_item_id: string
+          restaurant_id: string
+          source_item_id: string
+        }[]
       }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {

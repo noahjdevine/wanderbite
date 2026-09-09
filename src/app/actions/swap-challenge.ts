@@ -7,7 +7,10 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import { firstRpcRow } from '@/lib/challenges/rpc';
 import type { UserPreferencesRow } from '@/types/user-preferences';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { Database } from '@/types/database.types';
 
 // --- Types (aligned with schema) ---
 
@@ -69,6 +72,52 @@ function pickOne<T>(array: T[]): T | undefined {
   return array[i];
 }
 
+function isValidSuccessorLineage(
+  source: ChallengeItemRow,
+  successor: ChallengeItemRow,
+  cycleId: string
+): boolean {
+  return (
+    successor.swapped_from_item_id === source.id
+    && successor.cycle_id === cycleId
+    && successor.slot_number === source.slot_number
+    && (successor.status === 'assigned' || successor.status === 'redeemed')
+    && source.status === 'swapped_out'
+  );
+}
+
+async function loadRestaurantOffer(
+  supabase: SupabaseClient<Database>,
+  restaurantId: string
+): Promise<SwapChallengeResult> {
+  const { data: restaurant, error: restErr } = await supabase
+    .from('restaurants')
+    .select('id, name, cuisine_tags, address, lat, lon, status, market_id, org_id')
+    .eq('id', restaurantId)
+    .maybeSingle();
+  const { data: offer, error: offerErr } = await supabase
+    .from('restaurant_offers')
+    .select('discount_amount_cents, min_spend_cents, active')
+    .eq('restaurant_id', restaurantId)
+    .eq('active', true)
+    .maybeSingle();
+
+  if (restErr || offerErr || !restaurant || !offer) {
+    return { ok: false, error: 'Could not load current restaurant.' };
+  }
+
+  return {
+    ok: true,
+    data: {
+      newRestaurant: restaurant as RestaurantRow,
+      offer: {
+        discount_amount_cents: (offer as { discount_amount_cents: number }).discount_amount_cents,
+        min_spend_cents: (offer as { min_spend_cents: number }).min_spend_cents,
+      },
+    },
+  };
+}
+
 /**
  * Swap one challenge item for a new restaurant.
  * Enforces: cycle belongs to user, swap_count_used < 1, same safety/cooldown filters.
@@ -102,9 +151,6 @@ export async function swapChallengeItem(
     }
 
     const challengeItem = item as ChallengeItemRow;
-    if (challengeItem.status === 'swapped_out') {
-      return { ok: false, error: 'This item was already swapped.' };
-    }
 
     // 2. Fetch parent challenge_cycle
     const { data: cycle, error: cycleErr } = await supabase
@@ -127,9 +173,35 @@ export async function swapChallengeItem(
       return { ok: false, error: 'This challenge does not belong to you.' };
     }
 
-    // 4. Critical: swap_count_used < 1
+    if (challengeItem.status === 'swapped_out') {
+      const { data: successor, error: successorErr } = await supabase
+        .from('challenge_items')
+        .select('*')
+        .eq('swapped_from_item_id', challengeItemId)
+        .maybeSingle();
+
+      if (successorErr || !successor) {
+        return { ok: false, error: 'Swap failed.' };
+      }
+      const successorItem = successor as ChallengeItemRow;
+      if (!isValidSuccessorLineage(challengeItem, successorItem, challengeCycle.id)) {
+        return { ok: false, error: 'Swap failed.' };
+      }
+      return loadRestaurantOffer(supabase, successorItem.restaurant_id);
+    }
+
     if (challengeCycle.swap_count_used >= 1) {
       return { ok: false, error: 'You have already used your one swap for this month.' };
+    }
+
+    if (challengeItem.status !== 'assigned') {
+      return {
+        ok: false,
+        error:
+          challengeItem.status === 'redeemed'
+            ? 'This challenge has already been redeemed.'
+            : 'This item was already swapped.',
+      };
     }
 
     // 5. Get market_id and the "other" assigned restaurant in this cycle (to exclude both)
@@ -297,55 +369,42 @@ export async function swapChallengeItem(
       return { ok: false, error: 'Could not pick a replacement restaurant.' };
     }
 
-    // 10. Execute swap (update old, insert new, increment swap_count_used)
-    const { error: updateItemErr } = await supabase
-      .from('challenge_items')
-      .update({ status: 'swapped_out' })
-      .eq('id', challengeItemId);
+    const { data: rpcData, error: rpcError } = await supabase.rpc('swap_challenge_item', {
+      p_user_id: auth.userId,
+      p_item_id: challengeItemId,
+      p_replacement_restaurant_id: replacement.id,
+    });
 
-    if (updateItemErr) {
-      return { ok: false, error: `Failed to mark item as swapped: ${updateItemErr.message}` };
+    if (rpcError) {
+      return { ok: false, error: `Swap failed: ${rpcError.message}` };
     }
 
-    const { error: insertItemErr } = await supabase
-      .from('challenge_items')
-      .insert({
-        cycle_id: challengeCycle.id,
-        restaurant_id: replacement.id,
-        slot_number: challengeItem.slot_number,
-        status: 'assigned',
-        swapped_from_item_id: challengeItemId,
-      })
-      .select()
-      .single();
-
-    if (insertItemErr) {
-      return { ok: false, error: `Failed to create replacement item: ${insertItemErr.message}` };
+    const swapped = firstRpcRow(rpcData);
+    if (!swapped) {
+      return { ok: false, error: 'Swap failed.' };
     }
-
-    const { error: updateCycleErr } = await supabase
-      .from('challenge_cycles')
-      .update({ swap_count_used: challengeCycle.swap_count_used + 1 })
-      .eq('id', challengeCycle.id);
-
-    if (updateCycleErr) {
-      return { ok: false, error: `Failed to increment swap count: ${updateCycleErr.message}` };
+    if (swapped.outcome === 'swap_exhausted') {
+      return { ok: false, error: 'You have already used your one swap for this month.' };
+    }
+    if (swapped.outcome === 'forbidden') {
+      return { ok: false, error: 'This challenge does not belong to you.' };
+    }
+    if (swapped.outcome === 'not_found') {
+      return { ok: false, error: 'Challenge item not found.' };
+    }
+    if (
+      swapped.outcome !== 'created' && swapped.outcome !== 'existing'
+    ) {
+      return { ok: false, error: 'Swap failed.' };
+    }
+    if (!swapped.restaurant_id) {
+      return { ok: false, error: 'Swap failed.' };
     }
 
     revalidatePath('/dashboard');
     revalidatePath('/challenges');
 
-    const offer = offerByRestaurant.get(replacement.id)!;
-    return {
-      ok: true,
-      data: {
-        newRestaurant: replacement,
-        offer: {
-          discount_amount_cents: offer.discount_amount_cents,
-          min_spend_cents: offer.min_spend_cents,
-        },
-      },
-    };
+    return loadRestaurantOffer(supabase, swapped.restaurant_id);
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return { ok: false, error: `Swap failed: ${message}` };

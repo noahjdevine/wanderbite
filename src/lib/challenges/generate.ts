@@ -6,7 +6,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
+import { firstRpcRow } from '@/lib/challenges/rpc';
 import type { UserPreferencesRow } from '@/types/user-preferences';
+
+const INCOMPLETE_CYCLE_ERROR = 'Failed to create challenge items.';
+const INACTIVE_SUBSCRIPTION_ERROR =
+  'An active Wanderbite subscription is required to generate challenges.';
 
 // --- Types (aligned with schema) ---
 
@@ -179,14 +185,12 @@ export async function generateMonthlyChallengeForUser(
       return { ok: false, error: `Failed to check existing cycle: ${cycleErr.message}` };
     }
     if (existingCycle) {
-      const items = await loadChallengeItemsWithRestaurants(
-        supabase,
-        (existingCycle as ChallengeCycleRow).id
-      );
-      return {
-        ok: true,
-        data: { cycle: existingCycle as ChallengeCycleRow, items },
-      };
+      const cycle = existingCycle as ChallengeCycleRow;
+      const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
+      if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
+        return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
+      }
+      return { ok: true, data: { cycle, items } };
     }
 
     // 2. User profile + cuisine exclusions (stored on user_preferences)
@@ -454,67 +458,57 @@ export async function generateMonthlyChallengeForUser(
       chosen = shuffled.slice(0, CHALLENGE_ITEMS_PER_MONTH);
     }
 
-    // 8. Insert challenge_cycles + challenge_items
-    const { data: newCycle, error: insertCycleErr } = await supabase
-      .from('challenge_cycles')
-      .insert({
-        user_id: userId,
-        cycle_month: cycleMonthStr,
-        status: 'active',
-        swap_count_used: 0,
-      })
-      .select()
-      .single();
+    const { data: rpcData, error: rpcError } = await supabase.rpc(
+      'generate_challenge_cycle',
+      {
+        p_user_id: userId,
+        p_cycle_month: cycleMonthStr,
+        p_market_id: marketId,
+        p_restaurant_ids: chosen.map((restaurant) => restaurant.id),
+      }
+    );
 
-    if (insertCycleErr) {
-      return { ok: false, error: `Failed to create cycle: ${insertCycleErr.message}` };
+    if (rpcError) {
+      return { ok: false, error: `Failed to create cycle: ${rpcError.message}` };
     }
-    if (!newCycle) {
+
+    const generated = firstRpcRow(rpcData);
+    if (!generated) {
+      return { ok: false, error: 'Failed to create challenge cycle.' };
+    }
+    if (generated.outcome === 'inactive_subscription') {
+      return { ok: false, error: INACTIVE_SUBSCRIPTION_ERROR };
+    }
+    if (generated.outcome === 'invalid_restaurants') {
+      return {
+        ok: false,
+        error: `No eligible restaurants found. Need at least ${CHALLENGE_ITEMS_PER_MONTH} distinct restaurants; found 0. Check dietary preferences, allergies, redemption cooldown, swap cooldown, and capacity.`,
+      };
+    }
+    if (generated.outcome === 'incomplete_cycle' || !generated.cycle_id) {
+      return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
+    }
+    if (generated.outcome !== 'created' && generated.outcome !== 'existing') {
+      return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
+    }
+
+    const { data: persistedCycle, error: loadCycleErr } = await supabase
+      .from('challenge_cycles')
+      .select('*')
+      .eq('id', generated.cycle_id)
+      .maybeSingle();
+
+    if (loadCycleErr || !persistedCycle) {
       return { ok: false, error: 'Failed to create challenge cycle.' };
     }
 
-    const cycle = newCycle as ChallengeCycleRow;
-
-    const itemsToInsert = chosen.map((restaurant, index) => ({
-      cycle_id: cycle.id,
-      restaurant_id: restaurant.id,
-      slot_number: index + 1,
-      status: 'assigned' as const,
-    }));
-
-    const { data: newItems, error: insertItemsErr } = await supabase
-      .from('challenge_items')
-      .insert(itemsToInsert)
-      .select();
-
-    if (insertItemsErr) {
-      return { ok: false, error: `Failed to create challenge items: ${insertItemsErr.message}` };
-    }
-    if (!newItems || newItems.length !== CHALLENGE_ITEMS_PER_MONTH) {
-      return { ok: false, error: 'Failed to create challenge items.' };
+    const cycle = persistedCycle as ChallengeCycleRow;
+    const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
+    if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
+      return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
     }
 
-    const newRatingMap = await getRestaurantRatings(chosen.map((r) => r.id));
-    const items: GeneratedChallengeItem[] = (newItems as ChallengeItemRow[]).map((item, i) => {
-      const rest = chosen[i];
-      const stats = newRatingMap.get(rest.id);
-      return {
-        challengeItem: item,
-        restaurant: rest,
-        offer: {
-          discount_amount_cents: offerByRestaurant.get(rest.id)!.discount_amount_cents,
-          min_spend_cents: offerByRestaurant.get(rest.id)!.min_spend_cents,
-        },
-        socialProof: stats
-          ? { avgRating: stats.avgRating, totalRatings: stats.totalRatings }
-          : { avgRating: null, totalRatings: 0 },
-      };
-    });
-
-    return {
-      ok: true,
-      data: { cycle, items },
-    };
+    return { ok: true, data: { cycle, items } };
   } catch (e) {
     Sentry.captureException(e);
     const message = e instanceof Error ? e.message : 'Unknown error';

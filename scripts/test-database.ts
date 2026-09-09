@@ -9,6 +9,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { SCHEMA_CONTRACT } from '../src/lib/schema-contract';
 import { assertDatabaseTypes, assertDisposableContainer, localDockerHost, migrationPsqlArgs, TEST_IMAGE, TEST_LABEL } from './database-contract';
 import type { Column } from './database-contract';
+import { runG10Concurrency } from './g10-concurrency';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = localDockerHost(process.env.G1_DOCKER_HOST ??
@@ -89,6 +90,9 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g6-verify.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g8-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g9-ledger.sql'), 'utf8')) + '\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g10-challenge-tx.sql'), 'utf8')) + '\n');
+  await runG10Concurrency({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: G10 two-session generate/swap/issue overlap.\n');
   // Exercise the exact migrations on populated pre-fix shapes, then roll back.
   const slug = readFileSync(path.join(root, 'supabase/migrations/20260902225901_markets_slug_required.sql'), 'utf8');
   const icons = readFileSync(path.join(root, 'supabase/migrations/20260902225902_badge_icon_glyphs.sql'), 'utf8');
