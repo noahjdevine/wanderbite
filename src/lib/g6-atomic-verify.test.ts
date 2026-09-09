@@ -38,7 +38,7 @@ describe('G6 atomic redemption verify (source)', () => {
     expect(verify).not.toMatch(/\.update\(\{\s*status:\s*'verified'/);
     expect(verify).toMatch(/claimed\.length > 1/);
     expect(verify).toMatch(/enforcePartnerVerifyLimit/);
-    expect(source('src/app/actions/redeem-challenge.ts')).toMatch(/expires_at:\s*redemptionExpiresAt/);
+    expect(source('src/app/actions/redeem-challenge.ts')).toMatch(/p_expires_at:\s*redemptionExpiresAt/);
     expect(source('src/lib/ratelimit.ts')).toMatch(/slidingWindow\(20, '5 m'\)/);
     expect(source('src/lib/ratelimit.ts')).toMatch(/slidingWindow\(60, '5 m'\)/);
   });

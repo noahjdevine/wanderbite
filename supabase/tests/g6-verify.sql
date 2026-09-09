@@ -177,40 +177,36 @@ end $$;
 
 insert into public.redemptions (
   id, user_id, restaurant_id, token_hash, status, expires_at
-) values
-  (
-    '60000000-0000-4000-8000-000000000031',
-    '60000000-0000-4000-8000-000000000001',
-    '60000000-0000-4000-8000-000000000011',
-    'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-    'issued',
-    now() + interval '35 days'
-  ),
-  (
-    '60000000-0000-4000-8000-000000000032',
-    '60000000-0000-4000-8000-000000000002',
-    '60000000-0000-4000-8000-000000000011',
-    'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-    'issued',
-    now() + interval '35 days'
-  );
+) values (
+  '60000000-0000-4000-8000-000000000031',
+  '60000000-0000-4000-8000-000000000001',
+  '60000000-0000-4000-8000-000000000011',
+  'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
+  'issued',
+  now() + interval '35 days'
+);
 
 do $$
 begin
   begin
-    perform * from public.verify_redemption(
+    insert into public.redemptions (
+      id, user_id, restaurant_id, token_hash, status, expires_at
+    ) values (
+      '60000000-0000-4000-8000-000000000032',
+      '60000000-0000-4000-8000-000000000002',
+      '60000000-0000-4000-8000-000000000011',
       'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff',
-      '60000000-0000-4000-8000-000000000011'
+      'issued',
+      now() + interval '35 days'
     );
-    raise exception 'FAIL: duplicate hash verify succeeded';
-  exception when check_violation then null; end;
+    raise exception 'FAIL: duplicate token_hash insert succeeded';
+  exception when unique_violation then null; end;
 
-  if exists (
-    select 1 from public.redemptions
+  if (
+    select count(*) from public.redemptions
     where token_hash = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
-      and status is distinct from 'issued'
-  ) then
-    raise exception 'FAIL: duplicate hash verify mutated rows';
+  ) <> 1 then
+    raise exception 'FAIL: duplicate token_hash was persisted';
   end if;
 end $$;
 
