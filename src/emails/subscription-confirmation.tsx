@@ -114,7 +114,7 @@ export function SubscriptionConfirmationEmail({
                 color: '#333',
               }}
             >
-              • <strong>$10 off $40+</strong> per challenge (see Rules for details)
+              • Each challenge shows its discount and minimum spend (see Rules for details)
             </Text>
           </Section>
 

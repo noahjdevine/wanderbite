@@ -72,7 +72,7 @@ export function HeroSlider() {
           Dining Adventures, Curated for You.
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg text-white/90 drop-shadow sm:text-xl">
-          Stop arguing about where to eat.
+          Now launching in McKinney, Texas. Stop arguing about where to eat.
         </p>
         <div className="mt-10">
           <Button size="lg" asChild className="shadow-lg">

@@ -24,7 +24,7 @@ export const metadata: Metadata = {
     template: "%s · Wanderbite",
   },
   description:
-    "Stop arguing about where to eat. Get two curated restaurant challenges a month, save $10 at each, and discover your next favorite spot.",
+    "Stop arguing about where to eat. Get two curated restaurant challenges a month in McKinney, Texas, and discover your next favorite spot.",
   icons: {
     icon: "/Wanderbite-logo.svg",
     apple: "/apple-touch-icon.png",
@@ -39,12 +39,12 @@ export const metadata: Metadata = {
     siteName: "Wanderbite",
     title: "Wanderbite — Dining adventures, curated for you.",
     description:
-      "Two curated restaurant challenges every month. $10 off each. Earn badges as you explore.",
+      "Two curated restaurant challenges every month in McKinney, Texas. Earn badges as you explore.",
   },
   twitter: {
     card: "summary_large_image",
     title: "Wanderbite — Dining adventures, curated for you.",
-    description: "Two curated restaurant challenges every month. $10 off each.",
+    description: "Two curated restaurant challenges every month in McKinney, Texas.",
   },
 };
 

@@ -1,6 +1,7 @@
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { LocationsClient } from '@/components/locations/locations-client';
+import { requireLaunchMarketId } from '@/lib/launch-market-server';
 
 export const revalidate = 1800;
 
@@ -24,6 +25,16 @@ export type LocationRestaurant = {
 
 export default async function RestaurantsPage() {
   const supabase = getSupabaseAdmin();
+  const market = await requireLaunchMarketId(supabase);
+  if (!market.ok) {
+    return (
+      <main className="min-h-screen bg-background px-4 py-20 sm:px-6">
+        <div className="mx-auto max-w-7xl">
+          <p className="text-destructive">Failed to load restaurants: {market.error}</p>
+        </div>
+      </main>
+    );
+  }
 
   const { data: rows, error } = await supabase
     .from('restaurants')
@@ -31,6 +42,7 @@ export default async function RestaurantsPage() {
       'id, name, cuisine_tags, description, address, lat, lon, market_id, image_url, google_photo_url, google_place_id, markets(name)'
     )
     .eq('status', 'active')
+    .eq('market_id', market.marketId)
     .order('name');
 
   if (error) {

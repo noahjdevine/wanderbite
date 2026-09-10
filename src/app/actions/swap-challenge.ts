@@ -8,6 +8,14 @@ import { requireUser } from '@/lib/auth/require-user';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { firstRpcRow } from '@/lib/challenges/rpc';
+import { selectDistancePool } from '@/lib/challenges/distance-pool';
+import { requireLaunchMarketId } from '@/lib/launch-market-server';
+import {
+  isLaunchEligibleAddress,
+  milesForDistanceBand,
+  originFromZip,
+  parseDistanceBand,
+} from '@/lib/launch-market';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { Database } from '@/types/database.types';
@@ -204,38 +212,11 @@ export async function swapChallengeItem(
       };
     }
 
-    // 5. Get market_id and the "other" assigned restaurant in this cycle (to exclude both)
-    const { data: currentRestaurant, error: restErr } = await supabase
-      .from('restaurants')
-      .select('id, market_id')
-      .eq('id', challengeItem.restaurant_id)
-      .single();
-
-    if (restErr || !currentRestaurant) {
-      return { ok: false, error: 'Could not load current restaurant.' };
-    }
-
-    const marketId = (currentRestaurant as { market_id: string }).market_id;
-    const excludeRestaurantIds = new Set<string>([challengeItem.restaurant_id]);
-
-    const { data: allCycleItems } = await supabase
-      .from('challenge_items')
-      .select('restaurant_id')
-      .eq('cycle_id', challengeCycle.id);
-
-    for (const row of allCycleItems ?? []) {
-      const rid = (row as { restaurant_id: string }).restaurant_id;
-      if (rid !== challengeItem.restaurant_id) {
-        excludeRestaurantIds.add(rid);
-      }
-    }
-
-    // 6. User profile + cuisine exclusions (user_preferences)
     const [{ data: profile, error: profileErr }, { data: prefsRow, error: prefsErr }] =
       await Promise.all([
         supabase
           .from('user_profiles')
-          .select('allergy_flags, dietary_flags')
+          .select('allergy_flags, dietary_flags, address_state, address_zip, distance_band')
           .eq('id', auth.userId)
           .maybeSingle(),
         supabase
@@ -251,6 +232,44 @@ export async function swapChallengeItem(
     if (prefsErr) {
       return { ok: false, error: `Failed to load preferences: ${prefsErr.message}` };
     }
+    if (
+      !isLaunchEligibleAddress({
+        state: (profile as { address_state: string | null } | null)?.address_state,
+        zip: (profile as { address_zip: string | null } | null)?.address_zip,
+      })
+    ) {
+      return { ok: false, error: 'Wanderbite is not available at this address yet.' };
+    }
+    const distanceBand = parseDistanceBand(
+      (profile as { distance_band: string | null } | null)?.distance_band
+    );
+    const zipOrigin = originFromZip(
+      (profile as { address_zip: string | null } | null)?.address_zip
+    );
+    if (!distanceBand || !zipOrigin) {
+      return { ok: false, error: 'Choose a valid travel distance preference.' };
+    }
+
+    const market = await requireLaunchMarketId(supabase);
+    if (!market.ok) {
+      return { ok: false, error: market.error };
+    }
+
+    const excludeRestaurantIds = new Set<string>([challengeItem.restaurant_id]);
+
+    const { data: allCycleItems } = await supabase
+      .from('challenge_items')
+      .select('restaurant_id')
+      .eq('cycle_id', challengeCycle.id);
+
+    for (const row of allCycleItems ?? []) {
+      const rid = (row as { restaurant_id: string }).restaurant_id;
+      if (rid !== challengeItem.restaurant_id) {
+        excludeRestaurantIds.add(rid);
+      }
+    }
+
+    // 6. Cuisine exclusions (user_preferences)
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
     const excludedCuisines = normalizeCuisineIds(
@@ -261,7 +280,7 @@ export async function swapChallengeItem(
     const { data: restaurants, error: restaurantsErr } = await supabase
       .from('restaurants')
       .select('id, name, cuisine_tags, address, lat, lon, status, market_id, org_id')
-      .eq('market_id', marketId)
+      .eq('market_id', market.marketId)
       .eq('status', 'active');
 
     if (restaurantsErr) {
@@ -318,53 +337,57 @@ export async function swapChallengeItem(
       countByRestaurant.set(id, (countByRestaurant.get(id) ?? 0) + 1);
     }
 
-    // 9. Apply same filters: dietary, allergy, cooldown, capacity
-    const eligible = withOffer.filter((restaurant) => {
-      const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
-      if (dietaryConflict) {
-        console.warn(
-          `[Swap] Filtered out ${restaurant.name} due to ${dietaryConflict.flag} conflict (overlapping tags: ${dietaryConflict.conflictingTags.join(', ')})`
+    const pool = selectDistancePool({
+      restaurants: withOffer,
+      origin: zipOrigin,
+      requestedMiles: milesForDistanceBand(distanceBand),
+      requiredCount: 1,
+      passesHard: (restaurant) => {
+        const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
+        if (dietaryConflict) {
+          console.warn(
+            `[Swap] Filtered out ${restaurant.name} due to ${dietaryConflict.flag} conflict (overlapping tags: ${dietaryConflict.conflictingTags.join(', ')})`
+          );
+          return false;
+        }
+        if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
+        if (
+          restaurantHasExcludedCuisine({
+            restaurantCuisineTags: restaurant.cuisine_tags,
+            excludedCuisineIds: excludedCuisines,
+          })
+        ) {
+          return false;
+        }
+
+        const userRedemptionsAtRestaurant = redemptions.filter(
+          (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'
         );
-        return false;
-      }
-      if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
-      if (
-        restaurantHasExcludedCuisine({
-          restaurantCuisineTags: restaurant.cuisine_tags,
-          excludedCuisineIds: excludedCuisines,
-        })
-      ) {
-        return false;
-      }
+        const verifiedAts = userRedemptionsAtRestaurant
+          .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
+          .filter((d) => !isNaN(d.getTime()));
 
-      const userRedemptionsAtRestaurant = redemptions.filter(
-        (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'
-      );
-      const verifiedAts = userRedemptionsAtRestaurant
-        .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
-        .filter((d) => !isNaN(d.getTime()));
+        if (verifiedAts.some((d) => d >= sixMonthsAgo)) return false;
+        if (verifiedAts.filter((d) => d >= twelveMonthsAgo).length >= 2) return false;
 
-      const inCooldown = verifiedAts.some((d) => d >= sixMonthsAgo);
-      if (inCooldown) return false;
-
-      const inLast12 = verifiedAts.filter((d) => d >= twelveMonthsAgo);
-      if (inLast12.length >= 2) return false;
-
-      const offer = offerByRestaurant.get(restaurant.id)!;
-      const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
-      if (monthCount >= offer.max_redemptions_per_month) return false;
-
-      return true;
+        const offer = offerByRestaurant.get(restaurant.id);
+        if (!offer) return false;
+        const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
+        if (monthCount >= offer.max_redemptions_per_month) return false;
+        return true;
+      },
+      passesVariety: () => true,
+      passesRelaxedVariety: () => true,
     });
 
-    if (eligible.length === 0) {
+    if (pool.candidates.length === 0) {
       return {
         ok: false,
         error: 'No eligible replacement restaurant found. Check dietary preferences, allergies, and cooldowns.',
       };
     }
 
-    const replacement = pickOne(eligible);
+    const replacement = pickOne(pool.candidates);
     if (!replacement) {
       return { ok: false, error: 'Could not pick a replacement restaurant.' };
     }

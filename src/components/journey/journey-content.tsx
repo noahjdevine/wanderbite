@@ -24,23 +24,12 @@ import { Lock } from 'lucide-react';
 const SAVINGS_PER_REDEMPTION_CENTS = 1000;
 const CURRENT_STREAK_MOCK = 1;
 
-const QUARTERLY_BONUS =
-  'Automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
-const MILESTONE_PERKS = [
-  { level: 1, minXp: 300, title: 'The Explorer', perk: 'Free App or Drink (Show screen to server).' },
-  { level: 2, minXp: 1000, title: 'The Tastemaker', perk: 'Free Dessert or Specialty Cocktail.' },
-  { level: 3, minXp: 1500, title: 'The Connoisseur', perk: 'BOGO Entree (Buy 1 Get 1 Free).' },
-  { level: 4, minXp: 2500, title: 'The Local Legend', perk: 'Legend Swag Pack.' },
+const LEVEL_TITLES = [
+  { level: 1, minXp: 300, title: 'The Explorer' },
+  { level: 2, minXp: 1000, title: 'The Tastemaker' },
+  { level: 3, minXp: 1500, title: 'The Connoisseur' },
+  { level: 4, minXp: 2500, title: 'The Local Legend' },
 ] as const;
-
-const QUARTERLY_DRAWING_LEVELS = [
-  { label: 'The Explorer', minXp: 300 },
-  { label: 'The Tastemaker', minXp: 1000 },
-  { label: 'The Connoisseur', minXp: 1500 },
-  { label: 'The Local Legend', minXp: 2500 },
-] as const;
-
-const QUARTERLY_DRAWING_MAX_XP = 2500;
 
 type JourneyContentProps = {
   userId: string;
@@ -94,14 +83,14 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
 
       <Card>
         <CardHeader>
-          <CardTitle>Your Member Perks</CardTitle>
+          <CardTitle>Your level</CardTitle>
           <CardDescription>
-            Benefits you’ve unlocked at your current level. Show your screen to the server to claim.
+            Earn XP by completing visits and leaving reviews. Level names mark your progress.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <ul className="space-y-3">
-            {MILESTONE_PERKS.map(({ level, minXp, title, perk }) => {
+            {LEVEL_TITLES.map(({ level, minXp, title }) => {
               const unlocked = stats.xp >= minXp;
               return (
                 <li
@@ -128,12 +117,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
                     >
                       Level {level} · {title}
                     </p>
-                    <p
-                      className={`text-sm font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}
-                    >
-                      {perk}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{QUARTERLY_BONUS}</p>
+                    <p className="text-xs text-muted-foreground">{minXp} XP</p>
                   </div>
                   {unlocked ? (
                     <Badge variant="default" className="shrink-0">
@@ -171,63 +155,6 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
           </CardHeader>
         </Card>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Quarterly Giveaway Progress</CardTitle>
-          <CardDescription>
-            Reach XP milestones to earn automatic entry to win 1 of 5 Gift Cards given away each
-            quarter.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">
-                {stats.xp} / {QUARTERLY_DRAWING_MAX_XP} XP
-              </span>
-              <span className="font-medium text-foreground">
-                {stats.xp >= QUARTERLY_DRAWING_MAX_XP
-                  ? 'Max level reached!'
-                  : `${QUARTERLY_DRAWING_MAX_XP - stats.xp} XP to max level`}
-              </span>
-            </div>
-            <Progress
-              value={Math.min(100, (stats.xp / QUARTERLY_DRAWING_MAX_XP) * 100)}
-              max={100}
-              className="h-4"
-            />
-          </div>
-          <div className="grid grid-cols-4 gap-2">
-            {QUARTERLY_DRAWING_LEVELS.map((tier) => {
-              const reached = stats.xp >= tier.minXp;
-              return (
-                <div
-                  key={tier.minXp}
-                  className={`rounded-xl border-2 p-4 text-center transition-colors ${
-                    reached ? 'border-primary bg-primary/5' : 'border-muted bg-muted/30'
-                  }`}
-                >
-                  <p className="text-xs font-medium text-muted-foreground">{tier.minXp} XP</p>
-                  <p className="mt-1 text-sm font-bold text-foreground">{tier.label}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Entry to win 1 of 5 Gift Cards
-                  </p>
-                  {reached ? (
-                    <Badge variant="default" className="mt-2 text-xs">
-                      Unlocked
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="mt-2 text-xs">
-                      Locked
-                    </Badge>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
 
       <Card>
         <CardHeader>

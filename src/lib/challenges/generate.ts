@@ -7,12 +7,27 @@ import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
+import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
 import { firstRpcRow } from '@/lib/challenges/rpc';
+import { requireLaunchMarketId } from '@/lib/launch-market-server';
+import {
+  deriveDistanceMatch,
+  isLaunchEligibleAddress,
+  milesForDistanceBand,
+  originFromZip,
+  parseDistanceBand,
+  type DistanceMatch,
+} from '@/lib/launch-market';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 
 const INCOMPLETE_CYCLE_ERROR = 'Failed to create challenge items.';
 const INACTIVE_SUBSCRIPTION_ERROR =
   'An active Wanderbite subscription is required to generate challenges.';
+const INELIGIBLE_ADDRESS_ERROR =
+  'Wanderbite is not available at this address yet.';
+const INVALID_DISTANCE_ERROR = 'Choose a valid travel distance preference.';
+const THIN_POOL_ERROR =
+  'No eligible restaurants found within your travel distance. Try a wider distance or check dietary preferences.';
 
 // --- Types (aligned with schema) ---
 
@@ -80,11 +95,30 @@ export type GeneratedChallengeItem = {
 export type GeneratedChallenge = {
   cycle: ChallengeCycleRow;
   items: GeneratedChallengeItem[];
+  distanceMatch: DistanceMatch | null;
 };
+
+export type GenerateFailureReason =
+  | 'unauthenticated'
+  | 'inactive_subscription'
+  | 'ineligible_address'
+  | 'invalid_distance_preference'
+  | 'incomplete_cycle'
+  | 'thin_pool'
+  | 'market_unavailable'
+  | 'load_failed'
+  | 'assignment_failed';
 
 export type GenerateChallengeResult =
   | { ok: true; data: GeneratedChallenge }
-  | { ok: false; error: string };
+  | { ok: false; error: string; reason: GenerateFailureReason };
+
+function fail(
+  reason: GenerateFailureReason,
+  error: string
+): GenerateChallengeResult {
+  return { ok: false, reason, error };
+}
 
 /**
  * Fetches the current month's challenge for a user (for display).
@@ -108,10 +142,11 @@ export async function getCurrentChallengeForUser(
     supabase,
     (cycle as ChallengeCycleRow).id
   );
-  return { cycle: cycle as ChallengeCycleRow, items };
+  const distanceMatch = await distanceMatchForUser(supabase, userId, items);
+  return { cycle: cycle as ChallengeCycleRow, items, distanceMatch };
 }
 
-/** Unbiased FisherΓÇôYates shuffle over a copy of the input.
+/** Unbiased Fisher-Yates shuffle over a copy of the input.
  *
  * Restaurant selection, NOT a security token. We use a crypto RNG (node:crypto
  * `randomInt`, which is rejection-sampled and therefore free of modulo bias)
@@ -127,40 +162,91 @@ function shuffle<T>(array: T[]): T[] {
   return out;
 }
 
-/** True when restaurant is tagged as cocktail bar / lounge (curated cocktails). */
-function isCocktailBar(restaurant: RestaurantRow): boolean {
-  const tags = (restaurant.cuisine_tags ?? []).map((t) => String(t).toLowerCase());
-  const cocktailKeywords = ['cocktail', 'cocktails', 'bar', 'lounge', 'speakeasy'];
-  return cocktailKeywords.some((kw) => tags.some((t) => t.includes(kw)));
+async function distanceMatchForUser(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+  items: GeneratedChallengeItem[]
+): Promise<DistanceMatch | null> {
+  const { data: profile } = await supabase
+    .from('user_profiles')
+    .select('address_zip, distance_band')
+    .eq('id', userId)
+    .maybeSingle();
+  const active = items.filter(
+    (item) =>
+      item.challengeItem.status === 'assigned' ||
+      item.challengeItem.status === 'redeemed'
+  );
+  return deriveDistanceMatch({
+    zip: (profile as { address_zip: string | null } | null)?.address_zip ?? null,
+    distanceBand:
+      (profile as { distance_band: string | null } | null)?.distance_band ?? null,
+    restaurants: active.map((item) => item.restaurant),
+  });
 }
 
 /** Number of distinct restaurant challenges to generate per month. */
 const CHALLENGE_ITEMS_PER_MONTH = 2;
 
 /**
- * Generates (or returns existing) monthly challenge for a user in a market.
- * Enforces Section 3 rules: subscription (TODO when table exists), safety (allergy_flags),
- * 6-month cooldown, 2 redemptions/restaurant/12mo, capacity.
- * Generates exactly CHALLENGE_ITEMS_PER_MONTH distinct restaurants (no duplicates).
+ * Generates (or returns existing) monthly challenge for a user in the launch market.
+ * Eligibility and distance-band validation run before returning an existing cycle.
  */
 export async function generateMonthlyChallengeForUser(
-  userId: string,
-  marketId: string
+  userId: string
 ): Promise<GenerateChallengeResult> {
   try {
     const supabase = getSupabaseAdmin();
-    const { data: subscriptionProfile } = await supabase
-      .from('user_profiles')
-      .select('subscription_status')
-      .eq('id', userId)
-      .maybeSingle();
+    const market = await requireLaunchMarketId(supabase);
+    if (!market.ok) {
+      return fail('market_unavailable', market.error);
+    }
+    const marketId = market.marketId;
 
-    if (subscriptionProfile?.subscription_status !== 'active') {
-      return {
-        ok: false,
-        error:
-          'An active Wanderbite subscription is required to generate challenges.',
-      };
+    const [{ data: profile, error: profileErr }, { data: prefsRow, error: prefsErr }] =
+      await Promise.all([
+        supabase
+          .from('user_profiles')
+          .select(
+            'subscription_status, allergy_flags, dietary_flags, wants_cocktail_experience, address_state, address_zip, distance_band'
+          )
+          .eq('id', userId)
+          .maybeSingle(),
+        supabase
+          .from('user_preferences')
+          .select('excluded_cuisines')
+          .eq('user_id', userId)
+          .maybeSingle(),
+      ]);
+
+    if (profileErr) {
+      return fail('load_failed', `Failed to load profile: ${profileErr.message}`);
+    }
+    if (prefsErr) {
+      return fail('load_failed', `Failed to load preferences: ${prefsErr.message}`);
+    }
+    if (profile?.subscription_status !== 'active') {
+      return fail('inactive_subscription', INACTIVE_SUBSCRIPTION_ERROR);
+    }
+    if (
+      !isLaunchEligibleAddress({
+        state: (profile as { address_state: string | null }).address_state,
+        zip: (profile as { address_zip: string | null }).address_zip,
+      })
+    ) {
+      return fail('ineligible_address', INELIGIBLE_ADDRESS_ERROR);
+    }
+    const distanceBand = parseDistanceBand(
+      (profile as { distance_band: string | null }).distance_band
+    );
+    if (!distanceBand) {
+      return fail('invalid_distance_preference', INVALID_DISTANCE_ERROR);
+    }
+    const zipOrigin = originFromZip(
+      (profile as { address_zip: string | null }).address_zip
+    );
+    if (!zipOrigin) {
+      return fail('ineligible_address', INELIGIBLE_ADDRESS_ERROR);
     }
 
     const now = new Date();
@@ -172,7 +258,6 @@ export async function generateMonthlyChallengeForUser(
     const monthStart = cycleMonth;
     const monthEnd = startOfMonth(subMonths(now, -1));
 
-    // 1. Already have an active cycle for this month?
     const { data: existingCycle, error: cycleErr } = await supabase
       .from('challenge_cycles')
       .select('*')
@@ -182,46 +267,28 @@ export async function generateMonthlyChallengeForUser(
       .maybeSingle();
 
     if (cycleErr) {
-      return { ok: false, error: `Failed to check existing cycle: ${cycleErr.message}` };
+      return fail('load_failed', `Failed to check existing cycle: ${cycleErr.message}`);
     }
     if (existingCycle) {
       const cycle = existingCycle as ChallengeCycleRow;
       const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
       if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
-        return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
+        return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
       }
-      return { ok: true, data: { cycle, items } };
+      const distanceMatch = await distanceMatchForUser(supabase, userId, items);
+      return { ok: true, data: { cycle, items, distanceMatch } };
     }
 
-    // 2. User profile + cuisine exclusions (stored on user_preferences)
-    const [{ data: profile, error: profileErr }, { data: prefsRow, error: prefsErr }] =
-      await Promise.all([
-        supabase
-          .from('user_profiles')
-          .select('allergy_flags, dietary_flags, wants_cocktail_experience')
-          .eq('id', userId)
-          .maybeSingle(),
-        supabase
-          .from('user_preferences')
-          .select('excluded_cuisines')
-          .eq('user_id', userId)
-          .maybeSingle(),
-      ]);
-
-    if (profileErr) {
-      return { ok: false, error: `Failed to load profile: ${profileErr.message}` };
-    }
-    if (prefsErr) {
-      return { ok: false, error: `Failed to load preferences: ${prefsErr.message}` };
-    }
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
     const dietaryFlags = (profile?.dietary_flags ?? null) as string[] | null;
     const excludedCuisines = normalizeCuisineIds(
       (prefsRow as UserPreferencesRow | null)?.excluded_cuisines ?? []
     );
-    const wantsCocktailExperience = Boolean((profile as { wants_cocktail_experience?: boolean } | null)?.wants_cocktail_experience);
+    const wantsCocktailExperience = Boolean(
+      (profile as { wants_cocktail_experience?: boolean } | null)
+        ?.wants_cocktail_experience
+    );
 
-    // 3. Restaurants in market with active offer
     const { data: restaurants, error: restErr } = await supabase
       .from('restaurants')
       .select(
@@ -231,10 +298,10 @@ export async function generateMonthlyChallengeForUser(
       .eq('status', 'active');
 
     if (restErr) {
-      return { ok: false, error: `Failed to load restaurants: ${restErr.message}` };
+      return fail('load_failed', `Failed to load restaurants: ${restErr.message}`);
     }
     if (!restaurants?.length) {
-      return { ok: false, error: 'No eligible restaurants found in this market.' };
+      return fail('thin_pool', 'No eligible restaurants found in this market.');
     }
 
     const restaurantList = restaurants as RestaurantRow[];
@@ -247,29 +314,26 @@ export async function generateMonthlyChallengeForUser(
       .eq('active', true);
 
     if (offersErr) {
-      return { ok: false, error: `Failed to load offers: ${offersErr.message}` };
+      return fail('load_failed', `Failed to load offers: ${offersErr.message}`);
     }
     const offerList = (offers ?? []) as RestaurantOfferRow[];
     const offerByRestaurant = new Map(offerList.map((o) => [o.restaurant_id, o]));
 
-    // Restaurants that have an active offer
     const withOffer = restaurantList.filter((r) => offerByRestaurant.has(r.id));
     if (withOffer.length === 0) {
-      return { ok: false, error: 'No restaurants with an active offer in this market.' };
+      return fail('thin_pool', 'No restaurants with an active offer in this market.');
     }
 
-    // 4. User redemptions (for cooldown + 2x/year)
     const { data: userRedemptions, error: redErr } = await supabase
       .from('redemptions')
       .select('id, restaurant_id, status, verified_at, created_at')
       .eq('user_id', userId);
 
     if (redErr) {
-      return { ok: false, error: `Failed to load redemptions: ${redErr.message}` };
+      return fail('load_failed', `Failed to load redemptions: ${redErr.message}`);
     }
     const redemptions = (userRedemptions ?? []) as RedemptionRow[];
 
-    // 4b. Swap cooldown: restaurants this user swapped out in the last 3 months
     const { data: userCycles } = await supabase
       .from('challenge_cycles')
       .select('id')
@@ -288,7 +352,6 @@ export async function generateMonthlyChallengeForUser(
       }
     }
 
-    // 4c. Variety Rule 1 (6-Month Block): restaurants received in any challenge in last 6 months
     const sixMonthsAgoStr = format(sixMonthsAgo, 'yyyy-MM-dd');
     const twelveMonthsAgoStr = format(twelveMonthsAgo, 'yyyy-MM-dd');
     const { data: cyclesLast6 } = await supabase
@@ -308,7 +371,6 @@ export async function generateMonthlyChallengeForUser(
       }
     }
 
-    // 4d. Variety Rule 2 (2x Yearly Cap): restaurants they've had 2+ times in last 12 months
     const { data: cyclesLast12 } = await supabase
       .from('challenge_cycles')
       .select('id')
@@ -332,7 +394,6 @@ export async function generateMonthlyChallengeForUser(
       }
     }
 
-    // 4e. Last month's restaurants (for relaxed fallback)
     const lastMonth = startOfMonth(subMonths(now, 1));
     const lastMonthStr = format(lastMonth, 'yyyy-MM-dd');
     const { data: lastMonthCycle } = await supabase
@@ -352,7 +413,6 @@ export async function generateMonthlyChallengeForUser(
       }
     }
 
-    // 5. Current month redemption counts per restaurant (capacity)
     const { data: monthRedemptions } = await supabase
       .from('redemptions')
       .select('restaurant_id')
@@ -366,8 +426,19 @@ export async function generateMonthlyChallengeForUser(
       countByRestaurant.set(id, (countByRestaurant.get(id) ?? 0) + 1);
     }
 
-    // 6. Filter: dietary, safety, swap cooldown, capacity, variety (6-month block, 2x/year cap)
-    function passesBaseFilter(restaurant: RestaurantRow): boolean {
+    function redemptionHardOk(restaurant: RestaurantRow): boolean {
+      const userRedemptionsAtRestaurant = redemptions.filter(
+        (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'
+      );
+      const verifiedAts = userRedemptionsAtRestaurant
+        .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
+        .filter((d) => !isNaN(d.getTime()));
+      if (verifiedAts.some((d) => d >= sixMonthsAgo)) return false;
+      if (verifiedAts.filter((d) => d >= twelveMonthsAgo).length >= 2) return false;
+      return true;
+    }
+
+    function passesHard(restaurant: RestaurantRow): boolean {
       const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
       if (dietaryConflict) return false;
       if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
@@ -380,82 +451,54 @@ export async function generateMonthlyChallengeForUser(
         return false;
       }
       if (swappedOutRestaurantIds.has(restaurant.id)) return false;
-      const offer = offerByRestaurant.get(restaurant.id)!;
+      const offer = offerByRestaurant.get(restaurant.id);
+      if (!offer) return false;
       const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
       if (monthCount >= offer.max_redemptions_per_month) return false;
-      return true;
+      return redemptionHardOk(restaurant);
     }
 
-    function passesVarietyRules(restaurant: RestaurantRow): boolean {
+    function passesVariety(restaurant: RestaurantRow): boolean {
       if (receivedInLast6Months.has(restaurant.id)) return false;
       if ((restaurantCycleCount.get(restaurant.id) ?? 0) >= 2) return false;
       return true;
     }
 
-    let eligible = withOffer.filter((restaurant) => {
-      if (!passesBaseFilter(restaurant)) return false;
-      const userRedemptionsAtRestaurant = redemptions.filter(
-        (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'
-      );
-      const verifiedAts = userRedemptionsAtRestaurant
-        .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
-        .filter((d) => !isNaN(d.getTime()));
-      const inCooldown = verifiedAts.some((d) => d >= sixMonthsAgo);
-      if (inCooldown) return false;
-      const inLast12 = verifiedAts.filter((d) => d >= twelveMonthsAgo);
-      if (inLast12.length >= 2) return false;
-      return passesVarietyRules(restaurant);
-    });
-
-    if (excludedCuisines?.length) {
-      if (eligible.length < 3) {
-        console.warn('[challenges] low candidate pool after cuisine exclusions', {
-          userId,
-          marketId,
-          excludedCuisines,
-          eligibleCount: eligible.length,
-          withOfferCount: withOffer.length,
-        });
-      }
+    function passesRelaxedVariety(restaurant: RestaurantRow): boolean {
+      return !lastMonthRestaurantIds.has(restaurant.id);
     }
 
-    // Edge case: relax variety rules so user still gets 2 restaurants (exclude only last month)
-    if (eligible.length < CHALLENGE_ITEMS_PER_MONTH) {
-      eligible = withOffer.filter((restaurant) => {
-        if (!passesBaseFilter(restaurant)) return false;
-        const userRedemptionsAtRestaurant = redemptions.filter(
-          (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'
-        );
-        const verifiedAts = userRedemptionsAtRestaurant
-          .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
-          .filter((d) => !isNaN(d.getTime()));
-        if (verifiedAts.some((d) => d >= sixMonthsAgo)) return false;
-        if (verifiedAts.filter((d) => d >= twelveMonthsAgo).length >= 2) return false;
-        return !lastMonthRestaurantIds.has(restaurant.id);
+    const pool = selectDistancePool({
+      restaurants: withOffer,
+      origin: zipOrigin,
+      requestedMiles: milesForDistanceBand(distanceBand),
+      requiredCount: CHALLENGE_ITEMS_PER_MONTH,
+      passesHard,
+      passesVariety,
+      passesRelaxedVariety,
+    });
+
+    if (excludedCuisines?.length && pool.candidates.length < 3) {
+      console.warn('[challenges] low candidate pool after cuisine exclusions', {
+        userId,
+        marketId,
+        excludedCuisines,
+        eligibleCount: pool.candidates.length,
+        withOfferCount: withOffer.length,
       });
     }
 
-    if (eligible.length < CHALLENGE_ITEMS_PER_MONTH) {
-      return {
-        ok: false,
-        error: `No eligible restaurants found. Need at least ${CHALLENGE_ITEMS_PER_MONTH} distinct restaurants; found ${eligible.length}. Check dietary preferences, allergies, redemption cooldown, swap cooldown, and capacity.`,
-      };
+    if (pool.candidates.length < CHALLENGE_ITEMS_PER_MONTH) {
+      return fail('thin_pool', THIN_POOL_ERROR);
     }
 
-    // 7. Select exactly CHALLENGE_ITEMS_PER_MONTH distinct restaurants (limit 2; no same restaurant twice)
-    // When wants_cocktail_experience: reserve 1 slot for a cocktail/bar venue.
-    let chosen: RestaurantRow[];
-    if (wantsCocktailExperience && CHALLENGE_ITEMS_PER_MONTH >= 2) {
-      const cocktailBars = eligible.filter(isCocktailBar);
-      const others = eligible.filter((r) => !isCocktailBar(r));
-      const oneCocktail = cocktailBars.length > 0 ? [shuffle(cocktailBars)[0]] : [];
-      const needMore = CHALLENGE_ITEMS_PER_MONTH - oneCocktail.length;
-      const restPool = others.filter((r) => !oneCocktail.includes(r));
-      const restShuffled = shuffle(restPool);
-      chosen = [...oneCocktail, ...restShuffled.slice(0, needMore)];
-    } else {
-      const shuffled = shuffle(eligible);
-      chosen = shuffled.slice(0, CHALLENGE_ITEMS_PER_MONTH);
+    const chosen = pickDistinctRestaurants(
+      pool.candidates,
+      CHALLENGE_ITEMS_PER_MONTH,
+      { reserveCocktail: wantsCocktailExperience, shuffle }
+    );
+    if (chosen.length < CHALLENGE_ITEMS_PER_MONTH) {
+      return fail('thin_pool', THIN_POOL_ERROR);
     }
 
     const { data: rpcData, error: rpcError } = await supabase.rpc(
@@ -469,27 +512,24 @@ export async function generateMonthlyChallengeForUser(
     );
 
     if (rpcError) {
-      return { ok: false, error: `Failed to create cycle: ${rpcError.message}` };
+      return fail('assignment_failed', `Failed to create cycle: ${rpcError.message}`);
     }
 
     const generated = firstRpcRow(rpcData);
     if (!generated) {
-      return { ok: false, error: 'Failed to create challenge cycle.' };
+      return fail('assignment_failed', 'Failed to create challenge cycle.');
     }
     if (generated.outcome === 'inactive_subscription') {
-      return { ok: false, error: INACTIVE_SUBSCRIPTION_ERROR };
+      return fail('inactive_subscription', INACTIVE_SUBSCRIPTION_ERROR);
     }
     if (generated.outcome === 'invalid_restaurants') {
-      return {
-        ok: false,
-        error: `No eligible restaurants found. Need at least ${CHALLENGE_ITEMS_PER_MONTH} distinct restaurants; found 0. Check dietary preferences, allergies, redemption cooldown, swap cooldown, and capacity.`,
-      };
+      return fail('thin_pool', THIN_POOL_ERROR);
     }
     if (generated.outcome === 'incomplete_cycle' || !generated.cycle_id) {
-      return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
+      return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
     }
     if (generated.outcome !== 'created' && generated.outcome !== 'existing') {
-      return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
+      return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
     }
 
     const { data: persistedCycle, error: loadCycleErr } = await supabase
@@ -499,20 +539,21 @@ export async function generateMonthlyChallengeForUser(
       .maybeSingle();
 
     if (loadCycleErr || !persistedCycle) {
-      return { ok: false, error: 'Failed to create challenge cycle.' };
+      return fail('assignment_failed', 'Failed to create challenge cycle.');
     }
 
     const cycle = persistedCycle as ChallengeCycleRow;
     const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
     if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
-      return { ok: false, error: INCOMPLETE_CYCLE_ERROR };
+      return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
     }
 
-    return { ok: true, data: { cycle, items } };
+    const distanceMatch = await distanceMatchForUser(supabase, userId, items);
+    return { ok: true, data: { cycle, items, distanceMatch } };
   } catch (e) {
     Sentry.captureException(e);
     const message = e instanceof Error ? e.message : 'Unknown error';
-    return { ok: false, error: `Assignment failed: ${message}` };
+    return fail('assignment_failed', `Assignment failed: ${message}`);
   }
 }
 
