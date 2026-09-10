@@ -7,6 +7,7 @@ import { calculateStreak } from '@/lib/streaks';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
+import { launchAreaState } from '@/lib/launch-market';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,7 +24,7 @@ export default async function DashboardPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, subscription_status')
+    .select('id, subscription_status, username, address_street, address_city, address_state, address_zip')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -42,31 +43,26 @@ export default async function DashboardPage() {
   const typedProfile = profile as {
     id: string;
     subscription_status: string | null;
+    username: string | null;
+    address_street: string | null;
+    address_city: string | null;
+    address_state: string | null;
+    address_zip: string | null;
   };
 
   if (typedProfile.subscription_status !== 'active') {
     redirect('/pricing');
   }
 
-  const { data: market, error: marketError } = await admin
-    .from('markets')
-    .select('id')
-    .limit(1)
-    .maybeSingle();
-
-  if (marketError || !market) {
-    return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <p className="text-destructive">
-          {marketError
-            ? `Failed to load market: ${marketError.message}`
-            : 'No market found. Run the seed script first.'}
-        </p>
-      </main>
-    );
+  const area = launchAreaState({
+    street: typedProfile.address_street,
+    city: typedProfile.address_city,
+    state: typedProfile.address_state,
+    zip: typedProfile.address_zip,
+  });
+  if (area === 'missing_address' || !typedProfile.username?.trim()) {
+    redirect('/onboarding');
   }
-
-  const marketRow = market as { id: string };
 
   let currentChallenge = null;
   try {
@@ -105,7 +101,7 @@ export default async function DashboardPage() {
           Culinary Adventure Awaits
         </h1>
         <DashboardClient
-          marketId={marketRow.id}
+          launchEligible={area === 'eligible'}
           currentChallenge={currentChallenge}
           streak={streak}
           biteNotes={biteNotesForDash}

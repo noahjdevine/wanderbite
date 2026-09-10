@@ -6,6 +6,9 @@ import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 import { hashPartnerPin } from '@/lib/partner-pin';
+import { requireLaunchMarketId } from '@/lib/launch-market-server';
+import { isValidCoordinate, parseCoordinate } from '@/lib/launch-market';
+import { getPlaceDetails } from '@/lib/google-places-import';
 
 export type AddRestaurantResult =
   | { ok: true; partnerUrl: string }
@@ -36,12 +39,8 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
 
     const supabase = getSupabaseAdmin();
 
-    const { data: market } = await supabase
-      .from('markets')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-    if (!market) return { ok: false, error: 'No market found. Create a market first.' };
+    const market = await requireLaunchMarketId(supabase);
+    if (!market.ok) return { ok: false, error: market.error };
 
     const name = (formData.get('name') as string)?.trim();
     if (!name) return { ok: false, error: 'Name is required.' };
@@ -59,7 +58,7 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
 
     const { data: org, error: orgErr } = await supabase
       .from('restaurant_orgs')
-      .insert({ name, market_id: (market as { id: string }).id })
+      .insert({ name, market_id: market.marketId })
       .select('id')
       .single();
 
@@ -68,9 +67,24 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
     }
 
     const orgId = (org as { id: string }).id;
-    const marketId = (market as { id: string }).id;
+    const marketId = market.marketId;
 
     const slug = await allocateUniqueRestaurantSlug(supabase, name);
+
+    const googlePlaceId = (formData.get('google_place_id') as string)?.trim() || null;
+    let lat = parseCoordinate(formData.get('lat'));
+    let lon = parseCoordinate(formData.get('lon'));
+    if (googlePlaceId) {
+      const details = await getPlaceDetails(googlePlaceId);
+      if (details && isValidCoordinate(details.lat, details.lon)) {
+        lat = details.lat;
+        lon = details.lon;
+      }
+    }
+    if (!isValidCoordinate(lat, lon)) {
+      lat = null;
+      lon = null;
+    }
 
     const { error: restErr } = await supabase.from('restaurants').insert({
       org_id: orgId,
@@ -79,6 +93,8 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
       slug,
       cuisine_tags: cuisine_tags.length ? cuisine_tags : null,
       address,
+      lat,
+      lon,
       description,
       price_range,
       neighborhood,

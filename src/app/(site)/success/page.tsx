@@ -48,9 +48,10 @@ export default async function SuccessPage() {
             current billing period. No partial refunds.
           </p>
           <p>
-            <strong className="text-foreground">Discount rules:</strong> Unless
-            otherwise stated, challenges include $10 off $40+ before tax/tip, not
-            stackable, and require in-person confirmation at the restaurant.
+            <strong className="text-foreground">Discount rules:</strong> Each
+            challenge shows its discount and minimum spend. Offers are calculated
+            before tax/tip, are not stackable, and require in-person confirmation
+            at the restaurant.
           </p>
         </div>
 

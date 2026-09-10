@@ -56,14 +56,14 @@ export default function TermsPage() {
             4) Restaurant Discounts and Redemption Rules
           </h2>
           <p className="mb-4">
-            Participating restaurants may offer discounts to eligible Wanderbite users. Unless otherwise stated in the Service, the default discount terms are:
+            Participating restaurants may offer discounts to eligible Wanderbite users. Each challenge shows its discount and minimum spend. Unless otherwise stated in the Service:
           </p>
           <ul className="mb-4 list-disc space-y-2 pl-5">
             <li>
-              <strong>Discount:</strong> $10 off your bill
+              <strong>Discount:</strong> the amount shown on the challenge
             </li>
             <li>
-              <strong>Minimum spend:</strong> $40 or more (calculated before tax and tip)
+              <strong>Minimum spend:</strong> the amount shown on the challenge (calculated before tax and tip)
             </li>
             <li>
               <strong>No stacking:</strong> Discount cannot be combined with other offers, coupons, or promotions unless the restaurant explicitly allows it.

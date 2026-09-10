@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { assertAdmin } from '@/lib/auth/assert-admin';
 import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 import type { PlaceDetails, PlaceResult } from '@/lib/google-places-import';
 import {
   searchPlaces,
@@ -11,7 +12,8 @@ import {
   buildGooglePlacesTextSearchUrl,
   maskGoogleApiKeyInUrl,
 } from '@/lib/google-places-import';
-import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
+import { isValidCoordinate } from '@/lib/launch-market';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
 
 async function checkAdminPermissions() {
   const auth = await assertAdmin();
@@ -67,11 +69,15 @@ export async function attachGoogleMetadataToLatestRestaurantByName(
   }
 
   const id = (row as { id: string }).id;
+  const details = await getPlaceDetails(placeId);
   const { error: updErr } = await admin
     .from('restaurants')
     .update({
       google_place_id: placeId,
       google_photo_url: google_photo_url?.trim() || null,
+      ...(details && isValidCoordinate(details.lat, details.lon)
+        ? { lat: details.lat, lon: details.lon }
+        : {}),
     })
     .eq('id', id);
 
@@ -103,10 +109,7 @@ export async function attachGoogleMetadataToLatestRestaurantByName(
 }
 
 export async function searchRestaurantsFromGoogle(
-  query: string,
-  city: string,
-  lat: number,
-  lng: number
+  query: string
 ): Promise<
   { ok: true; results: PlaceResult[] } | { ok: false; error: string }
 > {
@@ -129,17 +132,18 @@ export async function searchRestaurantsFromGoogle(
   }
 
   const trimmedQuery = query.trim();
-  const cityTrim = city.trim();
+  const cityTrim = LAUNCH_MARKET.cityQuery;
+  const center = { lat: LAUNCH_MARKET.centroid.lat, lng: LAUNCH_MARKET.centroid.lon };
   const url = buildGooglePlacesTextSearchUrl(
     trimmedQuery,
     cityTrim,
-    { lat, lng },
+    center,
     key
   );
   console.warn('Google Places request URL:', maskGoogleApiKeyInUrl(url, key));
 
   try {
-    const results = await searchPlaces(trimmedQuery, cityTrim, { lat, lng }, {
+    const results = await searchPlaces(trimmedQuery, cityTrim, center, {
       onResponse: ({ httpStatus, bodyText }) => {
         console.warn('Google Places raw response status:', httpStatus);
         console.warn('Google Places raw response body:', bodyText);

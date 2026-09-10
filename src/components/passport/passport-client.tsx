@@ -27,14 +27,15 @@ import {
   RESTAURANT_IMAGE_PLACEHOLDER,
   restaurantDisplayImageUrl,
 } from '@/lib/restaurant-image';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 const BRAND_PIN = '#E85D26';
 
-const AUSTIN: { longitude: number; latitude: number; zoom: number } = {
-  longitude: -97.7431,
-  latitude: 30.2672,
+const LAUNCH: { longitude: number; latitude: number; zoom: number } = {
+  longitude: LAUNCH_MARKET.centroid.lon,
+  latitude: LAUNCH_MARKET.centroid.lat,
   zoom: 11,
 };
 
@@ -310,9 +311,9 @@ export function PassportClient({
       };
     }
     return {
-      longitude: AUSTIN.longitude,
-      latitude: AUSTIN.latitude,
-      zoom: AUSTIN.zoom,
+      longitude: LAUNCH.longitude,
+      latitude: LAUNCH.latitude,
+      zoom: LAUNCH.zoom,
     };
   }, [bounds]);
 

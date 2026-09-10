@@ -61,12 +61,22 @@ describe('createCheckoutSession (G0 freeze)', () => {
     },
   );
 
-  it('creates a session only when CHECKOUT_ENABLED is exactly true', async () => {
+  it('creates a session only when CHECKOUT_ENABLED is exactly true and the address is in the launch area', async () => {
     vi.stubEnv('CHECKOUT_ENABLED', 'true');
     requireUser.mockResolvedValue({
       ok: true,
       userId: 'user-1',
       email: 'member@example.com',
+    });
+    from.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: { address_state: 'TX', address_zip: '75070' },
+            error: null,
+          }),
+        }),
+      }),
     });
     checkoutSessionsCreate.mockResolvedValue({ url: 'https://checkout.stripe.com/test' });
     const { createCheckoutSession } = await import('./stripe');
@@ -80,6 +90,32 @@ describe('createCheckoutSession (G0 freeze)', () => {
         subscription_data: { metadata: { userId: 'user-1' } },
       }),
     );
+  });
+
+  it('refuses ineligible addresses before calling Stripe', async () => {
+    vi.stubEnv('CHECKOUT_ENABLED', 'true');
+    requireUser.mockResolvedValue({
+      ok: true,
+      userId: 'user-1',
+      email: 'member@example.com',
+    });
+    from.mockReturnValue({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({
+            data: { address_state: 'TX', address_zip: '78731' },
+            error: null,
+          }),
+        }),
+      }),
+    });
+    const { createCheckoutSession } = await import('./stripe');
+    const result = await createCheckoutSession();
+    expect(result).toEqual({
+      ok: false,
+      error: 'Wanderbite is not available at this address yet.',
+    });
+    expect(checkoutSessionsCreate).not.toHaveBeenCalled();
   });
 });
 

@@ -25,18 +25,19 @@ export function ClubSection() {
             Join the Club
           </h2>
           <p className="mb-10 max-w-xl text-center text-muted-foreground">
-            One simple plan. Two curated spots every month. Real savings.
+            One simple plan. Two curated spots every month in McKinney, Texas.
           </p>
           <Card className="w-full max-w-md border-2 shadow-lg">
             <CardHeader className="text-center">
               <CardTitle className="text-xl">Join the Wanderbite Club</CardTitle>
               <CardDescription className="text-base">
-                Unlock 2 curated dining adventures every month. Get $10 off at each spot.
+                Unlock 2 curated dining adventures every month in McKinney, Texas.
+                Each challenge shows its discount and minimum spend.
               </CardDescription>
             </CardHeader>
             <CardContent className="text-center">
               <p className="text-lg font-medium text-foreground">
-                Just $15/mo (That&apos;s $20 in value!) when checkout reopens.
+                Just $15/mo when checkout reopens.
               </p>
             </CardContent>
             <CardFooter className="flex flex-col gap-3">

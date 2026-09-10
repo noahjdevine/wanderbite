@@ -10,16 +10,15 @@ export type {
   GeneratedChallenge,
   GeneratedChallengeItem,
   GenerateChallengeResult,
+  GenerateFailureReason,
 } from '@/lib/challenges/generate';
 
 import type { GenerateChallengeResult, GeneratedChallenge } from '@/lib/challenges/generate';
 
-export async function generateMonthlyChallenge(
-  marketId: string
-): Promise<GenerateChallengeResult> {
+export async function generateMonthlyChallenge(): Promise<GenerateChallengeResult> {
   const auth = await requireUser();
-  if (!auth.ok) return { ok: false, error: auth.error };
-  return generateMonthlyChallengeForUser(auth.userId, marketId);
+  if (!auth.ok) return { ok: false, error: auth.error, reason: 'unauthenticated' };
+  return generateMonthlyChallengeForUser(auth.userId);
 }
 
 export async function getCurrentChallenge(): Promise<GeneratedChallenge | null> {

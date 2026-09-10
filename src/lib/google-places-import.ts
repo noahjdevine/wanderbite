@@ -1,3 +1,5 @@
+import { LAUNCH_MARKET } from '@/lib/launch-market';
+
 export type PlaceDetails = {
   name: string;
   address: string;
@@ -19,6 +21,11 @@ export type PlaceResult = {
   address: string;
 };
 
+export type SearchPlacesResponseHook = (info: {
+  httpStatus: number;
+  bodyText: string;
+}) => void;
+
 export type ImportCityOption = {
   id: string;
   label: string;
@@ -28,10 +35,16 @@ export type ImportCityOption = {
   lng: number;
 };
 
-export type SearchPlacesResponseHook = (info: {
-  httpStatus: number;
-  bodyText: string;
-}) => void;
+/** Cities for admin import dropdown; bias circle matches the launch market. */
+export const GOOGLE_IMPORT_CITIES: ImportCityOption[] = [
+  {
+    id: 'mckinney',
+    label: LAUNCH_MARKET.displayName,
+    cityQuery: LAUNCH_MARKET.cityQuery,
+    lat: LAUNCH_MARKET.centroid.lat,
+    lng: LAUNCH_MARKET.centroid.lon,
+  },
+];
 
 /** Builds the legacy Places Text Search URL (caller supplies API key). */
 export function buildGooglePlacesTextSearchUrl(
@@ -64,33 +77,8 @@ export function maskGoogleApiKeyInUrl(url: string, apiKey: string): string {
   return out;
 }
 
-/** Cities for admin import dropdown; bias circle matches each market. */
-export const GOOGLE_IMPORT_CITIES: ImportCityOption[] = [
-  {
-    id: 'mckinney',
-    label: 'McKinney, TX',
-    cityQuery: 'McKinney TX',
-    lat: 33.1984,
-    lng: -96.6397,
-  },
-  {
-    id: 'dallas',
-    label: 'Dallas, TX',
-    cityQuery: 'Dallas TX',
-    lat: 32.7767,
-    lng: -96.797,
-  },
-  {
-    id: 'austin',
-    label: 'Austin, TX',
-    cityQuery: 'Austin TX',
-    lat: 30.2672,
-    lng: -97.7431,
-  },
-];
-
-const DEFAULT_CENTER = { lat: 33.1984, lng: -96.6397 };
-const DEFAULT_CITY = 'McKinney TX';
+const DEFAULT_CENTER = { lat: LAUNCH_MARKET.centroid.lat, lng: LAUNCH_MARKET.centroid.lon };
+const DEFAULT_CITY = LAUNCH_MARKET.cityQuery;
 
 const GOOGLE_TYPE_TO_CUISINE: Record<string, string> = {
   pizza_restaurant: 'pizza',
