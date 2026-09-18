@@ -96,7 +96,8 @@ export function RedemptionReminderEmail({
               }}
             >
               Your monthly Wanderbite challenges expire at the end of the month.
-              That&apos;s $10 off, twice — don&apos;t leave it on the table.
+              Check each challenge for its discount and minimum spend — don&apos;t
+              leave it on the table.
             </Text>
           </Section>
 

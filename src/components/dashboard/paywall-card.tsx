@@ -24,12 +24,13 @@ export function PaywallCard({ email: _email }: PaywallCardProps) {
         <CardHeader>
           <CardTitle>Join the Wanderbite Club</CardTitle>
           <CardDescription>
-            Unlock 2 curated dining adventures every month. Get $10 off at each spot.
+            Unlock 2 curated dining adventures every month in McKinney, Texas.
+            Each challenge shows its discount and minimum spend.
           </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-muted-foreground">
-            Just $15/mo (That&apos;s $20 in value!) when checkout reopens.
+            Just $15/mo when checkout reopens.
           </p>
         </CardContent>
         <CardFooter>

@@ -6,13 +6,12 @@ import { PricingFaq } from '@/components/pricing/pricing-faq';
 
 export const revalidate = 86400;
 
-/** Level-up XP thresholds and perks (align with Journey / get-user-stats). */
-const QUARTERLY_BONUS = 'an automatic entry to win 1 of 5 Gift Cards given away this quarter (Value increases per level!)';
+/** Level-up XP thresholds (align with Journey / get-user-stats). */
 const LEVEL_UP_TIERS = [
-  { xp: 300, title: 'The Explorer', instantPerk: 'Free App or Drink' },
-  { xp: 1000, title: 'The Tastemaker', instantPerk: 'Free Dessert or Specialty Cocktail' },
-  { xp: 1500, title: 'The Connoisseur', instantPerk: 'BOGO Entree (Buy 1 Get 1 Free)' },
-  { xp: 2500, title: 'The Local Legend', instantPerk: 'Legend Swag Pack' },
+  { xp: 300, title: 'The Explorer' },
+  { xp: 1000, title: 'The Tastemaker' },
+  { xp: 1500, title: 'The Connoisseur' },
+  { xp: 2500, title: 'The Local Legend' },
 ] as const;
 
 /**
@@ -82,9 +81,9 @@ export default function HowItWorksPage() {
                 <Ticket className="size-7" />
               </div>
               <span className="mb-2 text-sm font-medium text-muted-foreground">Step 2</span>
-              <h3 className="font-semibold">You Get $10 Off</h3>
+              <h3 className="font-semibold">You Get the Offer</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Use your offer at each spot. Save $20 a month on great food.
+                Each challenge shows its discount and minimum spend.
               </p>
             </div>
             <div className="flex flex-col items-center text-center">
@@ -94,7 +93,7 @@ export default function HowItWorksPage() {
               <span className="mb-2 text-sm font-medium text-muted-foreground">Step 3</span>
               <h3 className="font-semibold">Rate & Level Up</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Complete visits, earn badges, and unlock more perks as you level up.
+                Complete visits, earn badges, and level up as you explore.
               </p>
             </div>
           </div>
@@ -116,7 +115,7 @@ export default function HowItWorksPage() {
               Level Up Your Palate
             </h2>
             <p className="mx-auto mb-12 max-w-2xl text-center text-white/90">
-              Earn XP for every restaurant you visit and every review you leave. Show your status screen to the server to claim your rewards!
+              Earn XP for every restaurant you visit and every review you leave.
             </p>
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
               {LEVEL_UP_TIERS.map((tier, index) => (
@@ -133,12 +132,8 @@ export default function HowItWorksPage() {
                     <h3 className="font-bold leading-tight text-violet-600">{tier.title}</h3>
                   </CardHeader>
                   <CardContent className="pt-0 text-center">
-                    <p className="text-sm font-normal leading-snug text-foreground">
-                      {tier.instantPerk}
-                    </p>
-                    <p className="my-1.5 text-sm font-normal text-foreground">+</p>
-                    <p className="text-sm font-normal leading-snug text-foreground">
-                      {QUARTERLY_BONUS}
+                    <p className="text-sm font-normal leading-snug text-muted-foreground">
+                      {tier.xp} XP milestone
                     </p>
                   </CardContent>
                 </Card>

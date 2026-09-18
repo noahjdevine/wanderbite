@@ -7,6 +7,10 @@ import {
   CHECKOUT_UNAVAILABLE_MESSAGE,
   isCheckoutEnabled,
 } from '@/lib/checkout-enabled';
+import {
+  CHECKOUT_INELIGIBLE_MESSAGE,
+  isLaunchEligibleAddress,
+} from '@/lib/launch-market';
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
 const priceId = process.env.STRIPE_PRICE_ID ?? '';
@@ -41,6 +45,24 @@ export async function createCheckoutSession(
   }
   if (auth.email === null) {
     return { ok: false, error: 'Your account has no email on file.' };
+  }
+
+  const admin = getSupabaseAdmin();
+  const { data: profile, error: profileError } = await admin
+    .from('user_profiles')
+    .select('address_state, address_zip')
+    .eq('id', auth.userId)
+    .maybeSingle();
+  if (profileError || !profile) {
+    return { ok: false, error: CHECKOUT_INELIGIBLE_MESSAGE };
+  }
+  if (
+    !isLaunchEligibleAddress({
+      state: (profile as { address_state: string | null }).address_state,
+      zip: (profile as { address_zip: string | null }).address_zip,
+    })
+  ) {
+    return { ok: false, error: CHECKOUT_INELIGIBLE_MESSAGE };
   }
 
   const cancelPath = options?.cancelPath ?? '/pricing?canceled=true';

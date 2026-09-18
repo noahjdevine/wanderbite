@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { AccountClient } from '@/components/account/AccountClient';
 import { normalizeCuisineIds } from '@/lib/cuisines';
+import { hasStructuredAddress } from '@/lib/launch-market';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,7 @@ export default async function AccountPage() {
     admin
       .from('user_profiles')
       .select(
-        'id, email, full_name, username, dietary_flags, distance_band, wants_cocktail_experience, address, subscription_status, current_period_end'
+        'id, email, full_name, username, dietary_flags, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
       )
       .eq('id', user.id)
       .maybeSingle(),
@@ -41,12 +42,22 @@ export default async function AccountPage() {
     dietary_flags: string[] | null;
     distance_band: string | null;
     wants_cocktail_experience: boolean | null;
-    address: string | null;
+    address_street: string | null;
+    address_city: string | null;
+    address_state: string | null;
+    address_zip: string | null;
     subscription_status: string | null;
     current_period_end: string | null;
   };
 
-  const hasProfile = Boolean(p.username?.trim()) && Boolean(p.address?.trim());
+  const hasProfile =
+    Boolean(p.username?.trim()) &&
+    hasStructuredAddress({
+      street: p.address_street,
+      city: p.address_city,
+      state: p.address_state,
+      zip: p.address_zip,
+    });
 
   if (!hasProfile) {
     redirect('/onboarding');
@@ -78,10 +89,10 @@ export default async function AccountPage() {
             profile: {
               username: p.username ?? '',
               address: {
-                street: p.address ?? '',
-                city: '',
-                state: '',
-                zip: '',
+                street: p.address_street ?? '',
+                city: p.address_city ?? '',
+                state: p.address_state ?? '',
+                zip: p.address_zip ?? '',
               },
             },
           }}

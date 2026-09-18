@@ -1,4 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireLaunchMarketId } from '@/lib/launch-market-server';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import {
@@ -179,22 +181,21 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !anon) {
+  const admin = getSupabaseAdmin();
+  const market = await requireLaunchMarketId(admin);
+  if (!market.ok) {
     return NextResponse.json(
-      { error: 'Server configuration error.' },
-      { status: 500 }
+      { error: 'No restaurants available right now.' },
+      { status: 503 }
     );
   }
-
-  const supabase = createClient(url, anon);
-  const { data: rows, error: dbError } = await supabase
+  const { data: rows, error: dbError } = await admin
     .from('restaurants')
     .select(
       'id, name, cuisine_tags, neighborhood, address, description, price_range, image_url, google_photo_url, google_place_id, is_dairy_free, is_vegan, is_halal'
     )
-    .eq('status', 'active');
+    .eq('status', 'active')
+    .eq('market_id', market.marketId);
 
   if (dbError) {
     console.error('[roulette] supabase:', dbError.message);
@@ -295,7 +296,7 @@ export async function POST(request: NextRequest) {
     .filter(Boolean)
     .join('\n');
 
-  const systemPrompt = `You are Wanderbite Roulette, recommending restaurants for a discovery app in Austin.
+  const systemPrompt = `You are Wanderbite Roulette, recommending restaurants for a discovery app in ${LAUNCH_MARKET.displayName}.
 
 Variety is critical: do NOT default to the same restaurant on repeated calls. Each user message is an independent spin with a unique random id—explore different options across the list. Lean toward discovery and rotation, not the single "most famous" pick every time.
 
@@ -362,7 +363,7 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
       restaurantId: chosen.id,
       restaurantName: chosen.name,
       reason:
-        'We had a little trouble reading the full Wanderbite Roulette pick, so here is a great random Austin partner spot from our list. Enjoy the adventure!',
+        `We had a little trouble reading the full Wanderbite Roulette pick, so here is a great random ${LAUNCH_MARKET.displayName} partner spot from our list. Enjoy the adventure!`,
       vibeMatch: 'Surprise pick',
       suggestedDish: 'Ask your server for the house favorite.',
     };

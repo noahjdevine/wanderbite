@@ -8,7 +8,7 @@ const FAQ_ITEMS: { question: string; answer: string }[] = [
   {
     question: 'Where is WanderBite available?',
     answer:
-      'Currently, we are exclusively exploring the hidden gems of the Dallas Metroplex, but we are expanding soon!',
+      'Wanderbite currently serves McKinney, Texas. We are not collecting waitlist details.',
   },
   {
     question: 'Can I cancel anytime?',

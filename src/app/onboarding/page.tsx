@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { normalizeCuisineIds } from '@/lib/cuisines';
+import { hasStructuredAddress } from '@/lib/launch-market';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 
 export const dynamic = 'force-dynamic';
@@ -14,12 +15,14 @@ function hasProfileStepComplete(p: {
   address_state: string | null;
   address_zip: string | null;
 }): boolean {
-  return Boolean(
-    p.username?.trim() &&
-      p.address_street?.trim() &&
-      p.address_city?.trim() &&
-      p.address_state?.trim() &&
-      p.address_zip?.trim()
+  return (
+    Boolean(p.username?.trim()) &&
+    hasStructuredAddress({
+      street: p.address_street,
+      city: p.address_city,
+      state: p.address_state,
+      zip: p.address_zip,
+    })
   );
 }
 

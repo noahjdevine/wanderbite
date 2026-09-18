@@ -31,9 +31,9 @@ export function LandingPage() {
                 <Ticket className="size-7" />
               </div>
               <span className="mb-2 text-sm font-medium text-muted-foreground">Step 2</span>
-              <h3 className="font-semibold">You Get $10 Off</h3>
+              <h3 className="font-semibold">You Get the Offer</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Use your offer at each spot. Save $20 a month on great food.
+                Each challenge shows its discount and minimum spend.
               </p>
             </div>
             <div className="flex flex-col items-center text-center">
@@ -43,7 +43,7 @@ export function LandingPage() {
               <span className="mb-2 text-sm font-medium text-muted-foreground">Step 3</span>
               <h3 className="font-semibold">Rate & Level Up</h3>
               <p className="mt-1 text-sm text-muted-foreground">
-                Complete visits, earn badges, and unlock more perks as you level up.
+                Complete visits, earn badges, and level up as you explore.
               </p>
             </div>
           </div>

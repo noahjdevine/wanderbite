@@ -51,6 +51,8 @@ import {
   RESTAURANT_IMAGE_PLACEHOLDER,
   restaurantDisplayImageUrl,
 } from '@/lib/restaurant-image';
+import { AreaHoldNotice } from '@/components/area-hold-notice';
+import { distanceMatchCopy } from '@/lib/launch-market';
 
 export type DashboardStreakStats = {
   currentStreak: number;
@@ -59,7 +61,7 @@ export type DashboardStreakStats = {
 };
 
 type DashboardClientProps = {
-  marketId: string;
+  launchEligible: boolean;
   currentChallenge: GeneratedChallenge | null;
   streak: DashboardStreakStats;
   biteNotes: BiteNoteSummary[];
@@ -524,7 +526,7 @@ function RestaurantCard({
 }
 
 export function DashboardClient({
-  marketId,
+  launchEligible,
   currentChallenge,
   streak,
   biteNotes,
@@ -537,7 +539,7 @@ export function DashboardClient({
   async function handleGenerate() {
     setIsGenerating(true);
     try {
-      const result = await generateMonthlyChallenge(marketId);
+      const result = await generateMonthlyChallenge();
       if (result.ok) {
         toast.success('Challenge generated!');
         router.refresh();
@@ -586,7 +588,7 @@ export function DashboardClient({
 
   const swapCountUsed = currentChallenge?.cycle.swap_count_used ?? 0;
   const swapsRemaining = Math.max(0, 1 - swapCountUsed);
-  const canSwap = swapsRemaining > 0;
+  const canSwap = swapsRemaining > 0 && launchEligible;
   const activeItems =
     currentChallenge?.items.filter(
       (item) =>
@@ -673,6 +675,8 @@ export function DashboardClient({
         </CardContent>
       </Card>
 
+      {launchEligible ? null : <AreaHoldNotice />}
+
       {currentChallenge ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -681,6 +685,11 @@ export function DashboardClient({
               Swaps remaining: <span className="font-medium text-foreground">{swapsRemaining}/1</span>
             </p>
           </div>
+          {currentChallenge.distanceMatch ? (
+            <p className="text-sm text-muted-foreground">
+              {distanceMatchCopy(currentChallenge.distanceMatch)}
+            </p>
+          ) : null}
           <div className="grid gap-4 sm:grid-cols-2">
             {activeItems.map((item) => (
               <RestaurantCard
@@ -701,7 +710,7 @@ export function DashboardClient({
             ))}
           </div>
         </div>
-      ) : (
+      ) : launchEligible ? (
         <Card>
           <CardHeader>
             <CardTitle>Welcome! Start your journey</CardTitle>
@@ -718,7 +727,7 @@ export function DashboardClient({
             </Button>
           </CardContent>
         </Card>
-      )}
+      ) : null}
     </div>
   );
 }

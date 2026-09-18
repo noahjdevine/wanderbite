@@ -13,6 +13,7 @@ type UserOutcome = {
   userId: string;
   status: 'succeeded' | 'skipped' | 'failed';
   error?: string;
+  reason?: string;
 };
 
 export async function GET(request: Request) {
@@ -24,20 +25,6 @@ export async function GET(request: Request) {
   try {
     const admin = getSupabaseAdmin();
     const cycleMonthStr = format(startOfMonth(new Date()), 'yyyy-MM-dd');
-
-    const { data: market, error: marketError } = await admin
-      .from('markets')
-      .select('id')
-      .limit(1)
-      .maybeSingle();
-
-    if (marketError || !market) {
-      const message = marketError?.message ?? 'No market configured';
-      await completeCronRun(runId, { status: 'failed', error: message });
-      return NextResponse.json({ error: message }, { status: 500 });
-    }
-
-    const marketId = (market as { id: string }).id;
 
     const { data: subscribers, error: subsError } = await admin
       .from('user_profiles')
@@ -70,10 +57,16 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const result = await generateMonthlyChallengeForUser(userId, marketId);
+      const result = await generateMonthlyChallengeForUser(userId);
       if (result.ok) {
         succeeded++;
         outcomes.push({ userId, status: 'succeeded' });
+      } else if (
+        result.reason === 'ineligible_address' ||
+        result.reason === 'invalid_distance_preference'
+      ) {
+        skipped++;
+        outcomes.push({ userId, status: 'skipped', reason: result.reason });
       } else {
         failed++;
         outcomes.push({ userId, status: 'failed', error: result.error });

@@ -15,9 +15,11 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { LaunchHoldNotice } from '@/components/launch-hold-notice';
+import { AreaHoldNotice } from '@/components/area-hold-notice';
 import { updatePreferences } from '@/app/actions/update-preferences';
 import { updateProfileStructured } from '@/app/actions/update-profile-structured';
 import { CLUB_PLAN_FEATURES } from '@/lib/club-plan-content';
+import { launchAreaState } from '@/lib/launch-market';
 
 export type OnboardingInitial = {
   step: WizardStep;
@@ -55,6 +57,14 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
     setProfile(values);
     setStep(3);
   }
+
+  const area = launchAreaState({
+    street: profile.address.street,
+    city: profile.address.city,
+    state: profile.address.state,
+    zip: profile.address.zip,
+  });
+  const ineligible = area === 'ineligible';
 
   return (
     <main className="min-h-screen bg-background px-4 py-10">
@@ -115,15 +125,16 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
               <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
                 <h1 className="text-2xl font-bold tracking-tight">Your profile is saved</h1>
                 <p className="mt-2 text-muted-foreground">
-                  Paid membership checkout is paused. We will not start Stripe from onboarding while
-                  checkout is frozen.
+                  {ineligible
+                    ? 'We saved your profile. Wanderbite is not available at this address yet.'
+                    : 'Paid membership checkout is paused. We will not start Stripe from onboarding while checkout is frozen.'}
                 </p>
 
                 <Card className="mt-6 border-2 border-primary/15 shadow-md">
                   <CardHeader className="space-y-1 pb-2 text-center">
                     <CardTitle className="text-xl sm:text-2xl">Wanderbite Club</CardTitle>
                     <CardDescription className="text-base">
-                      One plan. Two adventures every month.
+                      One plan. Two adventures every month in McKinney, Texas.
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-5 pt-2">
@@ -135,7 +146,7 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
                         </span>
                       </p>
                       <p className="mt-2 text-sm text-muted-foreground">
-                        Includes 2 curated adventures per month ($20+ value). Coming soon.
+                        Includes 2 curated adventures per month. Coming soon.
                       </p>
                     </div>
 
@@ -174,7 +185,7 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-3 pt-2">
-                    <LaunchHoldNotice />
+                    {ineligible ? <AreaHoldNotice /> : <LaunchHoldNotice />}
                     <p className="text-center text-xs text-muted-foreground">
                       Prefer to browse first?{' '}
                       <Link href="/pricing" className="font-medium text-primary underline-offset-2 hover:underline">

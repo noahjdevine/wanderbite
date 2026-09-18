@@ -57,7 +57,7 @@ export default async function OGImage() {
             maxWidth: '900px',
           }}
         >
-          Two restaurant challenges every month. $10 off each.
+          Two restaurant challenges every month in McKinney, Texas.
         </div>
       </div>
     ),

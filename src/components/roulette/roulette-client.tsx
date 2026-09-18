@@ -14,6 +14,7 @@ import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
 import { postRouletteSpin } from '@/lib/roulette-api-client';
 import { buildRouletteSpinBody } from '@/lib/roulette-options';
 import type { RoulettePriceRange, RouletteTime, RouletteVibe } from '@/lib/roulette-options';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
 import {
   RouletteOptionsFields,
   type RouletteSelections,
@@ -108,7 +109,7 @@ export function RouletteClient() {
 
   const mapsHref = useMemo(() => {
     if (!result?.restaurantName) return '#';
-    const q = encodeURIComponent(`${result.restaurantName} Austin TX`);
+    const q = encodeURIComponent(`${result.restaurantName} ${LAUNCH_MARKET.cityQuery}`);
     return `https://www.google.com/maps/search/?api=1&query=${q}`;
   }, [result?.restaurantName]);
 
@@ -287,7 +288,7 @@ export function RouletteClient() {
                   </Badge>
                 ))
               ) : (
-                <span className="text-sm text-muted-foreground">Austin partner</span>
+                <span className="text-sm text-muted-foreground">{LAUNCH_MARKET.displayName} partner</span>
               )}
             </div>
             <p className="text-sm leading-relaxed text-foreground">{result.reason}</p>
@@ -331,7 +332,7 @@ export function RouletteClient() {
           </div>
 
           <p className="text-center text-sm text-muted-foreground">
-            Wanderbite members get $10 off here.{' '}
+            Wanderbite members see the discount on each challenge.{' '}
             <Link
               href="/pricing"
               className="font-medium text-[#E85D26] underline-offset-2 hover:underline"

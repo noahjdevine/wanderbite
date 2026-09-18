@@ -39,7 +39,6 @@ import {
   getRestaurantDetailsFromGoogle,
   attachGoogleMetadataToLatestRestaurantByName,
 } from './actions-import';
-import { GOOGLE_IMPORT_CITIES } from '@/lib/google-places-import';
 import type { PlaceDetails } from '@/lib/google-places-import';
 import { toast } from 'sonner';
 
@@ -88,7 +87,6 @@ export function AdminClient({
   const router = useRouter();
   const [restaurants, setRestaurants] = useState(initialRestaurants);
   const [adding, setAdding] = useState(false);
-  const [importCityId, setImportCityId] = useState(GOOGLE_IMPORT_CITIES[0]!.id);
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleSearching, setGoogleSearching] = useState(false);
   const [googleSearchError, setGoogleSearchError] = useState<string | null>(null);
@@ -134,8 +132,6 @@ export function AdminClient({
     }
   }
 
-  const selectedCity = GOOGLE_IMPORT_CITIES.find((c) => c.id === importCityId) ?? GOOGLE_IMPORT_CITIES[0]!;
-
   async function handleGoogleSearch() {
     const q = googleQuery.trim();
     if (!q) {
@@ -148,12 +144,7 @@ export function AdminClient({
     setGoogleSearchError(null);
     setGoogleSearchEmptyHint(false);
     try {
-      const result = await searchRestaurantsFromGoogle(
-        q,
-        selectedCity.cityQuery,
-        selectedCity.lat,
-        selectedCity.lng
-      );
+      const result = await searchRestaurantsFromGoogle(q);
       if (!result.ok) {
         setGoogleResults([]);
         const noHits = result.error.startsWith(
@@ -378,27 +369,7 @@ export function AdminClient({
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
-            <div className="min-w-[10rem] flex-1 sm:max-w-[14rem]">
-              <label
-                htmlFor="import-city"
-                className="mb-1 block text-sm font-medium text-green-950"
-              >
-                City
-              </label>
-              <select
-                id="import-city"
-                value={importCityId}
-                onChange={(e) => setImportCityId(e.target.value)}
-                className="w-full rounded-lg border border-green-300 bg-white px-3 py-2 text-sm text-green-950 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
-              >
-                {GOOGLE_IMPORT_CITIES.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="min-w-0 flex-[2]">
+            <div className="min-w-0 flex-1">
               <label
                 htmlFor="google-search-query"
                 className="mb-1 block text-sm font-medium text-green-950"
@@ -507,6 +478,8 @@ export function AdminClient({
                   name="google_photo_url"
                   value={googleImported.photoUrl ?? ''}
                 />
+                <input type="hidden" name="lat" value={googleImported.lat ?? ''} />
+                <input type="hidden" name="lon" value={googleImported.lon ?? ''} />
                 <div className="sm:col-span-2">
                   <label htmlFor="import-name" className="mb-1 block text-sm font-medium">
                     Name *
@@ -687,6 +660,30 @@ export function AdminClient({
               <input
                 id="address"
                 name="address"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="lat" className="mb-1 block text-sm font-medium">
+                Latitude
+              </label>
+              <input
+                id="lat"
+                name="lat"
+                inputMode="decimal"
+                placeholder="33.1984"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              />
+            </div>
+            <div>
+              <label htmlFor="lon" className="mb-1 block text-sm font-medium">
+                Longitude
+              </label>
+              <input
+                id="lon"
+                name="lon"
+                inputMode="decimal"
+                placeholder="-96.6397"
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               />
             </div>

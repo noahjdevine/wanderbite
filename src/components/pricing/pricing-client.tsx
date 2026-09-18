@@ -12,13 +12,16 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LaunchHoldNotice } from '@/components/launch-hold-notice';
+import { AreaHoldNotice } from '@/components/area-hold-notice';
 import { CLUB_PLAN_FEATURES } from '@/lib/club-plan-content';
+import { LAUNCH_MARKET, type LaunchAreaState } from '@/lib/launch-market';
 
 type PricingClientProps = {
   userId?: string | null;
   email?: string | null;
   fullName?: string | null;
   subscriptionStatus?: string | null;
+  areaState?: LaunchAreaState | null;
 };
 
 function firstNameFromFullName(fullName: string | null | undefined): string | null {
@@ -33,16 +36,22 @@ export function PricingClient({
   email: _email,
   fullName,
   subscriptionStatus,
+  areaState = null,
 }: PricingClientProps) {
   const isActive = subscriptionStatus === 'active';
   const firstName = firstNameFromFullName(fullName);
+  const ineligible = Boolean(userId) && areaState === 'ineligible';
+  const missingAddress = Boolean(userId) && areaState === 'missing_address';
 
   return (
     <div className="mx-auto max-w-2xl">
       <header className="text-center">
-        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+        <p className="text-sm font-medium text-primary">
+          Now launching in {LAUNCH_MARKET.displayName}
+        </p>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
           {isActive
-            ? 'Your plan, your perks.'
+            ? 'Your Wanderbite Club plan'
             : userId
               ? `Welcome${firstName ? `, ${firstName}` : ''}! Membership checkout is paused.`
               : 'Simple, Transparent Pricing.'}
@@ -58,7 +67,7 @@ export function PricingClient({
         <CardHeader className="text-center">
           <CardTitle className="text-2xl">Wanderbite Club</CardTitle>
           <CardDescription className="text-base">
-            One plan. Two adventures every month.
+            One plan. Two adventures every month in {LAUNCH_MARKET.displayName}.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
@@ -67,7 +76,7 @@ export function PricingClient({
               $15<span className="text-lg font-normal text-muted-foreground">/month</span>
             </p>
             <p className="mt-2 text-sm text-muted-foreground">
-              Includes 2 Curated Adventures per month ($20+ value). Coming soon.
+              Includes 2 curated adventures per month. Coming soon.
             </p>
           </div>
           <ul className="space-y-3">
@@ -86,8 +95,8 @@ export function PricingClient({
               Plan (when checkout reopens): $15/month (billed monthly). Auto-renews until canceled.
               Includes 2 challenges/month and 1 swap/month. Cancel anytime in Settings → Manage
               Subscription; cancellation takes effect at the end of your current billing period. No
-              partial refunds. Discount redemptions are subject to restaurant terms (including $10 off
-              $40+ before tax/tip, non-stackable, and in-person confirmation).
+              partial refunds. Each challenge shows its discount and minimum spend. Offers are
+              non-stackable and require in-person confirmation.
             </p>
             <p>
               By creating an account, you agree to our{' '}
@@ -110,6 +119,12 @@ export function PricingClient({
           {isActive ? (
             <Button size="lg" asChild className="w-full sm:w-auto">
               <Link href="/billing">Manage my plan</Link>
+            </Button>
+          ) : ineligible ? (
+            <AreaHoldNotice />
+          ) : missingAddress ? (
+            <Button size="lg" asChild className="w-full sm:w-auto">
+              <Link href="/onboarding">Finish your profile</Link>
             </Button>
           ) : (
             <>

@@ -49,10 +49,10 @@ export default function RulesPage() {
           <h2 className="mb-3 mt-10 text-xl font-semibold tracking-tight text-foreground">
             Discount Terms (Default)
           </h2>
-          <p className="mb-4">Unless a specific challenge states otherwise, the default discount terms are:</p>
+          <p className="mb-4">Each challenge shows its discount and minimum spend. Unless a specific challenge states otherwise:</p>
           <ul className="mb-4 list-disc space-y-2 pl-5">
-            <li>$10 off your bill with a minimum spend of $40 or more</li>
-            <li>The $40 minimum is calculated before tax and tip</li>
+            <li>The discount and minimum spend shown on the challenge apply</li>
+            <li>The minimum spend is calculated before tax and tip</li>
             <li>
               Not stackable: cannot be combined with other promotions, coupons, happy hour discounts,
               loyalty rewards, or other offers unless the restaurant explicitly allows it
