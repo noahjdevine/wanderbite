@@ -39,6 +39,7 @@ export type RouletteApiResult = {
   image_url: string | null;
   google_photo_url: string | null;
   google_place_id: string | null;
+  selectionMode: 'ai' | 'random_fallback';
 };
 
 type Phase = 'form' | 'spinning' | 'result' | 'error';
@@ -120,6 +121,7 @@ export function RouletteClient() {
     setResult(null);
     setPhase('spinning');
 
+    const idempotencyKey = crypto.randomUUID();
     const apiPromise = postRouletteSpin(
       buildRouletteSpinBody({
         vibe: selections.vibe as RouletteVibe | null,
@@ -128,7 +130,8 @@ export function RouletteClient() {
         excludedCuisines,
         priceRange: selections.priceRange as RoulettePriceRange | null,
         preferredCuisine: selections.preferredCuisine,
-      })
+      }),
+      idempotencyKey,
     );
 
     // Wait one frame so the interactive wheel has mounted before we spin it.
@@ -292,6 +295,11 @@ export function RouletteClient() {
               )}
             </div>
             <p className="text-sm leading-relaxed text-foreground">{result.reason}</p>
+            {result.selectionMode === 'random_fallback' ? (
+              <p className="mt-3 text-xs text-muted-foreground">
+                Surprise pick from the partner list — AI matching was unavailable for this spin.
+              </p>
+            ) : null}
             {result.vibeMatch ? (
               <p className="mt-3 text-xs font-medium text-[#E85D26]">
                 Vibe match: {result.vibeMatch}

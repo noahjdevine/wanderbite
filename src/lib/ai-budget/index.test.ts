@@ -34,6 +34,9 @@ describe('G13-A1 AI budget TypeScript surface', () => {
         'ai_dispatch',
         'ai_quote_max_cost',
         'ai_transfer_guest_to_account',
+        'ai_recover_stale_requests',
+        'ai_store_result_payload',
+        'ai_ops_headroom',
       ]),
     );
   });

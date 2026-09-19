@@ -65,7 +65,7 @@ begin
     'public.ai_release_customer_allowance(uuid)'::regprocedure,
     'public.ai_reconcile(uuid, jsonb)'::regprocedure,
     'public.ai_transfer_guest_to_account(text, uuid)'::regprocedure,
-    'public.ai_fair_use_state(timestamptz, text, uuid)'::regprocedure,
+    'public.ai_fair_use_state(timestamptz, text, uuid, text)'::regprocedure,
     'public.ai_ops_usage_summary(text)'::regprocedure
   ]
   loop

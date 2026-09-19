@@ -95,6 +95,26 @@ describe('OPS-03 schema contract', () => {
     expect(g13).not.toMatch(/grant (select|insert|update|delete) on table public\.ai_/i);
   });
 
+  it('adds G13-A2 metering as a forward migration without rewriting A1', () => {
+    const files = readdirSync(MIGRATIONS_DIR);
+    expect(files).toContain('20260919185815_g13_a2_roulette_metering.sql');
+    const a2 = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260919185815_g13_a2_roulette_metering.sql'),
+      'utf8',
+    );
+    expect(a2).toMatch(/ai_recover_stale_requests/);
+    expect(a2).toMatch(/result_payload/);
+    expect(a2).toMatch(/ai_map_guest_targets_to_account/);
+    expect(a2).toMatch(/ai_ops_headroom/);
+    expect(a2).toMatch(/grant execute on function public\.ai_recover_stale_requests/i);
+    const a1 = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260919172836_ai_budget_reservations.sql'),
+      'utf8',
+    );
+    expect(a1).not.toMatch(/ai_recover_stale_requests/);
+    expect(a1).not.toMatch(/result_payload/);
+  });
+
   it('does not rewrite historical migrations for billing or address columns', () => {
     const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
     expect(initial).not.toMatch(/subscription_status/);

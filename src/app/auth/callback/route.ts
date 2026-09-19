@@ -4,6 +4,8 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { trackSignupCompleted } from '@/app/actions/auth';
 import { safeAuthRedirectPath } from '@/lib/auth/safe-redirect';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { AI_GUEST_COOKIE_NAME, parseGuestCookieValue } from '@/lib/ai-guest';
+import { rpcAiTransferGuestToAccount } from '@/lib/ai-budget/rpcs';
 
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
@@ -50,6 +52,20 @@ export async function GET(request: NextRequest) {
   if (exchangeError) {
     console.error('auth/callback exchangeCodeForSession:', exchangeError.message);
     return NextResponse.redirect(new URL('/signin?error=session', origin));
+  }
+
+  try {
+    const {
+      data: { user: transferUser },
+    } = await supabase.auth.getUser();
+    const guestId = parseGuestCookieValue(
+      request.cookies.get(AI_GUEST_COOKIE_NAME)?.value,
+    );
+    if (transferUser?.id && guestId) {
+      await rpcAiTransferGuestToAccount(guestId, transferUser.id);
+    }
+  } catch {
+    console.warn('[auth/callback] guest AI transfer skipped');
   }
 
   // Password recovery: always show the reset form (never smart-route to /challenges).

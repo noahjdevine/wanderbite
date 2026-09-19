@@ -110,10 +110,28 @@ npx supabase db push --linked --yes
 
 Then regenerate types and diff them against the checked-in `src/types/database.types.ts`.
 
-## G13-A2 (not this PR)
+## G13-A2 (metered roulette)
 
-Roulette integration, signed guest cookie, IP hashing, strict Redis, Anthropic parse/settle, honest non-AI fallback, human fair-use UI, kill switch, adapter contracts.
+Roulette is **optional** for signed-in users and **guest** for anonymous preview. It must not draw per-account protected-core or the global paid-core reserve.
+
+Pinned model: `claude-haiku-4-5-20251001`. HTTP idempotency is `roulette:{subject}:{uuid}` with one provider fetch only when both `ai_reserve.acquired` and `ai_dispatch.acquired` are true. Replay returns the stored `result_payload` or an honest `selectionMode: "random_fallback"` — never a second Anthropic call.
+
+Auth-callback guest transfer is **best-effort** and must not break login.
+
+### Rollout / rollback
+
+Preview and production start with **`WANDERBITE_AI_DISABLED=true`**. Enable billable AI only after fallback, secret, Redis, replay, timeout, transfer, and stale-recovery tests pass. Rollback is this kill switch, not unmetered roulette.
+
+Do **not** apply the A2 migration until authorized:
+
+```text
+npx supabase db push --linked --yes
+```
+
+Then `npm run types:db` and diff `src/types/database.types.ts`.
+
+`CHECKOUT_ENABLED` stays fail-closed. Approved $1.00 / $0.20 ceilings are unchanged.
 
 ## Rollback
 
-If the migration was never pushed, revert this PR. If it was pushed (only after authorization) and A2 is not live, leave unused tables in place; do not drop blindly.
+If the A1 migration was never pushed, revert that PR. If it was pushed and A2 is not live, leave unused tables in place; do not drop blindly. If A2 is live, set `WANDERBITE_AI_DISABLED=true` — do not serve unmetered Claude.
