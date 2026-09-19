@@ -8,12 +8,24 @@ This group ships document CSP in **report-only** mode and enforcing clickjacking
 
 | Field | Value |
 | --- | --- |
-| First hosted report-only deployment | **Pending.** No push/deploy was authorized for G12-A. Local verification does not count. The existing G11 preview does **not** verify these headers. |
-| Review / enforcement decision deadline | Seven calendar days after the first hosted report-only deployment timestamp (America/Chicago). Record that timestamp in this table when a hosted preview or production soak actually starts. |
-| D00 | May remain report-only if this record is complete after the hosted start. |
+| Owner | Noah until reassigned |
+| First hosted report-only deployment | **2026-09-19 11:17 AM America/Chicago** — Vercel preview for PR #26 Ready (`wanderbite-git-fix-sec-08-report-o-a9220d-noah-devines-projects.vercel.app`). The G11 preview does **not** count. |
+| Production deploy | Auto-deploy created **2026-09-19 11:18 AM America/Chicago** (merge of PR #26, `17a5e3f`). Merge status is not by itself a header proof. |
+| Review / enforcement decision deadline | **2026-09-26** (America/Chicago). G12-B remains a separate later group. |
+| D00 | May remain report-only with this record. |
 | L00 | Requires tested **enforcing** document CSP (G12-B). Do not treat an indefinite soak as the default. |
 
-Production deployment must be verified separately from Git merge status. Merging G12-A (or G11) does not prove production headers.
+### Verified on production (`https://www.wanderbite.co`)
+
+Document GET/HEAD on **2026-09-19**: `/`, `/pricing`, `/roulette`, and `/partner` served `Content-Security-Policy-Report-Only`, **no** enforcing `Content-Security-Policy`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin`, and `Cross-Origin-Opener-Policy: same-origin`. `/` and `/pricing` omit `camera=()` / `microphone=()`. `/roulette` and `/partner` set `camera=(self), microphone=(self)`. Apex `https://wanderbite.co/` 307s to www without those document headers on the redirect itself.
+
+### Remaining live verification (honest, still open)
+
+- Nested production `/challenges/show/...` was not curl-checked (auth redirect likely).
+- `POST /api/csp-report` was not exercised against hosted Redis (rate-limit / drop-on-outage / query stripping in production).
+- Stripe Checkout/Portal **test-mode** redirects, maps, images, PostHog, and Sentry were not re-walked in a hosted browser after this deploy.
+- CSP report volume and unexplained first-party violations have not been reviewed for the soak window.
+- G12-B enforcement is **not** started by this record.
 
 ## Framing vs report-only CSP
 
@@ -35,7 +47,7 @@ Development-only `connect-src` extras (`ws://localhost:3000`, `ws://127.0.0.1:30
 
 Before switching off report-only:
 
-1. Hosted soak has a start timestamp and a decision date within seven days.
+1. Hosted soak start and decision deadline are recorded above (2026-09-19 11:17 AM / 2026-09-26 America/Chicago). Complete the remaining live verification items before enforcing.
 2. Unexplained first-party violations are fixed without blanket `*` / `'unsafe-eval'` (full) / unbounded `https:` allowlists.
 3. Text, microphone, camera, upload previews, maps, Stripe test checkout/portal redirects, Supabase auth, PostHog, and Sentry are re-checked on nested partner and challenge routes.
 4. Enforcing CSP is a **separate** PR (G12-B) with its own rollback (`X-Frame-Options: DENY` stays if CSP enforcement is reverted).
