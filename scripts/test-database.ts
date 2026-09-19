@@ -10,6 +10,7 @@ import { SCHEMA_CONTRACT } from '../src/lib/schema-contract';
 import { assertDatabaseTypes, assertDisposableContainer, localDockerHost, migrationPsqlArgs, TEST_IMAGE, TEST_LABEL } from './database-contract';
 import type { Column } from './database-contract';
 import { runG10Concurrency } from './g10-concurrency';
+import { runG13A1Concurrency } from './g13-a1-concurrency';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = localDockerHost(process.env.G1_DOCKER_HOST ??
@@ -93,6 +94,10 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g10-challenge-tx.sql'), 'utf8')) + '\n');
   await runG10Concurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: G10 two-session generate/swap/issue overlap.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
+  await runG13A1Concurrency({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: G13-A1 last-cent reserve and single dispatch owner.\n');
   // Exercise the exact migrations on populated pre-fix shapes, then roll back.
   const slug = readFileSync(path.join(root, 'supabase/migrations/20260902225901_markets_slug_required.sql'), 'utf8');
   const icons = readFileSync(path.join(root, 'supabase/migrations/20260902225902_badge_icon_glyphs.sql'), 'utf8');

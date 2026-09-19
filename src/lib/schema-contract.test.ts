@@ -82,6 +82,19 @@ describe('OPS-03 schema contract', () => {
     expect(g6).toMatch(/grant execute on function public.verify_redemption/i);
   });
 
+  it('does not rewrite historical migrations for G13-A1 AI budget RPCs', () => {
+    const files = readdirSync(MIGRATIONS_DIR);
+    expect(files).toContain('20260919172836_ai_budget_reservations.sql');
+    const g13 = readFileSync(
+      path.join(MIGRATIONS_DIR, '20260919172836_ai_budget_reservations.sql'),
+      'utf8',
+    );
+    expect(g13).toMatch(/create table public\.ai_requests/);
+    expect(g13).toMatch(/revoke all on table public\.ai_requests/i);
+    expect(g13).toMatch(/grant execute on function public\.ai_reserve/i);
+    expect(g13).not.toMatch(/grant (select|insert|update|delete) on table public\.ai_/i);
+  });
+
   it('does not rewrite historical migrations for billing or address columns', () => {
     const initial = readFileSync(path.join(MIGRATIONS_DIR, '001_initial_schema.sql'), 'utf8');
     expect(initial).not.toMatch(/subscription_status/);
