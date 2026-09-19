@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { loginPartner } from '@/app/actions/partner-auth';
 import { persistAndStripPartnerRedeemCode } from '@/lib/pending-redeem-storage';
+import { PartnerPinField } from '@/components/partner/partner-pin-field';
+import { PARTNER_PIN_VALIDATION_MESSAGE } from '@/lib/partner-pin-format';
 
 type PartnerSlugLoginProps = {
   restaurantId: string;
@@ -38,7 +40,7 @@ export function PartnerSlugLogin({
     e.preventDefault();
     const trimmed = pin.trim();
     if (!trimmed) {
-      toast.error('Enter your PIN.');
+      toast.error(PARTNER_PIN_VALIDATION_MESSAGE);
       return;
     }
     setLoading(true);
@@ -84,19 +86,12 @@ export function PartnerSlugLogin({
             <label htmlFor="partner-slug-pin" className="mb-1 block text-sm font-medium">
               PIN
             </label>
-            <input
+            <PartnerPinField
               id="partner-slug-pin"
-              type="number"
-              inputMode="numeric"
               value={pin}
-              onChange={(e) => {
-                const v = e.target.value.replace(/\D/g, '').slice(0, 6);
-                setPin(v);
-              }}
-              placeholder="Enter your PIN"
-              autoComplete="off"
-              className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+              onChange={setPin}
               disabled={loading}
+              placeholder="Enter your PIN"
             />
           </div>
           <label className="flex cursor-pointer items-start gap-2 text-sm text-muted-foreground">

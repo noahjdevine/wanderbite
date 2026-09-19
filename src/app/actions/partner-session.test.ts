@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   generatePartnerSessionToken,
   hashPartnerSessionToken,
@@ -12,6 +12,10 @@ import {
   PARTNER_SESSION_START_FAILED_MESSAGE,
 } from '@/lib/partner-session';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
+import {
+  PARTNER_LOGIN_UNAVAILABLE_MESSAGE,
+  PARTNER_LOGIN_VALIDATION_MESSAGE,
+} from '@/lib/partner-pin-format';
 
 const ACTIVE_ID = '50000000-0000-4000-8000-000000000001';
 const OTHER_ID = '50000000-0000-4000-8000-000000000002';
@@ -54,6 +58,8 @@ const state = vi.hoisted(() => ({
   cookieSets: [] as { name: string; value: string; options: Record<string, unknown> }[],
 }));
 
+const evaluatePartnerLoginLimit = vi.hoisted(() => vi.fn());
+
 vi.mock('next/headers', () => ({
   cookies: async () => ({
     get: (name: string) =>
@@ -80,15 +86,21 @@ vi.mock('@/lib/report-verify-integrity-error', () => ({
 }));
 
 vi.mock('@/lib/ratelimit', () => ({
-  partnerLoginLimiter: null,
+  evaluatePartnerLoginLimit: (...args: unknown[]) => evaluatePartnerLoginLimit(...args),
   partnerVerifySessionLimiter: null,
   partnerVerifyIpLimiter: null,
   cspReportLimiter: null,
 }));
 
-vi.mock('@/lib/partner-pin', () => ({
-  verifyPartnerPin: async (pin: string) => pin === '1234',
-}));
+vi.mock('@/lib/partner-pin', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/partner-pin')>(
+    '@/lib/partner-pin',
+  );
+  return {
+    ...actual,
+    verifyPartnerPin: async (pin: string) => pin === '1234' || pin === '0042',
+  };
+});
 
 vi.mock('@/lib/supabase-admin', () => {
   function executeSelect(
@@ -327,6 +339,15 @@ describe('loginPartner and logoutPartner', () => {
     state.rpcCalls = [];
     state.cookieSets = [];
     seedRestaurants();
+    evaluatePartnerLoginLimit.mockReset();
+    evaluatePartnerLoginLimit.mockResolvedValue('allowed');
+    vi.stubEnv('WANDERBITE_IP_HASH_SECRET', 'test-ip-hash-secret');
+    vi.stubEnv('WANDERBITE_PARTNER_LOGIN_DISABLED', '');
+    delete process.env.WANDERBITE_PARTNER_LOGIN_DISABLED;
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it('refuses a paused restaurant and does not write a session', async () => {
@@ -335,6 +356,55 @@ describe('loginPartner and logoutPartner', () => {
     expect(result).toEqual({ ok: false, error: 'Restaurant not found.' });
     expect(state.sessions.size).toBe(0);
     expect(state.jar[PARTNER_SESSION_COOKIE_NAME]).toBeUndefined();
+  });
+
+  it('rejects an invalid PIN shape before Redis or lookup', async () => {
+    const { loginPartner } = await import('@/app/actions/partner-auth');
+    await expect(loginPartner(ACTIVE_ID, '12')).resolves.toEqual({
+      ok: false,
+      error: PARTNER_LOGIN_VALIDATION_MESSAGE,
+    });
+    expect(evaluatePartnerLoginLimit).not.toHaveBeenCalled();
+    expect(state.sessions.size).toBe(0);
+  });
+
+  it('accepts a leading-zero PIN', async () => {
+    const { loginPartner } = await import('@/app/actions/partner-auth');
+    await expect(loginPartner(ACTIVE_ID, '0042')).resolves.toEqual({
+      ok: true,
+      restaurantName: 'Active Grill',
+    });
+  });
+
+  it('freezes new PIN login on exact-true kill switch and leaves cookies alone', async () => {
+    putSession(ACTIVE_ID);
+    const existing = state.jar[PARTNER_SESSION_COOKIE_NAME];
+    vi.stubEnv('WANDERBITE_PARTNER_LOGIN_DISABLED', 'true');
+    const { loginPartner } = await import('@/app/actions/partner-auth');
+    await expect(loginPartner(ACTIVE_ID, '1234')).resolves.toEqual({
+      ok: false,
+      error: PARTNER_LOGIN_UNAVAILABLE_MESSAGE,
+    });
+    expect(evaluatePartnerLoginLimit).not.toHaveBeenCalled();
+    expect(state.jar[PARTNER_SESSION_COOKIE_NAME]).toBe(existing);
+  });
+
+  it('does not treat an exhausted bucket as an outage', async () => {
+    evaluatePartnerLoginLimit.mockResolvedValue('rate_limited');
+    const { loginPartner } = await import('@/app/actions/partner-auth');
+    await expect(loginPartner(ACTIVE_ID, '1234')).resolves.toEqual({
+      ok: false,
+      error: PARTNER_LOGIN_UNAVAILABLE_MESSAGE,
+    });
+    expect(state.sessions.size).toBe(0);
+    expect(evaluatePartnerLoginLimit).toHaveBeenCalled();
+    const [restaurantId, ipDigest] = evaluatePartnerLoginLimit.mock.calls[0] as [
+      string,
+      string,
+    ];
+    expect(restaurantId).toBe(ACTIVE_ID);
+    expect(ipDigest).toMatch(/^v1:[0-9a-f]{64}$/);
+    expect(ipDigest).not.toMatch(/127\.0\.0\.1/);
   });
 
   it('sets an httpOnly partner_session cookie and forgets the legacy UUID cookie', async () => {

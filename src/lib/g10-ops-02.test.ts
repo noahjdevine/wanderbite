@@ -76,6 +76,16 @@ describe('G10 OPS-02 challenge transactions (source)', () => {
     expect(redeem).toMatch(/TOKEN_ATTEMPTS/);
     expect(redeem).toMatch(/outcome === 'created'/);
     expect(redeem).toMatch(/captureIssueCreated/);
-    expect(redeem.indexOf('if (redeemLimiter)')).toBeGreaterThan(redeem.indexOf("status === 'redeemed'"));
+    const redeemFn = redeem.slice(redeem.indexOf('export async function redeemChallengeItem'));
+    expect(redeemFn).toMatch(/evaluateRedemptionIssueLimit/);
+    expect(redeemFn.indexOf('evaluateRedemptionIssueLimit')).toBeGreaterThan(
+      redeemFn.indexOf("status === 'redeemed'"),
+    );
+    expect(redeemFn.indexOf('isRedemptionIssuanceDisabled')).toBeGreaterThan(
+      redeemFn.indexOf("status === 'redeemed'"),
+    );
+    expect(redeem).not.toMatch(/if \(redeemLimiter\)/);
+    expect(redeem).not.toMatch(/rpcError\.message/);
+    expect(redeem).not.toMatch(/Redemption failed: \$\{message\}/);
   });
 });

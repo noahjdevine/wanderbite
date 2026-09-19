@@ -3,6 +3,16 @@
 import { cookies, headers } from 'next/headers';
 import { verifyPartnerPin } from '@/lib/partner-pin';
 import {
+  isPartnerLoginDisabled,
+  parsePartnerPin,
+  PARTNER_LOGIN_UNAVAILABLE_MESSAGE,
+  PARTNER_LOGIN_VALIDATION_MESSAGE,
+} from '@/lib/partner-pin-format';
+import { parseUuid } from '@/lib/uuid';
+import { trustedClientIpFromHeaders } from '@/lib/client-ip';
+import { hashClientIp, hasIpHashSecret } from '@/lib/ai-ip-hash';
+import { evaluatePartnerLoginLimit } from '@/lib/ratelimit';
+import {
   LEGACY_PARTNER_COOKIE_NAME,
   PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE,
   PARTNER_COOKIE_KIOSK_MAX_AGE,
@@ -18,7 +28,6 @@ import {
   sessionExpiresAt,
 } from '@/lib/partner-session';
 import { requirePartnerSession } from '@/lib/require-partner-session';
-import { partnerLoginLimiter } from '@/lib/ratelimit';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export type PartnerLoginResult =
@@ -36,36 +45,64 @@ async function expireNamedPartnerCookie(
   cookieStore.set(name, '', partnerSessionCookieExpireOptions());
 }
 
+function logPartnerLogin(event: string): void {
+  console.warn(`[partner-login] ${event}`);
+}
+
+function loginUnavailable(): PartnerLoginResult {
+  return { ok: false, error: PARTNER_LOGIN_UNAVAILABLE_MESSAGE };
+}
+
 /** Verify restaurant PIN and set hashed partner session cookie. */
 export async function loginPartner(
   restaurantId: string,
   pin: string,
   options?: { rememberDevice?: boolean }
 ): Promise<PartnerLoginResult> {
-  const trimmedPin = pin?.trim();
-  if (!restaurantId || !trimmedPin) {
-    return { ok: false, error: 'Select a restaurant and enter your PIN.' };
+  if (isPartnerLoginDisabled()) {
+    logPartnerLogin('disabled');
+    return loginUnavailable();
   }
 
-  if (partnerLoginLimiter) {
-    const hdrs = await headers();
-    const forwarded = hdrs.get('x-forwarded-for') ?? '';
-    const ip = forwarded.split(',')[0]?.trim() || hdrs.get('x-real-ip') || 'unknown';
-    const key = `${restaurantId}:${ip}`;
-    const { success } = await partnerLoginLimiter.limit(key);
-    if (!success) {
-      return {
-        ok: false,
-        error: 'Too many attempts. Please try again later.',
-      };
-    }
+  const restaurantUuid = parseUuid(restaurantId);
+  const parsedPin = parsePartnerPin(pin);
+  if (!restaurantUuid || !parsedPin) {
+    return { ok: false, error: PARTNER_LOGIN_VALIDATION_MESSAGE };
+  }
+
+  if (!hasIpHashSecret()) {
+    logPartnerLogin('partner_login_limiter_unavailable');
+    return loginUnavailable();
+  }
+
+  let ip: string | null = null;
+  try {
+    ip = trustedClientIpFromHeaders(await headers());
+  } catch {
+    logPartnerLogin('partner_login_limiter_unavailable');
+    return loginUnavailable();
+  }
+  const ipDigest = ip ? hashClientIp(ip) : null;
+  if (!ip || !ipDigest) {
+    logPartnerLogin('partner_login_limiter_unavailable');
+    return loginUnavailable();
+  }
+
+  const limit = await evaluatePartnerLoginLimit(restaurantUuid, ipDigest);
+  if (limit === 'rate_limited') {
+    logPartnerLogin('partner_login_rate_limited');
+    return loginUnavailable();
+  }
+  if (limit !== 'allowed') {
+    logPartnerLogin('partner_login_limiter_unavailable');
+    return loginUnavailable();
   }
 
   const admin = getSupabaseAdmin();
   const { data: restaurant, error } = await admin
     .from('restaurants')
     .select('id, name, pin_hash, status')
-    .eq('id', restaurantId)
+    .eq('id', restaurantUuid)
     .eq('status', 'active')
     .maybeSingle();
 
@@ -74,7 +111,7 @@ export async function loginPartner(
   }
 
   const row = restaurant as { id: string; name: string; pin_hash: string | null };
-  const validPin = await verifyPartnerPin(trimmedPin, row.pin_hash);
+  const validPin = await verifyPartnerPin(parsedPin, row.pin_hash);
   if (!validPin) {
     return { ok: false, error: 'Invalid PIN.' };
   }

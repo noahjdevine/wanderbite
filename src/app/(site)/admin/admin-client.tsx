@@ -29,7 +29,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Copy, Loader2, MapPin } from 'lucide-react';
-import { addRestaurant, deleteRestaurant, generateMissingSlugs } from './actions';
+import { addRestaurant, deleteRestaurant, generateMissingSlugs, setRestaurantPin } from './actions';
+import { PartnerPinField } from '@/components/partner/partner-pin-field';
 import {
   enrichAllRestaurants,
   enrichSingleRestaurant,
@@ -105,6 +106,8 @@ export function AdminClient({
     null
   );
   const [slugGenerating, setSlugGenerating] = useState(false);
+  const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({});
+  const [settingPinId, setSettingPinId] = useState<string | null>(null);
 
   useEffect(() => {
     setRestaurants(initialRestaurants);
@@ -129,6 +132,23 @@ export function AdminClient({
       toast.error(result.error);
     } finally {
       setAdding(false);
+    }
+  }
+
+  async function handleSetPin(restaurantId: string) {
+    const pin = pinDrafts[restaurantId] ?? '';
+    setSettingPinId(restaurantId);
+    try {
+      const result = await setRestaurantPin(restaurantId, pin);
+      if (result.ok) {
+        toast.success('Partner PIN saved.');
+        setPinDrafts((current) => ({ ...current, [restaurantId]: '' }));
+        router.refresh();
+        return;
+      }
+      toast.error(result.error);
+    } finally {
+      setSettingPinId(null);
     }
   }
 
@@ -597,13 +617,10 @@ export function AdminClient({
                   <label htmlFor="import-pin" className="mb-1 block text-sm font-medium">
                     Partner PIN (for /partner portal login)
                   </label>
-                  <input
+                  <PartnerPinField
                     id="import-pin"
                     name="pin"
-                    type="password"
                     placeholder="e.g. 4–6 digits"
-                    autoComplete="off"
-                    defaultValue=""
                     className="w-full rounded-lg border border-green-300 bg-white px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
                   />
                 </div>
@@ -752,12 +769,10 @@ export function AdminClient({
               <label htmlFor="pin" className="mb-1 block text-sm font-medium">
                 Partner PIN (for /partner portal login)
               </label>
-              <input
+              <PartnerPinField
                 id="pin"
                 name="pin"
-                type="password"
                 placeholder="e.g. 4–6 digits"
-                autoComplete="off"
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               />
             </div>
@@ -864,7 +879,30 @@ export function AdminClient({
                       </TableCell>
                       <TableCell className="text-sm">{r.neighborhood ?? '—'}</TableCell>
                       <TableCell className="text-sm">{r.price_range ?? '—'}</TableCell>
-                      <TableCell className="text-sm">{r.has_pin ? 'Yes' : '—'}</TableCell>
+                      <TableCell>
+                        <div className="flex min-w-[12rem] flex-col gap-2">
+                          <span className="text-sm">{r.has_pin ? 'Yes' : '—'}</span>
+                          <PartnerPinField
+                            id={`set-pin-${r.id}`}
+                            value={pinDrafts[r.id] ?? ''}
+                            onChange={(next) =>
+                              setPinDrafts((current) => ({ ...current, [r.id]: next }))
+                            }
+                            disabled={settingPinId === r.id}
+                            placeholder="Set 4–6 digit PIN"
+                            className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            disabled={settingPinId === r.id || deleting}
+                            onClick={() => void handleSetPin(r.id)}
+                          >
+                            {settingPinId === r.id ? 'Saving…' : 'Set PIN'}
+                          </Button>
+                        </div>
+                      </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-2">
                           <Button

@@ -75,18 +75,14 @@ describe('G13-B1 fail-closed limiter pair', () => {
 });
 
 describe('G13-B1 source contracts', () => {
-  it('keeps partner login and redeem URL-gated fail-open and reset URL+token fail-closed', () => {
+  it('keeps reset URL+token fail-closed', () => {
     const ratelimit = source('src/lib/ratelimit.ts');
-    expect(ratelimit).toMatch(/export const partnerLoginLimiter = redis/);
-    expect(ratelimit).toMatch(/export const redeemLimiter = redis/);
     expect(ratelimit).toMatch(/export const passwordResetEmailLimiter = aiRedis/);
     expect(ratelimit).toMatch(/export const passwordResetIpLimiter = aiRedis/);
     expect(ratelimit).toMatch(/Ratelimit\.slidingWindow\(3, '60 m'\)/);
     expect(ratelimit).toMatch(/Ratelimit\.slidingWindow\(20, '60 m'\)/);
     expect(ratelimit).toMatch(/PASSWORD_RESET_LIMIT_TIMEOUT_MS = 1_500/);
     expect(ratelimit).not.toMatch(/passwordResetLimiter/);
-    expect(source('src/app/actions/partner-auth.ts')).toMatch(/partnerLoginLimiter/);
-    expect(source('src/app/actions/partner-auth.ts')).toMatch(/x-real-ip/);
   });
 
   it('never returns Auth error.message and never puts raw email in Redis', () => {
