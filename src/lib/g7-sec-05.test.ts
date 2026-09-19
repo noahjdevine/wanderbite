@@ -25,11 +25,16 @@ describe('G7 SEC-05 source contracts', () => {
     expect(files.some((name) => /sec-05|strip.query|g7/i.test(name))).toBe(false);
   });
 
-  it('sets Referrer-Policy: strict-origin globally and does not add CSP', () => {
+  it('sets Referrer-Policy: strict-origin globally and does not add enforcing CSP', () => {
     const cfg = source('next.config.ts');
-    expect(cfg).toMatch(/key:\s*"Referrer-Policy"/);
-    expect(cfg).toMatch(/value:\s*"strict-origin"/);
+    expect(cfg).toMatch(/buildSecurityHeaderSources/);
     expect(cfg).not.toMatch(/key:\s*["']Content-Security-Policy["']/);
+    expect(source('src/lib/security-headers.ts')).toMatch(
+      /Content-Security-Policy-Report-Only/,
+    );
+    expect(source('src/lib/security-headers.ts')).toMatch(
+      /value: REFERRER_POLICY_VALUE/,
+    );
   });
 
   it('disables Sentry Replay and wires the shared scrubber on client, server, and edge', () => {

@@ -83,6 +83,7 @@ vi.mock('@/lib/ratelimit', () => ({
   partnerLoginLimiter: null,
   partnerVerifySessionLimiter: null,
   partnerVerifyIpLimiter: null,
+  cspReportLimiter: null,
 }));
 
 vi.mock('@/lib/partner-pin', () => ({

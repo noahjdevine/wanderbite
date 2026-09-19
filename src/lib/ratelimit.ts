@@ -79,3 +79,12 @@ export const partnerVerifyIpLimiter = verifyRedis
       prefix: 'wanderbite:partner-verify-ip',
     })
   : null;
+
+/** CSP reports: 40 posts per 5 minutes per client IP. Missing Redis drops reports in production. */
+export const cspReportLimiter = verifyRedis
+  ? new Ratelimit({
+      redis: verifyRedis,
+      limiter: Ratelimit.slidingWindow(40, '5 m'),
+      prefix: 'wanderbite:csp-report-ip',
+    })
+  : null;
