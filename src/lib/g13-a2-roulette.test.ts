@@ -65,6 +65,9 @@ describe('G13-A2 roulette route and client contracts', () => {
     expect(route).not.toMatch(/model: 'claude-haiku-4-5'/);
     expect(route).toMatch(/isWanderbiteAiDisabled/);
     expect(route).toMatch(/allowBillableRoulette/);
+    expect(route).toMatch(/trustedClientIpFromHeaders/);
+    expect(route).not.toMatch(/x-real-ip/);
+    expect(route).not.toMatch(/getClientIp/);
     expect(route).toMatch(/rpcAiReserve/);
     expect(route).toMatch(/rpcAiDispatch/);
     expect(route).toMatch(/selectionMode/);
