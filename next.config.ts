@@ -1,5 +1,6 @@
 import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
+import { buildSecurityHeaderSources } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
   env: {
@@ -22,12 +23,13 @@ const nextConfig: NextConfig = {
       "default-src 'self'; script-src 'none'; sandbox;",
   },
   async headers() {
-    return [
-      {
-        source: "/:path*",
-        headers: [{ key: "Referrer-Policy", value: "strict-origin" }],
-      },
-    ];
+    return buildSecurityHeaderSources({
+      nodeEnv: process.env.NODE_ENV,
+      supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+      posthogHost:
+        process.env.NEXT_PUBLIC_POSTHOG_HOST || process.env.POSTHOG_HOST,
+      sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    });
   },
 };
 
