@@ -82,6 +82,7 @@ export const SCHEMA_CONTRACT = {
     'bucket_targets',
     'usage_units',
     'usage_actual',
+    'result_payload',
     'quoted_microdollars',
     'reserved_customer_microdollars',
     'reserved_platform_microdollars',

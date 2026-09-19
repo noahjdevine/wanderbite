@@ -257,6 +257,7 @@ export type Database = {
           quoted_microdollars: number
           reserved_customer_microdollars: number
           reserved_platform_microdollars: number
+          result_payload: Json | null
           settled_at: string | null
           settled_customer_microdollars: number
           settled_platform_microdollars: number
@@ -288,6 +289,7 @@ export type Database = {
           quoted_microdollars?: number
           reserved_customer_microdollars?: number
           reserved_platform_microdollars?: number
+          result_payload?: Json | null
           settled_at?: string | null
           settled_customer_microdollars?: number
           settled_platform_microdollars?: number
@@ -319,6 +321,7 @@ export type Database = {
           quoted_microdollars?: number
           reserved_customer_microdollars?: number
           reserved_platform_microdollars?: number
+          result_payload?: Json | null
           settled_at?: string | null
           settled_customer_microdollars?: number
           settled_platform_microdollars?: number
@@ -1345,6 +1348,32 @@ export type Database = {
             }
             Returns: string
           }
+      ai_apply_bucket_delta: {
+        Args: {
+          p_customer_consumed: number
+          p_customer_reserved: number
+          p_key: string
+          p_kind: string
+          p_period: string
+          p_platform_consumed: number
+          p_platform_reserved: number
+          p_turns_consumed: number
+          p_turns_reserved: number
+        }
+        Returns: undefined
+      }
+      ai_ceil_microdollars: {
+        Args: { p_rate_per_million: number; p_units: number }
+        Returns: number
+      }
+      ai_chicago_day: {
+        Args: { p_as_of: string; p_timezone: string }
+        Returns: string
+      }
+      ai_chicago_month: {
+        Args: { p_as_of: string; p_timezone: string }
+        Returns: string
+      }
       ai_current_versions: {
         Args: never
         Returns: {
@@ -1381,12 +1410,57 @@ export type Database = {
         }[]
       }
       ai_fair_use_state: {
-        Args: { p_as_of?: string; p_guest_id?: string; p_user_id?: string }
+        Args: {
+          p_as_of?: string
+          p_feature_class?: string
+          p_guest_id?: string
+          p_user_id?: string
+        }
         Returns: {
           guest_turns_remaining: number
           resets_on: string
           status: string
         }[]
+      }
+      ai_load_result_payload: {
+        Args: { p_request_id: string }
+        Returns: {
+          deny_reason: string
+          request_id: string
+          result_payload: Json
+          status: string
+        }[]
+      }
+      ai_lock_bucket: {
+        Args: { p_key: string; p_kind: string; p_period: string }
+        Returns: {
+          bucket_key: string
+          bucket_kind: string
+          customer_consumed: number
+          customer_reserved: number
+          period_key: string
+          platform_consumed: number
+          platform_reserved: number
+          turns_consumed: number
+          turns_reserved: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_bucket_balances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      ai_lock_targets: { Args: { p_targets: Json }; Returns: undefined }
+      ai_map_guest_targets_to_account: {
+        Args: {
+          p_account_cap: number
+          p_period_key: string
+          p_targets: Json
+          p_user_id: string
+        }
+        Returns: Json
       }
       ai_mark_assumed_spent: {
         Args: { p_request_id: string }
@@ -1402,6 +1476,17 @@ export type Database = {
           status: string
         }[]
       }
+      ai_ops_headroom: {
+        Args: { p_as_of?: string }
+        Returns: {
+          bucket_kind: string
+          bucket_key: string
+          cap_microdollars: number
+          period_key: string
+          remaining_microdollars: number
+          used_platform_microdollars: number
+        }[]
+      }
       ai_ops_usage_summary: {
         Args: { p_period_key: string }
         Returns: {
@@ -1412,6 +1497,14 @@ export type Database = {
           platform_consumed_microdollars: number
           request_count: number
           request_status: string
+        }[]
+      }
+      ai_recover_stale_requests: {
+        Args: { p_limit?: number; p_stale_before: string }
+        Returns: {
+          previous_status: string
+          request_id: string
+          status: string
         }[]
       }
       ai_quote_max_cost: {
@@ -1439,6 +1532,20 @@ export type Database = {
       }
       ai_release_customer_allowance: {
         Args: { p_request_id: string }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_request_result: {
+        Args: { p_acquired: boolean; p_request_id: string }
         Returns: {
           acquired: boolean
           customer_released: boolean
@@ -1489,6 +1596,15 @@ export type Database = {
           settled_customer_microdollars: number
           settled_platform_microdollars: number
           status: string
+        }[]
+      }
+      ai_store_result_payload: {
+        Args: { p_payload: Json; p_request_id: string }
+        Returns: {
+          request_id: string
+          result_payload: Json
+          status: string
+          stored: boolean
         }[]
       }
       ai_transfer_guest_to_account: {

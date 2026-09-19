@@ -53,7 +53,7 @@ export const passwordResetLimiter = redis
     })
   : null;
 
-/** 10 spins per hour per IP. Roulette is expensive (DB read + LLM call). */
+/** Legacy URL-gated limiter. Billable AI uses `aiRedis` (URL+token) only. */
 export const rouletteLimiter = redis
   ? new Ratelimit({
       redis,
@@ -61,6 +61,65 @@ export const rouletteLimiter = redis
       prefix: 'wanderbite:roulette',
     })
   : null;
+
+const aiRedis =
+  redisUrl?.trim() && redisToken
+    ? new Redis({
+        url: redisUrl.trim(),
+        token: redisToken,
+      })
+    : null;
+
+/** 10 billable spins per hour per subject. Missing Redis denies billable AI. */
+export const aiRouletteSubjectLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(10, '1 h'),
+      prefix: 'wanderbite:ai-roulette-subject',
+    })
+  : null;
+
+/** 20 billable spins per hour per hashed IP. Missing Redis denies billable AI. */
+export const aiRouletteIpLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(20, '1 h'),
+      prefix: 'wanderbite:ai-roulette-ip',
+    })
+  : null;
+
+const AI_LIMIT_TIMEOUT_MS = 1_500;
+
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('limiter_timeout')), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Both subject and hashed-IP limiters must succeed before a billable provider call. */
+export async function allowBillableRoulette(
+  subjectKey: string,
+  ipHash: string,
+): Promise<boolean> {
+  if (!aiRouletteSubjectLimiter || !aiRouletteIpLimiter) return false;
+  try {
+    const [subject, ip] = await Promise.all([
+      withTimeout(aiRouletteSubjectLimiter.limit(subjectKey), AI_LIMIT_TIMEOUT_MS),
+      withTimeout(aiRouletteIpLimiter.limit(ipHash), AI_LIMIT_TIMEOUT_MS),
+    ]);
+    return subject.success && ip.success;
+  } catch {
+    return false;
+  }
+}
 
 /** Partner verify: 20 attempts per 5 minutes per hashed session. */
 export const partnerVerifySessionLimiter = verifyRedis

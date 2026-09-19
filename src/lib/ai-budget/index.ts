@@ -10,12 +10,16 @@ export const AI_BUDGET_RPCS = {
   failBeforeDispatch: 'ai_fail_before_dispatch',
   fairUseState: 'ai_fair_use_state',
   markAssumedSpent: 'ai_mark_assumed_spent',
+  loadResultPayload: 'ai_load_result_payload',
+  opsHeadroom: 'ai_ops_headroom',
   opsUsageSummary: 'ai_ops_usage_summary',
   quoteMaxCost: 'ai_quote_max_cost',
+  recoverStaleRequests: 'ai_recover_stale_requests',
   reconcile: 'ai_reconcile',
   releaseCustomerAllowance: 'ai_release_customer_allowance',
   reserve: 'ai_reserve',
   settle: 'ai_settle',
+  storeResultPayload: 'ai_store_result_payload',
   transferGuestToAccount: 'ai_transfer_guest_to_account',
 } as const;
 

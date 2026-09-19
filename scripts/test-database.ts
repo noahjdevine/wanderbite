@@ -11,6 +11,7 @@ import { assertDatabaseTypes, assertDisposableContainer, localDockerHost, migrat
 import type { Column } from './database-contract';
 import { runG10Concurrency } from './g10-concurrency';
 import { runG13A1Concurrency } from './g13-a1-concurrency';
+import { runG13A2Concurrency } from './g13-a2-concurrency';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = localDockerHost(process.env.G1_DOCKER_HOST ??
@@ -98,6 +99,10 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: G13-A1 last-cent reserve and single dispatch owner.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a2-rls.sql'), 'utf8')) + '\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a2-metering.sql'), 'utf8')) + '\n');
+  await runG13A2Concurrency({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: G13-A2 transfer waits on in-flight request rows.\n');
   // Exercise the exact migrations on populated pre-fix shapes, then roll back.
   const slug = readFileSync(path.join(root, 'supabase/migrations/20260902225901_markets_slug_required.sql'), 'utf8');
   const icons = readFileSync(path.join(root, 'supabase/migrations/20260902225902_badge_icon_glyphs.sql'), 'utf8');
