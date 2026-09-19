@@ -6,6 +6,8 @@ import { toast } from 'sonner';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { loginPartner } from '@/app/actions/partner-auth';
+import { PartnerPinField } from '@/components/partner/partner-pin-field';
+import { PARTNER_LOGIN_VALIDATION_MESSAGE } from '@/lib/partner-pin-format';
 
 type Restaurant = { id: string; name: string };
 
@@ -22,7 +24,7 @@ export function PartnerLoginForm({ restaurants }: PartnerLoginFormProps) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!restaurantId.trim() || !pin.trim()) {
-      toast.error('Select your restaurant and enter your PIN.');
+      toast.error(PARTNER_LOGIN_VALIDATION_MESSAGE);
       return;
     }
     setLoading(true);
@@ -83,15 +85,12 @@ export function PartnerLoginForm({ restaurants }: PartnerLoginFormProps) {
               <label htmlFor="partner-pin" className="mb-1 block text-sm font-medium">
                 Restaurant PIN
               </label>
-              <input
+              <PartnerPinField
                 id="partner-pin"
-                type="password"
                 value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                placeholder="Enter your PIN"
-                autoComplete="off"
-                className="w-full rounded-md border border-input bg-background px-4 py-3 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+                onChange={setPin}
                 disabled={loading}
+                placeholder="Enter your PIN"
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>

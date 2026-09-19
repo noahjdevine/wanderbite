@@ -7,7 +7,11 @@ import { captureEvent } from '@/lib/posthog-server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { decryptRedemptionCode, encryptRedemptionCode } from '@/lib/redemption-crypto';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
-import { redeemLimiter } from '@/lib/ratelimit';
+import { evaluateRedemptionIssueLimit } from '@/lib/ratelimit';
+import {
+  isRedemptionIssuanceDisabled,
+  REDEMPTION_ISSUE_UNAVAILABLE_MESSAGE,
+} from '@/lib/redemption-issue';
 import { requireUser } from '@/lib/auth/require-user';
 import { redemptionExpiresAt } from '@/lib/redemption-expiry';
 import { firstRpcRow } from '@/lib/challenges/rpc';
@@ -33,6 +37,14 @@ function tokenFromEncrypted(encrypted: string | null, iv: string | null): string
   } catch {
     return null;
   }
+}
+
+function logRedemptionIssue(event: string): void {
+  console.warn(`[redemption-issue] ${event}`);
+}
+
+function issueUnavailable(): RedeemChallengeResult {
+  return { ok: false, error: REDEMPTION_ISSUE_UNAVAILABLE_MESSAGE };
 }
 
 async function captureIssueCreated(
@@ -70,7 +82,8 @@ export async function redeemChallengeItem(
       .maybeSingle();
 
     if (itemErr) {
-      return { ok: false, error: `Failed to load challenge item: ${itemErr.message}` };
+      logRedemptionIssue('item_load_error');
+      return issueUnavailable();
     }
     if (!item) {
       return { ok: false, error: 'Challenge item not found.' };
@@ -90,7 +103,8 @@ export async function redeemChallengeItem(
       .maybeSingle();
 
     if (cycleErr) {
-      return { ok: false, error: `Failed to load challenge cycle: ${cycleErr.message}` };
+      logRedemptionIssue('cycle_load_error');
+      return issueUnavailable();
     }
     if (!cycle) {
       return { ok: false, error: 'Challenge cycle not found.' };
@@ -140,14 +154,19 @@ export async function redeemChallengeItem(
       };
     }
 
-    if (redeemLimiter) {
-      const { success } = await redeemLimiter.limit(auth.userId);
-      if (!success) {
-        return {
-          ok: false,
-          error: 'Too many attempts. Please try again later.',
-        };
-      }
+    if (isRedemptionIssuanceDisabled()) {
+      logRedemptionIssue('disabled');
+      return issueUnavailable();
+    }
+
+    const limit = await evaluateRedemptionIssueLimit(auth.userId);
+    if (limit === 'rate_limited') {
+      logRedemptionIssue('redemption_issue_rate_limited');
+      return issueUnavailable();
+    }
+    if (limit !== 'allowed') {
+      logRedemptionIssue('redemption_issue_limiter_unavailable');
+      return issueUnavailable();
     }
 
     for (let attempt = 0; attempt < TOKEN_ATTEMPTS; attempt++) {
@@ -168,12 +187,14 @@ export async function redeemChallengeItem(
       );
 
       if (rpcError) {
-        return { ok: false, error: `Failed to create redemption: ${rpcError.message}` };
+        logRedemptionIssue('rpc_error');
+        return issueUnavailable();
       }
 
       const issued = firstRpcRow(rpcData);
       if (!issued) {
-        return { ok: false, error: 'Failed to create redemption.' };
+        logRedemptionIssue('rpc_empty');
+        return issueUnavailable();
       }
       if (issued.outcome === 'token_collision') {
         continue;
@@ -191,7 +212,8 @@ export async function redeemChallengeItem(
         return { ok: false, error: 'Challenge item not found.' };
       }
       if (issued.outcome !== 'created' && issued.outcome !== 'existing') {
-        return { ok: false, error: 'Failed to create redemption.' };
+        logRedemptionIssue('rpc_unexpected');
+        return issueUnavailable();
       }
       if (
         !issued.redemption_id
@@ -199,12 +221,14 @@ export async function redeemChallengeItem(
         || !issued.code_iv
         || !issued.created_at
       ) {
-        return { ok: false, error: 'Failed to create redemption.' };
+        logRedemptionIssue('rpc_incomplete');
+        return issueUnavailable();
       }
 
       const displayToken = tokenFromEncrypted(issued.encrypted_code, issued.code_iv);
       if (!displayToken) {
-        return { ok: false, error: 'Failed to create redemption.' };
+        logRedemptionIssue('decrypt_failed');
+        return issueUnavailable();
       }
 
       revalidatePath('/dashboard');
@@ -228,9 +252,9 @@ export async function redeemChallengeItem(
       };
     }
 
-    return { ok: false, error: 'Failed to create redemption.' };
-  } catch (e) {
-    const message = e instanceof Error ? e.message : 'Unknown error';
-    return { ok: false, error: `Redemption failed: ${message}` };
+    return issueUnavailable();
+  } catch {
+    logRedemptionIssue('throw');
+    return issueUnavailable();
   }
 }

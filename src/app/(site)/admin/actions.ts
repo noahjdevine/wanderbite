@@ -6,6 +6,8 @@ import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { allocateUniqueRestaurantSlug } from '@/lib/restaurant-slug';
 import { hashPartnerPin } from '@/lib/partner-pin';
+import { parsePartnerPin, PARTNER_PIN_VALIDATION_MESSAGE } from '@/lib/partner-pin-format';
+import { parseUuid } from '@/lib/uuid';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { isValidCoordinate, parseCoordinate } from '@/lib/launch-market';
 import { getPlaceDetails } from '@/lib/google-places-import';
@@ -54,7 +56,14 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
     const image_url = (formData.get('image_url') as string)?.trim() ?? null;
     const verification_code = (formData.get('verification_code') as string)?.trim() ?? null;
     const pinRaw = (formData.get('pin') as string)?.trim() ?? '';
-    const pin_hash = pinRaw ? await hashPartnerPin(pinRaw) : null;
+    let pin_hash: string | null = null;
+    if (pinRaw) {
+      const parsedPin = parsePartnerPin(pinRaw);
+      if (!parsedPin) {
+        return { ok: false, error: PARTNER_PIN_VALIDATION_MESSAGE };
+      }
+      pin_hash = await hashPartnerPin(parsedPin);
+    }
 
     const { data: org, error: orgErr } = await supabase
       .from('restaurant_orgs')
@@ -226,5 +235,49 @@ export async function deleteRestaurant(restaurantId: string): Promise<DeleteRest
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return { ok: false, error: message };
+  }
+}
+
+export type SetRestaurantPinResult = { ok: true } | { ok: false; error: string };
+
+export async function setRestaurantPin(
+  restaurantId: string,
+  pin: string,
+): Promise<SetRestaurantPinResult> {
+  try {
+    const auth = await checkAdminPermissions();
+    const id = parseUuid(restaurantId);
+    const parsedPin = parsePartnerPin(pin);
+    if (!id || !parsedPin) {
+      return { ok: false, error: PARTNER_PIN_VALIDATION_MESSAGE };
+    }
+
+    const supabase = getSupabaseAdmin();
+    const pin_hash = await hashPartnerPin(parsedPin);
+    const { data, error } = await supabase
+      .from('restaurants')
+      .update({ pin_hash })
+      .eq('id', id)
+      .select('id')
+      .maybeSingle();
+
+    if (error) {
+      return { ok: false, error: 'Unable to update the partner PIN right now.' };
+    }
+    if (!data) {
+      return { ok: false, error: 'Restaurant not found.' };
+    }
+
+    revalidatePath('/admin');
+    await logAdminAction({
+      actorUserId: auth.userId,
+      action: 'restaurant.pin_set',
+      targetType: 'restaurant',
+      targetId: id,
+      metadata: { has_pin: true },
+    });
+    return { ok: true };
+  } catch {
+    return { ok: false, error: 'Unable to update the partner PIN right now.' };
   }
 }

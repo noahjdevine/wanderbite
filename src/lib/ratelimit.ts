@@ -17,7 +17,7 @@ const redis = redisUrl
     })
   : null;
 
-/** Verify limiter requires both Upstash vars; login/redeem stay URL-gated (fail-open). */
+/** Verify limiter requires both Upstash vars. */
 const verifyRedis =
   redisUrl?.trim() && redisToken
     ? new Redis({
@@ -25,24 +25,6 @@ const verifyRedis =
         token: redisToken,
       })
     : null;
-
-/** 5 attempts per 15 minutes (keyed by caller, e.g. restaurantId for partner login). */
-export const partnerLoginLimiter = redis
-  ? new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(5, '15 m'),
-      prefix: 'wanderbite:partner-login',
-    })
-  : null;
-
-/** 3 attempts per 5 minutes per userId. */
-export const redeemLimiter = redis
-  ? new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(3, '5 m'),
-      prefix: 'wanderbite:redeem',
-    })
-  : null;
 
 /** Legacy URL-gated limiter. Billable AI uses `aiRedis` (URL+token) only. */
 export const rouletteLimiter = redis
@@ -81,6 +63,7 @@ export const aiRouletteIpLimiter = aiRedis
 
 const AI_LIMIT_TIMEOUT_MS = 1_500;
 export const PASSWORD_RESET_LIMIT_TIMEOUT_MS = 1_500;
+export const FAIL_CLOSED_LIMIT_TIMEOUT_MS = 1_500;
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -131,23 +114,58 @@ export const passwordResetIpLimiter = aiRedis
     })
   : null;
 
-export async function bothLimitersAllow(
-  left: { limit: (id: string) => Promise<{ success: boolean }> } | null,
-  right: { limit: (id: string) => Promise<{ success: boolean }> } | null,
+export type FailClosedLimitResult = 'allowed' | 'rate_limited' | 'unavailable';
+
+type LimiterLike = {
+  limit: (id: string) => Promise<{ success: boolean }>;
+} | null;
+
+export async function evaluateLimiter(
+  limiter: LimiterLike,
+  id: string,
+  timeoutMs: number = FAIL_CLOSED_LIMIT_TIMEOUT_MS,
+): Promise<FailClosedLimitResult> {
+  if (!limiter) return 'unavailable';
+  try {
+    const result = await withTimeout(limiter.limit(id), timeoutMs);
+    return result.success ? 'allowed' : 'rate_limited';
+  } catch {
+    return 'unavailable';
+  }
+}
+
+export async function evaluateLimiterPair(
+  left: LimiterLike,
+  right: LimiterLike,
   leftId: string,
   rightId: string,
   timeoutMs: number = PASSWORD_RESET_LIMIT_TIMEOUT_MS,
-): Promise<boolean> {
-  if (!left || !right) return false;
+): Promise<FailClosedLimitResult> {
+  if (!left || !right) return 'unavailable';
   try {
     const [a, b] = await Promise.all([
       withTimeout(left.limit(leftId), timeoutMs),
       withTimeout(right.limit(rightId), timeoutMs),
     ]);
-    return a.success && b.success;
+    if (!a.success || !b.success) return 'rate_limited';
+    return 'allowed';
   } catch {
-    return false;
+    return 'unavailable';
   }
+}
+
+/**
+ * Boolean wrapper for password reset. Exhausted buckets, missing Redis,
+ * timeout, and throw all return false so B1 public behavior is unchanged.
+ */
+export async function bothLimitersAllow(
+  left: LimiterLike,
+  right: LimiterLike,
+  leftId: string,
+  rightId: string,
+  timeoutMs: number = PASSWORD_RESET_LIMIT_TIMEOUT_MS,
+): Promise<boolean> {
+  return (await evaluateLimiterPair(left, right, leftId, rightId, timeoutMs)) === 'allowed';
 }
 
 /**
@@ -165,6 +183,51 @@ export async function allowPasswordReset(
     emailDigest,
     ipDigest,
   );
+}
+
+/** 5 PIN logins per 15 minutes per restaurant UUID + IP digest. */
+export const partnerLoginRestaurantIpLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(5, '15 m'),
+      prefix: 'wanderbite:partner-login-restaurant-ip',
+    })
+  : null;
+
+/** 30 PIN logins per 15 minutes per IP digest across restaurants. */
+export const partnerLoginIpLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(30, '15 m'),
+      prefix: 'wanderbite:partner-login-ip',
+    })
+  : null;
+
+export async function evaluatePartnerLoginLimit(
+  restaurantId: string,
+  ipDigest: string,
+): Promise<FailClosedLimitResult> {
+  return evaluateLimiterPair(
+    partnerLoginRestaurantIpLimiter,
+    partnerLoginIpLimiter,
+    `restaurant:${restaurantId}:ip:${ipDigest}`,
+    `ip:${ipDigest}`,
+  );
+}
+
+/** 3 new QR issuances per 5 minutes per user UUID. */
+export const redemptionIssueLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(3, '5 m'),
+      prefix: 'wanderbite:redemption-issue',
+    })
+  : null;
+
+export async function evaluateRedemptionIssueLimit(
+  userId: string,
+): Promise<FailClosedLimitResult> {
+  return evaluateLimiter(redemptionIssueLimiter, userId);
 }
 
 /** Partner verify: 20 attempts per 5 minutes per hashed session. */
