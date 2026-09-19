@@ -1345,6 +1345,32 @@ export type Database = {
             }
             Returns: string
           }
+      ai_apply_bucket_delta: {
+        Args: {
+          p_customer_consumed: number
+          p_customer_reserved: number
+          p_key: string
+          p_kind: string
+          p_period: string
+          p_platform_consumed: number
+          p_platform_reserved: number
+          p_turns_consumed: number
+          p_turns_reserved: number
+        }
+        Returns: undefined
+      }
+      ai_ceil_microdollars: {
+        Args: { p_rate_per_million: number; p_units: number }
+        Returns: number
+      }
+      ai_chicago_day: {
+        Args: { p_as_of: string; p_timezone: string }
+        Returns: string
+      }
+      ai_chicago_month: {
+        Args: { p_as_of: string; p_timezone: string }
+        Returns: string
+      }
       ai_current_versions: {
         Args: never
         Returns: {
@@ -1388,6 +1414,28 @@ export type Database = {
           status: string
         }[]
       }
+      ai_lock_bucket: {
+        Args: { p_key: string; p_kind: string; p_period: string }
+        Returns: {
+          bucket_key: string
+          bucket_kind: string
+          customer_consumed: number
+          customer_reserved: number
+          period_key: string
+          platform_consumed: number
+          platform_reserved: number
+          turns_consumed: number
+          turns_reserved: number
+          updated_at: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "ai_bucket_balances"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      ai_lock_targets: { Args: { p_targets: Json }; Returns: undefined }
       ai_mark_assumed_spent: {
         Args: { p_request_id: string }
         Returns: {
@@ -1439,6 +1487,20 @@ export type Database = {
       }
       ai_release_customer_allowance: {
         Args: { p_request_id: string }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_request_result: {
+        Args: { p_acquired: boolean; p_request_id: string }
         Returns: {
           acquired: boolean
           customer_released: boolean
