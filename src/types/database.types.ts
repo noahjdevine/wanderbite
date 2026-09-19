@@ -44,6 +44,314 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_bucket_balances: {
+        Row: {
+          bucket_key: string
+          bucket_kind: string
+          customer_consumed: number
+          customer_reserved: number
+          period_key: string
+          platform_consumed: number
+          platform_reserved: number
+          turns_consumed: number
+          turns_reserved: number
+          updated_at: string
+        }
+        Insert: {
+          bucket_key: string
+          bucket_kind: string
+          customer_consumed?: number
+          customer_reserved?: number
+          period_key: string
+          platform_consumed?: number
+          platform_reserved?: number
+          turns_consumed?: number
+          turns_reserved?: number
+          updated_at?: string
+        }
+        Update: {
+          bucket_key?: string
+          bucket_kind?: string
+          customer_consumed?: number
+          customer_reserved?: number
+          period_key?: string
+          platform_consumed?: number
+          platform_reserved?: number
+          turns_consumed?: number
+          turns_reserved?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ai_budget_config_versions: {
+        Row: {
+          created_at: string
+          free_account_ceiling_microdollars: number
+          global_paid_core_reserve_microdollars: number
+          guest_day_pool_microdollars: number
+          guest_month_pool_microdollars: number
+          guest_session_ceiling_microdollars: number
+          guest_session_turn_limit: number
+          guest_voice_seconds_limit: number
+          id: string
+          maintenance_microdollars: number
+          paid_account_ceiling_microdollars: number
+          paid_optional_microdollars: number
+          paid_protected_microdollars: number
+          platform_global_microdollars: number
+          published_at: string
+          timezone: string
+        }
+        Insert: {
+          created_at?: string
+          free_account_ceiling_microdollars: number
+          global_paid_core_reserve_microdollars: number
+          guest_day_pool_microdollars: number
+          guest_month_pool_microdollars: number
+          guest_session_ceiling_microdollars: number
+          guest_session_turn_limit: number
+          guest_voice_seconds_limit: number
+          id?: string
+          maintenance_microdollars: number
+          paid_account_ceiling_microdollars: number
+          paid_optional_microdollars: number
+          paid_protected_microdollars: number
+          platform_global_microdollars: number
+          published_at?: string
+          timezone: string
+        }
+        Update: {
+          created_at?: string
+          free_account_ceiling_microdollars?: number
+          global_paid_core_reserve_microdollars?: number
+          guest_day_pool_microdollars?: number
+          guest_month_pool_microdollars?: number
+          guest_session_ceiling_microdollars?: number
+          guest_session_turn_limit?: number
+          guest_voice_seconds_limit?: number
+          id?: string
+          maintenance_microdollars?: number
+          paid_account_ceiling_microdollars?: number
+          paid_optional_microdollars?: number
+          paid_protected_microdollars?: number
+          platform_global_microdollars?: number
+          published_at?: string
+          timezone?: string
+        }
+        Relationships: []
+      }
+      ai_guest_transfers: {
+        Row: {
+          guest_id: string
+          period_key: string
+          transferred_at: string
+          transferred_customer_microdollars: number
+          transferred_turns: number
+          user_id: string
+        }
+        Insert: {
+          guest_id: string
+          period_key: string
+          transferred_at?: string
+          transferred_customer_microdollars: number
+          transferred_turns?: number
+          user_id: string
+        }
+        Update: {
+          guest_id?: string
+          period_key?: string
+          transferred_at?: string
+          transferred_customer_microdollars?: number
+          transferred_turns?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_guest_transfers_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_price_rates: {
+        Row: {
+          created_at: string
+          id: string
+          microdollars_per_million: number
+          model_id: string
+          price_version_id: string
+          provider: string
+          usage_kind: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          microdollars_per_million: number
+          model_id: string
+          price_version_id: string
+          provider: string
+          usage_kind: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          microdollars_per_million?: number
+          model_id?: string
+          price_version_id?: string
+          provider?: string
+          usage_kind?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_price_rates_price_version_id_fkey"
+            columns: ["price_version_id"]
+            isOneToOne: false
+            referencedRelation: "ai_price_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_price_versions: {
+        Row: {
+          created_at: string
+          id: string
+          notes: string
+          published_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          notes?: string
+          published_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          notes?: string
+          published_at?: string
+        }
+        Relationships: []
+      }
+      ai_requests: {
+        Row: {
+          account_tier: string
+          as_of: string
+          bind: Json
+          bucket_targets: Json
+          config_version_id: string
+          created_at: string
+          customer_released_at: string | null
+          day_key: string
+          deny_reason: string | null
+          dispatch_acquired_at: string | null
+          feature_class: string
+          guest_id: string | null
+          id: string
+          idempotency_key: string
+          model_id: string
+          period_key: string
+          price_version_id: string
+          provider: string
+          quoted_microdollars: number
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_at: string | null
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+          updated_at: string
+          usage_actual: Json | null
+          usage_units: Json
+          user_id: string | null
+        }
+        Insert: {
+          account_tier: string
+          as_of: string
+          bind: Json
+          bucket_targets?: Json
+          config_version_id: string
+          created_at?: string
+          customer_released_at?: string | null
+          day_key: string
+          deny_reason?: string | null
+          dispatch_acquired_at?: string | null
+          feature_class: string
+          guest_id?: string | null
+          id?: string
+          idempotency_key: string
+          model_id: string
+          period_key: string
+          price_version_id: string
+          provider: string
+          quoted_microdollars?: number
+          reserved_customer_microdollars?: number
+          reserved_platform_microdollars?: number
+          settled_at?: string | null
+          settled_customer_microdollars?: number
+          settled_platform_microdollars?: number
+          status: string
+          updated_at?: string
+          usage_actual?: Json | null
+          usage_units: Json
+          user_id?: string | null
+        }
+        Update: {
+          account_tier?: string
+          as_of?: string
+          bind?: Json
+          bucket_targets?: Json
+          config_version_id?: string
+          created_at?: string
+          customer_released_at?: string | null
+          day_key?: string
+          deny_reason?: string | null
+          dispatch_acquired_at?: string | null
+          feature_class?: string
+          guest_id?: string | null
+          id?: string
+          idempotency_key?: string
+          model_id?: string
+          period_key?: string
+          price_version_id?: string
+          provider?: string
+          quoted_microdollars?: number
+          reserved_customer_microdollars?: number
+          reserved_platform_microdollars?: number
+          settled_at?: string | null
+          settled_customer_microdollars?: number
+          settled_platform_microdollars?: number
+          status?: string
+          updated_at?: string
+          usage_actual?: Json | null
+          usage_units?: Json
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_requests_config_version_id_fkey"
+            columns: ["config_version_id"]
+            isOneToOne: false
+            referencedRelation: "ai_budget_config_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_requests_price_version_id_fkey"
+            columns: ["price_version_id"]
+            isOneToOne: false
+            referencedRelation: "ai_price_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_requests_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       badges: {
         Row: {
           description: string
@@ -1037,6 +1345,161 @@ export type Database = {
             }
             Returns: string
           }
+      ai_current_versions: {
+        Args: never
+        Returns: {
+          config_version_id: string
+          price_version_id: string
+        }[]
+      }
+      ai_dispatch: {
+        Args: { p_request_id: string }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_fail_before_dispatch: {
+        Args: { p_request_id: string }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_fair_use_state: {
+        Args: { p_as_of?: string; p_guest_id?: string; p_user_id?: string }
+        Returns: {
+          guest_turns_remaining: number
+          resets_on: string
+          status: string
+        }[]
+      }
+      ai_mark_assumed_spent: {
+        Args: { p_request_id: string }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_ops_usage_summary: {
+        Args: { p_period_key: string }
+        Returns: {
+          account_tier: string
+          customer_consumed_microdollars: number
+          feature_class: string
+          period_key: string
+          platform_consumed_microdollars: number
+          request_count: number
+          request_status: string
+        }[]
+      }
+      ai_quote_max_cost: {
+        Args: {
+          p_model_id: string
+          p_price_version_id: string
+          p_provider: string
+          p_usage_units: Json
+        }
+        Returns: number
+      }
+      ai_reconcile: {
+        Args: { p_request_id: string; p_usage_actual: Json }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_release_customer_allowance: {
+        Args: { p_request_id: string }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_reserve: {
+        Args: {
+          p_account_tier: string
+          p_as_of?: string
+          p_config_version_id: string
+          p_feature_class: string
+          p_guest_id?: string
+          p_idempotency_key: string
+          p_model_id: string
+          p_price_version_id: string
+          p_provider: string
+          p_usage_units: Json
+          p_user_id?: string
+        }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_settle: {
+        Args: { p_request_id: string; p_usage_actual: Json }
+        Returns: {
+          acquired: boolean
+          customer_released: boolean
+          deny_reason: string
+          request_id: string
+          reserved_customer_microdollars: number
+          reserved_platform_microdollars: number
+          settled_customer_microdollars: number
+          settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_transfer_guest_to_account: {
+        Args: { p_guest_id: string; p_user_id: string }
+        Returns: {
+          already_claimed: boolean
+          guest_id: string
+          transferred_customer_microdollars: number
+          user_id: string
+        }[]
+      }
       claim_stripe_event: {
         Args: { p_event_id: string; p_token: string }
         Returns: boolean
