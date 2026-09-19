@@ -18,6 +18,7 @@ import {
 import { isRoulettePriceRange, ROULETTE_TIMES, ROULETTE_VIBES } from '@/lib/roulette-options';
 import { allowBillableRoulette } from '@/lib/ratelimit';
 import { isWanderbiteAiDisabled } from '@/lib/ai-kill-switch';
+import { trustedClientIpFromHeaders } from '@/lib/client-ip';
 import {
   guestCookieSetOptions,
   mintGuestCookieValue,
@@ -111,15 +112,6 @@ type RouletteJson = {
   google_place_id: string | null;
   selectionMode: RouletteSelectionMode;
 };
-
-function getClientIp(request: NextRequest): string {
-  const forwarded = request.headers.get('x-forwarded-for');
-  if (forwarded) {
-    const first = forwarded.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  return request.headers.get('x-real-ip') ?? 'unknown';
-}
 
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
@@ -497,7 +489,8 @@ export async function POST(request: NextRequest) {
       return respond(toRouletteJson(fb.chosen, fb, 'random_fallback'));
     };
 
-    const ipHash = hashClientIp(getClientIp(request));
+    const clientIp = trustedClientIpFromHeaders(request.headers);
+    const ipHash = clientIp ? hashClientIp(clientIp) : null;
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
     const prerequisites =
       !isWanderbiteAiDisabled() &&

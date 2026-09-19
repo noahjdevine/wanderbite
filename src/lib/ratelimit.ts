@@ -44,15 +44,6 @@ export const redeemLimiter = redis
     })
   : null;
 
-/** 3 attempts per 60 minutes per email. */
-export const passwordResetLimiter = redis
-  ? new Ratelimit({
-      redis,
-      limiter: Ratelimit.slidingWindow(3, '60 m'),
-      prefix: 'wanderbite:password-reset',
-    })
-  : null;
-
 /** Legacy URL-gated limiter. Billable AI uses `aiRedis` (URL+token) only. */
 export const rouletteLimiter = redis
   ? new Ratelimit({
@@ -89,6 +80,7 @@ export const aiRouletteIpLimiter = aiRedis
   : null;
 
 const AI_LIMIT_TIMEOUT_MS = 1_500;
+export const PASSWORD_RESET_LIMIT_TIMEOUT_MS = 1_500;
 
 async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -119,6 +111,60 @@ export async function allowBillableRoulette(
   } catch {
     return false;
   }
+}
+
+/** 3 reset emails per 60 minutes per email digest. URL+token Redis only. */
+export const passwordResetEmailLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(3, '60 m'),
+      prefix: 'wanderbite:password-reset-email',
+    })
+  : null;
+
+/** 20 reset emails per 60 minutes per IP digest. URL+token Redis only. */
+export const passwordResetIpLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(20, '60 m'),
+      prefix: 'wanderbite:password-reset-ip',
+    })
+  : null;
+
+export async function bothLimitersAllow(
+  left: { limit: (id: string) => Promise<{ success: boolean }> } | null,
+  right: { limit: (id: string) => Promise<{ success: boolean }> } | null,
+  leftId: string,
+  rightId: string,
+  timeoutMs: number = PASSWORD_RESET_LIMIT_TIMEOUT_MS,
+): Promise<boolean> {
+  if (!left || !right) return false;
+  try {
+    const [a, b] = await Promise.all([
+      withTimeout(left.limit(leftId), timeoutMs),
+      withTimeout(right.limit(rightId), timeoutMs),
+    ]);
+    return a.success && b.success;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Both email and IP digest buckets must succeed before Auth is invoked.
+ * Missing Redis, timeout, throw, or deny fail closed. Parallel calls may
+ * consume one counter if the other fails; that is accepted.
+ */
+export async function allowPasswordReset(
+  emailDigest: string,
+  ipDigest: string,
+): Promise<boolean> {
+  return bothLimitersAllow(
+    passwordResetEmailLimiter,
+    passwordResetIpLimiter,
+    emailDigest,
+    ipDigest,
+  );
 }
 
 /** Partner verify: 20 attempts per 5 minutes per hashed session. */

@@ -6,6 +6,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { sendPasswordResetEmail } from '@/app/actions/auth';
+import { PASSWORD_RESET_VALIDATION_MESSAGE } from '@/lib/password-reset';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -17,7 +18,7 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError(null);
     if (!email.trim()) {
-      setError('Please enter your email address.');
+      setError(PASSWORD_RESET_VALIDATION_MESSAGE);
       return;
     }
     setIsLoading(true);
@@ -41,7 +42,7 @@ export default function ForgotPasswordPage() {
         <CardHeader className="text-center space-y-1">
           <CardTitle className="text-2xl font-bold tracking-tight">Forgot it? Happens to the best of us.</CardTitle>
           <CardDescription className="text-base">
-            Drop your email below and we&apos;ll send a reset link if we find your account.
+            Drop your email below and we&apos;ll send a reset link if an account exists for it.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
