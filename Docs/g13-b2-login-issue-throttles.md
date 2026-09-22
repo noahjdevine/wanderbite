@@ -1,12 +1,8 @@
 # G13-B2 — partner login and new issuance throttles
 
-G13-B stays **open** until all three are recorded:
+G13-B stays **open** until hosted evidence in `Docs/g13-b-hosted-evidence.md` is complete. B2 **app** merge (#31, `f2629b0`) is not enough.
 
-1. B1 hosted reset/recovery evidence
-2. B2 unit tests and preview/staging evidence
-3. This PR merged and deployed
-
-Do not start G13-C until that gate is closed.
+Do not start G13-C until that gate is closed. G13-C photo-off is a **pending** product decision, not approved.
 
 ## Login
 
@@ -29,9 +25,23 @@ Already-issued code replay runs **before** the freeze and limiter. New `issue_ch
 
 Member-visible RPC/throw errors are the generic issuance message. Business outcomes (`forbidden`, `not_assigned`, `not_found`, already redeemed) stay.
 
-## PIN rotation (operator, before closing G13-B)
+## Hosted evidence (B2)
 
-bcrypt hashes cannot prove digit shape. Confirm or rotate every current partner PIN with the admin **Set PIN** control (4–6 digits). Empty PIN on create still means no portal login.
+Runbook: `Docs/g13-b-hosted-runbook.md`. Prefer Preview. Two production `/partner` successes max.
+
+- [ ] Invalid UUID/PIN never hits Redis (Preview + Upstash console)
+- [ ] 6th restaurant+IP login denied (`partner_login_rate_limited`)
+- [ ] 31st aggregate-IP login denied (Preview only)
+- [ ] Issuance deny: pre-seed three limiter hits, then one still-assigned item, **no** RPC
+- [ ] Already-issued replay works after limiter exhaustion and under `WANDERBITE_REDEMPTION_ISSUANCE_DISABLED=true`
+- [ ] Login kill switch blocks new PIN sessions; existing cookie works; flags left **unset**
+- [ ] Two live `/partner` logins after PIN rotation (operator; PINs stay in the password manager)
+
+## PIN rotation (operator)
+
+bcrypt hashes cannot prove digit shape or uniqueness. Rotation used `/admin` Set PIN (4–6 digits via `parsePartnerPin`). Empty PIN on create still means no portal login.
+
+Re-checked 2026-09-22 20:40 UTC vs baseline 2026-09-19T22:13:30.711661Z: **24/24** active still present (Hutchins duplicate **not** deleted), 24 fingerprints changed, 0 unchanged, 24 distinct `restaurant.pin_set` rows for actor `aa46493a-f4e8-445a-a3e9-5cb8a8210106` from 19:51:15Z to 19:52:09Z. No PIN values recorded.
 
 ## Rollback
 
