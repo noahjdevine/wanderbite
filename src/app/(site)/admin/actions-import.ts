@@ -9,11 +9,8 @@ import type { PlaceDetails, PlaceResult } from '@/lib/google-places-import';
 import {
   searchPlaces,
   getPlaceDetails,
-  buildGooglePlacesTextSearchUrl,
-  maskGoogleApiKeyInUrl,
 } from '@/lib/google-places-import';
 import { isValidCoordinate } from '@/lib/launch-market';
-import { LAUNCH_MARKET } from '@/lib/launch-market';
 
 async function checkAdminPermissions() {
   const auth = await assertAdmin();
@@ -24,13 +21,12 @@ async function checkAdminPermissions() {
 }
 
 /**
- * After addRestaurant(), attaches google_place_id and google_photo_url to the
- * row that was just created (same trimmed name, created within last 5 minutes).
+ * After addRestaurant(), stores google_place_id on the row that was just
+ * created (same trimmed name, created within last 5 minutes).
  */
 export async function attachGoogleMetadataToLatestRestaurantByName(
   name: string,
   google_place_id: string,
-  google_photo_url: string | null
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   let auth;
   try {
@@ -74,7 +70,7 @@ export async function attachGoogleMetadataToLatestRestaurantByName(
     .from('restaurants')
     .update({
       google_place_id: placeId,
-      google_photo_url: google_photo_url?.trim() || null,
+      google_photo_url: null,
       ...(details && isValidCoordinate(details.lat, details.lon)
         ? { lat: details.lat, lon: details.lon }
         : {}),
@@ -113,8 +109,6 @@ export async function searchRestaurantsFromGoogle(
 ): Promise<
   { ok: true; results: PlaceResult[] } | { ok: false; error: string }
 > {
-  console.warn('Searching Google Places for:', query);
-
   try {
     await checkAdminPermissions();
   } catch (e) {
@@ -122,33 +116,13 @@ export async function searchRestaurantsFromGoogle(
     return { ok: false, error: message };
   }
 
-  const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
-  if (!key) {
-    return {
-      ok: false,
-      error:
-        'Google Places API key not configured. Add GOOGLE_PLACES_API_KEY to environment variables.',
-    };
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) {
+    return { ok: false, error: 'Enter a restaurant name to search.' };
   }
 
-  const trimmedQuery = query.trim();
-  const cityTrim = LAUNCH_MARKET.cityQuery;
-  const center = { lat: LAUNCH_MARKET.centroid.lat, lng: LAUNCH_MARKET.centroid.lon };
-  const url = buildGooglePlacesTextSearchUrl(
-    trimmedQuery,
-    cityTrim,
-    center,
-    key
-  );
-  console.warn('Google Places request URL:', maskGoogleApiKeyInUrl(url, key));
-
   try {
-    const results = await searchPlaces(trimmedQuery, cityTrim, center, {
-      onResponse: ({ httpStatus, bodyText }) => {
-        console.warn('Google Places raw response status:', httpStatus);
-        console.warn('Google Places raw response body:', bodyText);
-      },
-    });
+    const results = await searchPlaces(trimmedQuery);
 
     if (!results.length) {
       return {

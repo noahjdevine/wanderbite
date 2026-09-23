@@ -60,7 +60,6 @@ async function postRouletteOnce(
       address: data.address ?? null,
       price_range: data.price_range ?? null,
       image_url: data.image_url ?? null,
-      google_photo_url: data.google_photo_url ?? null,
       google_place_id: data.google_place_id ?? null,
       selectionMode:
         data.selectionMode === 'ai' || data.selectionMode === 'random_fallback'

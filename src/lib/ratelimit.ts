@@ -248,6 +248,24 @@ export const partnerVerifyIpLimiter = verifyRedis
     })
   : null;
 
+/** 60 Place photo fetches per 10 minutes per IP digest. Missing Redis denies the proxy. */
+export const restaurantPhotoIpLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(60, '10 m'),
+      prefix: 'wanderbite:restaurant-photo-ip',
+    })
+  : null;
+
+/** 300 Place photo fetches per 10 minutes across all callers. */
+export const restaurantPhotoGlobalLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(300, '10 m'),
+      prefix: 'wanderbite:restaurant-photo-global',
+    })
+  : null;
+
 /** CSP reports: 40 posts per 5 minutes per client IP. Missing Redis drops reports in production. */
 export const cspReportLimiter = verifyRedis
   ? new Ratelimit({

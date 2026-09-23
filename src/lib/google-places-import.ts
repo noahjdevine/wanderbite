@@ -1,4 +1,5 @@
 import { LAUNCH_MARKET } from '@/lib/launch-market';
+import { isGooglePlacesOutboundDisabled } from '@/lib/restaurant-image';
 
 export type PlaceDetails = {
   name: string;
@@ -10,7 +11,6 @@ export type PlaceDetails = {
   website: string | null;
   priceLevel: string | null;
   cuisineTags: string[];
-  photoUrl: string | null;
   googlePlaceId: string;
   rating: number | null;
 };
@@ -20,11 +20,6 @@ export type PlaceResult = {
   name: string;
   address: string;
 };
-
-export type SearchPlacesResponseHook = (info: {
-  httpStatus: number;
-  bodyText: string;
-}) => void;
 
 export type ImportCityOption = {
   id: string;
@@ -61,20 +56,6 @@ export function buildGooglePlacesTextSearchUrl(
     key: apiKey,
   });
   return `https://maps.googleapis.com/maps/api/place/textsearch/json?${params.toString()}`;
-}
-
-/** Masks the raw API key wherever it appears in the URL (including URL-encoded). */
-export function maskGoogleApiKeyInUrl(url: string, apiKey: string): string {
-  if (!apiKey) return url;
-  const prefix = `${apiKey.slice(0, 8)}…`;
-  let out = url.split(apiKey).join(prefix);
-  try {
-    const enc = encodeURIComponent(apiKey);
-    out = out.split(enc).join(prefix);
-  } catch {
-    /* ignore */
-  }
-  return out;
 }
 
 const DEFAULT_CENTER = { lat: LAUNCH_MARKET.centroid.lat, lng: LAUNCH_MARKET.centroid.lon };
@@ -160,8 +141,10 @@ export async function searchPlaces(
   query: string,
   city: string = DEFAULT_CITY,
   center: { lat: number; lng: number } = DEFAULT_CENTER,
-  options?: { onResponse?: SearchPlacesResponseHook }
 ): Promise<PlaceResult[]> {
+  if (isGooglePlacesOutboundDisabled()) {
+    throw new Error('Google Places is temporarily unavailable.');
+  }
   const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
   if (!key) {
     throw new Error(
@@ -173,41 +156,23 @@ export async function searchPlaces(
   if (!q) return [];
 
   const url = buildGooglePlacesTextSearchUrl(q, city, center, key);
-  console.warn(
-    '[searchPlaces] URL (key masked):',
-    maskGoogleApiKeyInUrl(url, key)
-  );
 
   let res: Response;
   try {
     res = await fetch(url, { cache: 'no-store' });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[searchPlaces] fetch failed:', msg);
-    throw new Error(`Google Places request failed: ${msg}`);
+  } catch {
+    throw new Error('Google Places request failed.');
   }
 
-  const httpStatus = res.status;
   let bodyText: string;
   try {
     bodyText = await res.text();
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[searchPlaces] reading response body failed:', msg);
-    throw new Error(`Google Places response could not be read: ${msg}`);
+  } catch {
+    throw new Error('Google Places response could not be read.');
   }
 
-  options?.onResponse?.({ httpStatus, bodyText });
-
   if (!res.ok) {
-    console.error(
-      '[searchPlaces] HTTP error:',
-      res.status,
-      res.statusText
-    );
-    throw new Error(
-      `Google Places returned HTTP ${res.status} ${res.statusText}`
-    );
+    throw new Error('Google Places returned an HTTP error.');
   }
 
   let data: {
@@ -221,10 +186,8 @@ export async function searchPlaces(
   };
   try {
     data = JSON.parse(bodyText) as typeof data;
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    console.error('[searchPlaces] JSON parse failed:', msg);
-    throw new Error(`Invalid JSON from Google Places: ${msg}`);
+  } catch {
+    throw new Error('Invalid JSON from Google Places.');
   }
 
   const status = data.status ?? 'UNKNOWN';
@@ -233,10 +196,7 @@ export async function searchPlaces(
   }
 
   if (status !== 'OK') {
-    const detail = data.error_message?.trim();
-    const suffix = detail ? `: ${detail}` : '';
-    console.error('[searchPlaces] Places API status:', status, detail ?? '');
-    throw new Error(`Google Places error (${status})${suffix}`);
+    throw new Error('Google Places returned an error status.');
   }
 
   const raw = data.results ?? [];
@@ -262,11 +222,12 @@ export async function searchPlaces(
 export async function getPlaceDetails(
   placeId: string
 ): Promise<PlaceDetails | null> {
+  if (isGooglePlacesOutboundDisabled()) return null;
   const key = process.env.GOOGLE_PLACES_API_KEY?.trim();
   if (!key || !placeId.trim()) return null;
 
   const fields =
-    'name,formatted_address,geometry,formatted_phone_number,website,price_level,types,photos,rating,address_components';
+    'name,formatted_address,geometry,formatted_phone_number,website,price_level,types,rating,address_components';
 
   try {
     const params = new URLSearchParams({
@@ -288,7 +249,6 @@ export async function getPlaceDetails(
         website?: string;
         price_level?: number;
         types?: string[];
-        photos?: { photo_reference?: string }[];
         rating?: number;
         address_components?: { long_name?: string; types?: string[] }[];
       };
@@ -302,16 +262,6 @@ export async function getPlaceDetails(
 
     const lat = r.geometry?.location?.lat ?? null;
     const lon = r.geometry?.location?.lng ?? null;
-    const ref = r.photos?.[0]?.photo_reference;
-    let photoUrl: string | null = null;
-    if (ref) {
-      const photoParams = new URLSearchParams({
-        maxwidth: '800',
-        photo_reference: ref,
-        key,
-      });
-      photoUrl = `https://maps.googleapis.com/maps/api/place/photo?${photoParams.toString()}`;
-    }
 
     return {
       name,
@@ -323,7 +273,6 @@ export async function getPlaceDetails(
       website: r.website?.trim() ?? null,
       priceLevel: mapPriceLevel(r.price_level),
       cuisineTags: cuisineTagsFromTypes(r.types),
-      photoUrl,
       googlePlaceId: placeId.trim(),
       rating: typeof r.rating === 'number' && !Number.isNaN(r.rating) ? r.rating : null,
     };

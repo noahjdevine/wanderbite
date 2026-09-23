@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { LocationsClient } from '@/components/locations/locations-client';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
+import { safeManualImagePath } from '@/lib/restaurant-image';
 
 export const revalidate = 1800;
 
@@ -19,7 +20,6 @@ export type LocationRestaurant = {
   lon: number | null;
   /** Optional thumbnail URL; when null, a placeholder is shown. */
   image_url?: string | null;
-  google_photo_url?: string | null;
   google_place_id?: string | null;
 };
 
@@ -39,7 +39,7 @@ export default async function RestaurantsPage() {
   const { data: rows, error } = await supabase
     .from('restaurants')
     .select(
-      'id, name, cuisine_tags, description, address, lat, lon, market_id, image_url, google_photo_url, google_place_id, markets(name)'
+      'id, name, cuisine_tags, description, address, lat, lon, market_id, image_url, google_place_id, markets(name)'
     )
     .eq('status', 'active')
     .eq('market_id', market.marketId)
@@ -65,7 +65,6 @@ export default async function RestaurantsPage() {
       lat: number | null;
       lon: number | null;
       image_url: string | null;
-      google_photo_url: string | null;
       google_place_id: string | null;
       markets: { name: string } | { name: string }[] | null;
     };
@@ -80,8 +79,7 @@ export default async function RestaurantsPage() {
       address: row.address,
       lat: row.lat,
       lon: row.lon,
-      image_url: row.image_url ?? null,
-      google_photo_url: row.google_photo_url ?? null,
+      image_url: safeManualImagePath(row.image_url),
       google_place_id: row.google_place_id ?? null,
     };
   });

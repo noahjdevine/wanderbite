@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { createClient } from '@/lib/supabase/server';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
+import { safeManualImagePath } from '@/lib/restaurant-image';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
 import {
@@ -82,7 +83,6 @@ type RouletteRestaurant = {
   description: string | null;
   price_range: string | null;
   image_url: string | null;
-  google_photo_url: string | null;
   google_place_id: string | null;
   is_dairy_free?: boolean | null;
   is_vegan?: boolean | null;
@@ -108,7 +108,6 @@ type RouletteJson = {
   address: string | null;
   price_range: string | null;
   image_url: string | null;
-  google_photo_url: string | null;
   google_place_id: string | null;
   selectionMode: RouletteSelectionMode;
 };
@@ -211,8 +210,7 @@ function toRouletteJson(
     neighborhood: chosen.neighborhood,
     address: chosen.address,
     price_range: chosen.price_range,
-    image_url: chosen.image_url,
-    google_photo_url: chosen.google_photo_url,
+    image_url: safeManualImagePath(chosen.image_url),
     google_place_id: chosen.google_place_id,
     selectionMode,
   };
@@ -417,7 +415,7 @@ export async function POST(request: NextRequest) {
     const { data: rows, error: dbError } = await admin
       .from('restaurants')
       .select(
-        'id, name, cuisine_tags, neighborhood, address, description, price_range, image_url, google_photo_url, google_place_id, is_dairy_free, is_vegan, is_halal',
+        'id, name, cuisine_tags, neighborhood, address, description, price_range, image_url, google_place_id, is_dairy_free, is_vegan, is_halal',
       )
       .eq('status', 'active')
       .eq('market_id', market.marketId);

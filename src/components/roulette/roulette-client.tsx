@@ -1,14 +1,11 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  RESTAURANT_IMAGE_PLACEHOLDER,
-  restaurantDisplayImageUrl,
-} from '@/lib/restaurant-image';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink } from 'lucide-react';
+import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
 import { normalizeCuisineIds, cuisineLabel, type CuisineId } from '@/lib/cuisines';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
 import { postRouletteSpin } from '@/lib/roulette-api-client';
@@ -37,7 +34,6 @@ export type RouletteApiResult = {
   address: string | null;
   price_range: string | null;
   image_url: string | null;
-  google_photo_url: string | null;
   google_place_id: string | null;
   selectionMode: 'ai' | 'random_fallback';
 };
@@ -53,26 +49,12 @@ const EMPTY_SELECTIONS: RouletteSelections = {
 };
 
 function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
-  const [src, setSrc] = useState(() =>
-    restaurantDisplayImageUrl({
-      id: result.restaurantId,
-      google_place_id: result.google_place_id,
-      google_photo_url: result.google_photo_url,
-      image_url: result.image_url,
-    })
-  );
-
   return (
     <div className="aspect-[16/10] w-full shrink-0 overflow-hidden rounded-xl bg-muted">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt=""
-        width={800}
-        height={600}
-        className="h-full w-full"
-        style={{ objectFit: 'cover' }}
-        onError={() => setSrc(RESTAURANT_IMAGE_PLACEHOLDER)}
+      <RestaurantPhoto
+        restaurantId={result.restaurantId}
+        imageUrl={result.image_url}
+        googlePlaceId={result.google_place_id}
       />
     </div>
   );

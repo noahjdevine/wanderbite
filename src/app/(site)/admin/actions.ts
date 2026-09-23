@@ -11,6 +11,7 @@ import { parseUuid } from '@/lib/uuid';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { isValidCoordinate, parseCoordinate } from '@/lib/launch-market';
 import { getPlaceDetails } from '@/lib/google-places-import';
+import { manualImagePathForSave } from '@/lib/restaurant-image';
 
 export type AddRestaurantResult =
   | { ok: true; partnerUrl: string }
@@ -53,7 +54,12 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
     const description = (formData.get('description') as string)?.trim() ?? null;
     const price_range = (formData.get('price_range') as string)?.trim() ?? null;
     const neighborhood = (formData.get('neighborhood') as string)?.trim() ?? null;
-    const image_url = (formData.get('image_url') as string)?.trim() ?? null;
+    const imageInput = (formData.get('image_url') as string)?.trim() ?? '';
+    const imagePath = manualImagePathForSave(imageInput);
+    if (!imagePath.ok) {
+      return { ok: false, error: 'Image must be a path under /images/.' };
+    }
+    const image_url = imagePath.value;
     const verification_code = (formData.get('verification_code') as string)?.trim() ?? null;
     const pinRaw = (formData.get('pin') as string)?.trim() ?? '';
     let pin_hash: string | null = null;

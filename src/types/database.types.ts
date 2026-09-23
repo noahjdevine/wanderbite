@@ -1187,10 +1187,10 @@ export type Database = {
           address?: string | null
           cuisine_tags?: string[] | null
           description?: string | null
-          google_photo_url?: string | null
+          google_photo_url?: never
           google_place_id?: string | null
           id?: string | null
-          image_url?: string | null
+          image_url?: never
           is_dairy_free?: boolean | null
           is_halal?: boolean | null
           is_vegan?: boolean | null
@@ -1204,10 +1204,10 @@ export type Database = {
           address?: string | null
           cuisine_tags?: string[] | null
           description?: string | null
-          google_photo_url?: string | null
+          google_photo_url?: never
           google_place_id?: string | null
           id?: string | null
-          image_url?: string | null
+          image_url?: never
           is_dairy_free?: boolean | null
           is_halal?: boolean | null
           is_vegan?: boolean | null
@@ -1479,8 +1479,8 @@ export type Database = {
       ai_ops_headroom: {
         Args: { p_as_of?: string }
         Returns: {
-          bucket_kind: string
           bucket_key: string
+          bucket_kind: string
           cap_microdollars: number
           period_key: string
           remaining_microdollars: number
@@ -1497,14 +1497,6 @@ export type Database = {
           platform_consumed_microdollars: number
           request_count: number
           request_status: string
-        }[]
-      }
-      ai_recover_stale_requests: {
-        Args: { p_limit?: number; p_stale_before: string }
-        Returns: {
-          previous_status: string
-          request_id: string
-          status: string
         }[]
       }
       ai_quote_max_cost: {
@@ -1527,6 +1519,14 @@ export type Database = {
           reserved_platform_microdollars: number
           settled_customer_microdollars: number
           settled_platform_microdollars: number
+          status: string
+        }[]
+      }
+      ai_recover_stale_requests: {
+        Args: { p_limit?: number; p_stale_before: string }
+        Returns: {
+          previous_status: string
+          request_id: string
           status: string
         }[]
       }

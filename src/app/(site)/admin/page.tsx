@@ -4,6 +4,7 @@ import { assertAdmin } from '@/lib/auth/assert-admin';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Database } from '@/types/database.types';
 import { Button } from '@/components/ui/button';
+import { safeManualImagePath } from '@/lib/restaurant-image';
 import { AdminClient } from './admin-client';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,7 @@ export default async function AdminPage() {
   const { data: rows, error } = await admin
     .from('restaurants')
     .select(
-      'id, name, slug, address, description, cuisine_tags, price_range, neighborhood, image_url, google_photo_url, pin_hash, status'
+      'id, name, slug, address, description, cuisine_tags, price_range, neighborhood, image_url, google_place_id, pin_hash, status'
     )
     .order('name');
 
@@ -78,7 +79,7 @@ export default async function AdminPage() {
     | 'price_range'
     | 'neighborhood'
     | 'image_url'
-    | 'google_photo_url'
+    | 'google_place_id'
     | 'pin_hash'
     | 'status'
   >;
@@ -93,8 +94,8 @@ export default async function AdminPage() {
       cuisine_tags: row.cuisine_tags,
       price_range: row.price_range ?? null,
       neighborhood: row.neighborhood ?? null,
-      image_url: row.image_url ?? null,
-      google_photo_url: row.google_photo_url ?? null,
+      image_url: safeManualImagePath(row.image_url),
+      has_google_place: Boolean(row.google_place_id?.trim()),
       has_pin: Boolean(row.pin_hash),
       status: row.status ?? 'active',
     };

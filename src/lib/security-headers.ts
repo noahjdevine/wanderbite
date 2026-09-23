@@ -35,8 +35,6 @@ export type SecurityHeaderEnv = {
 
 const IMAGE_HOSTS = [
   'https://images.unsplash.com',
-  'https://lh3.googleusercontent.com',
-  'https://maps.googleapis.com',
   'https://yiajoycgiyxjvznndjge.supabase.co',
   'https://tile.openstreetmap.org',
 ] as const;

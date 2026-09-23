@@ -10,6 +10,7 @@ import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
+import { safeManualImagePath } from '@/lib/restaurant-image';
 import {
   deriveDistanceMatch,
   isLaunchEligibleAddress,
@@ -42,7 +43,6 @@ type RestaurantRow = {
   market_id: string;
   org_id: string;
   image_url?: string | null;
-  google_photo_url?: string | null;
   google_place_id?: string | null;
 };
 
@@ -292,7 +292,7 @@ export async function generateMonthlyChallengeForUser(
     const { data: restaurants, error: restErr } = await supabase
       .from('restaurants')
       .select(
-        'id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, image_url, google_photo_url, google_place_id'
+        'id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, google_place_id'
       )
       .eq('market_id', marketId)
       .eq('status', 'active');
@@ -613,7 +613,19 @@ async function loadChallengeItemsWithRestaurants(
     const stats = ratingsMap.get(item.restaurant_id);
     return {
       challengeItem: item,
-      restaurant,
+      restaurant: {
+        id: restaurant.id,
+        name: restaurant.name,
+        cuisine_tags: restaurant.cuisine_tags,
+        address: restaurant.address,
+        lat: restaurant.lat,
+        lon: restaurant.lon,
+        status: restaurant.status,
+        market_id: restaurant.market_id,
+        org_id: restaurant.org_id,
+        image_url: safeManualImagePath(restaurant.image_url),
+        google_place_id: restaurant.google_place_id ?? null,
+      },
       offer: offer
         ? { discount_amount_cents: offer.discount_amount_cents, min_spend_cents: offer.min_spend_cents }
         : { discount_amount_cents: 1000, min_spend_cents: 4000 },

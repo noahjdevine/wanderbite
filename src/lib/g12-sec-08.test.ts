@@ -117,7 +117,8 @@ describe('G12-A report-only document CSP', () => {
   it('allows Stripe portal/checkout navigation and first-party maps/images', () => {
     expect(csp).toMatch(/form-action 'self' https:\/\/checkout\.stripe\.com https:\/\/billing\.stripe\.com/);
     expect(csp).toMatch(/tile\.openstreetmap\.org/);
-    expect(csp).toMatch(/lh3\.googleusercontent\.com/);
+    expect(csp).not.toMatch(/lh3\.googleusercontent\.com/);
+    expect(csp).not.toMatch(/maps\.googleapis\.com/);
     expect(csp).toMatch(/report-uri \/api\/csp-report/);
     expect(csp).toMatch(/frame-ancestors 'none'/);
   });

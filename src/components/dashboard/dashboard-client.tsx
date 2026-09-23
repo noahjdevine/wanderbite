@@ -46,11 +46,8 @@ import {
   type BiteNoteSummary,
 } from '@/app/actions/bite-notes';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
+import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
 import { SocialProofRatingBlock } from '@/components/restaurant-social-proof';
-import {
-  RESTAURANT_IMAGE_PLACEHOLDER,
-  restaurantDisplayImageUrl,
-} from '@/lib/restaurant-image';
 import { AreaHoldNotice } from '@/components/area-hold-notice';
 import { distanceMatchCopy } from '@/lib/launch-market';
 
@@ -355,27 +352,14 @@ function RestaurantCard({
     : null;
 
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
-  const [dashImg, setDashImg] = useState(() =>
-    restaurantDisplayImageUrl({
-      id: item.restaurant.id,
-      google_place_id: item.restaurant.google_place_id,
-      google_photo_url: item.restaurant.google_photo_url,
-      image_url: item.restaurant.image_url,
-    })
-  );
 
   return (
     <Card className={`overflow-hidden ${isExpired ? 'opacity-75 grayscale' : ''}`}>
       <div className="-mt-6 aspect-[16/9] w-full shrink-0 bg-muted">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={dashImg}
-          alt=""
-          width={800}
-          height={600}
-          className="h-full w-full"
-          style={{ objectFit: 'cover' }}
-          onError={() => setDashImg(RESTAURANT_IMAGE_PLACEHOLDER)}
+        <RestaurantPhoto
+          restaurantId={item.restaurant.id}
+          imageUrl={item.restaurant.image_url}
+          googlePlaceId={item.restaurant.google_place_id}
         />
       </div>
       <CardHeader className="flex flex-row items-start justify-between gap-2">

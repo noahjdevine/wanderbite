@@ -23,10 +23,7 @@ import {
   SocialProofRatingBlock,
 } from '@/components/restaurant-social-proof';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
-import {
-  RESTAURANT_IMAGE_PLACEHOLDER,
-  restaurantDisplayImageUrl,
-} from '@/lib/restaurant-image';
+import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -73,7 +70,6 @@ export type PassportVisit = {
     cuisine_tags: string[] | null;
     neighborhood: string | null;
     image_url: string | null;
-    google_photo_url: string | null;
     google_place_id: string | null;
   };
 };
@@ -152,24 +148,11 @@ function PassportVisitRestaurantPhoto({
 }: {
   restaurant: PassportVisit['restaurant'];
 }) {
-  const [src, setSrc] = useState(() =>
-    restaurantDisplayImageUrl({
-      id: restaurant.id,
-      google_place_id: restaurant.google_place_id,
-      google_photo_url: restaurant.google_photo_url,
-      image_url: restaurant.image_url,
-    })
-  );
   return (
-    // eslint-disable-next-line @next/next/no-img-element -- Google Places + admin URLs
-    <img
-      src={src}
-      alt=""
-      width={800}
-      height={600}
-      className="h-full w-full"
-      style={{ objectFit: 'cover' }}
-      onError={() => setSrc(RESTAURANT_IMAGE_PLACEHOLDER)}
+    <RestaurantPhoto
+      restaurantId={restaurant.id}
+      imageUrl={restaurant.image_url}
+      googlePlaceId={restaurant.google_place_id}
     />
   );
 }
