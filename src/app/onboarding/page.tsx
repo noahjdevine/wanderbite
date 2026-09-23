@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { OnboardingWizard } from '@/components/onboarding/OnboardingWizard';
 import { normalizeCuisineIds } from '@/lib/cuisines';
 import { hasStructuredAddress } from '@/lib/launch-market';
+import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 
 export const dynamic = 'force-dynamic';
@@ -37,22 +38,42 @@ export default async function OnboardingPage() {
   }
 
   const admin = getSupabaseAdmin();
-  const [{ data: profile }, { data: prefs }] = await Promise.all([
+  const [profileResult, prefsResult] = await Promise.all([
     admin
       .from('user_profiles')
       .select(
-        'id, email, subscription_status, dietary_flags, distance_band, wants_cocktail_experience, username, address_street, address_city, address_state, address_zip'
+        'id, email, role, subscription_status, dietary_flags, distance_band, wants_cocktail_experience, username, address_street, address_city, address_state, address_zip'
       )
       .eq('id', user.id)
       .maybeSingle(),
     admin.from('user_preferences').select('excluded_cuisines').eq('user_id', user.id).maybeSingle(),
   ]);
 
-  // If active subscriber, onboarding is complete.
-  const sub = (profile as { subscription_status: string | null } | null)?.subscription_status ?? null;
-  if (sub === 'active') {
-    redirect('/challenges');
+  if (profileResult.error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center p-6">
+        <p className="text-sm text-destructive">Unable to load your profile right now. Please try again.</p>
+      </main>
+    );
   }
+
+  const profile = profileResult.data;
+  const prefs = prefsResult.data;
+
+  const sub = (profile as { subscription_status: string | null } | null)?.subscription_status ?? null;
+  const gate = profileGate(
+    profile as {
+      role: string | null;
+      subscription_status: string | null;
+      username: string | null;
+      address_street: string | null;
+      address_city: string | null;
+      address_state: string | null;
+      address_zip: string | null;
+    } | null,
+  );
+  const next = nextMemberRedirect('/onboarding', gate);
+  if (next) redirect(next);
 
   const p = (profile as {
     id: string;

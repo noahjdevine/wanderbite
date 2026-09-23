@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { safeAuthRedirectPath } from '@/lib/auth/safe-redirect';
+import { ordinarySignInPath, profileGate } from '@/lib/auth/member-destinations';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -111,19 +112,34 @@ function SignInInner() {
         return;
       }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('user_profiles')
-        .select('id, subscription_status')
+        .select(
+          'id, role, subscription_status, username, address_street, address_city, address_state, address_zip',
+        )
         .eq('id', data.user.id)
         .maybeSingle();
 
-      if (!profile) {
-        router.push('/onboarding');
-      } else {
-        const sub =
-          (profile as { subscription_status: string | null }).subscription_status ?? null;
-        router.push(sub === 'active' ? '/challenges' : '/pricing');
+      if (profileError) {
+        setError('Unable to load your profile right now. Please try again.');
+        return;
       }
+
+      router.push(
+        ordinarySignInPath(
+          profileGate(
+            profile as {
+              role: string | null;
+              subscription_status: string | null;
+              username: string | null;
+              address_street: string | null;
+              address_city: string | null;
+              address_state: string | null;
+              address_zip: string | null;
+            } | null,
+          ),
+        ),
+      );
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');

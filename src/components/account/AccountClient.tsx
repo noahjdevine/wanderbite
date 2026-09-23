@@ -7,6 +7,10 @@ import { ProfileForm, type ProfileValues } from '@/components/forms/ProfileForm'
 import { updatePreferences } from '@/app/actions/update-preferences';
 import { updateProfileStructured } from '@/app/actions/update-profile-structured';
 import { ManageSubscriptionButton } from '@/app/(site)/billing/manage-subscription-button';
+import {
+  AccountChangedNotice,
+  useAccountChanged,
+} from '@/components/auth/account-changed-notice';
 
 export function AccountClient({
   initial,
@@ -31,15 +35,20 @@ export function AccountClient({
   }, [initial.currentPeriodEnd]);
 
   const isActive = initial.subscriptionStatus === 'active';
+  const accountChanged = useAccountChanged(initial.userId);
 
   async function savePreferences(values: PreferencesValues) {
-    const res = await updatePreferences(values);
+    const res = await updatePreferences(values, initial.userId);
     if (!res.ok) throw new Error(res.error);
   }
 
   async function saveProfile(values: ProfileValues) {
-    const res = await updateProfileStructured(values);
+    const res = await updateProfileStructured(values, initial.userId);
     if (!res.ok) throw new Error(res.error);
+  }
+
+  if (accountChanged) {
+    return <AccountChangedNotice />;
   }
 
   return (
