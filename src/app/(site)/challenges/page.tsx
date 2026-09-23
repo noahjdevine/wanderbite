@@ -8,6 +8,7 @@ import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
 import { launchAreaState } from '@/lib/launch-market';
+import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,7 +29,7 @@ export default async function ChallengesPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, subscription_status, username, address_street, address_city, address_state, address_zip')
+    .select('id, role, subscription_status, username, address_street, address_city, address_state, address_zip')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -46,6 +47,7 @@ export default async function ChallengesPage() {
 
   const typedProfile = profile as {
     id: string;
+    role: string | null;
     subscription_status: string | null;
     username: string | null;
     address_street: string | null;
@@ -54,9 +56,19 @@ export default async function ChallengesPage() {
     address_zip: string | null;
   };
 
-  if (typedProfile.subscription_status !== 'active') {
-    redirect('/pricing');
-  }
+  const next = nextMemberRedirect(
+    '/challenges',
+    profileGate({
+      role: typedProfile.role,
+      subscription_status: typedProfile.subscription_status,
+      username: typedProfile.username,
+      address_street: typedProfile.address_street,
+      address_city: typedProfile.address_city,
+      address_state: typedProfile.address_state,
+      address_zip: typedProfile.address_zip,
+    }),
+  );
+  if (next) redirect(next);
 
   const area = launchAreaState({
     street: typedProfile.address_street,
@@ -64,9 +76,6 @@ export default async function ChallengesPage() {
     state: typedProfile.address_state,
     zip: typedProfile.address_zip,
   });
-  if (area === 'missing_address' || !typedProfile.username?.trim()) {
-    redirect('/onboarding');
-  }
 
   const streak = await calculateStreak(typedProfile.id);
 

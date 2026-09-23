@@ -35,7 +35,7 @@ export function AccountClient({
   }, [initial.currentPeriodEnd]);
 
   const isActive = initial.subscriptionStatus === 'active';
-  const accountChanged = useAccountChanged(initial.userId);
+  const accountState = useAccountChanged(initial.userId);
 
   async function savePreferences(values: PreferencesValues) {
     const res = await updatePreferences(values, initial.userId);
@@ -47,9 +47,8 @@ export function AccountClient({
     if (!res.ok) throw new Error(res.error);
   }
 
-  if (accountChanged) {
-    return <AccountChangedNotice />;
-  }
+  if (accountState === 'pending') return null;
+  if (accountState === 'changed') return <AccountChangedNotice />;
 
   return (
     <div className="space-y-8">

@@ -3,29 +3,26 @@
 import { useEffect, useState } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
-import { ACCOUNT_CHANGED_MESSAGE } from '@/lib/auth/account-changed';
+import {
+  ACCOUNT_CHANGED_MESSAGE,
+  renderedAccountState,
+  type RenderedAccountState,
+} from '@/lib/auth/account-changed';
 
-export function useAccountChanged(renderedForUserId: string): boolean {
-  const [changed, setChanged] = useState(false);
+export function useAccountChanged(renderedForUserId: string): RenderedAccountState {
+  const [state, setState] = useState<RenderedAccountState>('pending');
 
   useEffect(() => {
     const supabase = createClient();
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      const id = session?.user?.id ?? null;
-      if (event === 'INITIAL_SESSION') {
-        if (id && id !== renderedForUserId) setChanged(true);
-        return;
-      }
-      if (event === 'SIGNED_OUT' || (id && id !== renderedForUserId)) {
-        setChanged(true);
-      }
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setState(renderedAccountState(renderedForUserId, session?.user?.id ?? null));
     });
     return () => subscription.unsubscribe();
   }, [renderedForUserId]);
 
-  return changed;
+  return state;
 }
 
 export function AccountChangedNotice() {

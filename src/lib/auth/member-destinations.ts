@@ -51,6 +51,7 @@ export function profileGate(row: ({
 export function ordinarySignInPath(profile: MemberProfileGate): string {
   if (!profile.hasProfile) return '/onboarding';
   if (isAdminRole(profile.role) && !profile.profileComplete) return '/account';
+  if (profile.subscriptionStatus === 'active' && !profile.profileComplete) return '/onboarding';
   if (profile.subscriptionStatus === 'active') return '/challenges';
   return '/pricing';
 }
@@ -64,7 +65,13 @@ export function nextMemberRedirect(
 
   if (path === '/onboarding') {
     if (profile.hasProfile && isAdminRole(profile.role)) return '/account';
-    if (profile.hasProfile && profile.subscriptionStatus === 'active') return '/challenges';
+    if (
+      profile.hasProfile &&
+      profile.profileComplete &&
+      profile.subscriptionStatus === 'active'
+    ) {
+      return '/challenges';
+    }
     return null;
   }
 
@@ -75,8 +82,9 @@ export function nextMemberRedirect(
     return null;
   }
 
-  if (path === '/challenges') {
+  if (path === '/challenges' || path === '/dashboard') {
     if (!profile.hasProfile) return '/onboarding';
+    if (isAdminRole(profile.role) && !profile.profileComplete) return '/account';
     if (profile.subscriptionStatus !== 'active') return '/pricing';
     if (!profile.profileComplete) return '/onboarding';
     return null;

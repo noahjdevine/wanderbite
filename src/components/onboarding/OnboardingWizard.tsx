@@ -48,7 +48,7 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
     [step]
   );
 
-  const accountChanged = useAccountChanged(initial.userId);
+  const accountState = useAccountChanged(initial.userId);
 
   async function savePrefs(values: PreferencesValues) {
     const res = await updatePreferences(values, initial.userId);
@@ -76,7 +76,7 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
     <main className="min-h-screen bg-background px-4 py-10">
       <div className="mx-auto flex w-full max-w-xl flex-col items-center">
         <div className="w-full rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          {accountChanged ? (
+          {accountState === 'pending' ? null : accountState === 'changed' ? (
             <AccountChangedNotice />
           ) : (
             <>
