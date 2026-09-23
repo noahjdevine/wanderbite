@@ -89,7 +89,8 @@ export async function updateSession(request: NextRequest) {
     pathname === '/partner' ||
     pathname.startsWith('/partner/') ||
     pathname === '/roulette' ||
-    pathname.startsWith('/roulette/');
+    pathname.startsWith('/roulette/') ||
+    pathname === '/email/unsubscribe';
   if (isPublic) {
     return response;
   }

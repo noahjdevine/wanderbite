@@ -7,110 +7,111 @@ import { render, toPlainText } from '@react-email/components';
 import { Resend } from 'resend';
 import { RedemptionReminderEmail } from '@/emails/redemption-reminder';
 import { SubscriptionConfirmationEmail } from '@/emails/subscription-confirmation';
+import {
+  EMAIL_FROM,
+  classifyResendSend,
+  type EmailSendOutcome,
+  type StoredEmailPayload,
+} from '@/lib/email-send';
 
-const resendApiKey = process.env.RESEND_API_KEY;
-const baseUrl =
-  process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-  process.env.NEXT_PUBLIC_BASE_URL?.trim() ||
-  'https://wanderbite.co';
+export function emailBaseUrl(): string {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+    process.env.NEXT_PUBLIC_BASE_URL?.trim() ||
+    'https://wanderbite.co'
+  );
+}
 
-const FROM = 'Wanderbite <noreply@wanderbite.com>';
+export function reminderSubject(daysLeft: number): string {
+  return daysLeft === 1
+    ? '1 day left to redeem your Wanderbite picks'
+    : `${daysLeft} days left to redeem your Wanderbite picks`;
+}
 
-/**
- * Sends the post-checkout subscription confirmation email.
- * Missing API key or a Resend `{ error }` result is a delivery failure.
- * Pass the stable outbox effect_key as idempotencyKey (24-hour Resend retention).
- */
-export async function sendSubscriptionConfirmationEmail(
+export async function buildSubscriptionConfirmationEmail(
   to: string,
-  idempotencyKey: string
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!resendApiKey) {
-    console.warn('RESEND_API_KEY not set; confirmation email cannot send');
-    return { ok: false, error: 'RESEND_API_KEY not configured' };
+): Promise<StoredEmailPayload> {
+  const html = await render(
+    <SubscriptionConfirmationEmail baseUrl={emailBaseUrl()} />,
+  );
+  const text = toPlainText(html);
+  return {
+    from: EMAIL_FROM,
+    to,
+    subject: 'Your Wanderbite subscription is active',
+    html,
+    text,
+    headers: {},
+  };
+}
+
+export async function buildRedemptionReminderEmail(input: {
+  to: string;
+  restaurantNames: string[];
+  daysLeft: number;
+  unsubscribeUrl: string;
+}): Promise<StoredEmailPayload> {
+  const html = await render(
+    <RedemptionReminderEmail
+      baseUrl={emailBaseUrl()}
+      restaurantNames={input.restaurantNames}
+      daysLeft={input.daysLeft}
+      unsubscribeUrl={input.unsubscribeUrl}
+    />,
+  );
+  let text = toPlainText(html);
+  if (!text.includes(input.unsubscribeUrl)) {
+    text = `${text}\n\nUnsubscribe from adventure reminders: ${input.unsubscribeUrl}`;
   }
-
-  const resend = new Resend(resendApiKey);
-
-  try {
-    const html = await render(
-      <SubscriptionConfirmationEmail baseUrl={baseUrl} />
-    );
-    const text = toPlainText(html);
-
-    const { data, error } = await resend.emails.send(
-      {
-        from: FROM,
-        to: [to],
-        subject: 'Your Wanderbite subscription is active',
-        html,
-        text,
-      },
-      { idempotencyKey }
-    );
-
-    if (error || !data) {
-      const message = error?.message ?? 'Resend returned no data';
-      console.error('Failed to send subscription confirmation email:', message);
-      return { ok: false, error: message };
-    }
-
-    return { ok: true };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Failed to send subscription confirmation email:', err);
-    return { ok: false, error: message };
-  }
+  return {
+    from: EMAIL_FROM,
+    to: input.to,
+    subject: reminderSubject(input.daysLeft),
+    html,
+    text,
+    headers: {
+      'List-Unsubscribe': `<${input.unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  };
 }
 
 /**
- * Sends the end-of-month redemption reminder email.
- * Called from the end-of-month-reminder cron for users with unredeemed picks.
- * No-op if RESEND_API_KEY is not set (logs and returns).
+ * Sends a previously stored payload. The idempotency key must be the same key
+ * used for that payload. A Resend `{ error }` or missing `data` is not success.
  */
-export async function sendRedemptionReminderEmail(
-  to: string,
-  restaurantNames: string[],
-  daysLeft: number
-): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function sendStoredEmail(
+  payload: StoredEmailPayload,
+  idempotencyKey: string,
+): Promise<EmailSendOutcome> {
+  const resendApiKey = process.env.RESEND_API_KEY?.trim();
   if (!resendApiKey) {
-    console.warn('RESEND_API_KEY not set; skipping redemption reminder email');
-    return { ok: false, error: 'RESEND_API_KEY not configured' };
-  }
-
-  if (restaurantNames.length === 0) {
-    return { ok: false, error: 'No restaurants to remind about' };
+    return { outcome: 'definite_failure', error: 'RESEND_API_KEY not configured' };
   }
 
   const resend = new Resend(resendApiKey);
+  const headers = Object.keys(payload.headers).length > 0 ? payload.headers : undefined;
 
   try {
-    const html = await render(
-      <RedemptionReminderEmail
-        baseUrl={baseUrl}
-        restaurantNames={restaurantNames}
-        daysLeft={daysLeft}
-      />
+    const { data, error } = await resend.emails.send(
+      {
+        from: payload.from,
+        to: [payload.to],
+        subject: payload.subject,
+        html: payload.html,
+        text: payload.text,
+        headers,
+      },
+      { idempotencyKey },
     );
-    const text = toPlainText(html);
 
-    const subject =
-      daysLeft === 1
-        ? '1 day left to redeem your Wanderbite picks'
-        : `${daysLeft} days left to redeem your Wanderbite picks`;
+    if (error || !data) {
+      return classifyResendSend({ data, error });
+    }
 
-    await resend.emails.send({
-      from: FROM,
-      to: [to],
-      subject,
-      html,
-      text,
-    });
-
-    return { ok: true };
+    return classifyResendSend({ data, error: null });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Failed to send redemption reminder email:', err);
-    return { ok: false, error: message };
+    return { outcome: 'uncertain', error: message };
   }
 }

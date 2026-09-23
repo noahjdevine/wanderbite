@@ -562,6 +562,151 @@ export type Database = {
         }
         Relationships: []
       }
+      email_reminder_deliveries: {
+        Row: {
+          claim_expires_at: string | null
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          cycle_month: string
+          email_payload: Json | null
+          idempotency_key: string | null
+          idempotency_key_used_at: string | null
+          last_error: string | null
+          recipient_email: string | null
+          reconciliation_reason: string | null
+          resend_message_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          cycle_month: string
+          email_payload?: Json | null
+          idempotency_key?: string | null
+          idempotency_key_used_at?: string | null
+          last_error?: string | null
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          cycle_month?: string
+          email_payload?: Json | null
+          idempotency_key?: string | null
+          idempotency_key_used_at?: string | null
+          last_error?: string | null
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_reminder_deliveries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_suppressions: {
+        Row: {
+          created_at: string
+          email_id: string | null
+          event_type: string
+          id: string
+          normalized_address: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          email_id?: string | null
+          event_type: string
+          id?: string
+          normalized_address: string
+          reason: string
+        }
+        Update: {
+          created_at?: string
+          email_id?: string | null
+          event_type?: string
+          id?: string
+          normalized_address?: string
+          reason?: string
+        }
+        Relationships: []
+      }
+      email_topic_preferences: {
+        Row: {
+          opted_out: boolean
+          topic: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          opted_out: boolean
+          topic: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          opted_out?: boolean
+          topic?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_topic_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_webhook_deliveries: {
+        Row: {
+          created_at: string
+          delivery_id: string
+          email_id: string | null
+          event_type: string
+          normalized_address: string
+          reason: string
+        }
+        Insert: {
+          created_at?: string
+          delivery_id: string
+          email_id?: string | null
+          event_type: string
+          normalized_address: string
+          reason: string
+        }
+        Update: {
+          created_at?: string
+          delivery_id?: string
+          email_id?: string | null
+          event_type?: string
+          normalized_address?: string
+          reason?: string
+        }
+        Relationships: []
+      }
       markets: {
         Row: {
           country: string | null
@@ -1077,8 +1222,14 @@ export type Database = {
           created_at: string
           effect_key: string
           effect_type: string
+          email_attempt_state: string | null
+          email_payload: Json | null
+          idempotency_key_used_at: string | null
           last_error: string | null
           payload: Json
+          recipient_email: string | null
+          reconciliation_reason: string | null
+          resend_message_id: string | null
           sent_at: string | null
           source_event_id: string
           status: string
@@ -1091,8 +1242,14 @@ export type Database = {
           created_at?: string
           effect_key: string
           effect_type: string
+          email_attempt_state?: string | null
+          email_payload?: Json | null
+          idempotency_key_used_at?: string | null
           last_error?: string | null
           payload?: Json
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
           sent_at?: string | null
           source_event_id: string
           status?: string
@@ -1105,8 +1262,14 @@ export type Database = {
           created_at?: string
           effect_key?: string
           effect_type?: string
+          email_attempt_state?: string | null
+          email_payload?: Json | null
+          idempotency_key_used_at?: string | null
           last_error?: string | null
           payload?: Json
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
           sent_at?: string | null
           source_event_id?: string
           status?: string
@@ -1656,8 +1819,14 @@ export type Database = {
           created_at: string
           effect_key: string
           effect_type: string
+          email_attempt_state: string | null
+          email_payload: Json | null
+          idempotency_key_used_at: string | null
           last_error: string | null
           payload: Json
+          recipient_email: string | null
+          reconciliation_reason: string | null
+          resend_message_id: string | null
           sent_at: string | null
           source_event_id: string
           status: string
@@ -1668,6 +1837,106 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      claim_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_token: string; p_user_id: string }
+        Returns: {
+          claim_expires_at: string | null
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          cycle_month: string
+          email_payload: Json | null
+          idempotency_key: string | null
+          idempotency_key_used_at: string | null
+          last_error: string | null
+          previous_status: string
+          recipient_email: string | null
+          reconciliation_reason: string | null
+          resend_message_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }[]
+      }
+      complete_email_reminder_delivery: {
+        Args: {
+          p_cycle_month: string
+          p_message_id: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      complete_webhook_outbox_email: {
+        Args: { p_effect_key: string; p_message_id: string; p_token: string }
+        Returns: boolean
+      }
+      ensure_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_user_id: string }
+        Returns: undefined
+      }
+      fail_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_error: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      mark_webhook_outbox_definite_failure: {
+        Args: { p_effect_key: string; p_token: string }
+        Returns: boolean
+      }
+      reconcile_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_reason: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      reconcile_webhook_outbox: {
+        Args: { p_effect_key: string; p_reason: string; p_token: string }
+        Returns: boolean
+      }
+      record_hard_email_suppression: {
+        Args: { p_address: string; p_email_id: string; p_reason: string }
+        Returns: boolean
+      }
+      release_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_error: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      skip_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_status: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      store_email_reminder_payload: {
+        Args: {
+          p_cycle_month: string
+          p_idempotency_key: string
+          p_payload: Json
+          p_recipient: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      store_webhook_outbox_email: {
+        Args: {
+          p_effect_key: string
+          p_email_payload: Json
+          p_recipient: string
+          p_token: string
+        }
+        Returns: boolean
+      }
+      suppress_webhook_outbox: {
+        Args: { p_effect_key: string; p_token: string }
+        Returns: boolean
+      }
+      apply_resend_webhook_suppression: {
+        Args: {
+          p_address: string
+          p_delivery_id: string
+          p_email_id: string
+          p_event_type: string
+          p_reason: string
+        }
+        Returns: string
       }
       complete_stripe_event: {
         Args: { p_event_id: string; p_token: string }

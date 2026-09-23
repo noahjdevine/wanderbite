@@ -160,7 +160,10 @@ cross join (
 insert into g8_expected_table_writes (grantee, table_name, privilege_type)
 values
   ('anon', 'user_profiles', 'DELETE'),
-  ('authenticated', 'user_profiles', 'DELETE');
+  ('authenticated', 'user_profiles', 'DELETE'),
+  -- G15: the account owner can insert and update their own topic row. No delete.
+  ('authenticated', 'email_topic_preferences', 'INSERT'),
+  ('authenticated', 'email_topic_preferences', 'UPDATE');
 
 create temporary table g8_expected_column_writes (
   grantee text not null,
