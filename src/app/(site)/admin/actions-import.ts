@@ -12,6 +12,7 @@ import {
 } from '@/lib/google-places-import';
 import { isValidCoordinate } from '@/lib/launch-market';
 
+/** Current user, admin role, and currentLevel aal2. Fails before any service-role read or write. */
 async function checkAdminPermissions() {
   const auth = await assertAdmin();
   if (!auth.ok) {

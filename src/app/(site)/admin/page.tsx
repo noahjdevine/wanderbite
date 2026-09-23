@@ -1,22 +1,29 @@
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { assertAdmin } from '@/lib/auth/assert-admin';
+import { adminPageDecision, assertAdmin } from '@/lib/auth/assert-admin';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Database } from '@/types/database.types';
 import { Button } from '@/components/ui/button';
 import { safeManualImagePath } from '@/lib/restaurant-image';
 import { AdminClient } from './admin-client';
+import { AdminMfaGate } from './admin-mfa-gate';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
   const auth = await assertAdmin();
-  if (!auth.ok) {
-    redirect(
-      auth.error === 'You must be signed in.'
-        ? '/signin?redirectTo=/admin'
-        : '/challenges'
+  const decision = adminPageDecision(auth);
+  if (decision.kind === 'mfa') {
+    return (
+      <main className="min-h-screen bg-background px-4 py-10">
+        <div className="mx-auto max-w-lg">
+          <AdminMfaGate mode={decision.mode} />
+        </div>
+      </main>
     );
+  }
+  if (decision.kind === 'redirect') {
+    redirect(decision.href);
   }
 
   const admin = getSupabaseAdmin();
