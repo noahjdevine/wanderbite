@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { AccountClient } from '@/components/account/AccountClient';
 import { normalizeCuisineIds } from '@/lib/cuisines';
-import { hasStructuredAddress } from '@/lib/launch-market';
+import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 
 export const dynamic = 'force-dynamic';
@@ -19,20 +19,40 @@ export default async function AccountPage() {
   }
 
   const admin = getSupabaseAdmin();
-  const [{ data: profile }, { data: prefs }] = await Promise.all([
+  const [profileResult, prefsResult] = await Promise.all([
     admin
       .from('user_profiles')
       .select(
-        'id, email, full_name, username, dietary_flags, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
+        'id, email, role, full_name, username, dietary_flags, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
       )
       .eq('id', user.id)
       .maybeSingle(),
     admin.from('user_preferences').select('excluded_cuisines').eq('user_id', user.id).maybeSingle(),
   ]);
 
-  if (!profile) {
-    redirect('/onboarding');
+  if (profileResult.error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-6 pt-24">
+        <p className="text-sm text-destructive">Unable to load your profile right now. Please try again.</p>
+      </main>
+    );
   }
+
+  const profile = profileResult.data;
+  const prefs = prefsResult.data;
+  const gate = profileGate(
+    profile as {
+      role: string | null;
+      subscription_status: string | null;
+      username: string | null;
+      address_street: string | null;
+      address_city: string | null;
+      address_state: string | null;
+      address_zip: string | null;
+    } | null,
+  );
+  const next = nextMemberRedirect('/account', gate);
+  if (next) redirect(next);
 
   const p = profile as {
     id: string;
@@ -46,22 +66,10 @@ export default async function AccountPage() {
     address_city: string | null;
     address_state: string | null;
     address_zip: string | null;
+    role: string | null;
     subscription_status: string | null;
     current_period_end: string | null;
   };
-
-  const hasProfile =
-    Boolean(p.username?.trim()) &&
-    hasStructuredAddress({
-      street: p.address_street,
-      city: p.address_city,
-      state: p.address_state,
-      zip: p.address_zip,
-    });
-
-  if (!hasProfile) {
-    redirect('/onboarding');
-  }
 
   return (
     <main className="min-h-screen bg-background pb-20 pt-24 md:pt-28">

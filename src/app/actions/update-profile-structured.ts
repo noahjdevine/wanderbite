@@ -1,18 +1,22 @@
 'use server';
 
-import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { requireUser } from '@/lib/auth/require-user';
+import { ACCOUNT_CHANGED_MESSAGE } from '@/lib/auth/account-changed';
 
-export async function updateProfileStructured(values: {
-  username: string;
-  address: { street: string; city: string; state: string; zip: string };
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function updateProfileStructured(
+  values: {
+    username: string;
+    address: { street: string; city: string; state: string; zip: string };
+  },
+  renderedForUserId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    const supabase = await createClient();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return { ok: false, error: 'You must be signed in.' };
+    const auth = await requireUser();
+    if (!auth.ok) return { ok: false, error: auth.error };
+    if (renderedForUserId !== auth.userId) {
+      return { ok: false, error: ACCOUNT_CHANGED_MESSAGE };
+    }
 
     const username = values.username.trim();
     if (username.length < 3) return { ok: false, error: 'Username must be at least 3 characters.' };
@@ -33,24 +37,29 @@ export async function updateProfileStructured(values: {
     }
 
     const admin = getSupabaseAdmin();
-    const { error } = await admin
+    const { data, error } = await admin
       .from('user_profiles')
       .upsert(
         {
-          id: user.id,
-          email: user.email ?? null,
+          id: auth.userId,
+          email: auth.email,
           username,
           address_street: street,
           address_city: city,
           address_state: state,
           address_zip: zip,
         },
-        { onConflict: 'id' }
-      );
+        { onConflict: 'id' },
+      )
+      .select('id');
 
     if (error) {
       if (error.code === '23505') return { ok: false, error: 'That username is already taken.' };
       return { ok: false, error: error.message };
+    }
+    const rows = data ?? [];
+    if (rows.length !== 1 || rows[0]?.id !== auth.userId) {
+      return { ok: false, error: 'Unable to save your profile right now. Please try again.' };
     }
     return { ok: true };
   } catch (e) {
@@ -58,4 +67,3 @@ export async function updateProfileStructured(values: {
     return { ok: false, error: message };
   }
 }
-
