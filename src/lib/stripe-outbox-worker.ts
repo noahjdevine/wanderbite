@@ -1,6 +1,14 @@
 import type Stripe from 'stripe';
+import { normalizeMailbox } from '@/lib/email-address';
+import {
+  decideAfterSend,
+  decideConfirmationPreSend,
+  decideStoredRetry,
+  parseStoredEmailPayload,
+  type StoredEmailPayload,
+} from '@/lib/email-send';
 import { captureEvent } from '@/lib/posthog-server';
-import { sendSubscriptionConfirmationEmail } from '@/lib/resend';
+import { buildSubscriptionConfirmationEmail, sendStoredEmail } from '@/lib/resend';
 import {
   applyVerifiedStripeEvent,
   type StripeAdminClient,
@@ -10,11 +18,22 @@ import type { Json } from '@/types/database.types';
 const EVENT_BATCH = 25;
 const OUTBOX_BATCH = 25;
 
+class OutboxAlreadyRecorded extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OutboxAlreadyRecorded';
+  }
+}
+
 type OutboxRow = {
   effect_key: string;
   effect_type: string;
   attempts: number;
   payload: Json;
+  recipient_email?: string | null;
+  email_payload?: Json | null;
+  idempotency_key_used_at?: string | null;
+  email_attempt_state?: string | null;
 };
 
 type OutboxPayload = {
@@ -37,7 +56,13 @@ async function rpcBoolean(
     | 'fail_webhook_outbox'
     | 'complete_stripe_event'
     | 'fail_stripe_event'
-    | 'purge_stripe_event_payloads',
+    | 'purge_stripe_event_payloads'
+    | 'store_webhook_outbox_email'
+    | 'mark_webhook_outbox_definite_failure'
+    | 'complete_webhook_outbox_email'
+    | 'suppress_webhook_outbox'
+    | 'reconcile_webhook_outbox'
+    | 'record_hard_email_suppression',
   args: Record<string, unknown>
 ): Promise<boolean> {
   const { data, error } = await supabase.rpc(fn as never, args as never);
@@ -63,6 +88,140 @@ async function resolveEmail(
   return email && email.includes('@') ? email : null;
 }
 
+async function addressSuppressed(
+  supabase: StripeAdminClient,
+  address: string,
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('email_suppressions')
+    .select('normalized_address')
+    .eq('normalized_address', address)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function deliverConfirmation(
+  supabase: StripeAdminClient,
+  row: OutboxRow,
+  claimToken: string,
+): Promise<void> {
+  const payload = payloadOf(row);
+  const to = await resolveEmail(supabase, payload);
+  const address = normalizeMailbox(to);
+  if (!address) {
+    throw new Error('No recipient email for confirmation');
+  }
+
+  const now = new Date();
+  const stored = parseStoredEmailPayload(row.email_payload);
+  const suppressed = await addressSuppressed(supabase, address);
+  const decision = decideConfirmationPreSend({
+    suppressed,
+    hasPayload: stored !== null,
+    attemptState: row.email_attempt_state ?? null,
+    usedAt: row.idempotency_key_used_at ?? null,
+    now,
+  });
+
+  if (decision.action === 'suppress') {
+    await rpcBoolean(supabase, 'suppress_webhook_outbox', {
+      p_effect_key: row.effect_key,
+      p_token: claimToken,
+    });
+    return;
+  }
+  if (decision.action === 'reconcile') {
+    await rpcBoolean(supabase, 'reconcile_webhook_outbox', {
+      p_effect_key: row.effect_key,
+      p_token: claimToken,
+      p_reason: decision.reason,
+    });
+    return;
+  }
+
+  let outbound: StoredEmailPayload;
+  if (decision.action === 'send_fresh') {
+    const fresh = await buildSubscriptionConfirmationEmail(address);
+    const storedOk = await rpcBoolean(supabase, 'store_webhook_outbox_email', {
+      p_effect_key: row.effect_key,
+      p_token: claimToken,
+      p_recipient: address,
+      p_email_payload: fresh,
+    });
+    if (!storedOk) return;
+    outbound = fresh;
+  } else {
+    if (!stored) {
+      await rpcBoolean(supabase, 'reconcile_webhook_outbox', {
+        p_effect_key: row.effect_key,
+        p_token: claimToken,
+        p_reason: 'stored payload missing',
+      });
+      return;
+    }
+    const fresh = await buildSubscriptionConfirmationEmail(address);
+    const retry = decideStoredRetry({
+      stored,
+      fresh,
+      usedAt: row.idempotency_key_used_at ?? null,
+      now,
+    });
+    if (retry.action === 'reconcile') {
+      await rpcBoolean(supabase, 'reconcile_webhook_outbox', {
+        p_effect_key: row.effect_key,
+        p_token: claimToken,
+        p_reason: retry.reason,
+      });
+      return;
+    }
+    outbound = stored;
+  }
+
+  const sent = await sendStoredEmail(outbound, row.effect_key);
+  const after = decideAfterSend(sent);
+  if (after.action === 'complete') {
+    await rpcBoolean(supabase, 'complete_webhook_outbox_email', {
+      p_effect_key: row.effect_key,
+      p_token: claimToken,
+      p_message_id: after.messageId,
+    });
+    return;
+  }
+  if (after.action === 'suppress') {
+    await rpcBoolean(supabase, 'record_hard_email_suppression', {
+      p_address: address,
+      p_reason: 'already_suppressed',
+      p_email_id: '',
+    });
+    await rpcBoolean(supabase, 'suppress_webhook_outbox', {
+      p_effect_key: row.effect_key,
+      p_token: claimToken,
+    });
+    return;
+  }
+  if (after.action === 'reconcile') {
+    await rpcBoolean(supabase, 'reconcile_webhook_outbox', {
+      p_effect_key: row.effect_key,
+      p_token: claimToken,
+      p_reason: after.reason,
+    });
+    return;
+  }
+
+  const marked = await rpcBoolean(supabase, 'mark_webhook_outbox_definite_failure', {
+    p_effect_key: row.effect_key,
+    p_token: claimToken,
+  });
+  if (!marked) return;
+  await rpcBoolean(supabase, 'fail_webhook_outbox', {
+    p_effect_key: row.effect_key,
+    p_token: claimToken,
+    p_error: after.error,
+  });
+  throw new OutboxAlreadyRecorded(after.error);
+}
+
 async function deliverOutboxRow(
   supabase: StripeAdminClient,
   row: OutboxRow,
@@ -72,14 +231,8 @@ async function deliverOutboxRow(
 
   try {
     if (row.effect_type === 'subscription_confirmation_email') {
-      const to = await resolveEmail(supabase, payload);
-      if (!to) {
-        throw new Error('No recipient email for confirmation');
-      }
-      const sent = await sendSubscriptionConfirmationEmail(to, row.effect_key);
-      if (!sent.ok) {
-        throw new Error(sent.error);
-      }
+      await deliverConfirmation(supabase, row, claimToken);
+      return;
     } else if (
       row.effect_type === 'subscription_started' ||
       row.effect_type === 'subscription_canceled'
@@ -113,6 +266,7 @@ async function deliverOutboxRow(
       return;
     }
   } catch (err) {
+    if (err instanceof OutboxAlreadyRecorded) throw err;
     const message = err instanceof Error ? err.message : 'Outbox delivery failed';
     await rpcBoolean(supabase, 'fail_webhook_outbox', {
       p_effect_key: row.effect_key,

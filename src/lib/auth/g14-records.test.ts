@@ -26,6 +26,7 @@ const API_ROUTES = [
   'src/app/api/restaurant-image/[id]/route.ts',
   'src/app/api/roulette/route.ts',
   'src/app/api/webhooks/stripe/route.ts',
+  'src/app/api/webhooks/resend/route.ts',
   'src/app/api/cron/stripe-reconcile/route.ts',
   'src/app/api/cron/webhook-outbox/route.ts',
   'src/app/api/cron/reset-swap-counters/route.ts',

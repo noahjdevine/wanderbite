@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { format } from 'date-fns';
 import { PreferencesForm, type PreferencesValues } from '@/components/forms/PreferencesForm';
 import { ProfileForm, type ProfileValues } from '@/components/forms/ProfileForm';
 import { updatePreferences } from '@/app/actions/update-preferences';
+import { updateAdventureReminderOptOut } from '@/app/actions/update-email-preferences';
 import { updateProfileStructured } from '@/app/actions/update-profile-structured';
 import { ManageSubscriptionButton } from '@/app/(site)/billing/manage-subscription-button';
 import {
@@ -23,6 +24,8 @@ export function AccountClient({
     currentPeriodEnd: string | null;
     preferences: PreferencesValues;
     profile: ProfileValues;
+    adventureRemindersOptedOut: boolean;
+    adventureRemindersUnavailable: boolean;
   };
 }) {
   const billingLabel = useMemo(() => {
@@ -36,6 +39,13 @@ export function AccountClient({
 
   const isActive = initial.subscriptionStatus === 'active';
   const accountState = useAccountChanged(initial.userId);
+  const [remindersOptedOut, setRemindersOptedOut] = useState(initial.adventureRemindersOptedOut);
+  const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderMessage, setReminderMessage] = useState<string | null>(
+    initial.adventureRemindersUnavailable
+      ? 'Mail preferences are unavailable right now.'
+      : null,
+  );
 
   async function savePreferences(values: PreferencesValues) {
     const res = await updatePreferences(values, initial.userId);
@@ -103,6 +113,46 @@ export function AccountClient({
           <p className="text-xs text-muted-foreground">
             Email change can be added here once enabled in Supabase Auth settings.
           </p>
+          <label className="flex items-start gap-3 pt-2 text-sm">
+            <input
+              type="checkbox"
+              className="mt-1 size-4 accent-primary"
+              checked={!remindersOptedOut}
+              disabled={initial.adventureRemindersUnavailable || reminderSaving}
+              onChange={(event) => {
+                const optedOut = !event.target.checked;
+                setReminderSaving(true);
+                setReminderMessage(null);
+                void updateAdventureReminderOptOut(optedOut, initial.userId)
+                  .then((res) => {
+                    if (!res.ok) {
+                      setReminderMessage(res.error);
+                      return;
+                    }
+                    setRemindersOptedOut(optedOut);
+                    setReminderMessage(
+                      optedOut
+                        ? 'Adventure reminders are off.'
+                        : 'Adventure reminders are on.',
+                    );
+                  })
+                  .catch(() => {
+                    setReminderMessage('Unable to save email preferences right now. Please try again.');
+                  })
+                  .finally(() => setReminderSaving(false));
+              }}
+            />
+            <span>
+              <span className="font-medium text-foreground">Adventure reminders</span>
+              <span className="mt-1 block text-muted-foreground">
+                Email when monthly picks are still unredeemed. Subscription receipts and
+                account security messages stay on.
+              </span>
+            </span>
+          </label>
+          {reminderMessage ? (
+            <p className="text-xs text-muted-foreground">{reminderMessage}</p>
+          ) : null}
         </div>
       </section>
     </div>

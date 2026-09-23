@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server';
 import * as Sentry from '@sentry/nextjs';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { beginCronRun, completeCronRun } from '@/lib/cron-runs';
-import { sendRedemptionReminderEmail } from '@/lib/resend';
+import { deliverAdventureReminder } from '@/lib/email-reminder-delivery';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
@@ -12,7 +12,7 @@ export const maxDuration = 300;
 type UserOutcome = {
   userId: string;
   email: string | null;
-  status: 'emailed' | 'skipped' | 'failed';
+  status: 'emailed' | 'skipped' | 'failed' | 'released' | 'reconciliation';
   reason?: string;
 };
 
@@ -110,6 +110,8 @@ export async function GET(request: Request) {
     let emailed = 0;
     let skipped = 0;
     let failed = 0;
+    let released = 0;
+    let reconciled = 0;
 
     for (const [userId, rIds] of itemsByUserCycle.entries()) {
       const email = emailByUserId.get(userId);
@@ -139,18 +141,43 @@ export async function GET(request: Request) {
         continue;
       }
 
-      const result = await sendRedemptionReminderEmail(email, names, daysLeft);
+      let result: Awaited<ReturnType<typeof deliverAdventureReminder>>;
+      try {
+        result = await deliverAdventureReminder({
+          supabase: admin,
+          userId,
+          cycleMonth: cycleMonthStr,
+          email,
+          restaurantNames: names,
+          daysLeft,
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Reminder delivery failed';
+        failed++;
+        outcomes.push({ userId, email, status: 'failed', reason: message });
+        Sentry.captureException(err, { tags: { cron: 'end-of-month-reminder', userId } });
+        continue;
+      }
 
-      if (result.ok) {
+      if (result.status === 'emailed') {
         emailed++;
         outcomes.push({ userId, email, status: 'emailed' });
+      } else if (result.status === 'skipped') {
+        skipped++;
+        outcomes.push({ userId, email, status: 'skipped', reason: result.reason });
+      } else if (result.status === 'released') {
+        released++;
+        outcomes.push({ userId, email, status: 'released', reason: result.reason });
+      } else if (result.status === 'reconciliation') {
+        reconciled++;
+        outcomes.push({ userId, email, status: 'reconciliation', reason: result.reason });
       } else {
         failed++;
-        outcomes.push({ userId, email, status: 'failed', reason: result.error });
+        outcomes.push({ userId, email, status: 'failed', reason: result.reason });
         Sentry.captureMessage('Redemption reminder email failed', {
           level: 'warning',
           tags: { cron: 'end-of-month-reminder', userId },
-          extra: { error: result.error },
+          extra: { error: result.reason },
         });
       }
     }
@@ -160,6 +187,8 @@ export async function GET(request: Request) {
       emailed,
       skipped,
       failed,
+      released,
+      reconciled,
       daysLeft,
       outcomes,
     };
@@ -171,6 +200,8 @@ export async function GET(request: Request) {
       emailed,
       skipped,
       failed,
+      released,
+      reconciled,
       daysLeft,
     });
   } catch (err) {

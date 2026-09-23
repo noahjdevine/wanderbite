@@ -19,7 +19,7 @@ export default async function AccountPage() {
   }
 
   const admin = getSupabaseAdmin();
-  const [profileResult, prefsResult] = await Promise.all([
+  const [profileResult, prefsResult, reminderPrefResult] = await Promise.all([
     admin
       .from('user_profiles')
       .select(
@@ -28,6 +28,12 @@ export default async function AccountPage() {
       .eq('id', user.id)
       .maybeSingle(),
     admin.from('user_preferences').select('excluded_cuisines').eq('user_id', user.id).maybeSingle(),
+    admin
+      .from('email_topic_preferences')
+      .select('opted_out')
+      .eq('user_id', user.id)
+      .eq('topic', 'adventure_reminders')
+      .maybeSingle(),
   ]);
 
   if (profileResult.error) {
@@ -103,6 +109,8 @@ export default async function AccountPage() {
                 zip: p.address_zip ?? '',
               },
             },
+            adventureRemindersOptedOut: reminderPrefResult.data?.opted_out === true,
+            adventureRemindersUnavailable: Boolean(reminderPrefResult.error),
           }}
         />
       </div>

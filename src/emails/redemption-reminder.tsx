@@ -18,6 +18,7 @@ export type RedemptionReminderEmailProps = {
   baseUrl: string;
   restaurantNames: string[];
   daysLeft: number;
+  unsubscribeUrl: string;
 };
 
 function normalizeBase(url: string) {
@@ -28,6 +29,7 @@ export function RedemptionReminderEmail({
   baseUrl,
   restaurantNames,
   daysLeft,
+  unsubscribeUrl,
 }: RedemptionReminderEmailProps) {
   const root = normalizeBase(baseUrl);
   const challengesUrl = `${root}/challenges`;
@@ -177,6 +179,10 @@ export function RedemptionReminderEmail({
             {' · '}
             <Link href="mailto:support@wanderbite.com" style={{ color: ACCENT }}>
               support@wanderbite.com
+            </Link>
+            {' · '}
+            <Link href={unsubscribeUrl} style={{ color: ACCENT }}>
+              Unsubscribe from adventure reminders
             </Link>
           </Text>
         </Container>
