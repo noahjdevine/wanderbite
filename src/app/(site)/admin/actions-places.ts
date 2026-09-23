@@ -7,7 +7,7 @@ import { findRestaurantPlace } from '@/lib/google-places';
 
 export async function enrichSingleRestaurant(
   restaurantId: string
-): Promise<{ ok: boolean; photoUrl?: string; error?: string }> {
+): Promise<{ ok: boolean; error?: string }> {
   const auth = await assertAdmin();
   if (!auth.ok) {
     return { ok: false, error: auth.error };
@@ -25,15 +25,12 @@ export async function enrichSingleRestaurant(
   }
 
   const r = row as { id: string; name: string; address: string | null };
-  const { placeId, photoUrl } = await findRestaurantPlace(
-    r.name,
-    r.address ?? ''
-  );
+  const { placeId } = await findRestaurantPlace(r.name, r.address ?? '');
 
-  if (!photoUrl) {
+  if (!placeId) {
     return {
       ok: false,
-      error: 'No Google Places photo found for this restaurant.',
+      error: 'No Google Place found for this restaurant.',
     };
   }
 
@@ -41,7 +38,7 @@ export async function enrichSingleRestaurant(
     .from('restaurants')
     .update({
       google_place_id: placeId,
-      google_photo_url: photoUrl,
+      google_photo_url: null,
     })
     .eq('id', restaurantId);
 
@@ -54,10 +51,10 @@ export async function enrichSingleRestaurant(
     action: 'restaurant.enrich',
     targetType: 'restaurant',
     targetId: restaurantId,
-    metadata: { placeId, photoUrl },
+    metadata: { placeId },
   });
 
-  return { ok: true, photoUrl };
+  return { ok: true };
 }
 
 export async function enrichAllRestaurants(): Promise<{
@@ -92,8 +89,6 @@ export async function enrichAllRestaurants(): Promise<{
 
   for (const r of list) {
     const res = await enrichSingleRestaurant(r.id);
-    const photoUrl = res.ok ? res.photoUrl : undefined;
-    console.warn('Enriching:', r.name, '→', photoUrl ?? 'not found');
     if (res.ok) updated += 1;
     else failed += 1;
     await new Promise((resolve) => setTimeout(resolve, 300));

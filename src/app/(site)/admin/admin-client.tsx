@@ -53,7 +53,7 @@ type RestaurantRow = {
   price_range: string | null;
   neighborhood: string | null;
   image_url: string | null;
-  google_photo_url: string | null;
+  has_google_place: boolean;
   has_pin: boolean;
   status: string;
 };
@@ -224,13 +224,8 @@ export function AdminClient({
       setPartnerSuccessFullUrl(`${origin}${result.partnerUrl}`);
       const name = (formData.get('name') as string)?.trim() ?? '';
       const gid = (formData.get('google_place_id') as string)?.trim() ?? '';
-      const gphoto = (formData.get('google_photo_url') as string)?.trim() || null;
       if (gid && name) {
-        const att = await attachGoogleMetadataToLatestRestaurantByName(
-          name,
-          gid,
-          gphoto
-        );
+        const att = await attachGoogleMetadataToLatestRestaurantByName(name, gid);
         if (!att.ok) {
           toast.warning('Restaurant added, but Google metadata was not saved.', {
             description: att.error,
@@ -310,12 +305,10 @@ export function AdminClient({
       if (result.ok) {
         setRestaurants((prev) =>
           prev.map((r) =>
-            r.id === id
-              ? { ...r, google_photo_url: result.photoUrl ?? r.google_photo_url }
-              : r
+            r.id === id ? { ...r, has_google_place: true } : r
           )
         );
-        toast.success('Photo updated.');
+        toast.success('Place linked.');
         router.refresh();
         return;
       }
@@ -493,11 +486,6 @@ export function AdminClient({
                   name="google_place_id"
                   value={googleImported.googlePlaceId}
                 />
-                <input
-                  type="hidden"
-                  name="google_photo_url"
-                  value={googleImported.photoUrl ?? ''}
-                />
                 <input type="hidden" name="lat" value={googleImported.lat ?? ''} />
                 <input type="hidden" name="lon" value={googleImported.lon ?? ''} />
                 <div className="sm:col-span-2">
@@ -587,14 +575,13 @@ export function AdminClient({
                 </div>
                 <div>
                   <label htmlFor="import-image_url" className="mb-1 block text-sm font-medium">
-                    Image URL
+                    Image path
                   </label>
                   <input
                     id="import-image_url"
                     name="image_url"
-                    type="url"
-                    placeholder="https://..."
-                    defaultValue={googleImported.photoUrl ?? ''}
+                    type="text"
+                    placeholder="/images/..."
                     className="w-full rounded-lg border border-green-300 bg-white px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
                   />
                 </div>
@@ -744,13 +731,13 @@ export function AdminClient({
             </div>
             <div>
               <label htmlFor="image_url" className="mb-1 block text-sm font-medium">
-                Image URL
+                Image path
               </label>
               <input
                 id="image_url"
                 name="image_url"
-                type="url"
-                placeholder="https://..."
+                type="text"
+                placeholder="/images/..."
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               />
             </div>
@@ -811,8 +798,8 @@ export function AdminClient({
               onClick={() => void handleEnrichAll()}
             >
               {enrichingBulk
-                ? 'Fetching photos... this may take a moment'
-                : 'Enrich Restaurant Photos'}
+                ? 'Linking places...'
+                : 'Link Google Places'}
             </Button>
           </div>
         </CardHeader>
@@ -839,7 +826,7 @@ export function AdminClient({
                       <TableCell className="font-medium">
                         <span className="inline-flex flex-wrap items-center gap-2">
                           {r.name}
-                          {r.google_photo_url?.trim() ? (
+                          {r.has_google_place ? (
                             <span className="rounded-full bg-emerald-600/15 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                               Photo ✓
                             </span>

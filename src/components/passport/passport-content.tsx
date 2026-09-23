@@ -1,4 +1,6 @@
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { createClient } from '@/lib/supabase/server';
+import { safeManualImagePath } from '@/lib/restaurant-image';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { calculateStreak, getStreakBadgeForLongest } from '@/lib/streaks';
@@ -23,8 +25,6 @@ type RedemptionRow = {
         lon: number | null;
         cuisine_tags: string[] | null;
         neighborhood: string | null;
-        image_url: string | null;
-        google_photo_url: string | null;
         google_place_id: string | null;
       }
     | {
@@ -35,8 +35,6 @@ type RedemptionRow = {
         lon: number | null;
         cuisine_tags: string[] | null;
         neighborhood: string | null;
-        image_url: string | null;
-        google_photo_url: string | null;
         google_place_id: string | null;
       }[]
     | null;
@@ -73,8 +71,6 @@ export async function PassportContent({ userId }: PassportContentProps) {
         lon,
         cuisine_tags,
         neighborhood,
-        image_url,
-        google_photo_url,
         google_place_id
       )
     `
@@ -106,8 +102,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
           lon: restaurant.lon,
           cuisine_tags: restaurant.cuisine_tags,
           neighborhood: restaurant.neighborhood,
-          image_url: restaurant.image_url,
-          google_photo_url: restaurant.google_photo_url,
+          image_url: null as string | null,
           google_place_id: restaurant.google_place_id,
         },
       };
@@ -115,6 +110,22 @@ export async function PassportContent({ userId }: PassportContentProps) {
     .filter((v): v is PassportVisit => v != null);
 
   const uniqueRestaurantIds = [...new Set(visits.map((v) => v.restaurant.id))];
+  if (uniqueRestaurantIds.length > 0) {
+    const admin = getSupabaseAdmin();
+    const { data: imageRows } = await admin
+      .from('restaurants')
+      .select('id, image_url')
+      .in('id', uniqueRestaurantIds);
+    const safeById = new Map(
+      (imageRows ?? []).map((row) => [
+        (row as { id: string; image_url: string | null }).id,
+        safeManualImagePath((row as { image_url: string | null }).image_url),
+      ]),
+    );
+    for (const visit of visits) {
+      visit.restaurant.image_url = safeById.get(visit.restaurant.id) ?? null;
+    }
+  }
   const [streak, biteRes, ratingMap] = await Promise.all([
     calculateStreak(userId),
     getBiteNotes(),
