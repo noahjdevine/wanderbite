@@ -21,6 +21,7 @@ export type DeleteRestaurantResult =
   | { ok: true }
   | { ok: false; error: string };
 
+/** Current user, admin role, and currentLevel aal2. Fails before any service-role write. */
 async function checkAdminPermissions() {
   const auth = await assertAdmin();
   if (!auth.ok) {

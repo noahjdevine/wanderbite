@@ -5,6 +5,7 @@ import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { findRestaurantPlace } from '@/lib/google-places';
 
+/** Current user, admin role, and currentLevel aal2 before any service-role read or write. */
 export async function enrichSingleRestaurant(
   restaurantId: string
 ): Promise<{ ok: boolean; error?: string }> {
