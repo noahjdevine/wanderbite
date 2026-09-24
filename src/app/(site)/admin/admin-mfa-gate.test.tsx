@@ -4,13 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { AdminMfaGate } from './admin-mfa-gate';
 
 const beginAdminMfaEnrollment = vi.hoisted(() => vi.fn());
-const verifyAdminMfaEnrollment = vi.hoisted(() => vi.fn());
-const verifyAdminMfaChallenge = vi.hoisted(() => vi.fn());
+const verifyAdminMfaEnrollmentFromForm = vi.hoisted(() => vi.fn());
+const verifyAdminMfaChallengeFromForm = vi.hoisted(() => vi.fn());
 
 vi.mock('./mfa-actions', () => ({
   beginAdminMfaEnrollment,
-  verifyAdminMfaEnrollment,
-  verifyAdminMfaChallenge,
+  verifyAdminMfaEnrollmentFromForm,
+  verifyAdminMfaChallengeFromForm,
 }));
 
 describe('AdminMfaGate', () => {
@@ -18,8 +18,8 @@ describe('AdminMfaGate', () => {
 
   beforeEach(() => {
     beginAdminMfaEnrollment.mockReset();
-    verifyAdminMfaEnrollment.mockReset();
-    verifyAdminMfaChallenge.mockReset();
+    verifyAdminMfaEnrollmentFromForm.mockReset();
+    verifyAdminMfaChallengeFromForm.mockReset();
     document.body.innerHTML = '<div id="root"></div>';
     root = createRoot(document.getElementById('root')!);
   });

@@ -1,14 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useActionState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { loginPartner } from '@/app/actions/partner-auth';
+import { loginPartnerFromForm } from '@/app/actions/partner-auth';
 import { persistAndStripPartnerRedeemCode } from '@/lib/pending-redeem-storage';
 import { PartnerPinField } from '@/components/partner/partner-pin-field';
-import { PARTNER_PIN_VALIDATION_MESSAGE } from '@/lib/partner-pin-format';
 
 type PartnerSlugLoginProps = {
   restaurantId: string;
@@ -18,6 +17,12 @@ type PartnerSlugLoginProps = {
   initialCode?: string | null;
 };
 
+function pinErrorCopy(error: string): string {
+  return /invalid pin/i.test(error)
+    ? 'Invalid PIN. Please contact support@wanderbite.com'
+    : error;
+}
+
 export function PartnerSlugLogin({
   restaurantId,
   restaurantName,
@@ -26,9 +31,13 @@ export function PartnerSlugLogin({
   initialCode,
 }: PartnerSlugLoginProps) {
   const router = useRouter();
-  const [pin, setPin] = useState('');
-  const [rememberDevice, setRememberDevice] = useState(mode === 'redeem');
-  const [loading, setLoading] = useState(false);
+  const [state, formAction, pending] = useActionState(loginPartnerFromForm, null);
+  const nextPath =
+    mode === 'redeem' && redirectSlug
+      ? `/partner/${redirectSlug}/redeem`
+      : redirectSlug
+        ? `/partner/${redirectSlug}`
+        : '';
 
   useEffect(() => {
     if (mode !== 'redeem' || !redirectSlug) return;
@@ -36,37 +45,19 @@ export function PartnerSlugLogin({
     persistAndStripPartnerRedeemCode(redirectSlug, fromQuery || initialCode);
   }, [mode, redirectSlug, initialCode]);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const trimmed = pin.trim();
-    if (!trimmed) {
-      toast.error(PARTNER_PIN_VALIDATION_MESSAGE);
+  useEffect(() => {
+    if (!state) return;
+    if (state.ok) {
+      toast.success(`Welcome, ${state.restaurantName}`);
+      if (mode === 'redeem' && redirectSlug) {
+        router.replace(`/partner/${redirectSlug}/redeem`);
+      } else {
+        router.refresh();
+      }
       return;
     }
-    setLoading(true);
-    try {
-      const result = await loginPartner(restaurantId, trimmed, { rememberDevice });
-      if (result.ok) {
-        toast.success(`Welcome, ${result.restaurantName}`);
-        if (mode === 'redeem' && redirectSlug) {
-          router.replace(`/partner/${redirectSlug}/redeem`);
-        } else {
-          router.refresh();
-        }
-      } else {
-        const err = result.error ?? '';
-        toast.error(
-          /invalid pin/i.test(err)
-            ? 'Invalid PIN. Please contact support@wanderbite.com'
-            : err
-        );
-      }
-    } catch {
-      toast.error('Invalid PIN. Please contact support@wanderbite.com');
-    } finally {
-      setLoading(false);
-    }
-  }
+    toast.error(pinErrorCopy(state.error));
+  }, [state, mode, redirectSlug, router]);
 
   return (
     <Card>
@@ -81,31 +72,38 @@ export function PartnerSlugLogin({
         </p>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form action={formAction} className="space-y-4">
+          <input type="hidden" name="restaurantId" value={restaurantId} />
+          {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
           <div>
             <label htmlFor="partner-slug-pin" className="mb-1 block text-sm font-medium">
               PIN
             </label>
             <PartnerPinField
               id="partner-slug-pin"
-              value={pin}
-              onChange={setPin}
-              disabled={loading}
+              name="pin"
+              disabled={pending}
               placeholder="Enter your PIN"
             />
           </div>
           <label className="flex cursor-pointer items-start gap-2 text-sm text-muted-foreground">
             <input
               type="checkbox"
-              checked={rememberDevice}
-              onChange={(e) => setRememberDevice(e.target.checked)}
+              name="rememberDevice"
+              value="true"
+              defaultChecked={mode === 'redeem'}
               className="mt-0.5"
-              disabled={loading}
+              disabled={pending}
             />
             <span>Keep me signed in on this device (recommended for host iPad)</span>
           </label>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Logging in…' : 'Log In'}
+          {state && !state.ok ? (
+            <p className="text-sm text-destructive" role="alert">
+              {pinErrorCopy(state.error)}
+            </p>
+          ) : null}
+          <Button type="submit" className="w-full" disabled={pending}>
+            {pending ? 'Logging in…' : 'Log In'}
           </Button>
         </form>
       </CardContent>

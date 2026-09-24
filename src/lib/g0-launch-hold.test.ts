@@ -82,7 +82,7 @@ describe('G0 launch-hold copy', () => {
     expect(SIGNUP_EARLY_ACCESS_MESSAGE).toBe(
       "You're creating an early-access WanderBite account. Founding memberships are opening soon.",
     );
-    expect(src).toMatch(/handleSubmit/);
+    expect(src).toMatch(/signUpFromForm/);
     expect(src).toMatch(/type=["']email["']/);
     expect(src).not.toMatch(/waitlist/i);
     expect(src).not.toMatch(/createCheckoutSession/);

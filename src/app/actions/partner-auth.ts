@@ -1,6 +1,8 @@
 'use server';
 
 import { cookies, headers } from 'next/headers';
+import { redirect } from 'next/navigation';
+import { safeAuthRedirectPath } from '@/lib/auth/safe-redirect';
 import { verifyPartnerPin } from '@/lib/partner-pin';
 import {
   isPartnerLoginDisabled,
@@ -158,6 +160,28 @@ export async function loginPartner(
 
   expireNamedPartnerCookie(cookieStore, LEGACY_PARTNER_COOKIE_NAME);
   return { ok: true, restaurantName: row.name };
+}
+
+/** Form POST for partner PIN login. Redirects only after the existing login succeeds. */
+export async function loginPartnerFromForm(
+  _prev: PartnerLoginResult | null,
+  formData: FormData,
+): Promise<PartnerLoginResult> {
+  const restaurantId = String(formData.get('restaurantId') ?? '');
+  const pin = String(formData.get('pin') ?? '');
+  const remember = formData.get('rememberDevice');
+  const rememberDevice = remember === 'true' || remember === 'on';
+  const result = await loginPartner(
+    restaurantId,
+    pin,
+    rememberDevice ? { rememberDevice: true } : undefined,
+  );
+  if (!result.ok) return result;
+  const next = String(formData.get('next') ?? '').trim();
+  if (next) {
+    redirect(safeAuthRedirectPath(next, '/partner'));
+  }
+  return result;
 }
 
 export type PartnerSession =

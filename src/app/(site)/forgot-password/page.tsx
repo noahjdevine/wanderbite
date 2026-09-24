@@ -1,40 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useActionState } from 'react';
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { sendPasswordResetEmail } from '@/app/actions/auth';
-import { PASSWORD_RESET_VALIDATION_MESSAGE } from '@/lib/password-reset';
+import { sendPasswordResetFromForm } from '@/app/actions/credential-password';
 
 export default function ForgotPasswordPage() {
-  const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sent, setSent] = useState(false);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    if (!email.trim()) {
-      setError(PASSWORD_RESET_VALIDATION_MESSAGE);
-      return;
-    }
-    setIsLoading(true);
-    try {
-      const result = await sendPasswordResetEmail(email.trim());
-      if (result.ok) {
-        setSent(true);
-        return;
-      }
-      setError(result.error);
-    } catch {
-      setError('Something went wrong. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
-  }
+  const [state, formAction, isLoading] = useActionState(sendPasswordResetFromForm, null);
+  const sent = state?.ok === true;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -60,28 +35,27 @@ export default function ForgotPasswordPage() {
               </Button>
             </>
           ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form action={formAction} className="space-y-4">
               <div className="space-y-2">
                 <label htmlFor="email" className="text-sm font-medium">
                   Email
                 </label>
                 <input
                   id="email"
+                  name="email"
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
                   autoComplete="email"
                   disabled={isLoading}
                 />
               </div>
-              {error && (
+              {state && !state.ok ? (
                 <Alert variant="destructive">
                   <AlertTitle>Error</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription>{state.error}</AlertDescription>
                 </Alert>
-              )}
+              ) : null}
               <Button type="submit" className="w-full" disabled={isLoading}>
                 {isLoading ? 'Sending…' : 'Send Reset Link'}
               </Button>

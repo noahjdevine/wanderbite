@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Card,
@@ -29,7 +29,12 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Copy, Loader2, MapPin } from 'lucide-react';
-import { addRestaurant, deleteRestaurant, generateMissingSlugs, setRestaurantPin } from './actions';
+import {
+  addRestaurantFromForm,
+  deleteRestaurant,
+  generateMissingSlugs,
+  setRestaurantPinFromForm,
+} from './actions';
 import { PartnerPinField } from '@/components/partner/partner-pin-field';
 import {
   enrichAllRestaurants,
@@ -38,10 +43,44 @@ import {
 import {
   searchRestaurantsFromGoogle,
   getRestaurantDetailsFromGoogle,
-  attachGoogleMetadataToLatestRestaurantByName,
+  importRestaurantFromGoogle,
 } from './actions-import';
+import { GOOGLE_IMPORT_PARTIAL_MESSAGE } from '@/lib/google-import-outcome';
 import type { PlaceDetails } from '@/lib/google-places-import';
 import { toast } from 'sonner';
+
+function SetRestaurantPinForm({
+  restaurantId,
+  disabled,
+}: {
+  restaurantId: string;
+  disabled?: boolean;
+}) {
+  const [state, formAction, pending] = useActionState(setRestaurantPinFromForm, null);
+
+  useEffect(() => {
+    if (!state?.ok) return;
+    toast.success('Partner PIN saved.');
+  }, [state]);
+
+  return (
+    <form action={formAction} className="flex flex-col gap-2">
+      <input type="hidden" name="restaurantId" value={restaurantId} />
+      <PartnerPinField
+        id={`set-pin-${restaurantId}`}
+        name="pin"
+        disabled={pending || disabled}
+        placeholder="Set 4–6 digit PIN"
+        className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
+      />
+      {state && !state.ok ? <p className="text-sm text-destructive">{state.error}</p> : null}
+      {state?.ok ? <p className="text-sm">Partner PIN saved.</p> : null}
+      <Button type="submit" variant="outline" size="sm" disabled={pending || disabled}>
+        {pending ? 'Saving…' : 'Set PIN'}
+      </Button>
+    </form>
+  );
+}
 
 type RestaurantRow = {
   id: string;
@@ -86,8 +125,13 @@ export function AdminClient({
   auditEntries,
 }: AdminClientProps) {
   const router = useRouter();
+  const manualFormRef = useRef<HTMLFormElement>(null);
   const [restaurants, setRestaurants] = useState(initialRestaurants);
-  const [adding, setAdding] = useState(false);
+  const [addState, addAction, adding] = useActionState(addRestaurantFromForm, null);
+  const [importState, importAction, importAdding] = useActionState(
+    importRestaurantFromGoogle,
+    null,
+  );
   const [googleQuery, setGoogleQuery] = useState('');
   const [googleSearching, setGoogleSearching] = useState(false);
   const [googleSearchError, setGoogleSearchError] = useState<string | null>(null);
@@ -97,7 +141,6 @@ export function AdminClient({
   >([]);
   const [googleDetailsLoading, setGoogleDetailsLoading] = useState(false);
   const [googleImported, setGoogleImported] = useState<PlaceDetails | null>(null);
-  const [importAdding, setImportAdding] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [enrichingBulk, setEnrichingBulk] = useState(false);
@@ -106,51 +149,42 @@ export function AdminClient({
     null
   );
   const [slugGenerating, setSlugGenerating] = useState(false);
-  const [pinDrafts, setPinDrafts] = useState<Record<string, string>>({});
-  const [settingPinId, setSettingPinId] = useState<string | null>(null);
 
   useEffect(() => {
     setRestaurants(initialRestaurants);
   }, [initialRestaurants]);
 
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const formData = new FormData(form);
-    setAdding(true);
-    try {
-      const result = await addRestaurant(formData);
-      if (result.ok) {
-        const origin =
-          typeof window !== 'undefined' ? window.location.origin : '';
-        setPartnerSuccessFullUrl(`${origin}${result.partnerUrl}`);
-        toast.success('Restaurant added.');
-        form.reset();
-        router.refresh();
-        return;
-      }
-      toast.error(result.error);
-    } finally {
-      setAdding(false);
+  useEffect(() => {
+    if (!addState) return;
+    if (!addState.ok) {
+      toast.error(addState.error);
+      return;
     }
-  }
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    setPartnerSuccessFullUrl(`${origin}${addState.partnerUrl}`);
+    toast.success('Restaurant added.');
+    manualFormRef.current?.reset();
+    router.refresh();
+  }, [addState, router]);
 
-  async function handleSetPin(restaurantId: string) {
-    const pin = pinDrafts[restaurantId] ?? '';
-    setSettingPinId(restaurantId);
-    try {
-      const result = await setRestaurantPin(restaurantId, pin);
-      if (result.ok) {
-        toast.success('Partner PIN saved.');
-        setPinDrafts((current) => ({ ...current, [restaurantId]: '' }));
-        router.refresh();
-        return;
-      }
-      toast.error(result.error);
-    } finally {
-      setSettingPinId(null);
+  useEffect(() => {
+    if (!importState) return;
+    if (importState.status === 'error') {
+      toast.error(importState.error);
+      return;
     }
-  }
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    setPartnerSuccessFullUrl(`${origin}${importState.partnerUrl}`);
+    if (importState.status === 'partial') {
+      toast.warning(GOOGLE_IMPORT_PARTIAL_MESSAGE, { description: importState.error });
+    } else {
+      toast.success('Restaurant added.');
+    }
+    setGoogleImported(null);
+    setGoogleResults([]);
+    setGoogleQuery('');
+    router.refresh();
+  }, [importState, router]);
 
   async function handleGoogleSearch() {
     const q = googleQuery.trim();
@@ -205,41 +239,6 @@ export function AdminClient({
       setGoogleImported(details);
     } finally {
       setGoogleDetailsLoading(false);
-    }
-  }
-
-  async function handleImportAdd(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const formData = new FormData(form);
-    setImportAdding(true);
-    try {
-      const result = await addRestaurant(formData);
-      if (!result.ok) {
-        toast.error(result.error);
-        return;
-      }
-      const origin =
-        typeof window !== 'undefined' ? window.location.origin : '';
-      setPartnerSuccessFullUrl(`${origin}${result.partnerUrl}`);
-      const name = (formData.get('name') as string)?.trim() ?? '';
-      const gid = (formData.get('google_place_id') as string)?.trim() ?? '';
-      if (gid && name) {
-        const att = await attachGoogleMetadataToLatestRestaurantByName(name, gid);
-        if (!att.ok) {
-          toast.warning('Restaurant added, but Google metadata was not saved.', {
-            description: att.error,
-          });
-        }
-      }
-      toast.success('Restaurant added.');
-      form.reset();
-      setGoogleImported(null);
-      setGoogleResults([]);
-      setGoogleQuery('');
-      router.refresh();
-    } finally {
-      setImportAdding(false);
     }
   }
 
@@ -478,7 +477,7 @@ export function AdminClient({
               </div>
               <form
                 key={googleImported.googlePlaceId}
-                onSubmit={(ev) => void handleImportAdd(ev)}
+                action={importAction}
                 className="grid gap-4 sm:grid-cols-2"
               >
                 <input
@@ -611,6 +610,21 @@ export function AdminClient({
                     className="w-full rounded-lg border border-green-300 bg-white px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-600 focus-visible:ring-offset-2"
                   />
                 </div>
+                {importState?.status === 'error' ? (
+                  <p className="text-sm text-destructive sm:col-span-2">{importState.error}</p>
+                ) : null}
+                {importState?.status === 'partial' ? (
+                  <div className="space-y-1 text-sm sm:col-span-2" role="status">
+                    <p>{GOOGLE_IMPORT_PARTIAL_MESSAGE}</p>
+                    <p>{importState.error}</p>
+                    <p>Partner link: {importState.partnerUrl}</p>
+                  </div>
+                ) : null}
+                {importState?.status === 'success' ? (
+                  <p className="text-sm sm:col-span-2" role="status">
+                    Restaurant added. Partner link: {importState.partnerUrl}
+                  </p>
+                ) : null}
                 <div className="sm:col-span-2">
                   <Button
                     type="submit"
@@ -626,6 +640,24 @@ export function AdminClient({
         </CardContent>
       </Card>
 
+      {importState?.status === 'partial' ? (
+        <div className="space-y-1 text-sm" role="status">
+          <p>{GOOGLE_IMPORT_PARTIAL_MESSAGE}</p>
+          <p>{importState.error}</p>
+          <p>Partner link: {importState.partnerUrl}</p>
+        </div>
+      ) : null}
+      {importState?.status === 'success' ? (
+        <p className="text-sm" role="status">
+          Restaurant added. Partner link: {importState.partnerUrl}
+        </p>
+      ) : null}
+      {importState?.status === 'error' ? (
+        <p className="text-sm text-destructive" role="alert">
+          {importState.error}
+        </p>
+      ) : null}
+
       <p className="text-center text-sm text-muted-foreground">— or add manually —</p>
 
       <Card className="border-violet-200">
@@ -634,7 +666,7 @@ export function AdminClient({
           <CardDescription>Insert a new partner restaurant.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="grid gap-4 sm:grid-cols-2">
+          <form ref={manualFormRef} action={addAction} className="grid gap-4 sm:grid-cols-2">
             <div className="sm:col-span-2">
               <label htmlFor="name" className="mb-1 block text-sm font-medium">
                 Name *
@@ -763,6 +795,14 @@ export function AdminClient({
                 className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
               />
             </div>
+            {addState && !addState.ok ? (
+              <p className="text-sm text-destructive sm:col-span-2">{addState.error}</p>
+            ) : null}
+            {addState?.ok ? (
+              <p className="text-sm sm:col-span-2" role="status">
+                Restaurant added. Partner link: {addState.partnerUrl}
+              </p>
+            ) : null}
             <div className="sm:col-span-2">
               <Button type="submit" disabled={adding}>
                 {adding ? 'Adding…' : 'Add Restaurant'}
@@ -869,25 +909,7 @@ export function AdminClient({
                       <TableCell>
                         <div className="flex min-w-[12rem] flex-col gap-2">
                           <span className="text-sm">{r.has_pin ? 'Yes' : '—'}</span>
-                          <PartnerPinField
-                            id={`set-pin-${r.id}`}
-                            value={pinDrafts[r.id] ?? ''}
-                            onChange={(next) =>
-                              setPinDrafts((current) => ({ ...current, [r.id]: next }))
-                            }
-                            disabled={settingPinId === r.id}
-                            placeholder="Set 4–6 digit PIN"
-                            className="w-full rounded-md border border-input bg-background px-2 py-1 text-sm font-mono"
-                          />
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            disabled={settingPinId === r.id || deleting}
-                            onClick={() => void handleSetPin(r.id)}
-                          >
-                            {settingPinId === r.id ? 'Saving…' : 'Set PIN'}
-                          </Button>
+                          <SetRestaurantPinForm restaurantId={r.id} disabled={deleting} />
                         </div>
                       </TableCell>
                       <TableCell>

@@ -49,13 +49,17 @@ describe('G17-A legal attestation', () => {
     expect(signupAttestationDecision(null, null)).toBe('no-session');
 
     const signup = source('src/app/(site)/signup/page.tsx');
-    expect(signup).toContain('signupAttestationDecision');
     expect(signup).toContain('I confirm I am 21 or older.');
     expect(signup).toContain(`Terms and Privacy version {LEGAL_DOCUMENT_VERSION}`);
     expect(signup).not.toContain('preferences screen');
     expect(signup).not.toContain('localStorage');
     expect(signup).not.toMatch(/sessionStorage\.setItem\((?!PENDING_EMAIL_KEY)/);
-    expect(signup).toContain('attestation=after-sign-in');
+
+    const signupAction = source('src/app/actions/credential-sign-up.ts');
+    expect(signupAction).toContain('signupAttestationDecision');
+    expect(signupAction).toContain('attestation=after-sign-in');
+    expect(signupAction).toContain('getEmailConfirmCallbackUrl');
+    expect(signupAction).not.toContain('window.location.origin');
 
     const checkEmail = source('src/app/(site)/signup/check-email/page.tsx');
     expect(checkEmail).toContain('ATTESTATION_AFTER_SIGN_IN_MESSAGE');
