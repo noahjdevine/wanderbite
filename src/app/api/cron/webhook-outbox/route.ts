@@ -1,42 +1,72 @@
 import * as Sentry from '@sentry/nextjs';
 import { NextResponse } from 'next/server';
 import { verifyCronAuth } from '@/lib/cron-auth';
-import { beginCronRun, completeCronRun } from '@/lib/cron-runs';
-import { processWebhookOutbox } from '@/lib/stripe-outbox-worker';
+import { runLeasedCron } from '@/lib/cron-runs';
+import { processWebhookOutbox, webhookQueueSnapshot } from '@/lib/stripe-outbox-worker';
 import { getStripe } from '@/lib/stripe';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const JOB = 'webhook-outbox';
+const LEASE_SECONDS = 3 * 60;
+
 export async function GET(request: Request) {
   const authError = verifyCronAuth(request);
   if (authError) return authError;
 
-  const runId = await beginCronRun('webhook-outbox');
+  const exit = await runLeasedCron({
+    jobName: JOB,
+    runKey: JOB,
+    leaseSeconds: LEASE_SECONDS,
+    resumeExpired: false,
+    allowNewAttempt: true,
+    async work(ctx) {
+      if (!(await ctx.renew())) return;
+      let result: Awaited<ReturnType<typeof processWebhookOutbox>>;
+      try {
+        result = await processWebhookOutbox({
+          supabase: getSupabaseAdmin(),
+          stripe: getStripe(),
+        });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Webhook outbox failed';
+        Sentry.captureException(err, { tags: { cron: JOB } });
+        await ctx.fail(message);
+        return;
+      }
 
-  try {
-    const result = await processWebhookOutbox({
-      supabase: getSupabaseAdmin(),
-      stripe: getStripe(),
-    });
+      for (const item of result.items) {
+        if (!(await ctx.renew())) return;
+        const recorded = await ctx.record(
+          item.itemKey,
+          item.status,
+          item.status === 'failed' ? 'claimed item did not finish' : null,
+        );
+        if (!recorded) return;
+      }
 
-    const failed = result.eventErrors > 0 || result.outboxErrors > 0;
-    await completeCronRun(runId, {
-      status: failed ? 'failed' : 'success',
-      result,
-      error: failed
-        ? `eventErrors=${result.eventErrors} outboxErrors=${result.outboxErrors}`
-        : undefined,
-    });
+      let backlog: number | null = null;
+      let inFlight: number | null = null;
+      try {
+        const queue = await webhookQueueSnapshot(getSupabaseAdmin());
+        backlog = queue.backlog;
+        inFlight = queue.inFlight;
+      } catch (err) {
+        console.error('[cron] webhook queue snapshot failed:', err);
+      }
 
-    return NextResponse.json(result, { status: failed ? 500 : 200 });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[cron] webhook-outbox:', err);
-    Sentry.captureException(err, { tags: { cron: 'webhook-outbox' } });
-    await completeCronRun(runId, { status: 'failed', error: message });
-    await Sentry.flush(2000);
-    return NextResponse.json({ error: message }, { status: 500 });
-  }
+      await ctx.finishClear({
+        eventsClaimed: result.eventsClaimed,
+        outboxClaimed: result.outboxClaimed,
+        eventErrors: result.eventErrors,
+        outboxErrors: result.outboxErrors,
+        backlog,
+        inFlight,
+      });
+    },
+  });
+
+  return NextResponse.json(exit.body, { status: exit.httpStatus });
 }

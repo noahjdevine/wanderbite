@@ -123,6 +123,16 @@ export const SCHEMA_CONTRACT = {
     'status',
     'swapped_from_item_id',
   ],
+  cron_job_leases: [
+    'job_name',
+    'run_key',
+    'owner_token',
+    'lease_expires_at',
+    'attempt_run_id',
+    'checkpoint',
+    'updated_at',
+  ],
+  cron_run_items: ['run_id', 'item_key', 'status', 'detail', 'error', 'updated_at'],
   cron_runs: [
     'id',
     'job_name',
@@ -131,6 +141,8 @@ export const SCHEMA_CONTRACT = {
     'status',
     'result',
     'error',
+    'run_key',
+    'owner_token',
   ],
   email_reminder_deliveries: [
     'user_id',

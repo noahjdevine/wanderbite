@@ -144,6 +144,21 @@ async function applySendResult(
   return { status: 'reconciliation', reason: decision.reason };
 }
 
+export async function readReminderDeliveryStatus(
+  supabase: Admin,
+  userId: string,
+  cycleMonth: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('email_reminder_deliveries')
+    .select('status')
+    .eq('user_id', userId)
+    .eq('cycle_month', cycleMonth)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.status ?? null;
+}
+
 export async function deliverAdventureReminder(params: {
   supabase: Admin;
   userId: string;

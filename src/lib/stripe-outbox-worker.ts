@@ -25,6 +25,18 @@ class OutboxAlreadyRecorded extends Error {
   }
 }
 
+class OutboxLostClaim extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'OutboxLostClaim';
+  }
+}
+
+export type WebhookAttemptItem = {
+  itemKey: string;
+  status: 'succeeded' | 'failed';
+};
+
 type OutboxRow = {
   effect_key: string;
   effect_type: string;
@@ -149,7 +161,7 @@ async function deliverConfirmation(
       p_recipient: address,
       p_email_payload: fresh,
     });
-    if (!storedOk) return;
+    if (!storedOk) throw new OutboxLostClaim('lost claim before storing email');
     outbound = fresh;
   } else {
     if (!stored) {
@@ -181,11 +193,12 @@ async function deliverConfirmation(
   const sent = await sendStoredEmail(outbound, row.effect_key);
   const after = decideAfterSend(sent);
   if (after.action === 'complete') {
-    await rpcBoolean(supabase, 'complete_webhook_outbox_email', {
+    const completed = await rpcBoolean(supabase, 'complete_webhook_outbox_email', {
       p_effect_key: row.effect_key,
       p_token: claimToken,
       p_message_id: after.messageId,
     });
+    if (!completed) throw new OutboxLostClaim('lost claim after send');
     return;
   }
   if (after.action === 'suppress') {
@@ -262,11 +275,9 @@ async function deliverOutboxRow(
       p_effect_key: row.effect_key,
       p_token: claimToken,
     });
-    if (!completed) {
-      return;
-    }
+    if (!completed) throw new OutboxLostClaim('lost claim before complete');
   } catch (err) {
-    if (err instanceof OutboxAlreadyRecorded) throw err;
+    if (err instanceof OutboxAlreadyRecorded || err instanceof OutboxLostClaim) throw err;
     const message = err instanceof Error ? err.message : 'Outbox delivery failed';
     await rpcBoolean(supabase, 'fail_webhook_outbox', {
       p_effect_key: row.effect_key,
@@ -282,11 +293,18 @@ export async function processWebhookOutbox(params: {
   stripe: Stripe;
   eventLimit?: number;
   outboxLimit?: number;
-}): Promise<{ eventsClaimed: number; outboxClaimed: number; eventErrors: number; outboxErrors: number }> {
+}): Promise<{
+  eventsClaimed: number;
+  outboxClaimed: number;
+  eventErrors: number;
+  outboxErrors: number;
+  items: WebhookAttemptItem[];
+}> {
   const eventLimit = params.eventLimit ?? EVENT_BATCH;
   const outboxLimit = params.outboxLimit ?? OUTBOX_BATCH;
   let eventErrors = 0;
   let outboxErrors = 0;
+  const items: WebhookAttemptItem[] = [];
 
   const eventToken = crypto.randomUUID();
   const { data: eventRows, error: eventError } = await params.supabase.rpc(
@@ -299,6 +317,7 @@ export async function processWebhookOutbox(params: {
   const claimedEvents = eventRows ?? [];
 
   for (const row of claimedEvents) {
+    let itemOk = false;
     try {
       const event = row.payload as unknown as Stripe.Event;
       await applyVerifiedStripeEvent({
@@ -312,6 +331,8 @@ export async function processWebhookOutbox(params: {
       });
       if (!completed) {
         eventErrors += 1;
+      } else {
+        itemOk = true;
       }
     } catch (err) {
       eventErrors += 1;
@@ -322,6 +343,10 @@ export async function processWebhookOutbox(params: {
         p_error: message,
       }).catch(() => false);
     }
+    items.push({
+      itemKey: `event:${row.event_id}`,
+      status: itemOk ? 'succeeded' : 'failed',
+    });
   }
 
   const outboxToken = crypto.randomUUID();
@@ -335,11 +360,17 @@ export async function processWebhookOutbox(params: {
   const claimedOutbox = (outboxRows ?? []) as OutboxRow[];
 
   for (const row of claimedOutbox) {
+    let itemOk = false;
     try {
       await deliverOutboxRow(params.supabase, row, outboxToken);
+      itemOk = true;
     } catch {
       outboxErrors += 1;
     }
+    items.push({
+      itemKey: `outbox:${row.effect_key}`,
+      status: itemOk ? 'succeeded' : 'failed',
+    });
   }
 
   await params.supabase.rpc('purge_stripe_event_payloads');
@@ -349,5 +380,84 @@ export async function processWebhookOutbox(params: {
     outboxClaimed: claimedOutbox.length,
     eventErrors,
     outboxErrors,
+    items,
+  };
+}
+
+async function exactCount(
+  query: PromiseLike<{ count: number | null; error: { message: string } | null }>,
+): Promise<number> {
+  const result = await query;
+  if (result.error) throw new Error(result.error.message);
+  return result.count ?? 0;
+}
+
+export async function webhookQueueSnapshot(supabase: StripeAdminClient): Promise<{
+  backlog: number;
+  inFlight: number;
+}> {
+  const staleBefore = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const receivedBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const now = new Date().toISOString();
+
+  const [eventReady, eventStale, eventFlight, eventReceived, outboxReady, outboxStale, outboxFlight] =
+    await Promise.all([
+      exactCount(
+        supabase
+          .from('stripe_events')
+          .select('event_id', { count: 'exact', head: true })
+          .lte('available_at', now)
+          .eq('status', 'failed'),
+      ),
+      exactCount(
+        supabase
+          .from('stripe_events')
+          .select('event_id', { count: 'exact', head: true })
+          .lte('available_at', now)
+          .eq('status', 'processing')
+          .lt('claimed_at', staleBefore),
+      ),
+      exactCount(
+        supabase
+          .from('stripe_events')
+          .select('event_id', { count: 'exact', head: true })
+          .eq('status', 'processing')
+          .gte('claimed_at', staleBefore),
+      ),
+      exactCount(
+        supabase
+          .from('stripe_events')
+          .select('event_id', { count: 'exact', head: true })
+          .lte('available_at', now)
+          .eq('status', 'received')
+          .lt('received_at', receivedBefore),
+      ),
+      exactCount(
+        supabase
+          .from('webhook_outbox')
+          .select('effect_key', { count: 'exact', head: true })
+          .lte('available_at', now)
+          .in('status', ['pending', 'failed']),
+      ),
+      exactCount(
+        supabase
+          .from('webhook_outbox')
+          .select('effect_key', { count: 'exact', head: true })
+          .lte('available_at', now)
+          .eq('status', 'processing')
+          .lt('claimed_at', staleBefore),
+      ),
+      exactCount(
+        supabase
+          .from('webhook_outbox')
+          .select('effect_key', { count: 'exact', head: true })
+          .eq('status', 'processing')
+          .gte('claimed_at', staleBefore),
+      ),
+    ]);
+
+  return {
+    backlog: eventReady + eventStale + eventReceived + outboxReady + outboxStale,
+    inFlight: eventFlight + outboxFlight,
   };
 }
