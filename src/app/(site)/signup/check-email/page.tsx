@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { ATTESTATION_AFTER_SIGN_IN_MESSAGE } from '@/lib/legal-attestation';
 
 const PENDING_EMAIL_KEY = 'wanderbite_pending_signup_email';
 const RESEND_COOLDOWN_MS = 60_000;
@@ -17,6 +18,12 @@ export default function CheckEmailPage() {
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
   const [resendErr, setResendErr] = useState<string | null>(null);
+  const [showAttestationLater, setShowAttestationLater] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setShowAttestationLater(params.get('attestation') === 'after-sign-in');
+  }, []);
 
   useEffect(() => {
     try {
@@ -83,6 +90,13 @@ export default function CheckEmailPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {showAttestationLater ? (
+            <Alert>
+              <AlertTitle>Confirmation still needed</AlertTitle>
+              <AlertDescription>{ATTESTATION_AFTER_SIGN_IN_MESSAGE}</AlertDescription>
+            </Alert>
+          ) : null}
+
           {!email ? (
             <Alert>
               <AlertTitle>Wrong device?</AlertTitle>

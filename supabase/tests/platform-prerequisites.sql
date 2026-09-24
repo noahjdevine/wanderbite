@@ -31,3 +31,19 @@ alter default privileges for role postgres in schema public
   grant all on sequences to anon, authenticated, service_role;
 alter default privileges for role postgres in schema public
   grant all on functions to anon, authenticated, service_role;
+
+-- The pinned image's auth schema defines auth.uid() and not auth.jwt().
+-- Hosted Supabase provides auth.jwt() for the is_anonymous claim. This fixture
+-- supplies that helper for the disposable database only. Do not copy it into
+-- an application migration.
+create or replace function auth.jwt()
+returns jsonb
+language sql
+stable
+as $$
+  select coalesce(
+    nullif(current_setting('request.jwt.claim', true), ''),
+    nullif(current_setting('request.jwt.claims', true), '')
+  )::jsonb;
+$$;
+grant execute on function auth.jwt() to anon, authenticated, service_role;

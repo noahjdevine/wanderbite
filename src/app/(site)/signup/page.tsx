@@ -6,12 +6,18 @@ import { useRouter } from 'next/navigation';
 import { Loader2, Check } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { signUpSchema } from '@/lib/validations/auth';
+import { recordLegalAttestation } from '@/app/actions/legal-attestation';
+import { ACCOUNT_CHANGED_MESSAGE } from '@/lib/auth/account-changed';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PasswordField } from '@/components/auth/password-field';
 import { cn } from '@/lib/utils';
 import { SIGNUP_EARLY_ACCESS_MESSAGE } from '@/lib/checkout-copy';
+import {
+  LEGAL_DOCUMENT_VERSION,
+  signupAttestationDecision,
+} from '@/lib/legal-attestation';
 
 const PENDING_EMAIL_KEY = 'wanderbite_pending_signup_email';
 
@@ -20,6 +26,7 @@ export default function SignUpPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [confirmAge21, setConfirmAge21] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,12 +34,14 @@ export default function SignUpPage() {
     email?: string;
     password?: string;
     confirmPassword?: string;
+    confirmAge21?: string;
     agreeToTerms?: string;
   }>({});
   const [touched, setTouched] = useState({
     email: false,
     password: false,
     confirmPassword: false,
+    confirmAge21: false,
     agreeToTerms: false,
   });
 
@@ -41,7 +50,7 @@ export default function SignUpPage() {
     confirmPassword.length > 0 && password === confirmPassword;
 
   function runFieldValidation(
-    which: 'email' | 'password' | 'confirmPassword' | 'agreeToTerms',
+    which: 'email' | 'password' | 'confirmPassword' | 'confirmAge21' | 'agreeToTerms',
     next?: Partial<typeof touched>
   ) {
     const t = { ...touched, ...next };
@@ -49,6 +58,7 @@ export default function SignUpPage() {
       email: email.trim(),
       password,
       confirmPassword,
+      confirmAge21,
       agreeToTerms,
     };
     const result = signUpSchema.safeParse(partial);
@@ -59,6 +69,7 @@ export default function SignUpPage() {
         if (which === 'email' || t.email) delete n.email;
         if (which === 'password' || t.password) delete n.password;
         if (which === 'confirmPassword' || t.confirmPassword) delete n.confirmPassword;
+        if (which === 'confirmAge21' || t.confirmAge21) delete n.confirmAge21;
         if (which === 'agreeToTerms' || t.agreeToTerms) delete n.agreeToTerms;
         return n;
       });
@@ -76,6 +87,9 @@ export default function SignUpPage() {
     if (which === 'confirmPassword' || t.confirmPassword) {
       nextErr.confirmPassword = flat.confirmPassword?.[0];
     }
+    if (which === 'confirmAge21' || t.confirmAge21) {
+      nextErr.confirmAge21 = flat.confirmAge21?.[0];
+    }
     if (which === 'agreeToTerms' || t.agreeToTerms) {
       nextErr.agreeToTerms = flat.agreeToTerms?.[0];
     }
@@ -89,6 +103,7 @@ export default function SignUpPage() {
       email: true,
       password: true,
       confirmPassword: true,
+      confirmAge21: true,
       agreeToTerms: true,
     });
 
@@ -96,6 +111,7 @@ export default function SignUpPage() {
       email: email.trim(),
       password,
       confirmPassword,
+      confirmAge21,
       agreeToTerms,
     });
 
@@ -105,6 +121,7 @@ export default function SignUpPage() {
         email: flat.email?.[0],
         password: flat.password?.[0],
         confirmPassword: flat.confirmPassword?.[0],
+        confirmAge21: flat.confirmAge21?.[0],
         agreeToTerms: flat.agreeToTerms?.[0],
       });
       return;
@@ -124,13 +141,35 @@ export default function SignUpPage() {
         setError(err.message);
         return;
       }
+      const decision = signupAttestationDecision(data.user?.id, data.session?.user?.id);
+      if (decision === 'record' && data.user) {
+        const recorded = await recordLegalAttestation(
+          {
+            presentedVersion: LEGAL_DOCUMENT_VERSION,
+            age21: true,
+            agreeToTerms: true,
+          },
+          data.user.id,
+        );
+        if (!recorded.ok) {
+          setError(recorded.error);
+          return;
+        }
+      } else if (decision === 'mismatch') {
+        setError(ACCOUNT_CHANGED_MESSAGE);
+        return;
+      }
       const addr = data.user?.email ?? result.data.email;
       try {
         sessionStorage.setItem(PENDING_EMAIL_KEY, addr);
       } catch {
         /* ignore */
       }
-      router.push('/signup/check-email');
+      router.push(
+        decision === 'no-session'
+          ? '/signup/check-email?attestation=after-sign-in'
+          : '/signup/check-email',
+      );
     } catch {
       setError('Something went wrong. Please try again.');
     } finally {
@@ -234,6 +273,34 @@ export default function SignUpPage() {
               <p className="text-xs font-medium text-primary">Passwords match</p>
             ) : null}
 
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              Terms and Privacy version {LEGAL_DOCUMENT_VERSION}.
+            </p>
+
+            <div className="flex items-start gap-3">
+              <input
+                id="signup-age"
+                type="checkbox"
+                checked={confirmAge21}
+                onChange={(e) => {
+                  setConfirmAge21(e.target.checked);
+                  if (touched.confirmAge21) runFieldValidation('confirmAge21');
+                }}
+                onBlur={() => {
+                  setTouched((x) => ({ ...x, confirmAge21: true }));
+                  runFieldValidation('confirmAge21', { confirmAge21: true });
+                }}
+                disabled={isLoading}
+                className="mt-1 size-4 shrink-0 rounded border-input"
+              />
+              <label htmlFor="signup-age" className="text-sm leading-snug text-muted-foreground">
+                I confirm I am 21 or older.
+              </label>
+            </div>
+            {touched.confirmAge21 && fieldErrors.confirmAge21 ? (
+              <p className="text-sm text-destructive">{fieldErrors.confirmAge21}</p>
+            ) : null}
+
             <div className="flex items-start gap-3">
               <input
                 id="signup-agree"
@@ -258,6 +325,10 @@ export default function SignUpPage() {
                 and{' '}
                 <Link href="/privacy" className="font-medium text-primary underline-offset-2 hover:underline">
                   Privacy Policy
+                </Link>
+                , and{' '}
+                <Link href="/rules" className="font-medium text-primary underline-offset-2 hover:underline">
+                  Challenge rules
                 </Link>
                 .
               </label>
@@ -291,10 +362,6 @@ export default function SignUpPage() {
               </Link>
             </p>
 
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Cocktail bar experiences are optional. If you opt in later, we&apos;ll ask you to confirm you&apos;re
-              21+ on the preferences screen—that keeps signup simple for everyone else.
-            </p>
           </form>
         </CardContent>
       </Card>

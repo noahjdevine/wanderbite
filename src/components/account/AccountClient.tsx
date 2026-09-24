@@ -12,6 +12,8 @@ import {
   AccountChangedNotice,
   useAccountChanged,
 } from '@/components/auth/account-changed-notice';
+import { LegalAttestationForm } from '@/components/legal/legal-attestation-form';
+import { LEGAL_DOCUMENT_VERSION } from '@/lib/legal-attestation';
 
 export function AccountClient({
   initial,
@@ -26,6 +28,7 @@ export function AccountClient({
     profile: ProfileValues;
     adventureRemindersOptedOut: boolean;
     adventureRemindersUnavailable: boolean;
+    hasCurrentAttestation: boolean;
   };
 }) {
   const billingLabel = useMemo(() => {
@@ -88,6 +91,22 @@ export function AccountClient({
             onSubmit={savePreferences}
             submitLabel="Save changes"
           />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border bg-card p-6 shadow-sm">
+        <h2 className="text-lg font-semibold tracking-tight">Age and terms</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Purchase asks for this confirmation. You can keep using Wanderbite either way.
+        </p>
+        <div className="mt-6">
+          {initial.hasCurrentAttestation ? (
+            <p className="text-sm text-muted-foreground" role="status">
+              You confirmed you are 21 or older and agreed to terms version {LEGAL_DOCUMENT_VERSION}.
+            </p>
+          ) : (
+            <LegalAttestationForm renderedForUserId={initial.userId} />
+          )}
         </div>
       </section>
 

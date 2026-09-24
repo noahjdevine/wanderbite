@@ -11,6 +11,11 @@ import {
   CHECKOUT_INELIGIBLE_MESSAGE,
   isLaunchEligibleAddress,
 } from '@/lib/launch-market';
+import {
+  LEGAL_ATTESTATION_REQUIRED_MESSAGE,
+  LEGAL_CONTENT_ID,
+  LEGAL_DOCUMENT_VERSION,
+} from '@/lib/legal-attestation';
 
 const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? '';
 const priceId = process.env.STRIPE_PRICE_ID ?? '';
@@ -63,6 +68,18 @@ export async function createCheckoutSession(
     })
   ) {
     return { ok: false, error: CHECKOUT_INELIGIBLE_MESSAGE };
+  }
+
+  const { data: attestation, error: attestationError } = await admin
+    .from('legal_attestations')
+    .select('user_id')
+    .eq('user_id', auth.userId)
+    .eq('document_version', LEGAL_DOCUMENT_VERSION)
+    .eq('content_id', LEGAL_CONTENT_ID)
+    .eq('age_21', true)
+    .maybeSingle();
+  if (attestationError || !attestation) {
+    return { ok: false, error: LEGAL_ATTESTATION_REQUIRED_MESSAGE };
   }
 
   const cancelPath = options?.cancelPath ?? '/pricing?canceled=true';

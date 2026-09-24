@@ -24,6 +24,8 @@ import {
 } from '@/components/auth/account-changed-notice';
 import { CLUB_PLAN_FEATURES } from '@/lib/club-plan-content';
 import { launchAreaState } from '@/lib/launch-market';
+import { LegalAttestationForm } from '@/components/legal/legal-attestation-form';
+import { LEGAL_DOCUMENT_VERSION } from '@/lib/legal-attestation';
 
 export type OnboardingInitial = {
   step: WizardStep;
@@ -32,6 +34,7 @@ export type OnboardingInitial = {
   subscriptionStatus: string | null;
   preferences: PreferencesValues;
   profile: ProfileValues;
+  hasCurrentAttestation: boolean;
 };
 
 export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
@@ -192,6 +195,16 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
                         </Link>
                         .
                       </p>
+                    </div>
+                    <div className="rounded-lg border border-border/50 p-3">
+                      {initial.hasCurrentAttestation ? (
+                        <p className="text-sm text-muted-foreground" role="status">
+                          You confirmed you are 21 or older and agreed to terms version{' '}
+                          {LEGAL_DOCUMENT_VERSION}.
+                        </p>
+                      ) : (
+                        <LegalAttestationForm renderedForUserId={initial.userId} />
+                      )}
                     </div>
                   </CardContent>
                   <CardFooter className="flex flex-col gap-3 pt-2">

@@ -5,6 +5,7 @@ import { AccountClient } from '@/components/account/AccountClient';
 import { normalizeCuisineIds } from '@/lib/cuisines';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import type { UserPreferencesRow } from '@/types/user-preferences';
+import { hasCurrentLegalAttestation } from '@/lib/legal-attestation-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,7 @@ export default async function AccountPage() {
   }
 
   const admin = getSupabaseAdmin();
-  const [profileResult, prefsResult, reminderPrefResult] = await Promise.all([
+  const [profileResult, prefsResult, reminderPrefResult, hasCurrentAttestation] = await Promise.all([
     admin
       .from('user_profiles')
       .select(
@@ -34,6 +35,7 @@ export default async function AccountPage() {
       .eq('user_id', user.id)
       .eq('topic', 'adventure_reminders')
       .maybeSingle(),
+    hasCurrentLegalAttestation(supabase, user.id),
   ]);
 
   if (profileResult.error) {
@@ -111,6 +113,7 @@ export default async function AccountPage() {
             },
             adventureRemindersOptedOut: reminderPrefResult.data?.opted_out === true,
             adventureRemindersUnavailable: Boolean(reminderPrefResult.error),
+            hasCurrentAttestation,
           }}
         />
       </div>
