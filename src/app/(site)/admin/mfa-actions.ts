@@ -188,3 +188,44 @@ export async function verifyAdminMfaChallenge(code: string): Promise<MfaFailure>
 
   redirect(ADMIN_MFA_RETURN_PATH);
 }
+
+const ENROLL_JS_REQUIRED =
+  'Authenticator setup has not started. Turn on JavaScript to display the QR code, then enter the current code.';
+
+/** POST challenge. Does not accept a caller-supplied user id. */
+export async function verifyAdminMfaChallengeFromForm(
+  _prev: MfaFailure | null,
+  formData: FormData,
+): Promise<MfaFailure> {
+  return verifyAdminMfaChallenge(String(formData.get('code') ?? ''));
+}
+
+/**
+ * POST enrollment completion. Refuses to create a factor. Setup still starts
+ * in the browser. No setup secret is read here.
+ */
+export async function verifyAdminMfaEnrollmentFromForm(
+  _prev: MfaFailure | null,
+  formData: FormData,
+): Promise<MfaFailure> {
+  const code = String(formData.get('code') ?? '');
+  const role = await assertAdminRole();
+  if (!role.ok) return { ok: false, error: role.error };
+
+  try {
+    const mfa = await sessionMfa();
+    const listed = await mfa.listFactors();
+    if (listed.error) return { ok: false, error: FACTORS_FAILED };
+
+    const factors = readFactors(listed.data);
+    if (factors.some(isVerifiedTotpFactor)) {
+      return { ok: false, error: ALREADY_ENROLLED };
+    }
+    const unverified = factors.find(isUnverifiedTotpFactor);
+    if (!unverified) return { ok: false, error: ENROLL_JS_REQUIRED };
+
+    return verifyAdminMfaEnrollment(unverified.id, code);
+  } catch {
+    return { ok: false, error: ENROLL_JS_REQUIRED };
+  }
+}

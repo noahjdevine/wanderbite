@@ -77,16 +77,19 @@ describe('G7 SEC-05 source contracts', () => {
     expect(verifyAt).toBeGreaterThan(consumeAt);
   });
 
-  it('strips auth secrets before awaiting exchange, including failed exchanges', () => {
+  it('routes reset query secrets through recovery without exchanging them on the reset page', () => {
     const reset = source('src/app/(site)/reset-password/page.tsx');
-    const takeAt = reset.indexOf('takeAuthSecretsAndStripAddressBar');
-    const exchangeAt = reset.indexOf('exchangeCodeForSession');
-    const otpAt = reset.indexOf('verifyOtp');
-    expect(takeAt).toBeGreaterThan(-1);
-    expect(exchangeAt).toBeGreaterThan(takeAt);
-    expect(otpAt).toBeGreaterThan(takeAt);
-    expect(reset).toMatch(/stripConsumedRecoveryHash/);
+    expect(reset).toMatch(/resetPasswordGate/);
+    expect(reset).not.toMatch(/exchangeCodeForSession/);
+    expect(reset).not.toMatch(/verifyOtp/);
     expect(reset).not.toMatch(/replaceState\(\{\}, ''/);
+    const recovery = source('src/app/auth/recovery/route.ts');
+    expect(recovery).toMatch(/exchangeCodeForSession/);
+    expect(recovery).toMatch(/verifyOtp/);
+    const fallback = source('src/app/(site)/reset-password/reset-password-hash-fallback.tsx');
+    expect(fallback).toMatch(/stripConsumedRecoveryHash/);
+    expect(fallback).not.toMatch(/exchangeCodeForSession/);
+    expect(fallback).not.toMatch(/verifyOtp/);
     expect(source('src/components/auth/recovery-redirect.tsx')).toMatch(
       /window\.location\.replace\(`\/reset-password\$\{hash\}`\)/,
     );

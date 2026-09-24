@@ -1,35 +1,30 @@
 'use client';
 
-import { useState } from 'react';
+import { useActionState, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { Loader2, Check } from 'lucide-react';
-import { createClient } from '@/lib/supabase/client';
+import { signUpFromForm } from '@/app/actions/credential-sign-up';
 import { signUpSchema } from '@/lib/validations/auth';
-import { recordLegalAttestation } from '@/app/actions/legal-attestation';
-import { ACCOUNT_CHANGED_MESSAGE } from '@/lib/auth/account-changed';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { PasswordField } from '@/components/auth/password-field';
 import { cn } from '@/lib/utils';
 import { SIGNUP_EARLY_ACCESS_MESSAGE } from '@/lib/checkout-copy';
-import {
-  LEGAL_DOCUMENT_VERSION,
-  signupAttestationDecision,
-} from '@/lib/legal-attestation';
+import { LEGAL_DOCUMENT_VERSION } from '@/lib/legal-attestation';
 
 const PENDING_EMAIL_KEY = 'wanderbite_pending_signup_email';
 
 export default function SignUpPage() {
-  const router = useRouter();
+  const [state, formAction, isLoading] = useActionState(signUpFromForm, {
+    error: null,
+    fieldErrors: {},
+  });
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [confirmAge21, setConfirmAge21] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{
     email?: string;
     password?: string;
@@ -46,8 +41,7 @@ export default function SignUpPage() {
   });
 
   const pwdLenOk = password.length >= 8;
-  const pwdMatchOk =
-    confirmPassword.length > 0 && password === confirmPassword;
+  const pwdMatchOk = confirmPassword.length > 0 && password === confirmPassword;
 
   function runFieldValidation(
     which: 'email' | 'password' | 'confirmPassword' | 'confirmAge21' | 'agreeToTerms',
@@ -96,9 +90,13 @@ export default function SignUpPage() {
     setFieldErrors((prev) => ({ ...prev, ...nextErr }));
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
+  function onSubmit(event: React.FormEvent<HTMLFormElement>) {
+    const formData = new FormData(event.currentTarget);
+    const nextEmail = String(formData.get('email') ?? '').trim();
+    const nextPassword = String(formData.get('password') ?? '');
+    const nextConfirm = String(formData.get('confirmPassword') ?? '');
+    const nextAge = formData.get('confirmAge21') === 'true';
+    const nextTerms = formData.get('agreeToTerms') === 'true';
     setTouched({
       email: true,
       password: true,
@@ -108,14 +106,14 @@ export default function SignUpPage() {
     });
 
     const result = signUpSchema.safeParse({
-      email: email.trim(),
-      password,
-      confirmPassword,
-      confirmAge21,
-      agreeToTerms,
+      email: nextEmail,
+      password: nextPassword,
+      confirmPassword: nextConfirm,
+      confirmAge21: nextAge,
+      agreeToTerms: nextTerms,
     });
-
     if (!result.success) {
+      event.preventDefault();
       const flat = result.error.flatten().fieldErrors;
       setFieldErrors({
         email: flat.email?.[0],
@@ -127,55 +125,21 @@ export default function SignUpPage() {
       return;
     }
 
-    setIsLoading(true);
+    setFieldErrors({});
     try {
-      const supabase = createClient();
-      const { data, error: err } = await supabase.auth.signUp({
-        email: result.data.email,
-        password: result.data.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (err) {
-        setError(err.message);
-        return;
-      }
-      const decision = signupAttestationDecision(data.user?.id, data.session?.user?.id);
-      if (decision === 'record' && data.user) {
-        const recorded = await recordLegalAttestation(
-          {
-            presentedVersion: LEGAL_DOCUMENT_VERSION,
-            age21: true,
-            agreeToTerms: true,
-          },
-          data.user.id,
-        );
-        if (!recorded.ok) {
-          setError(recorded.error);
-          return;
-        }
-      } else if (decision === 'mismatch') {
-        setError(ACCOUNT_CHANGED_MESSAGE);
-        return;
-      }
-      const addr = data.user?.email ?? result.data.email;
-      try {
-        sessionStorage.setItem(PENDING_EMAIL_KEY, addr);
-      } catch {
-        /* ignore */
-      }
-      router.push(
-        decision === 'no-session'
-          ? '/signup/check-email?attestation=after-sign-in'
-          : '/signup/check-email',
-      );
+      sessionStorage.setItem(PENDING_EMAIL_KEY, nextEmail);
     } catch {
-      setError('Something went wrong. Please try again.');
-    } finally {
-      setIsLoading(false);
+      /* ignore */
     }
   }
+
+  const shown = {
+    email: state.fieldErrors.email ?? fieldErrors.email,
+    password: state.fieldErrors.password ?? fieldErrors.password,
+    confirmPassword: state.fieldErrors.confirmPassword ?? fieldErrors.confirmPassword,
+    confirmAge21: state.fieldErrors.confirmAge21 ?? fieldErrors.confirmAge21,
+    agreeToTerms: state.fieldErrors.agreeToTerms ?? fieldErrors.agreeToTerms,
+  };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
@@ -190,13 +154,14 @@ export default function SignUpPage() {
           </p>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form action={formAction} onSubmit={onSubmit} className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="signup-email" className="text-sm font-medium">
                 Email
               </label>
               <input
                 id="signup-email"
+                name="email"
                 type="email"
                 value={email}
                 onChange={(e) => {
@@ -211,15 +176,14 @@ export default function SignUpPage() {
                 autoComplete="email"
                 disabled={isLoading}
                 className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-base sm:text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-                aria-invalid={!!fieldErrors.email}
+                aria-invalid={!!shown.email}
               />
-              {fieldErrors.email ? (
-                <p className="text-sm text-destructive">{fieldErrors.email}</p>
-              ) : null}
+              {shown.email ? <p className="text-sm text-destructive">{shown.email}</p> : null}
             </div>
 
             <PasswordField
               id="signup-password"
+              name="password"
               label="Password"
               value={password}
               onChange={(v) => {
@@ -232,7 +196,7 @@ export default function SignUpPage() {
               }}
               disabled={isLoading}
               autoComplete="new-password"
-              error={touched.password ? fieldErrors.password : null}
+              error={touched.password || state.fieldErrors.password ? shown.password : null}
             />
             {touched.password && password.length > 0 ? (
               <ul className="space-y-1 text-xs text-muted-foreground">
@@ -248,6 +212,7 @@ export default function SignUpPage() {
 
             <PasswordField
               id="signup-confirm"
+              name="confirmPassword"
               label="Confirm password"
               value={confirmPassword}
               onChange={(v) => {
@@ -262,8 +227,8 @@ export default function SignUpPage() {
               autoComplete="new-password"
               placeholder="Repeat password"
               error={
-                touched.confirmPassword && fieldErrors.confirmPassword
-                  ? fieldErrors.confirmPassword
+                shown.confirmPassword
+                  ? shown.confirmPassword
                   : touched.confirmPassword && confirmPassword && !pwdMatchOk
                     ? "Passwords don't match."
                     : null
@@ -280,7 +245,9 @@ export default function SignUpPage() {
             <div className="flex items-start gap-3">
               <input
                 id="signup-age"
+                name="confirmAge21"
                 type="checkbox"
+                value="true"
                 checked={confirmAge21}
                 onChange={(e) => {
                   setConfirmAge21(e.target.checked);
@@ -297,14 +264,16 @@ export default function SignUpPage() {
                 I confirm I am 21 or older.
               </label>
             </div>
-            {touched.confirmAge21 && fieldErrors.confirmAge21 ? (
-              <p className="text-sm text-destructive">{fieldErrors.confirmAge21}</p>
+            {(touched.confirmAge21 || state.fieldErrors.confirmAge21) && shown.confirmAge21 ? (
+              <p className="text-sm text-destructive">{shown.confirmAge21}</p>
             ) : null}
 
             <div className="flex items-start gap-3">
               <input
                 id="signup-agree"
+                name="agreeToTerms"
                 type="checkbox"
+                value="true"
                 checked={agreeToTerms}
                 onChange={(e) => {
                   setAgreeToTerms(e.target.checked);
@@ -333,14 +302,14 @@ export default function SignUpPage() {
                 .
               </label>
             </div>
-            {touched.agreeToTerms && fieldErrors.agreeToTerms ? (
-              <p className="text-sm text-destructive">{fieldErrors.agreeToTerms}</p>
+            {(touched.agreeToTerms || state.fieldErrors.agreeToTerms) && shown.agreeToTerms ? (
+              <p className="text-sm text-destructive">{shown.agreeToTerms}</p>
             ) : null}
 
-            {error ? (
+            {state.error ? (
               <Alert variant="destructive">
                 <AlertTitle>Something went wrong</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>{state.error}</AlertDescription>
               </Alert>
             ) : null}
 
@@ -361,7 +330,6 @@ export default function SignUpPage() {
                 Sign in
               </Link>
             </p>
-
           </form>
         </CardContent>
       </Card>

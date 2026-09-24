@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useActionState, useEffect, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -13,8 +13,8 @@ import {
 } from '@/components/ui/card';
 import {
   beginAdminMfaEnrollment,
-  verifyAdminMfaChallenge,
-  verifyAdminMfaEnrollment,
+  verifyAdminMfaChallengeFromForm,
+  verifyAdminMfaEnrollmentFromForm,
 } from './mfa-actions';
 
 const inputClassName =
@@ -31,12 +31,12 @@ function LostFactorNotice() {
 }
 
 export function AdminMfaGate({ mode }: { mode: 'enroll' | 'challenge' }) {
-  const [factorId, setFactorId] = useState<string | null>(null);
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const action =
+    mode === 'enroll' ? verifyAdminMfaEnrollmentFromForm : verifyAdminMfaChallengeFromForm;
+  const [state, formAction, pending] = useActionState(action, null);
 
   useEffect(() => {
     if (mode !== 'enroll') return;
@@ -48,7 +48,6 @@ export function AdminMfaGate({ mode }: { mode: 'enroll' | 'challenge' }) {
         setSetupError(result.error);
         return;
       }
-      setFactorId(result.factorId);
       setQrCode(result.qrCode);
       setSecret(result.secret);
     })();
@@ -57,17 +56,7 @@ export function AdminMfaGate({ mode }: { mode: 'enroll' | 'challenge' }) {
     };
   }, [mode]);
 
-  function onSubmit(formData: FormData) {
-    const code = String(formData.get('code') ?? '');
-    setError(null);
-    startTransition(async () => {
-      const result =
-        mode === 'enroll'
-          ? await verifyAdminMfaEnrollment(factorId ?? '', code)
-          : await verifyAdminMfaChallenge(code);
-      if (!result.ok) setError(result.error);
-    });
-  }
+  const error = state && !state.ok ? state.error : null;
 
   return (
     <Card>
@@ -109,7 +98,7 @@ export function AdminMfaGate({ mode }: { mode: 'enroll' | 'challenge' }) {
           </div>
         ) : null}
 
-        <form action={onSubmit} className="space-y-3">
+        <form action={formAction} className="space-y-3">
           <div className="space-y-2">
             <label htmlFor="admin-mfa-code" className="text-sm font-medium">
               6-digit code
@@ -130,7 +119,7 @@ export function AdminMfaGate({ mode }: { mode: 'enroll' | 'challenge' }) {
               <AlertDescription>{error}</AlertDescription>
             </Alert>
           ) : null}
-          <Button type="submit" disabled={pending || (mode === 'enroll' && !factorId)}>
+          <Button type="submit" disabled={pending}>
             {pending ? 'Checking…' : mode === 'enroll' ? 'Enable and continue' : 'Continue'}
           </Button>
         </form>

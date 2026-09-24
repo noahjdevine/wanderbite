@@ -11,6 +11,11 @@ import {
   getPlaceDetails,
 } from '@/lib/google-places-import';
 import { isValidCoordinate } from '@/lib/launch-market';
+import {
+  googleImportOutcome,
+  type GoogleImportOutcome,
+} from '@/lib/google-import-outcome';
+import { addRestaurant } from './actions';
 
 /** Current user, admin role, and currentLevel aal2. Fails before any service-role read or write. */
 async function checkAdminPermissions() {
@@ -150,4 +155,48 @@ export async function getRestaurantDetailsFromGoogle(
     return null;
   }
   return getPlaceDetails(placeId);
+}
+
+/**
+ * Creates the restaurant, then attaches Google metadata when a Place ID is present.
+ * Attach failure leaves the restaurant in place and returns a visible partial result.
+ */
+export async function importRestaurantFromGoogle(
+  _prev: GoogleImportOutcome | null,
+  formData: FormData,
+): Promise<GoogleImportOutcome> {
+  const created = await addRestaurant(formData);
+  if (!created.ok) {
+    return googleImportOutcome({
+      createdOk: false,
+      createdError: created.error,
+      partnerUrl: null,
+      placeId: '',
+      attachedOk: null,
+      attachedError: null,
+    });
+  }
+
+  const placeId = String(formData.get('google_place_id') ?? '').trim();
+  if (!placeId) {
+    return googleImportOutcome({
+      createdOk: true,
+      createdError: null,
+      partnerUrl: created.partnerUrl,
+      placeId: '',
+      attachedOk: null,
+      attachedError: null,
+    });
+  }
+
+  const name = String(formData.get('name') ?? '');
+  const attached = await attachGoogleMetadataToLatestRestaurantByName(name, placeId);
+  return googleImportOutcome({
+    createdOk: true,
+    createdError: null,
+    partnerUrl: created.partnerUrl,
+    placeId,
+    attachedOk: attached.ok,
+    attachedError: attached.ok ? null : attached.error,
+  });
 }

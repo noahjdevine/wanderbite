@@ -79,6 +79,7 @@ export default async function PartnerSlugPage({ params }: PageProps) {
       <PartnerSlugLogin
         restaurantId={restaurant.id}
         restaurantName={restaurant.name}
+        redirectSlug={restaurant.slug}
       />
     </div>
   );

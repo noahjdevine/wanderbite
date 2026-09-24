@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 type PasswordFieldProps = {
   id?: string;
+  name?: string;
   /** Omit or pass empty string to hide the label row (use when you label externally). */
   label?: string;
   value: string;
@@ -20,6 +21,7 @@ type PasswordFieldProps = {
 
 export function PasswordField({
   id: idProp,
+  name,
   label,
   value,
   onChange,
@@ -43,6 +45,7 @@ export function PasswordField({
       <div className="relative">
         <input
           id={id}
+          name={name}
           type={show ? 'text' : 'password'}
           value={value}
           onChange={(e) => onChange(e.target.value)}

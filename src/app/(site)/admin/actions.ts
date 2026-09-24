@@ -288,3 +288,22 @@ export async function setRestaurantPin(
     return { ok: false, error: 'Unable to update the partner PIN right now.' };
   }
 }
+
+/** useActionState wrapper. The insert itself stays in addRestaurant. */
+export async function addRestaurantFromForm(
+  _prev: AddRestaurantResult | null,
+  formData: FormData,
+): Promise<AddRestaurantResult> {
+  return addRestaurant(formData);
+}
+
+/** useActionState wrapper. PIN hashing stays in setRestaurantPin. */
+export async function setRestaurantPinFromForm(
+  _prev: SetRestaurantPinResult | null,
+  formData: FormData,
+): Promise<SetRestaurantPinResult> {
+  return setRestaurantPin(
+    String(formData.get('restaurantId') ?? ''),
+    String(formData.get('pin') ?? ''),
+  );
+}
