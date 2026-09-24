@@ -245,10 +245,12 @@ describe('G11 wiring (source)', () => {
   it('gates swaps at requiredCount 1 and skips ineligible cron users by reason', () => {
     const swap = source('src/app/actions/swap-challenge.ts');
     const cron = source('src/app/api/cron/issue-monthly-challenges/route.ts');
+    const period = source('src/lib/cron-period.ts');
     expect(swap).toMatch(/requiredCount:\s*1/);
     expect(swap).toMatch(/isLaunchEligibleAddress/);
-    expect(cron).toMatch(/result\.reason === 'ineligible_address'/);
-    expect(cron).toMatch(/result\.reason === 'invalid_distance_preference'/);
+    expect(cron).toMatch(/issueItemStatus\(result\)/);
+    expect(period).toMatch(/result\.reason === 'ineligible_address'/);
+    expect(period).toMatch(/result\.reason === 'invalid_distance_preference'/);
     expect(cron).not.toMatch(/result\.error.*ineligible/);
     expect(cron).not.toMatch(/from\('markets'\)[\s\S]*limit\(1\)/);
   });
