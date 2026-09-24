@@ -532,13 +532,72 @@ export type Database = {
           },
         ]
       }
+      cron_job_leases: {
+        Row: {
+          attempt_run_id: number | null
+          checkpoint: Json | null
+          job_name: string
+          lease_expires_at: string | null
+          owner_token: string | null
+          run_key: string | null
+          updated_at: string
+        }
+        Insert: {
+          attempt_run_id?: number | null
+          checkpoint?: Json | null
+          job_name: string
+          lease_expires_at?: string | null
+          owner_token?: string | null
+          run_key?: string | null
+          updated_at?: string
+        }
+        Update: {
+          attempt_run_id?: number | null
+          checkpoint?: Json | null
+          job_name?: string
+          lease_expires_at?: string | null
+          owner_token?: string | null
+          run_key?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      cron_run_items: {
+        Row: {
+          detail: Json | null
+          error: string | null
+          item_key: string
+          run_id: number
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          detail?: Json | null
+          error?: string | null
+          item_key: string
+          run_id: number
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          detail?: Json | null
+          error?: string | null
+          item_key?: string
+          run_id?: number
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cron_runs: {
         Row: {
           error: string | null
           finished_at: string | null
           id: number
           job_name: string
+          owner_token: string | null
           result: Json | null
+          run_key: string | null
           started_at: string
           status: string
         }
@@ -547,7 +606,9 @@ export type Database = {
           finished_at?: string | null
           id?: number
           job_name: string
+          owner_token?: string | null
           result?: Json | null
+          run_key?: string | null
           started_at?: string
           status: string
         }
@@ -556,7 +617,9 @@ export type Database = {
           finished_at?: string | null
           id?: number
           job_name?: string
+          owner_token?: string | null
           result?: Json | null
+          run_key?: string | null
           started_at?: string
           status?: string
         }
@@ -1408,6 +1471,59 @@ export type Database = {
       }
     }
     Functions: {
+      acquire_cron_lease: {
+        Args: {
+          p_allow_new_attempt: boolean
+          p_checkpoint?: Json | null
+          p_job_name: string
+          p_lease_seconds: number
+          p_resume_expired: boolean
+          p_run_key: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      cron_run_item_counts: {
+        Args: { p_run_id: number }
+        Returns: Json
+      }
+      finalize_cron_lease: {
+        Args: {
+          p_error?: string | null
+          p_job_name: string
+          p_result?: Json | null
+          p_run_id: number
+          p_status: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      record_cron_run_item: {
+        Args: {
+          p_detail?: Json | null
+          p_error?: string | null
+          p_item_key: string
+          p_job_name: string
+          p_run_id: number
+          p_status: string
+          p_token: string
+        }
+        Returns: boolean
+      }
+      release_cron_lease: {
+        Args: { p_job_name: string; p_run_id: number; p_token: string }
+        Returns: boolean
+      }
+      renew_cron_lease: {
+        Args: {
+          p_checkpoint?: Json | null
+          p_job_name: string
+          p_lease_seconds: number
+          p_run_id: number
+          p_token: string
+        }
+        Returns: boolean
+      }
       _postgis_deprecate: {
         Args: { newname: string; oldname: string; version: string }
         Returns: undefined

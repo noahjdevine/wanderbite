@@ -15,8 +15,8 @@ function source(rel: string): string {
 }
 
 function pinnedContentId(): string {
-  const terms = readFileSync(path.join(ROOT, 'src/app/(site)/terms/page.tsx'));
-  const privacy = readFileSync(path.join(ROOT, 'src/app/(site)/privacy/page.tsx'));
+  const terms = source('src/app/(site)/terms/page.tsx').replace(/\r\n/g, '\n');
+  const privacy = source('src/app/(site)/privacy/page.tsx').replace(/\r\n/g, '\n');
   const hash = createHash('sha256');
   hash.update('terms/page.tsx');
   hash.update('\n');

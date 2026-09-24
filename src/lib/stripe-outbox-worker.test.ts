@@ -112,7 +112,10 @@ describe('processWebhookOutbox confirmation delivery', () => {
       rpcResult: (fn) => (fn === 'complete_webhook_outbox_email' ? false : true),
     });
     const result = await processWebhookOutbox({ supabase: client, stripe: {} as never });
-    expect(result.outboxErrors).toBe(0);
+    expect(result.outboxErrors).toBe(1);
+    expect(result.items).toEqual([
+      { itemKey: 'outbox:subscription-confirmation/sub_1', status: 'failed' },
+    ]);
     expect(sendStoredEmail).toHaveBeenCalledWith(FRESH, 'subscription-confirmation/sub_1');
     expect(calls.some((call) => call.fn === 'fail_webhook_outbox')).toBe(false);
   });

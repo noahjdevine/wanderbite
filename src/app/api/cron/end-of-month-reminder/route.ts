@@ -1,215 +1,204 @@
 import { differenceInCalendarDays, endOfMonth, format, startOfMonth } from 'date-fns';
 import { NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
 import { verifyCronAuth } from '@/lib/cron-auth';
-import { beginCronRun, completeCronRun } from '@/lib/cron-runs';
-import { deliverAdventureReminder } from '@/lib/email-reminder-delivery';
+import { monthlyRunKey, reminderCronItemStatus } from '@/lib/cron-period';
+import { runLeasedCron, type CronLeaseContext } from '@/lib/cron-runs';
+import {
+  deliverAdventureReminder,
+  readReminderDeliveryStatus,
+} from '@/lib/email-reminder-delivery';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import type { Json } from '@/types/database.types';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-type UserOutcome = {
-  userId: string;
-  email: string | null;
-  status: 'emailed' | 'skipped' | 'failed' | 'released' | 'reconciliation';
-  reason?: string;
-};
+const JOB = 'end-of-month-reminder';
+const LEASE_SECONDS = 10 * 60;
+const BATCH = 25;
 
-export async function GET(request: Request) {
-  const authError = verifyCronAuth(request);
-  if (authError) return authError;
+function snapshotDone(value: Json | null): boolean {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      (value as { snapshotComplete?: unknown }).snapshotComplete === true,
+  );
+}
 
-  const runId = await beginCronRun('end-of-month-reminder');
+function detailOf(value: Json | null): { email: string | null; names: string[]; daysLeft: number } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const row = value as { email?: unknown; names?: unknown; daysLeft?: unknown };
+  const names = Array.isArray(row.names) ? row.names.filter((name): name is string => typeof name === 'string') : [];
+  return {
+    email: typeof row.email === 'string' ? row.email : null,
+    names,
+    daysLeft: typeof row.daysLeft === 'number' ? row.daysLeft : 1,
+  };
+}
 
-  try {
-    const admin = getSupabaseAdmin();
-    const now = new Date();
-    const cycleMonthStr = format(startOfMonth(now), 'yyyy-MM-dd');
-    const daysLeft = Math.max(1, differenceInCalendarDays(endOfMonth(now), now));
+async function snapshotReminders(ctx: CronLeaseContext, cycleMonth: string, daysLeft: number): Promise<boolean> {
+  if (snapshotDone(ctx.checkpoint)) return true;
+  if (!(await ctx.guardPeriod())) return false;
+  if (!(await ctx.renew())) return false;
+  const admin = getSupabaseAdmin();
 
-    const { data: cycles, error: cyclesError } = await admin
-      .from('challenge_cycles')
-      .select('id, user_id')
-      .eq('cycle_month', cycleMonthStr)
-      .eq('status', 'active');
+  const { data: cycles, error: cyclesError } = await admin
+    .from('challenge_cycles')
+    .select('id, user_id')
+    .eq('cycle_month', cycleMonth)
+    .eq('status', 'active');
+  if (cyclesError) {
+    await ctx.fail(cyclesError.message);
+    return false;
+  }
+  const cycleRows = cycles ?? [];
+  if (cycleRows.length === 0) {
+    return ctx.renew({ snapshotComplete: true, daysLeft });
+  }
 
-    if (cyclesError) {
-      await completeCronRun(runId, { status: 'failed', error: cyclesError.message });
-      return NextResponse.json({ error: cyclesError.message }, { status: 500 });
-    }
+  const { data: assignedItems, error: itemsError } = await admin
+    .from('challenge_items')
+    .select('cycle_id, restaurant_id')
+    .in('cycle_id', cycleRows.map((cycle) => cycle.id))
+    .eq('status', 'assigned');
+  if (itemsError) {
+    await ctx.fail(itemsError.message);
+    return false;
+  }
 
-    const cycleRows = (cycles ?? []) as { id: string; user_id: string }[];
+  const restaurantIds = new Set<string>();
+  const restaurantsByUser = new Map<string, string[]>();
+  for (const row of assignedItems ?? []) {
+    if (!row.cycle_id || !row.restaurant_id) continue;
+    const cycle = cycleRows.find((candidate) => candidate.id === row.cycle_id);
+    if (!cycle?.user_id) continue;
+    const list = restaurantsByUser.get(cycle.user_id) ?? [];
+    list.push(row.restaurant_id);
+    restaurantsByUser.set(cycle.user_id, list);
+    restaurantIds.add(row.restaurant_id);
+  }
 
-    if (cycleRows.length === 0) {
-      const summary = { processed: 0, emailed: 0, skipped: 0, failed: 0, outcomes: [] };
-      await completeCronRun(runId, { status: 'success', result: summary });
-      return NextResponse.json(summary);
-    }
+  if (restaurantsByUser.size === 0) {
+    return ctx.renew({ snapshotComplete: true, daysLeft });
+  }
 
-    const cycleIds = cycleRows.map((c) => c.id);
-
-    const { data: assignedItems, error: itemsError } = await admin
-      .from('challenge_items')
-      .select('cycle_id, restaurant_id')
-      .in('cycle_id', cycleIds)
-      .eq('status', 'assigned');
-
-    if (itemsError) {
-      await completeCronRun(runId, { status: 'failed', error: itemsError.message });
-      return NextResponse.json({ error: itemsError.message }, { status: 500 });
-    }
-
-    const itemsByUserCycle = new Map<string, string[]>();
-    const restaurantIds = new Set<string>();
-
-    for (const row of (assignedItems ?? []) as { cycle_id: string; restaurant_id: string }[]) {
-      const cycle = cycleRows.find((c) => c.id === row.cycle_id);
-      if (!cycle) continue;
-
-      const key = cycle.user_id;
-      if (!itemsByUserCycle.has(key)) itemsByUserCycle.set(key, []);
-      itemsByUserCycle.get(key)!.push(row.restaurant_id);
-      restaurantIds.add(row.restaurant_id);
-    }
-
-    if (itemsByUserCycle.size === 0) {
-      const summary = {
-        processed: 0,
-        emailed: 0,
-        skipped: cycleRows.length,
-        failed: 0,
-        outcomes: [],
-      };
-      await completeCronRun(runId, { status: 'success', result: summary });
-      return NextResponse.json(summary);
-    }
-
-    const userIds = Array.from(itemsByUserCycle.keys());
-
-    const [{ data: restaurants }, { data: profiles }] = await Promise.all([
-      admin
-        .from('restaurants')
-        .select('id, name')
-        .in('id', Array.from(restaurantIds)),
+  const userIds = Array.from(restaurantsByUser.keys()).sort();
+  const [{ data: restaurants, error: restaurantError }, { data: profiles, error: profileError }] =
+    await Promise.all([
+      admin.from('restaurants').select('id, name').in('id', Array.from(restaurantIds)),
       admin
         .from('user_profiles')
         .select('id, email')
         .in('id', userIds)
         .eq('subscription_status', 'active'),
     ]);
+  if (restaurantError) {
+    await ctx.fail(restaurantError.message);
+    return false;
+  }
+  if (profileError) {
+    await ctx.fail(profileError.message);
+    return false;
+  }
 
-    const restaurantNameById = new Map(
-      ((restaurants ?? []) as { id: string; name: string }[]).map((r) => [r.id, r.name])
-    );
-    const emailByUserId = new Map(
-      ((profiles ?? []) as { id: string; email: string | null }[]).map((p) => [p.id, p.email])
-    );
+  const restaurantNameById = new Map((restaurants ?? []).map((row) => [row.id, row.name]));
+  const emailByUserId = new Map((profiles ?? []).map((row) => [row.id, row.email]));
 
-    const outcomes: UserOutcome[] = [];
-    let emailed = 0;
-    let skipped = 0;
-    let failed = 0;
-    let released = 0;
-    let reconciled = 0;
-
-    for (const [userId, rIds] of itemsByUserCycle.entries()) {
-      const email = emailByUserId.get(userId);
-      if (!email) {
-        skipped++;
-        outcomes.push({
-          userId,
-          email: null,
-          status: 'skipped',
-          reason: 'not an active subscriber or no email on profile',
-        });
-        continue;
-      }
-
-      const names = rIds
-        .map((id) => restaurantNameById.get(id))
-        .filter((n): n is string => Boolean(n));
-
-      if (names.length === 0) {
-        skipped++;
-        outcomes.push({
-          userId,
-          email,
-          status: 'skipped',
-          reason: 'no resolvable restaurant names',
-        });
-        continue;
-      }
-
-      let result: Awaited<ReturnType<typeof deliverAdventureReminder>>;
-      try {
-        result = await deliverAdventureReminder({
-          supabase: admin,
-          userId,
-          cycleMonth: cycleMonthStr,
-          email,
-          restaurantNames: names,
-          daysLeft,
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Reminder delivery failed';
-        failed++;
-        outcomes.push({ userId, email, status: 'failed', reason: message });
-        Sentry.captureException(err, { tags: { cron: 'end-of-month-reminder', userId } });
-        continue;
-      }
-
-      if (result.status === 'emailed') {
-        emailed++;
-        outcomes.push({ userId, email, status: 'emailed' });
-      } else if (result.status === 'skipped') {
-        skipped++;
-        outcomes.push({ userId, email, status: 'skipped', reason: result.reason });
-      } else if (result.status === 'released') {
-        released++;
-        outcomes.push({ userId, email, status: 'released', reason: result.reason });
-      } else if (result.status === 'reconciliation') {
-        reconciled++;
-        outcomes.push({ userId, email, status: 'reconciliation', reason: result.reason });
-      } else {
-        failed++;
-        outcomes.push({ userId, email, status: 'failed', reason: result.reason });
-        Sentry.captureMessage('Redemption reminder email failed', {
-          level: 'warning',
-          tags: { cron: 'end-of-month-reminder', userId },
-          extra: { error: result.reason },
-        });
-      }
-    }
-
-    const summary = {
-      processed: itemsByUserCycle.size,
-      emailed,
-      skipped,
-      failed,
-      released,
-      reconciled,
-      daysLeft,
-      outcomes,
-    };
-
-    await completeCronRun(runId, { status: 'success', result: summary });
-
-    return NextResponse.json({
-      processed: summary.processed,
-      emailed,
-      skipped,
-      failed,
-      released,
-      reconciled,
+  for (const userId of userIds) {
+    if (!(await ctx.guardPeriod())) return false;
+    if (!(await ctx.renew())) return false;
+    const names = (restaurantsByUser.get(userId) ?? [])
+      .map((id) => restaurantNameById.get(id))
+      .filter((name): name is string => Boolean(name));
+    const recorded = await ctx.record(userId, 'pending', null, {
+      email: emailByUserId.get(userId) ?? null,
+      names,
       daysLeft,
     });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    console.error('[cron] end-of-month-reminder:', err);
-    Sentry.captureException(err, { tags: { cron: 'end-of-month-reminder' } });
-    await completeCronRun(runId, { status: 'failed', error: message });
-    await Sentry.flush(2000);
-    return NextResponse.json({ error: message }, { status: 500 });
+    if (!recorded) return false;
   }
+
+  return ctx.renew({ snapshotComplete: true, daysLeft });
+}
+
+async function sendPending(ctx: CronLeaseContext, cycleMonth: string): Promise<void> {
+  const admin = getSupabaseAdmin();
+  while (true) {
+    if (!(await ctx.guardPeriod())) return;
+    if (!(await ctx.renew())) return;
+    const pending = await ctx.listPending(BATCH);
+    if (pending.length === 0) {
+      await ctx.finishClear();
+      return;
+    }
+    let unresolved = false;
+    for (const item of pending) {
+      if (!(await ctx.guardPeriod())) return;
+      if (!(await ctx.renew())) return;
+      const detail = detailOf(item.detail);
+      if (!detail?.email || detail.names.length === 0) {
+        const recorded = await ctx.record(
+          item.itemKey,
+          'skipped',
+          !detail?.email ? 'not an active subscriber or no email on profile' : 'no resolvable restaurant names',
+        );
+        if (!recorded) return;
+        continue;
+      }
+      try {
+        const delivery = await deliverAdventureReminder({
+          supabase: admin,
+          userId: item.itemKey,
+          cycleMonth,
+          email: detail.email,
+          restaurantNames: detail.names,
+          daysLeft: detail.daysLeft,
+        });
+        const rowStatus =
+          delivery.status === 'skipped' && delivery.reason === 'claimed by another worker'
+            ? await readReminderDeliveryStatus(admin, item.itemKey, cycleMonth)
+            : null;
+        const status = reminderCronItemStatus(delivery, rowStatus);
+        if (status === 'pending') {
+          unresolved = true;
+          continue;
+        }
+        const recorded = await ctx.record(item.itemKey, status, delivery.reason ?? null);
+        if (!recorded) return;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Reminder delivery failed';
+        const recorded = await ctx.record(item.itemKey, 'failed', message);
+        if (!recorded) return;
+      }
+    }
+    if (unresolved) {
+      return;
+    }
+  }
+}
+
+export async function GET(request: Request) {
+  const authError = verifyCronAuth(request);
+  if (authError) return authError;
+
+  const now = new Date();
+  const cycleMonth = format(startOfMonth(now), 'yyyy-MM-dd');
+  const daysLeft = Math.max(1, differenceInCalendarDays(endOfMonth(now), now));
+
+  const exit = await runLeasedCron({
+    jobName: JOB,
+    runKey: monthlyRunKey(JOB, now),
+    leaseSeconds: LEASE_SECONDS,
+    resumeExpired: true,
+    allowNewAttempt: false,
+    currentPeriod: () => monthlyRunKey(JOB),
+    async work(ctx) {
+      const ready = await snapshotReminders(ctx, cycleMonth, daysLeft);
+      if (!ready) return;
+      await sendPending(ctx, cycleMonth);
+    },
+  });
+
+  return NextResponse.json(exit.body, { status: exit.httpStatus });
 }

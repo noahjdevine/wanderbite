@@ -35,7 +35,7 @@ describe('email send decisions', () => {
       path.join(process.cwd(), 'supabase/migrations/20260919172836_ai_budget_reservations.sql'),
       'utf8',
     );
-    expect(sql).toMatch(/1000000,\n {2}200000,/);
+    expect(sql).toMatch(/1000000,\r?\n {2}200000,/);
     const reminder = readFileSync(
       path.join(process.cwd(), 'src/app/api/cron/end-of-month-reminder/route.ts'),
       'utf8',
@@ -46,7 +46,8 @@ describe('email send decisions', () => {
       'utf8',
     );
     expect(reminder).toContain('export const maxDuration = 300');
-    expect(reminder).toContain("status: 'success'");
+    expect(reminder).toContain('runLeasedCron({');
+    expect(reminder).toContain('await ctx.finishClear()');
     expect(vercel).toContain('"schedule": "0 14 25 * *"');
     expect(template).toContain('roll over into the void');
   });
