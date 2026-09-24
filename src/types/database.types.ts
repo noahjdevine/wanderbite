@@ -707,6 +707,30 @@ export type Database = {
         }
         Relationships: []
       }
+      legal_attestations: {
+        Row: {
+          age_21: boolean
+          attested_at: string
+          content_id: string
+          document_version: string
+          user_id: string
+        }
+        Insert: {
+          age_21: boolean
+          attested_at?: string
+          content_id: string
+          document_version: string
+          user_id: string
+        }
+        Update: {
+          age_21?: boolean
+          attested_at?: string
+          content_id?: string
+          document_version?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       markets: {
         Row: {
           country: string | null
@@ -1895,6 +1919,14 @@ export type Database = {
       record_hard_email_suppression: {
         Args: { p_address: string; p_email_id: string; p_reason: string }
         Returns: boolean
+      }
+      record_legal_attestation: {
+        Args: {
+          p_age_21: boolean
+          p_agree_to_terms: boolean
+          p_presented_version: string
+        }
+        Returns: undefined
       }
       release_email_reminder_delivery: {
         Args: { p_cycle_month: string; p_error: string; p_token: string; p_user_id: string }

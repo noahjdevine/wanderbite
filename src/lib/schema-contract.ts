@@ -166,6 +166,13 @@ export const SCHEMA_CONTRACT = {
     'reason',
     'created_at',
   ],
+  legal_attestations: [
+    'user_id',
+    'document_version',
+    'content_id',
+    'age_21',
+    'attested_at',
+  ],
   markets: ['id', 'name', 'timezone', 'status', 'slug', 'state', 'country', 'currency'],
   partner_sessions: ['token_hash', 'restaurant_id', 'created_at', 'expires_at'],
   redemptions: [

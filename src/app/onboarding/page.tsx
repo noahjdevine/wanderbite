@@ -6,6 +6,7 @@ import { normalizeCuisineIds } from '@/lib/cuisines';
 import { hasStructuredAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import type { UserPreferencesRow } from '@/types/user-preferences';
+import { hasCurrentLegalAttestation } from '@/lib/legal-attestation-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,7 +39,7 @@ export default async function OnboardingPage() {
   }
 
   const admin = getSupabaseAdmin();
-  const [profileResult, prefsResult] = await Promise.all([
+  const [profileResult, prefsResult, hasCurrentAttestation] = await Promise.all([
     admin
       .from('user_profiles')
       .select(
@@ -47,6 +48,7 @@ export default async function OnboardingPage() {
       .eq('id', user.id)
       .maybeSingle(),
     admin.from('user_preferences').select('excluded_cuisines').eq('user_id', user.id).maybeSingle(),
+    hasCurrentLegalAttestation(supabase, user.id),
   ]);
 
   if (profileResult.error) {
@@ -99,6 +101,7 @@ export default async function OnboardingPage() {
       initial={{
         step: initialStep,
         userId: user.id,
+        hasCurrentAttestation,
         email: user.email ?? null,
         subscriptionStatus: sub,
         preferences: {
