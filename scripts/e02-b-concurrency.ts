@@ -203,8 +203,6 @@ export async function runE02BConcurrency(opts: {
     update public.challenge_items set credit_id = null
     where cycle_id in (select id from public.challenge_cycles where user_id in
       ('${ISSUE_USER}', '${LINK_USER}', '${SEAT_A}', '${SEAT_B}'));
-    update public.entitlement_credits set challenge_item_id = null
-    where user_id in ('${ISSUE_USER}', '${LINK_USER}', '${SEAT_A}', '${SEAT_B}');
     delete from public.entitlement_credits
     where user_id in ('${ISSUE_USER}', '${LINK_USER}', '${SEAT_A}', '${SEAT_B}');
     delete from public.challenge_items
