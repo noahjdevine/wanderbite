@@ -130,7 +130,7 @@ declare
   verified_row record;
   expired_text text;
   n integer;
-  cycle_id uuid;
+  happy_cycle uuid;
   item_a uuid;
   item_b uuid;
   filler_item uuid;
@@ -374,21 +374,21 @@ begin
   if linked.outcome is distinct from 'linked' or linked.cycle_id is null then
     raise exception 'FAIL: valid pair was %', linked.outcome;
   end if;
-  cycle_id := linked.cycle_id;
+  happy_cycle := linked.cycle_id;
   select * into again from public.link_pending_credits(
     happy, chicago, market,
     'e2b00000-0000-4000-8000-000000000021',
     'e2b00000-0000-4000-8000-000000000022'
   );
-  if again.outcome is distinct from 'existing' or again.cycle_id is distinct from cycle_id
+  if again.outcome is distinct from 'existing' or again.cycle_id is distinct from happy_cycle
      or (select count(*) from public.challenge_cycles where user_id = happy) <> 1
      or (select count(*) from public.entitlement_credits where user_id = happy and status = 'linked') <> 2
   then
     raise exception 'FAIL: duplicate reveal did not reuse the cycle';
   end if;
 
-  select id into item_a from public.challenge_items where cycle_id = cycle_id and slot_number = 1;
-  select id into item_b from public.challenge_items where cycle_id = cycle_id and slot_number = 2;
+  select ci.id into item_a from public.challenge_items ci where ci.cycle_id = happy_cycle and ci.slot_number = 1;
+  select ci.id into item_b from public.challenge_items ci where ci.cycle_id = happy_cycle and ci.slot_number = 2;
   select * into issued from public.issue_challenge_redemption(
     happy, item_a,
     'abababababababababababababababababababababababababababababababab',
@@ -416,7 +416,7 @@ begin
     'e2b00000-0000-4000-8000-000000000021',
     'e2b00000-0000-4000-8000-000000000022'
   );
-  if again.outcome is distinct from 'existing' or again.cycle_id is distinct from cycle_id then
+  if again.outcome is distinct from 'existing' or again.cycle_id is distinct from happy_cycle then
     raise exception 'FAIL: spent plus linked reveal created another cycle';
   end if;
 
@@ -442,7 +442,7 @@ begin
     'e2b00000-0000-4000-8000-000000000021',
     'e2b00000-0000-4000-8000-000000000022'
   );
-  if again.outcome is distinct from 'existing' or again.cycle_id is distinct from cycle_id
+  if again.outcome is distinct from 'existing' or again.cycle_id is distinct from happy_cycle
      or (select count(*) from public.entitlement_credits where user_id = happy) <> 2
      or (select count(*) from public.challenge_cycles where user_id = happy) <> 1
   then
