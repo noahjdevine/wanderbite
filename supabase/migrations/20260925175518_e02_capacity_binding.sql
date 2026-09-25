@@ -305,6 +305,8 @@ declare
   n integer;
   rest_id uuid;
   rest_ids uuid[];
+  rest_status text;
+  rest_market uuid;
   version_backed boolean := false;
   base_sum integer := 0;
   one_base integer;
@@ -340,6 +342,20 @@ begin
 
   select array_agg(u.rid order by u.rid) into rest_ids
   from unnest(p_restaurant_ids) as u(rid);
+
+  foreach rest_id in array rest_ids loop
+    select r.status, r.market_id
+      into rest_status, rest_market
+    from public.restaurants r
+    where r.id = rest_id;
+    if not found
+       or rest_status is distinct from 'active'
+       or rest_market is distinct from p_market_id
+    then
+      return query select 'invalid_restaurants'::text, null::uuid;
+      return;
+    end if;
+  end loop;
 
   select exists (
     select 1 from public.restaurants r

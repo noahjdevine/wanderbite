@@ -92,8 +92,8 @@ begin
     (chicago - interval '1 month')::date,
     'e0200000-0000-4000-8000-000000000010',
     array[
-      'e0200000-0000-4000-8000-000000000031'::uuid,
-      'e0200000-0000-4000-8000-000000000032'::uuid
+      'e0200000-0000-4000-8000-000000000032'::uuid,
+      'e0200000-0000-4000-8000-000000000033'::uuid
     ]
   );
   if gen.outcome is distinct from 'local_month_not_open' or gen.cycle_id is not null then
