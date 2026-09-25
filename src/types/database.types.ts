@@ -487,6 +487,7 @@ export type Database = {
           slot_number: number | null
           status: string | null
           swapped_from_item_id: string | null
+          credit_id: string | null
         }
         Insert: {
           assigned_at?: string | null
@@ -498,6 +499,7 @@ export type Database = {
           slot_number?: number | null
           status?: string | null
           swapped_from_item_id?: string | null
+          credit_id?: string | null
         }
         Update: {
           assigned_at?: string | null
@@ -509,6 +511,7 @@ export type Database = {
           slot_number?: number | null
           status?: string | null
           swapped_from_item_id?: string | null
+          credit_id?: string | null
         }
         Relationships: [
           {
@@ -1411,6 +1414,7 @@ export type Database = {
           subscription_status: string | null
           username: string | null
           wants_cocktail_experience: boolean | null
+          workflow_version: string
         }
         Insert: {
           address?: string | null
@@ -1434,6 +1438,7 @@ export type Database = {
           subscription_status?: string | null
           username?: string | null
           wants_cocktail_experience?: boolean | null
+          workflow_version?: string
         }
         Update: {
           address?: string | null
@@ -1457,8 +1462,57 @@ export type Database = {
           subscription_status?: string | null
           username?: string | null
           wants_cocktail_experience?: boolean | null
+          workflow_version?: string
         }
         Relationships: []
+      }
+      entitlement_credits: {
+        Row: {
+          id: string
+          user_id: string
+          issue_period: string
+          slot_number: number
+          status: string
+          challenge_item_id: string | null
+          issued_at: string
+          expires_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          issue_period: string
+          slot_number: number
+          status: string
+          challenge_item_id?: string | null
+          issued_at?: string
+          expires_at: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          issue_period?: string
+          slot_number?: number
+          status?: string
+          challenge_item_id?: string | null
+          issued_at?: string
+          expires_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entitlement_credits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entitlement_credits_challenge_item_id_fkey"
+            columns: ["challenge_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webhook_outbox: {
         Row: {
@@ -2340,6 +2394,27 @@ export type Database = {
           cycle_id: string
           outcome: string
         }[]
+      }
+      issue_period_credits: {
+        Args: { p_issue_period: string; p_user_id: string }
+        Returns: string
+      }
+      link_pending_credits: {
+        Args: {
+          p_issue_period: string
+          p_market_id: string
+          p_restaurant_a: string
+          p_restaurant_b: string
+          p_user_id: string
+        }
+        Returns: {
+          cycle_id: string
+          outcome: string
+        }[]
+      }
+      expire_due_pending_credits: {
+        Args: never
+        Returns: number
       }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {

@@ -3,6 +3,7 @@ import { verifyCronAuth } from '@/lib/cron-auth';
 import { runLeasedCron, type CronLeaseContext } from '@/lib/cron-runs';
 import { issueItemStatus, monthlyRunKey } from '@/lib/cron-period';
 import { generateMonthlyChallengeForUser } from '@/lib/challenges/generate';
+import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
@@ -74,6 +75,11 @@ async function issuePending(ctx: CronLeaseContext): Promise<void> {
       if (!(await ctx.guardPeriod())) return;
       if (!(await ctx.renew())) return;
       try {
+        if ((await readWorkflowVersion(item.itemKey)) === 'credits') {
+          const recorded = await ctx.record(item.itemKey, 'skipped', 'credits workflow');
+          if (!recorded) return;
+          continue;
+        }
         const result = await generateMonthlyChallengeForUser(item.itemKey, {
           excludeVersionBound: true,
         });

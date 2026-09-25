@@ -8,6 +8,7 @@ import { requireUser } from '@/lib/auth/require-user';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { firstRpcRow } from '@/lib/challenges/rpc';
+import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { selectDistancePool } from '@/lib/challenges/distance-pool';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import {
@@ -135,6 +136,9 @@ export async function swapChallengeItem(
 ): Promise<SwapChallengeResult> {
   const auth = await requireUser();
   if (!auth.ok) return { ok: false, error: auth.error };
+  if ((await readWorkflowVersion(auth.userId)) === 'credits') {
+    return { ok: false, error: 'Swaps are not available for this account yet.' };
+  }
 
   try {
     const supabase = getSupabaseAdmin();

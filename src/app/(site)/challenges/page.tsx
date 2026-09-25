@@ -7,6 +7,7 @@ import { calculateStreak } from '@/lib/streaks';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
+import { chicagoMonthStart } from '@/lib/cron-period';
 import { launchAreaState } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 
@@ -29,7 +30,7 @@ export default async function ChallengesPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, role, subscription_status, username, address_street, address_city, address_state, address_zip')
+    .select('id, role, subscription_status, username, address_street, address_city, address_state, address_zip, workflow_version')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -54,6 +55,7 @@ export default async function ChallengesPage() {
     address_city: string | null;
     address_state: string | null;
     address_zip: string | null;
+    workflow_version: string;
   };
 
   const next = nextMemberRedirect(
@@ -91,6 +93,24 @@ export default async function ChallengesPage() {
         }))
       : [];
 
+  let creditHold: { pendingCount: number } | null = null;
+  if (typedProfile.workflow_version === 'credits') {
+    const { count, error: creditError } = await admin
+      .from('entitlement_credits')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', typedProfile.id)
+      .eq('issue_period', chicagoMonthStart())
+      .eq('status', 'pending');
+    if (creditError) {
+      return (
+        <main className="flex min-h-screen items-center justify-center p-6">
+          <p className="text-destructive">Failed to load credits: {creditError.message}</p>
+        </main>
+      );
+    }
+    creditHold = { pendingCount: count ?? 0 };
+  }
+
   let currentChallenge = null;
   try {
     currentChallenge = await getCurrentChallenge();
@@ -118,6 +138,7 @@ export default async function ChallengesPage() {
           currentChallenge={currentChallenge}
           streak={streak}
           biteNotes={biteNotesForDash}
+          creditHold={creditHold}
         />
       </div>
     </main>

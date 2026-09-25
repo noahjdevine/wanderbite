@@ -62,6 +62,8 @@ type DashboardClientProps = {
   currentChallenge: GeneratedChallenge | null;
   streak: DashboardStreakStats;
   biteNotes: BiteNoteSummary[];
+  /** Set only for a credits-workflow account. Legacy accounts omit it. */
+  creditHold?: { pendingCount: number } | null;
 };
 
 function formatOffer(discountCents: number, minSpendCents: number): string {
@@ -513,6 +515,7 @@ export function DashboardClient({
   currentChallenge,
   streak,
   biteNotes,
+  creditHold = null,
 }: DashboardClientProps) {
   const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
@@ -693,6 +696,17 @@ export function DashboardClient({
             ))}
           </div>
         </div>
+      ) : creditHold ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Your credits are waiting</CardTitle>
+            <CardDescription>
+              {creditHold.pendingCount === 2
+                ? 'You have 2 credits for this month. Restaurant selection is not open yet.'
+                : 'Restaurant selection is not open yet.'}
+            </CardDescription>
+          </CardHeader>
+        </Card>
       ) : launchEligible ? (
         <Card>
           <CardHeader>
