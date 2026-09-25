@@ -481,24 +481,30 @@ export type Database = {
           cycle_id: string | null
           id: string
           restaurant_id: string | null
+          assigned_at: string | null
           offer_version_id: string | null
+          redemption_deadline: string | null
           slot_number: number | null
           status: string | null
           swapped_from_item_id: string | null
         }
         Insert: {
+          assigned_at?: string | null
           cycle_id?: string | null
           id?: string
           offer_version_id?: string | null
+          redemption_deadline?: string | null
           restaurant_id?: string | null
           slot_number?: number | null
           status?: string | null
           swapped_from_item_id?: string | null
         }
         Update: {
+          assigned_at?: string | null
           cycle_id?: string | null
           id?: string
           offer_version_id?: string | null
+          redemption_deadline?: string | null
           restaurant_id?: string | null
           slot_number?: number | null
           status?: string | null
@@ -534,6 +540,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      capacity_reservations: {
+        Row: {
+          bucket_start: string
+          capacity_timezone: string
+          challenge_item_id: string
+          id: string
+          offer_version_id: string
+          restaurant_id: string
+          status: string
+        }
+        Insert: {
+          bucket_start: string
+          capacity_timezone: string
+          challenge_item_id: string
+          id?: string
+          offer_version_id: string
+          restaurant_id: string
+          status: string
+        }
+        Update: {
+          bucket_start?: string
+          capacity_timezone?: string
+          challenge_item_id?: string
+          id?: string
+          offer_version_id?: string
+          restaurant_id?: string
+          status?: string
+        }
+        Relationships: []
       }
       cron_job_leases: {
         Row: {
@@ -1637,6 +1673,18 @@ export type Database = {
       release_cron_lease: {
         Args: { p_job_name: string; p_run_id: number; p_token: string }
         Returns: boolean
+      }
+      activate_restaurant: {
+        Args: { p_actor_user_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      expire_version_bound_assignment: {
+        Args: { p_item_id: string }
+        Returns: string
+      }
+      verify_redemption_and_settle: {
+        Args: { p_restaurant_id: string; p_token_hash: string }
+        Returns: Database["public"]["Tables"]["redemptions"]["Row"][]
       }
       publish_offer_version: {
         Args: { p_actor_user_id: string; p_draft_id: string }

@@ -5,6 +5,18 @@ export function monthlyRunKey(jobName: string, now = new Date()): string {
   return `${jobName}:${format(startOfMonth(now), 'yyyy-MM-dd')}`;
 }
 
+/** America/Chicago calendar month start as YYYY-MM-01. SQL remains the authority. */
+export function chicagoMonthStart(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(now);
+  const year = parts.find((part) => part.type === 'year')?.value ?? '1970';
+  const month = parts.find((part) => part.type === 'month')?.value ?? '01';
+  return `${year}-${month}-01`;
+}
+
 /** UTC calendar date. Daily jobs do not follow the generator's local month. */
 export function dailyRunKey(jobName: string, now = new Date()): string {
   return `${jobName}:${now.toISOString().slice(0, 10)}`;
@@ -19,7 +31,8 @@ export function issueItemStatus(result: {
   if (result.ok) return 'succeeded';
   if (
     result.reason === 'ineligible_address' ||
-    result.reason === 'invalid_distance_preference'
+    result.reason === 'invalid_distance_preference' ||
+    result.reason === 'waiting_for_local_month'
   ) {
     return 'skipped';
   }

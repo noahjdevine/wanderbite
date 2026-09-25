@@ -229,3 +229,90 @@ export async function previewOfferDraft(input: {
     targetCents: 2000,
   };
 }
+
+async function auditRejection(actorUserId: string, restaurantId: string, error: string) {
+  const supabase = getSupabaseAdmin();
+  const { error: auditError } = await supabase.from('admin_audit_log').insert({
+    actor_user_id: actorUserId,
+    action: 'offer.publish_rejected',
+    target_type: 'restaurant',
+    target_id: restaurantId,
+    metadata: { error },
+  });
+  return auditError?.message ?? null;
+}
+
+export async function publishOfferDraft(
+  restaurantIdInput: string,
+): Promise<{ ok: true; versionId: string } | { ok: false; error: string }> {
+  const auth = await assertAdmin();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const restaurantId = parseUuid(restaurantIdInput);
+  if (!restaurantId) return { ok: false, error: 'Restaurant not found.' };
+  const supabase = getSupabaseAdmin();
+  const { data: draft, error: draftError } = await supabase
+    .from('offer_drafts')
+    .select('id')
+    .eq('restaurant_id', restaurantId)
+    .maybeSingle();
+  if (draftError) return { ok: false, error: draftError.message };
+  if (!draft) return { ok: false, error: 'Save a draft before publishing.' };
+  const { data, error } = await supabase.rpc('publish_offer_version', {
+    p_draft_id: draft.id,
+    p_actor_user_id: auth.userId,
+  });
+  if (error) return { ok: false, error: error.message };
+  const result = data as { published?: boolean; error?: string; version_id?: string } | null;
+  if (!result?.published || !result.version_id) {
+    const reason = result?.error ?? 'Publish failed.';
+    const auditError = await auditRejection(auth.userId, restaurantId, reason);
+    if (auditError) return { ok: false, error: auditError };
+    return { ok: false, error: reason };
+  }
+  return { ok: true, versionId: result.version_id };
+}
+
+export async function withdrawCurrentOffer(
+  restaurantIdInput: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await assertAdmin();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const restaurantId = parseUuid(restaurantIdInput);
+  if (!restaurantId) return { ok: false, error: 'Restaurant not found.' };
+  const supabase = getSupabaseAdmin();
+  const { data: restaurant, error: readError } = await supabase
+    .from('restaurants')
+    .select('current_offer_version_id')
+    .eq('id', restaurantId)
+    .maybeSingle();
+  if (readError) return { ok: false, error: readError.message };
+  if (!restaurant?.current_offer_version_id) {
+    return { ok: false, error: 'This restaurant has no current offer version.' };
+  }
+  const { data, error } = await supabase.rpc('withdraw_offer_version', {
+    p_version_id: restaurant.current_offer_version_id,
+    p_actor_user_id: auth.userId,
+  });
+  if (error) return { ok: false, error: error.message };
+  const result = data as { withdrawn?: boolean; error?: string } | null;
+  if (!result?.withdrawn) return { ok: false, error: result?.error ?? 'Withdraw failed.' };
+  return { ok: true };
+}
+
+export async function activateRestaurant(
+  restaurantIdInput: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const auth = await assertAdmin();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const restaurantId = parseUuid(restaurantIdInput);
+  if (!restaurantId) return { ok: false, error: 'Restaurant not found.' };
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc('activate_restaurant', {
+    p_restaurant_id: restaurantId,
+    p_actor_user_id: auth.userId,
+  });
+  if (error) return { ok: false, error: error.message };
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (!result?.ok) return { ok: false, error: result?.error ?? 'Activate failed.' };
+  return { ok: true };
+}

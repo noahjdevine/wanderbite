@@ -4,9 +4,12 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
+  activateRestaurant,
   getOfferDraft,
   previewOfferDraft,
+  publishOfferDraft,
   saveOfferDraft,
+  withdrawCurrentOffer,
   type OfferDraftInput,
 } from './offer-actions';
 import type { OfferQuote } from '@/lib/offers/calculator';
@@ -109,7 +112,7 @@ export function OfferDraftCard({ restaurants }: { restaurants: RestaurantOption[
       <CardHeader>
         <CardTitle className="text-primary">Offer draft</CardTitle>
         <CardDescription>
-          Save a draft and preview the calculator. This screen does not publish a version.
+          Save a draft, preview, publish, or activate a paused restaurant that already has a current version.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -213,6 +216,62 @@ export function OfferDraftCard({ restaurants }: { restaurants: RestaurantOption[
           </Button>
           <Button type="button" variant="outline" disabled={busy} onClick={() => void preview()}>
             Preview
+          </Button>
+          <Button
+            type="button"
+            disabled={busy || !draft.restaurantId}
+            onClick={() =>
+              void (async () => {
+                setBusy(true);
+                setMessage(null);
+                try {
+                  const result = await publishOfferDraft(draft.restaurantId);
+                  setMessage(result.ok ? 'Published. The restaurant stays paused until you activate it.' : result.error);
+                } finally {
+                  setBusy(false);
+                }
+              })()
+            }
+          >
+            Publish
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy || !draft.restaurantId}
+            onClick={() =>
+              void (async () => {
+                setBusy(true);
+                setMessage(null);
+                try {
+                  const result = await withdrawCurrentOffer(draft.restaurantId);
+                  setMessage(result.ok ? 'Withdrawn from new selection.' : result.error);
+                } finally {
+                  setBusy(false);
+                }
+              })()
+            }
+          >
+            Withdraw
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy || !draft.restaurantId}
+            onClick={() =>
+              void (async () => {
+                setBusy(true);
+                setMessage(null);
+                try {
+                  const result = await activateRestaurant(draft.restaurantId);
+                  setMessage(result.ok ? 'Restaurant is active.' : result.error);
+                } finally {
+                  setBusy(false);
+                }
+              })()
+            }
+          >
+            Activate
           </Button>
         </div>
         {message ? <p className="text-sm">{message}</p> : null}

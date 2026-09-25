@@ -98,6 +98,7 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g10-challenge-tx.sql'), 'utf8')) + '\n');
   await runG10Concurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: G10 two-session generate/swap/issue overlap.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-capacity-binding.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });

@@ -22,6 +22,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
+import { formatCents } from '@/lib/offers/sealed-base';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import type { PartnerAnalyticsResult } from '@/app/actions/partner-auth';
@@ -41,7 +42,14 @@ export function PartnerDashboard({
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<
-    | { success: true; email: string | null; verifiedAt: string; hideDiscountAmount: boolean }
+    | {
+        success: true;
+        email: string | null;
+        verifiedAt: string;
+        hideDiscountAmount: boolean;
+        sealedDiscountCents: number | null;
+        sealedMinSpendCents: number | null;
+      }
     | { success: false; message: string }
     | null
   >(null);
@@ -71,6 +79,8 @@ export function PartnerDashboard({
           email: res.redemptionDetails.email,
           verifiedAt: res.redemptionDetails.verifiedAt,
           hideDiscountAmount: res.hideDiscountAmount,
+          sealedDiscountCents: res.sealedDiscountCents,
+          sealedMinSpendCents: res.sealedMinSpendCents,
         });
         setCode('');
         router.refresh();
@@ -122,8 +132,7 @@ export function PartnerDashboard({
         <CardHeader className="pb-2">
           <CardTitle className="text-lg">Redeem Customer Code</CardTitle>
           <CardDescription>
-            Enter the code from the customer&apos;s device to apply their $10
-            discount.
+            Enter the code from the customer&apos;s device.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -153,7 +162,11 @@ export function PartnerDashboard({
               variant="default"
             >
               <AlertTitle>
-                {result.hideDiscountAmount ? 'Valid' : 'Valid — $10 discount applied'}
+                {result.sealedDiscountCents != null && result.sealedMinSpendCents != null
+                  ? `Valid — ${formatCents(result.sealedDiscountCents)} off ${formatCents(result.sealedMinSpendCents)}`
+                  : result.hideDiscountAmount
+                    ? 'Valid'
+                    : 'Valid — $10 discount applied'}
               </AlertTitle>
               <AlertDescription>
                 <div className="mt-2 space-y-1 text-sm">

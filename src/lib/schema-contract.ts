@@ -123,6 +123,17 @@ export const SCHEMA_CONTRACT = {
     'status',
     'swapped_from_item_id',
     'offer_version_id',
+    'assigned_at',
+    'redemption_deadline',
+  ],
+  capacity_reservations: [
+    'id',
+    'challenge_item_id',
+    'offer_version_id',
+    'restaurant_id',
+    'capacity_timezone',
+    'bucket_start',
+    'status',
   ],
   cron_job_leases: [
     'job_name',

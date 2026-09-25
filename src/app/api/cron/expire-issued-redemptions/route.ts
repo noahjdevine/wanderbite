@@ -59,6 +59,23 @@ async function snapshotIssued(ctx: CronLeaseContext, state: ExpiryCheckpoint): P
     }
     for (const row of rows) {
       if (!(await ctx.renew())) return null;
+      const { data: redemption } = await admin
+        .from('redemptions')
+        .select('challenge_item_id')
+        .eq('id', row.id)
+        .maybeSingle();
+      const itemId = (redemption as { challenge_item_id: string | null } | null)?.challenge_item_id;
+      if (itemId) {
+        const { data: item } = await admin
+          .from('challenge_items')
+          .select('redemption_deadline')
+          .eq('id', itemId)
+          .maybeSingle();
+        if ((item as { redemption_deadline: string | null } | null)?.redemption_deadline) {
+          lastId = row.id;
+          continue;
+        }
+      }
       const recorded = await ctx.record(row.id, 'pending');
       if (!recorded) return null;
       lastId = row.id;
@@ -81,6 +98,28 @@ export async function GET(request: Request) {
     allowNewAttempt: false,
     currentPeriod: () => dailyRunKey(JOB),
     async work(ctx) {
+      const adminForDeadline = getSupabaseAdmin();
+      const { data: dueItems, error: dueError } = await adminForDeadline
+        .from('challenge_items')
+        .select('id')
+        .not('redemption_deadline', 'is', null)
+        .lte('redemption_deadline', new Date().toISOString())
+        .in('status', ['assigned', 'redeemed'])
+        .limit(BATCH);
+      if (dueError) {
+        await ctx.fail(dueError.message);
+        return;
+      }
+      for (const item of dueItems ?? []) {
+        const { error: expireError } = await adminForDeadline.rpc(
+          'expire_version_bound_assignment',
+          { p_item_id: item.id },
+        );
+        if (expireError) {
+          await ctx.fail(expireError.message);
+          return;
+        }
+      }
       const fallbackCutoff = subDays(new Date(), EXPIRY_DAYS).toISOString();
       let initial = readCheckpoint(ctx.checkpoint, '');
       if (!initial.cutoff) {
