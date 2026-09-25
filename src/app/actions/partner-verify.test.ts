@@ -176,11 +176,58 @@ describe('verifyRedemptionTokenForPartner', () => {
     if (result.success) {
       expect(result.redemptionDetails.email).toBe('a@b.c');
       expect(result.redemptionDetails.restaurantName).toBe('Active Grill');
+      expect(result.hideDiscountAmount).toBe(false);
     }
     expect(rpc).toHaveBeenCalledWith('verify_redemption', {
       p_token_hash: hashRedemptionToken('WB-G6OK1'),
       p_restaurant_id: ACTIVE_ID,
     });
+  });
+
+  it('still verifies a version-bound item and hides the dollar amount', async () => {
+    rpc.mockResolvedValue({
+      data: [issuedRow({ status: 'verified', challenge_item_id: 'item-1' })],
+      error: null,
+    });
+    from.mockImplementation((table: string) => {
+      if (table === 'challenge_items') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({ data: { offer_version_id: 'version-1' }, error: null }),
+            }),
+          }),
+        };
+      }
+      if (table === 'user_profiles') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: { email: 'a@b.c' }, error: null }) }),
+          }),
+        };
+      }
+      if (table === 'restaurants') {
+        return {
+          select: () => ({
+            eq: () => ({ maybeSingle: async () => ({ data: { name: 'Active Grill' }, error: null }) }),
+          }),
+        };
+      }
+      if (table === 'redemptions') {
+        return { select: () => ({ eq: () => ({ eq: () => ({ data: null, error: null, count: 1 }) }) }) };
+      }
+      if (table === 'user_badges') {
+        return {
+          select: () => ({ eq: () => ({ in: async () => ({ data: [], error: null }) }) }),
+          upsert: async () => ({ error: null }),
+        };
+      }
+      return { select: () => ({}) };
+    });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(rpc).toHaveBeenCalled();
+    expect(result).toMatchObject({ success: true, hideDiscountAmount: true });
   });
 
   it('treats a second empty RPC result as already used', async () => {

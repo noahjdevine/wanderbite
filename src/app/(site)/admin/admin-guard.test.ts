@@ -13,9 +13,10 @@ import { AdminClient } from './admin-client';
 
 type Query = {
   table: string;
-  op: 'select' | 'insert' | 'update' | 'delete';
+  op: 'select' | 'insert' | 'update' | 'delete' | 'rpc';
   select: string | null;
   eqId: string | null;
+  payload: unknown;
 };
 
 type QueryResult = { data: unknown; error: { message: string } | null };
@@ -79,8 +80,9 @@ vi.mock('@/lib/supabase-admin', () => ({
       let op: Query['op'] = 'select';
       let select: string | null = null;
       let eqId: string | null = null;
+      let payload: unknown = null;
       const run = () => {
-        const query: Query = { table, op, select, eqId };
+        const query: Query = { table, op, select, eqId, payload };
         harness.calls.push(query);
         const resolve = harness.resolver ?? defaultResolver;
         return Promise.resolve(resolve(query));
@@ -90,8 +92,9 @@ vi.mock('@/lib/supabase-admin', () => ({
           select = columns ?? null;
           return api;
         },
-        insert() {
+        insert(values?: unknown) {
           op = 'insert';
+          payload = values ?? null;
           return api;
         },
         update() {
@@ -128,6 +131,13 @@ vi.mock('@/lib/supabase-admin', () => ({
         },
       };
       return api;
+    },
+    rpc(fn: string) {
+      harness.calls.push({ table: fn, op: 'rpc', select: null, eqId: null, payload: null });
+      if (fn === 'retire_restaurant') {
+        return Promise.resolve({ data: { ok: true, result: 'deleted' }, error: null });
+      }
+      return Promise.resolve({ data: null, error: { message: `unexpected rpc ${fn}` } });
     },
   }),
 }));
@@ -370,7 +380,7 @@ describe('admin AAL guard', () => {
         };
       }
       if (query.table === 'restaurants') return { data: { id: RESTAURANT_ID }, error: null };
-      if (query.table === 'restaurant_offers') return { data: null, error: null };
+      if (query.table === 'offer_drafts') return { data: null, error: null };
       if (query.table === 'admin_audit_log') return { data: null, error: null };
       throw new Error(`unexpected ${query.op} ${query.table} ${query.select ?? ''}`);
     };
@@ -381,6 +391,14 @@ describe('admin AAL guard', () => {
       ok: true,
       partnerUrl: '/partner/test-kitchen',
     });
+    const restaurantInsert = harness.calls.find(
+      (query) => query.table === 'restaurants' && query.op === 'insert',
+    );
+    expect(restaurantInsert?.payload).toMatchObject({ status: 'paused' });
+    expect(harness.calls.some((query) => query.table === 'restaurant_offers')).toBe(false);
+    expect(
+      harness.calls.some((query) => query.table === 'offer_drafts' && query.op === 'insert'),
+    ).toBe(true);
     await expect(generateMissingSlugs()).resolves.toEqual({ ok: true, updated: 0 });
     harness.resolver = (query) => {
       if (query.table === 'user_profiles') return defaultResolver(query);
@@ -395,7 +413,13 @@ describe('admin AAL guard', () => {
       if (query.table === 'admin_audit_log') return { data: null, error: null };
       throw new Error(`unexpected ${query.op} ${query.table}`);
     };
-    await expect(deleteRestaurant(RESTAURANT_ID)).resolves.toEqual({ ok: true });
+    await expect(deleteRestaurant(RESTAURANT_ID)).resolves.toEqual({
+      ok: true,
+      result: 'deleted',
+    });
+    expect(harness.calls.some((query) => query.table === 'retire_restaurant' && query.op === 'rpc')).toBe(
+      true,
+    );
     harness.resolver = (query) => {
       if (query.table === 'user_profiles') return defaultResolver(query);
       if (query.table === 'restaurants') return { data: { id: RESTAURANT_ID }, error: null };

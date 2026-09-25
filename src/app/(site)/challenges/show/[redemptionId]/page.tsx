@@ -26,7 +26,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
   const admin = getSupabaseAdmin();
   const { data: redemption, error } = await admin
     .from('redemptions')
-    .select('id, user_id, restaurant_id, status, verified_at')
+    .select('id, user_id, restaurant_id, challenge_item_id, status, verified_at')
     .eq('id', redemptionId)
     .maybeSingle();
 
@@ -38,6 +38,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     id: string;
     user_id: string;
     restaurant_id: string;
+    challenge_item_id: string | null;
     status: string;
     verified_at: string | null;
   };
@@ -69,10 +70,25 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     redirect('/challenges');
   }
 
+  let offerUnavailable = false;
+  if (row.challenge_item_id) {
+    const { data: item } = await admin
+      .from('challenge_items')
+      .select('offer_version_id')
+      .eq('id', row.challenge_item_id)
+      .maybeSingle();
+    offerUnavailable = Boolean(
+      (item as { offer_version_id: string | null } | null)?.offer_version_id,
+    );
+  }
   const discountCents = offerRow?.discount_amount_cents ?? 1000;
   const minSpendCents = offerRow?.min_spend_cents ?? 4000;
-  const discountLabel = `$${(discountCents / 100).toFixed(0)} off`;
-  const minSpendLabel = `$${(minSpendCents / 100).toFixed(0)} minimum spend`;
+  const discountLabel = offerUnavailable
+    ? 'Offer unavailable'
+    : `$${(discountCents / 100).toFixed(0)} off`;
+  const minSpendLabel = offerUnavailable
+    ? ''
+    : `$${(minSpendCents / 100).toFixed(0)} minimum spend`;
 
   const code = row.status === 'issued' ? await getRedemptionCode(redemptionId) : null;
 

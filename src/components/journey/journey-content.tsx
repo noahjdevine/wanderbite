@@ -55,8 +55,27 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
   const { data: stats } = statsResult;
   const email = (profile as { email: string | null }).email ?? 'Signed in user';
   const title = `Level ${stats.level} ${stats.currentLevelName}`;
-  const totalSavingsDollars =
-    (stats.redemptionCount * SAVINGS_PER_REDEMPTION_CENTS) / 100;
+  const { data: verifiedRows } = await admin
+    .from('redemptions')
+    .select('challenge_item_id')
+    .eq('user_id', userId)
+    .eq('status', 'verified');
+  const verified = (verifiedRows ?? []) as { challenge_item_id: string | null }[];
+  const itemIds = verified.flatMap((row) => (row.challenge_item_id ? [row.challenge_item_id] : []));
+  const boundItemIds = new Set<string>();
+  if (itemIds.length > 0) {
+    const { data: items } = await admin
+      .from('challenge_items')
+      .select('id, offer_version_id')
+      .in('id', itemIds);
+    for (const item of (items ?? []) as { id: string; offer_version_id: string | null }[]) {
+      if (item.offer_version_id) boundItemIds.add(item.id);
+    }
+  }
+  const savingsCount = verified.filter(
+    (row) => !row.challenge_item_id || !boundItemIds.has(row.challenge_item_id),
+  ).length;
+  const totalSavingsDollars = (savingsCount * SAVINGS_PER_REDEMPTION_CENTS) / 100;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">

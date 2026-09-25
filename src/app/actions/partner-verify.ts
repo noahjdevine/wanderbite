@@ -33,6 +33,7 @@ export type VerifyRedemptionResult =
         verifiedAt: string;
       };
       newBadgesEarned: string[];
+      hideDiscountAmount: boolean;
     }
   | { success: false; message: string };
 
@@ -219,10 +220,23 @@ export async function verifyRedemptionTokenForPartner(
       redemption.user_id
     );
 
+    let hideDiscountAmount = false;
+    if (redemption.challenge_item_id) {
+      const { data: item } = await supabase
+        .from('challenge_items')
+        .select('offer_version_id')
+        .eq('id', redemption.challenge_item_id)
+        .maybeSingle();
+      hideDiscountAmount = Boolean(
+        (item as { offer_version_id: string | null } | null)?.offer_version_id,
+      );
+    }
+
     return {
       success: true,
       redemptionDetails: { email, restaurantName, verifiedAt },
       newBadgesEarned,
+      hideDiscountAmount,
     };
   }
 
