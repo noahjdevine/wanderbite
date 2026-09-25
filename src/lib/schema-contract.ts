@@ -125,6 +125,17 @@ export const SCHEMA_CONTRACT = {
     'offer_version_id',
     'assigned_at',
     'redemption_deadline',
+    'credit_id',
+  ],
+  entitlement_credits: [
+    'id',
+    'user_id',
+    'issue_period',
+    'slot_number',
+    'status',
+    'challenge_item_id',
+    'issued_at',
+    'expires_at',
   ],
   capacity_reservations: [
     'id',
@@ -322,6 +333,7 @@ export const SCHEMA_CONTRACT = {
     'address_city',
     'address_state',
     'address_zip',
+    'workflow_version',
   ],
   webhook_outbox: [
     'effect_key',

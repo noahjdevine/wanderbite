@@ -3,6 +3,7 @@ import { verifyCronAuth } from '@/lib/cron-auth';
 import { runLeasedCron, type CronLeaseContext } from '@/lib/cron-runs';
 import { chicagoMonthStart, issueItemStatus } from '@/lib/cron-period';
 import { generateMonthlyChallengeForUser } from '@/lib/challenges/generate';
+import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
@@ -74,6 +75,33 @@ async function issuePending(ctx: CronLeaseContext): Promise<void> {
       if (!(await ctx.guardPeriod())) return;
       if (!(await ctx.renew())) return;
       try {
+        if ((await readWorkflowVersion(item.itemKey)) === 'credits') {
+          const { data, error } = await getSupabaseAdmin().rpc('issue_period_credits', {
+            p_user_id: item.itemKey,
+            p_issue_period: chicagoMonthStart(),
+          });
+          if (error) {
+            const recorded = await ctx.record(item.itemKey, 'failed', error.message);
+            if (!recorded) return;
+            continue;
+          }
+          const outcome = data ?? '';
+          const status =
+            outcome === 'created' || outcome === 'existing'
+              ? 'succeeded'
+              : outcome === 'inactive_subscription' ||
+                  outcome === 'local_month_not_open' ||
+                  outcome === 'legacy_workflow'
+                ? 'skipped'
+                : 'failed';
+          const recorded = await ctx.record(
+            item.itemKey,
+            status,
+            status === 'succeeded' ? null : outcome,
+          );
+          if (!recorded) return;
+          continue;
+        }
         const result = await generateMonthlyChallengeForUser(item.itemKey);
         const recorded = await ctx.record(
           item.itemKey,

@@ -99,6 +99,11 @@ export async function GET(request: Request) {
     currentPeriod: () => dailyRunKey(JOB),
     async work(ctx) {
       const adminForDeadline = getSupabaseAdmin();
+      const { error: pendingCreditError } = await adminForDeadline.rpc('expire_due_pending_credits');
+      if (pendingCreditError) {
+        await ctx.fail(pendingCreditError.message);
+        return;
+      }
       const { data: dueItems, error: dueError } = await adminForDeadline
         .from('challenge_items')
         .select('id')

@@ -10,6 +10,7 @@ import { SCHEMA_CONTRACT } from '../src/lib/schema-contract';
 import { assertDatabaseTypes, assertDisposableContainer, localDockerHost, migrationPsqlArgs, TEST_IMAGE, TEST_LABEL } from './database-contract';
 import type { Column } from './database-contract';
 import { runG10Concurrency } from './g10-concurrency';
+import { runE02BConcurrency } from './e02-b-concurrency';
 import { runG13A1Concurrency } from './g13-a1-concurrency';
 import { runG13A2Concurrency } from './g13-a2-concurrency';
 
@@ -99,6 +100,9 @@ async function main() {
   await runG10Concurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: G10 two-session generate/swap/issue overlap.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-capacity-binding.sql'), 'utf8')) + '\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-b-credits.sql'), 'utf8')) + '\n');
+  await runE02BConcurrency({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: E02-B credit issue, link overlap, and last seat.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });

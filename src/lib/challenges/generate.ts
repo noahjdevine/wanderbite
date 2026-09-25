@@ -115,7 +115,8 @@ export type GenerateFailureReason =
   | 'assignment_failed'
   | 'waiting_for_local_month'
   | 'pair_below_floor'
-  | 'capacity_full';
+  | 'capacity_full'
+  | 'credits_pending';
 
 export type GenerateChallengeResult =
   | { ok: true; data: GeneratedChallenge }
