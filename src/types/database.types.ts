@@ -560,7 +560,15 @@ export type Database = {
           run_key?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cron_job_leases_attempt_run_id_fkey"
+            columns: ["attempt_run_id"]
+            isOneToOne: false
+            referencedRelation: "cron_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cron_run_items: {
         Row: {
@@ -587,7 +595,15 @@ export type Database = {
           status?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "cron_run_items_run_id_fkey"
+            columns: ["run_id"]
+            isOneToOne: false
+            referencedRelation: "cron_runs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cron_runs: {
         Row: {
