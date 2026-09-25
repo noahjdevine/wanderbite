@@ -16,10 +16,6 @@ import {
   RouletteOptionsFields,
   type RouletteSelections,
 } from '@/components/roulette/roulette-options-fields';
-import {
-  RouletteWheel,
-  type RouletteWheelHandle,
-} from '@/components/roulette/roulette-wheel';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { celebrate } from '@/lib/confetti';
 
@@ -27,8 +23,6 @@ export type RouletteApiResult = {
   restaurantId: string;
   restaurantName: string;
   reason: string;
-  vibeMatch: string | null;
-  suggestedDish: string | null;
   cuisine_tags: string[] | null;
   neighborhood: string | null;
   address: string | null;
@@ -38,7 +32,7 @@ export type RouletteApiResult = {
   selectionMode: 'ai' | 'random_fallback';
 };
 
-type Phase = 'form' | 'spinning' | 'result' | 'error';
+type Phase = 'form' | 'loading' | 'result' | 'error';
 
 const EMPTY_SELECTIONS: RouletteSelections = {
   vibe: null,
@@ -47,6 +41,8 @@ const EMPTY_SELECTIONS: RouletteSelections = {
   priceRange: null,
   preferredCuisine: null,
 };
+
+const ALLERGY_NOTE = 'Discovery cannot assess allergies. Ask the restaurant.';
 
 function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   return (
@@ -61,13 +57,13 @@ function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
 }
 
 export function RouletteClient() {
-  const wheelRef = useRef<RouletteWheelHandle>(null);
-  const spinInFlightRef = useRef(false);
+  const askInFlightRef = useRef(false);
   const resultSectionRef = useRef<HTMLDivElement>(null);
 
   const [phase, setPhase] = useState<Phase>('form');
   const [selections, setSelections] = useState<RouletteSelections>(EMPTY_SELECTIONS);
   const [excludedCuisines, setExcludedCuisines] = useState<CuisineId[]>([]);
+  const [message, setMessage] = useState('');
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -96,51 +92,47 @@ export function RouletteClient() {
     return `https://www.google.com/maps/search/?api=1&query=${q}`;
   }, [result?.restaurantName]);
 
-  const spin = useCallback(async () => {
-    if (spinInFlightRef.current) return;
-    spinInFlightRef.current = true;
-    setErrorMessage(null);
-    setResult(null);
-    setPhase('spinning');
+  const ask = useCallback(
+    async (opts?: { surprise?: boolean }) => {
+      if (askInFlightRef.current) return;
+      askInFlightRef.current = true;
+      setErrorMessage(null);
+      setResult(null);
+      setPhase('loading');
 
-    const idempotencyKey = crypto.randomUUID();
-    const apiPromise = postRouletteSpin(
-      buildRouletteSpinBody({
-        vibe: selections.vibe as RouletteVibe | null,
-        timeOfDay: selections.timeOfDay as RouletteTime | null,
+      const idempotencyKey = crypto.randomUUID();
+      const payload = buildRouletteSpinBody({
+        vibe: opts?.surprise ? null : (selections.vibe as RouletteVibe | null),
+        timeOfDay: opts?.surprise ? null : (selections.timeOfDay as RouletteTime | null),
         dietaryFlags: selections.dietaryFlags as RouletteDietaryFlag[],
         excludedCuisines,
-        priceRange: selections.priceRange as RoulettePriceRange | null,
-        preferredCuisine: selections.preferredCuisine,
-      }),
-      idempotencyKey,
-    );
+        priceRange: opts?.surprise ? null : (selections.priceRange as RoulettePriceRange | null),
+        preferredCuisine: opts?.surprise ? null : selections.preferredCuisine,
+        message: opts?.surprise ? null : message,
+        surprise: opts?.surprise,
+      });
 
-    // Wait one frame so the interactive wheel has mounted before we spin it.
-    await new Promise<void>((r) => requestAnimationFrame(() => r()));
-    const wheelPromise =
-      wheelRef.current?.spin() ??
-      new Promise<void>((r) => window.setTimeout(r, 2500));
-
-    try {
-      const [, spinResult] = await Promise.all([wheelPromise, apiPromise]);
-      if (!spinResult.ok) {
-        setErrorMessage(spinResult.error);
+      try {
+        const askResult = await postRouletteSpin(payload, idempotencyKey);
+        if (!askResult.ok) {
+          setErrorMessage(askResult.error);
+          setPhase('error');
+          return;
+        }
+        setResult(askResult.data);
+        setPhase('result');
+        void celebrate();
+      } catch {
+        setErrorMessage('Network error. Check your connection and try again.');
         setPhase('error');
-        return;
+      } finally {
+        askInFlightRef.current = false;
       }
-      setResult(spinResult.data);
-      setPhase('result');
-      void celebrate();
-    } catch {
-      setErrorMessage('Network error. Check your connection and try again.');
-      setPhase('error');
-    } finally {
-      spinInFlightRef.current = false;
-    }
-  }, [excludedCuisines, selections]);
+    },
+    [excludedCuisines, message, selections],
+  );
 
-  const spinAgain = useCallback(() => {
+  const changeOptions = useCallback(() => {
     setPhase('form');
     setResult(null);
     setErrorMessage(null);
@@ -152,85 +144,106 @@ export function RouletteClient() {
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const id = window.setTimeout(() => {
-      resultSectionRef.current?.scrollIntoView({
+      const region = resultSectionRef.current;
+      if (!region) return;
+      region.scrollIntoView({
         behavior: prefersReduced ? 'auto' : 'smooth',
         block: 'start',
       });
+      region.focus();
     }, 350);
     return () => clearTimeout(id);
   }, [phase, result?.restaurantId]);
 
   return (
     <div className="mx-auto flex max-w-lg flex-col px-4 py-12 sm:py-16">
+      {phase !== 'result' ? (
+        <p className="mb-8 text-center text-sm text-muted-foreground">{ALLERGY_NOTE}</p>
+      ) : null}
+
       {phase === 'form' && (
-        <div className="flex flex-col items-center space-y-8 text-center">
+        <form
+          className="flex flex-col items-center space-y-8 text-center"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void ask();
+          }}
+        >
           <div className="space-y-3">
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               Not sure where to eat tonight?
             </h1>
             <p className="text-lg text-muted-foreground">
-              Set your vibe, then let Wanderbite Roulette decide.
+              Add a mood, or leave it blank and we&apos;ll suggest a partner.
             </p>
           </div>
 
-          <RouletteWheel mode="idle" decorative />
+          <div className="w-full space-y-3 text-left">
+            <label htmlFor="discovery-message" className="text-sm font-medium text-foreground">
+              What are you in the mood for?
+            </label>
+            <textarea
+              id="discovery-message"
+              name="message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              rows={3}
+              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#E85D26]"
+              placeholder="Date night, something casual, a quiet room"
+            />
+          </div>
 
           <div className="w-full rounded-2xl border border-border/70 bg-card/60 p-5 shadow-sm sm:p-6">
             <RouletteOptionsFields
               variant="page"
               selections={selections}
-              onChange={(patch) =>
-                setSelections((prev) => ({ ...prev, ...patch }))
-              }
+              onChange={(patch) => setSelections((prev) => ({ ...prev, ...patch }))}
               exclusionsSummary={exclusionsSummary}
             />
           </div>
 
-          <Button
-            type="button"
-            size="lg"
-            className="h-12 min-w-[220px] rounded-full bg-[#E85D26] px-8 text-base font-semibold text-white hover:bg-[#d14f1f]"
-            onClick={() => void spin()}
-          >
-            Spin the Wheel 🎲
-          </Button>
-        </div>
+          <div className="flex flex-col items-center gap-3 sm:flex-row">
+            <Button
+              type="submit"
+              size="lg"
+              className="h-12 min-w-[220px] rounded-full bg-[#E85D26] px-8 text-base font-semibold text-white hover:bg-[#d14f1f]"
+            >
+              Find a spot
+            </Button>
+            <Button
+              type="button"
+              size="lg"
+              variant="outline"
+              className="h-12 min-w-[220px] rounded-full px-8 text-base"
+              onClick={() => void ask({ surprise: true })}
+            >
+              Surprise me
+            </Button>
+          </div>
+        </form>
       )}
 
-      {phase === 'spinning' && (
-        <div className="flex min-h-[60vh] flex-col items-center justify-center space-y-8 text-center">
-          <RouletteWheel
-            ref={wheelRef}
-            mode="interactive"
-            className="w-[clamp(240px,75vw,340px)] transition-[width] duration-500 ease-out"
-            decorative
-          />
-          <div className="space-y-1">
-            <p className="text-lg font-semibold text-foreground">
-              The wheel is spinning…
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Wanderbite Roulette is picking your spot.
-            </p>
-          </div>
+      {phase === 'loading' && (
+        <div className="flex min-h-[40vh] flex-col items-center justify-center space-y-3 text-center">
+          <p className="text-lg font-semibold text-foreground">Finding a restaurant…</p>
+          <p className="text-sm text-muted-foreground">This usually takes a few seconds.</p>
         </div>
       )}
 
       {phase === 'error' && (
         <div className="flex min-h-[40vh] flex-col items-center justify-center space-y-6 text-center">
           <p className="text-lg text-foreground">
-            {errorMessage ||
-              'Something went wrong. Please try Wanderbite Roulette again.'}
+            {errorMessage || 'Something went wrong. Please try again.'}
           </p>
           <div className="flex flex-col gap-2 sm:flex-row">
             <Button
               type="button"
-              onClick={() => void spin()}
+              onClick={() => void ask()}
               className="rounded-full bg-[#E85D26] text-white hover:bg-[#d14f1f]"
             >
               Try again
             </Button>
-            <Button type="button" variant="ghost" onClick={spinAgain}>
+            <Button type="button" variant="ghost" onClick={changeOptions}>
               Change options
             </Button>
           </div>
@@ -240,24 +253,26 @@ export function RouletteClient() {
       {phase === 'result' && result && (
         <div
           ref={resultSectionRef}
-          className="flex flex-col space-y-8 scroll-mt-6 animate-in fade-in slide-in-from-bottom-4 duration-500"
+          tabIndex={-1}
+          aria-labelledby="discovery-result-heading"
+          className="flex flex-col space-y-8 scroll-mt-6 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#E85D26] animate-in fade-in slide-in-from-bottom-4 duration-500"
         >
+          <p className="text-center text-sm text-muted-foreground">{ALLERGY_NOTE}</p>
           <div className="text-center">
             <p className="text-sm font-medium uppercase tracking-wide text-[#E85D26]">
-              🎯 Tonight&apos;s Pick
+              Tonight&apos;s pick
             </p>
-            <h2 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+            <h2
+              id="discovery-result-heading"
+              className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl"
+            >
               {result.restaurantName}
             </h2>
             <div className="mt-1 flex items-center justify-center gap-2 text-muted-foreground">
               {result.neighborhood ? <span>{result.neighborhood}</span> : null}
-              {result.neighborhood && result.price_range ? (
-                <span aria-hidden>·</span>
-              ) : null}
+              {result.neighborhood && result.price_range ? <span aria-hidden>·</span> : null}
               {result.price_range ? (
-                <span className="font-medium text-foreground">
-                  {result.price_range}
-                </span>
+                <span className="font-medium text-foreground">{result.price_range}</span>
               ) : null}
             </div>
           </div>
@@ -273,24 +288,16 @@ export function RouletteClient() {
                   </Badge>
                 ))
               ) : (
-                <span className="text-sm text-muted-foreground">{LAUNCH_MARKET.displayName} partner</span>
+                <span className="text-sm text-muted-foreground">
+                  {LAUNCH_MARKET.displayName} partner
+                </span>
               )}
             </div>
             <p className="text-sm leading-relaxed text-foreground">{result.reason}</p>
-            {result.selectionMode === 'random_fallback' ? (
+            {result.selectionMode !== 'ai' ? (
               <p className="mt-3 text-xs text-muted-foreground">
-                Surprise pick from the partner list — AI matching was unavailable for this spin.
-              </p>
-            ) : null}
-            {result.vibeMatch ? (
-              <p className="mt-3 text-xs font-medium text-[#E85D26]">
-                Vibe match: {result.vibeMatch}
-              </p>
-            ) : null}
-            {result.suggestedDish ? (
-              <p className="mt-2 text-sm text-muted-foreground">
-                <span className="font-medium text-foreground">Try:</span>{' '}
-                {result.suggestedDish}
+                This suggestion was not chosen by the assistant. Confirm details with the
+                restaurant.
               </p>
             ) : null}
 
@@ -311,13 +318,8 @@ export function RouletteClient() {
                 Get Directions
               </a>
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full"
-              onClick={() => void spin()}
-            >
-              Spin Again
+            <Button type="button" variant="outline" className="rounded-full" onClick={() => void ask()}>
+              Ask again
             </Button>
           </div>
 

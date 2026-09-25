@@ -1,6 +1,6 @@
 import type { LucideIcon } from 'lucide-react';
 import {
-  Dices,
+  Compass,
   Home,
   HelpCircle,
   UtensilsCrossed,
@@ -25,9 +25,9 @@ export const PUBLIC_NAV_ITEMS: NavItem[] = [
   { href: '/how-it-works', label: 'How it Works', icon: HelpCircle },
   {
     href: '/roulette',
-    label: 'Wanderbite Roulette',
-    icon: Dices,
-    ariaLabel: 'Wanderbite Roulette',
+    label: 'Discover',
+    icon: Compass,
+    ariaLabel: 'Discover',
   },
   { href: '/restaurants', label: 'Restaurants', icon: UtensilsCrossed },
   { href: '/pricing', label: 'Pricing', icon: CreditCard },
@@ -37,9 +37,9 @@ export const PUBLIC_NAV_ITEMS: NavItem[] = [
 export const MEMBER_NAV_ITEMS: NavItem[] = [
   {
     href: '/roulette',
-    label: 'Wanderbite Roulette',
-    icon: Dices,
-    ariaLabel: 'Wanderbite Roulette',
+    label: 'Discover',
+    icon: Compass,
+    ariaLabel: 'Discover',
   },
   { href: '/restaurants', label: 'Restaurants', icon: UtensilsCrossed },
   { href: '/challenges', label: 'Challenges', icon: Target },

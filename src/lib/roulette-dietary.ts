@@ -9,7 +9,7 @@ export function shuffleArray<T>(items: readonly T[]): T[] {
 }
 
 /**
- * Dietary & religion flags for Wanderbite Roulette.
+ * Dietary and religion flags for discovery.
  * Aligned with account `dietary_flags`; hard-filtered server-side before Claude.
  */
 export type RouletteDietaryFlag =

@@ -17,6 +17,25 @@ function signGuestId(guestId: string, secret: string): string {
   return createHmac('sha256', secret).update(`v1.${guestId}`).digest('hex');
 }
 
+/** Domain prefix is not the guest-cookie MAC (`v1.`). */
+const DISCOVERY_REPLAY_PREFIX = 'discovery-replay.v1';
+
+export function discoveryReplayMac(kind: 'message' | 'filter', value: string): string | null {
+  const secret = guestSigningSecret();
+  if (!secret) return null;
+  return createHmac('sha256', secret)
+    .update(`${DISCOVERY_REPLAY_PREFIX}.${kind}.${value}`)
+    .digest('hex');
+}
+
+export function discoveryReplayMacEqual(actual: string, expected: string): boolean {
+  if (!/^[0-9a-f]{64}$/i.test(actual) || !/^[0-9a-f]{64}$/i.test(expected)) return false;
+  const a = Buffer.from(actual, 'hex');
+  const b = Buffer.from(expected, 'hex');
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(a, b);
+}
+
 export function mintGuestCookieValue(): string | null {
   const secret = guestSigningSecret();
   if (!secret) return null;

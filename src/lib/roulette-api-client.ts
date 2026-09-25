@@ -31,7 +31,7 @@ async function postRouletteOnce(
   if (!data) {
     const hint =
       res.status === 504 || res.status === 502
-        ? 'The spin took too long. Please try again.'
+        ? 'That took too long. Please try again.'
         : 'Server returned an empty response. Please try again.';
     return { ok: false, error: hint };
   }
@@ -53,8 +53,6 @@ async function postRouletteOnce(
       restaurantId: data.restaurantId,
       restaurantName: data.restaurantName,
       reason: data.reason,
-      vibeMatch: data.vibeMatch ?? null,
-      suggestedDish: data.suggestedDish ?? null,
       cuisine_tags: data.cuisine_tags ?? null,
       neighborhood: data.neighborhood ?? null,
       address: data.address ?? null,
@@ -69,7 +67,7 @@ async function postRouletteOnce(
   };
 }
 
-/** POST /api/roulette. Client UUID is minted per spin and reused on one network retry. */
+/** POST /api/roulette. Client UUID is minted per ask and reused on one network retry. */
 export async function postRouletteSpin(
   payload: RouletteSpinPayload,
   idempotencyKey: string = crypto.randomUUID(),

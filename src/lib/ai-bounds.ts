@@ -1,4 +1,6 @@
 export const ROULETTE_MAX_BODY_BYTES = 8_192;
+/** Whole discovery message. Over this length is rejected, not clipped. */
+export const ROULETTE_MAX_MESSAGE_CHARS = 500;
 export const ROULETTE_MAX_STRING_CHARS = 200;
 export const ROULETTE_MAX_DIETARY = 10;
 export const ROULETTE_MAX_EXCLUDED = 20;
