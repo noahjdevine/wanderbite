@@ -10,7 +10,8 @@ export type AdminAuditAction =
   | 'restaurant.enrich_bulk'
   | 'restaurant.slugs_generated'
   | 'restaurant.import'
-  | 'restaurant.pin_set';
+  | 'restaurant.pin_set'
+  | 'offer.draft_save';
 
 export async function logAdminAction(params: {
   actorUserId: string;

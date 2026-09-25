@@ -18,7 +18,7 @@ export type AddRestaurantResult =
   | { ok: false; error: string };
 
 export type DeleteRestaurantResult =
-  | { ok: true }
+  | { ok: true; result: 'paused' | 'deleted' }
   | { ok: false; error: string };
 
 /** Current user, admin role, and currentLevel aal2. Fails before any service-role write. */
@@ -117,7 +117,7 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
       image_url,
       verification_code,
       pin_hash,
-      status: 'active',
+      status: 'paused',
     });
 
     if (restErr) return { ok: false, error: restErr.message };
@@ -128,15 +128,15 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
       .eq('org_id', orgId)
       .single();
 
-    if (newRestaurant) {
-      await supabase.from('restaurant_offers').insert({
-        restaurant_id: (newRestaurant as { id: string }).id,
-        discount_amount_cents: 1000,
-        min_spend_cents: 4000,
-        max_redemptions_per_month: 50,
-        active: true,
-      });
+    const restaurantId = (newRestaurant as { id: string } | null)?.id;
+    if (!restaurantId) {
+      return { ok: false, error: 'Restaurant was created without an id.' };
     }
+
+    const { error: draftErr } = await supabase.from('offer_drafts').insert({
+      restaurant_id: restaurantId,
+    });
+    if (draftErr) return { ok: false, error: draftErr.message };
 
     revalidatePath('/admin');
     revalidatePath('/restaurants');
@@ -144,7 +144,7 @@ export async function addRestaurant(formData: FormData): Promise<AddRestaurantRe
       actorUserId: auth.userId,
       action: 'restaurant.create',
       targetType: 'restaurant',
-      targetId: (newRestaurant as { id: string } | null)?.id,
+      targetId: restaurantId,
       metadata: { name, slug, marketId },
     });
     return { ok: true, partnerUrl: `/partner/${slug}` };
@@ -208,37 +208,20 @@ export async function deleteRestaurant(restaurantId: string): Promise<DeleteRest
     const auth = await checkAdminPermissions();
 
     const supabase = getSupabaseAdmin();
+    const { data, error } = await supabase.rpc('retire_restaurant', {
+      p_restaurant_id: restaurantId,
+      p_actor_user_id: auth.userId,
+    });
+    if (error) return { ok: false, error: error.message };
 
-    const { data: restaurant } = await supabase
-      .from('restaurants')
-      .select('id, org_id')
-      .eq('id', restaurantId)
-      .single();
-    if (!restaurant) return { ok: false, error: 'Restaurant not found.' };
-
-    await supabase.from('restaurant_offers').delete().eq('restaurant_id', restaurantId);
-    const { error: restErr } = await supabase.from('restaurants').delete().eq('id', restaurantId);
-    if (restErr) return { ok: false, error: restErr.message };
-
-    const orgId = (restaurant as { org_id: string }).org_id;
-    const { data: others } = await supabase
-      .from('restaurants')
-      .select('id')
-      .eq('org_id', orgId);
-    if (!others?.length) {
-      await supabase.from('restaurant_orgs').delete().eq('id', orgId);
+    const payload = data as { ok?: boolean; error?: string; result?: string } | null;
+    if (!payload?.ok || (payload.result !== 'paused' && payload.result !== 'deleted')) {
+      return { ok: false, error: payload?.error ?? 'Unable to retire restaurant.' };
     }
 
     revalidatePath('/admin');
     revalidatePath('/restaurants');
-    await logAdminAction({
-      actorUserId: auth.userId,
-      action: 'restaurant.delete',
-      targetType: 'restaurant',
-      targetId: restaurantId,
-      metadata: { orgId, deletedOffers: true },
-    });
-    return { ok: true };
+    return { ok: true, result: payload.result };
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Unknown error';
     return { ok: false, error: message };

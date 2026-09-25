@@ -324,10 +324,9 @@ function RestaurantCard({
   const [nowMs] = useState(() => Date.now());
   const isExpired = nowMs - new Date(cycleCreatedAt).getTime() > THIRTY_DAYS_MS;
   const tags = item.restaurant.cuisine_tags ?? [];
-  const offerText = formatOffer(
-    item.offer.discount_amount_cents,
-    item.offer.min_spend_cents
-  );
+  const offerText = item.offer.available
+    ? formatOffer(item.offer.discount_amount_cents, item.offer.min_spend_cents)
+    : 'Offer unavailable';
   const isAssigned = item.challengeItem.status === 'assigned';
   const isRedeemed = item.challengeItem.status === 'redeemed';
   const [displayCode, setDisplayCode] = useState<string | null>(item.redemptionToken ?? null);

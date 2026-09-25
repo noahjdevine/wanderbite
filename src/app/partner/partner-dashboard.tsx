@@ -41,7 +41,7 @@ export function PartnerDashboard({
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<
-    | { success: true; email: string | null; verifiedAt: string }
+    | { success: true; email: string | null; verifiedAt: string; hideDiscountAmount: boolean }
     | { success: false; message: string }
     | null
   >(null);
@@ -70,6 +70,7 @@ export function PartnerDashboard({
           success: true,
           email: res.redemptionDetails.email,
           verifiedAt: res.redemptionDetails.verifiedAt,
+          hideDiscountAmount: res.hideDiscountAmount,
         });
         setCode('');
         router.refresh();
@@ -151,7 +152,9 @@ export function PartnerDashboard({
               className="border-green-600 bg-green-50 text-green-900 dark:border-green-500 dark:bg-green-950/30 dark:text-green-100"
               variant="default"
             >
-              <AlertTitle>Valid — $10 discount applied</AlertTitle>
+              <AlertTitle>
+                {result.hideDiscountAmount ? 'Valid' : 'Valid — $10 discount applied'}
+              </AlertTitle>
               <AlertDescription>
                 <div className="mt-2 space-y-1 text-sm">
                   {result.email && (

@@ -481,6 +481,7 @@ export type Database = {
           cycle_id: string | null
           id: string
           restaurant_id: string | null
+          offer_version_id: string | null
           slot_number: number | null
           status: string | null
           swapped_from_item_id: string | null
@@ -488,6 +489,7 @@ export type Database = {
         Insert: {
           cycle_id?: string | null
           id?: string
+          offer_version_id?: string | null
           restaurant_id?: string | null
           slot_number?: number | null
           status?: string | null
@@ -496,6 +498,7 @@ export type Database = {
         Update: {
           cycle_id?: string | null
           id?: string
+          offer_version_id?: string | null
           restaurant_id?: string | null
           slot_number?: number | null
           status?: string | null
@@ -950,6 +953,108 @@ export type Database = {
           },
         ]
       }
+      offer_drafts: {
+        Row: {
+          boost_session_minutes: number | null
+          boosts: Json
+          capacity_max_redemptions: number | null
+          capacity_timezone: string | null
+          capacity_window_kind: string | null
+          exclusions: Json
+          id: string
+          restaurant_id: string
+          tiers: Json
+          timezone: string | null
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          boost_session_minutes?: number | null
+          boosts?: Json
+          capacity_max_redemptions?: number | null
+          capacity_timezone?: string | null
+          capacity_window_kind?: string | null
+          exclusions?: Json
+          id?: string
+          restaurant_id: string
+          tiers?: Json
+          timezone?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          boost_session_minutes?: number | null
+          boosts?: Json
+          capacity_max_redemptions?: number | null
+          capacity_timezone?: string | null
+          capacity_window_kind?: string | null
+          exclusions?: Json
+          id?: string
+          restaurant_id?: string
+          tiers?: Json
+          timezone?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: []
+      }
+      offer_versions: {
+        Row: {
+          boost_session_minutes: number | null
+          boosts: Json
+          capacity_max_redemptions: number
+          capacity_timezone: string
+          capacity_window_kind: string
+          exclusions: Json
+          id: string
+          published_at: string
+          published_by: string | null
+          restaurant_id: string
+          tiers: Json
+          timezone: string
+          valid_from: string
+          valid_until: string
+          withdrawn_from_selection_at: string | null
+        }
+        Insert: {
+          boost_session_minutes?: number | null
+          boosts: Json
+          capacity_max_redemptions: number
+          capacity_timezone: string
+          capacity_window_kind: string
+          exclusions: Json
+          id?: string
+          published_at?: string
+          published_by?: string | null
+          restaurant_id: string
+          tiers: Json
+          timezone: string
+          valid_from: string
+          valid_until: string
+          withdrawn_from_selection_at?: string | null
+        }
+        Update: {
+          boost_session_minutes?: number | null
+          boosts?: Json
+          capacity_max_redemptions?: number
+          capacity_timezone?: string
+          capacity_window_kind?: string
+          exclusions?: Json
+          id?: string
+          published_at?: string
+          published_by?: string | null
+          restaurant_id?: string
+          tiers?: Json
+          timezone?: string
+          valid_from?: string
+          valid_until?: string
+          withdrawn_from_selection_at?: string | null
+        }
+        Relationships: []
+      }
       restaurant_offers: {
         Row: {
           active: boolean | null
@@ -1025,6 +1130,7 @@ export type Database = {
         Row: {
           address: string | null
           created_at: string | null
+          current_offer_version_id: string | null
           cuisine_tags: string[] | null
           description: string | null
           google_photo_url: string | null
@@ -1052,6 +1158,7 @@ export type Database = {
           address?: string | null
           created_at?: string | null
           cuisine_tags?: string[] | null
+          current_offer_version_id?: string | null
           description?: string | null
           google_photo_url?: string | null
           google_place_id?: string | null
@@ -1078,6 +1185,7 @@ export type Database = {
           address?: string | null
           created_at?: string | null
           cuisine_tags?: string[] | null
+          current_offer_version_id?: string | null
           description?: string | null
           google_photo_url?: string | null
           google_place_id?: string | null
@@ -1529,6 +1637,18 @@ export type Database = {
       release_cron_lease: {
         Args: { p_job_name: string; p_run_id: number; p_token: string }
         Returns: boolean
+      }
+      publish_offer_version: {
+        Args: { p_actor_user_id: string; p_draft_id: string }
+        Returns: Json
+      }
+      retire_restaurant: {
+        Args: { p_actor_user_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      withdraw_offer_version: {
+        Args: { p_actor_user_id: string; p_version_id: string }
+        Returns: Json
       }
       renew_cron_lease: {
         Args: {

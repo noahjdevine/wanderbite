@@ -48,6 +48,7 @@ import {
 import { GOOGLE_IMPORT_PARTIAL_MESSAGE } from '@/lib/google-import-outcome';
 import type { PlaceDetails } from '@/lib/google-places-import';
 import { toast } from 'sonner';
+import { OfferDraftCard } from './offer-draft-card';
 
 function SetRestaurantPinForm({
   restaurantId,
@@ -256,8 +257,15 @@ export function AdminClient({
     try {
       const result = await deleteRestaurant(id);
       if (result.ok) {
-        setRestaurants((prev) => prev.filter((r) => r.id !== id));
-        toast.success('Restaurant deleted.');
+        if (result.result === 'paused') {
+          setRestaurants((prev) =>
+            prev.map((row) => (row.id === id ? { ...row, status: 'paused' } : row)),
+          );
+          toast.success('Restaurant paused. Published history stays in place.');
+        } else {
+          setRestaurants((prev) => prev.filter((r) => r.id !== id));
+          toast.success('Restaurant deleted.');
+        }
         router.refresh();
         return;
       }
@@ -811,6 +819,8 @@ export function AdminClient({
           </form>
         </CardContent>
       </Card>
+
+      <OfferDraftCard restaurants={restaurants.map((row) => ({ id: row.id, name: row.name }))} />
 
       <Card className="border-violet-200">
         <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

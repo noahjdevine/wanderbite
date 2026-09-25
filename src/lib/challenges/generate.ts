@@ -78,12 +78,15 @@ type ChallengeItemRow = {
   restaurant_id: string;
   slot_number: number;
   status: string;
+  offer_version_id?: string | null;
 };
 
 export type GeneratedChallengeItem = {
   challengeItem: ChallengeItemRow;
   restaurant: RestaurantRow;
-  offer: { discount_amount_cents: number; min_spend_cents: number };
+  offer:
+    | { available: false }
+    | { available: true; discount_amount_cents: number; min_spend_cents: number };
   /** Set when status is 'redeemed' (token from redemptions). */
   redemptionToken?: string | null;
   /** Redemption row id when status is 'redeemed' (for Bite Notes, etc.). */
@@ -626,9 +629,15 @@ async function loadChallengeItemsWithRestaurants(
         image_url: safeManualImagePath(restaurant.image_url),
         google_place_id: restaurant.google_place_id ?? null,
       },
-      offer: offer
-        ? { discount_amount_cents: offer.discount_amount_cents, min_spend_cents: offer.min_spend_cents }
-        : { discount_amount_cents: 1000, min_spend_cents: 4000 },
+      offer: item.offer_version_id
+        ? { available: false }
+        : offer
+          ? {
+              available: true,
+              discount_amount_cents: offer.discount_amount_cents,
+              min_spend_cents: offer.min_spend_cents,
+            }
+          : { available: true, discount_amount_cents: 1000, min_spend_cents: 4000 },
       redemptionToken: null,
       redemptionId:
         item.status === 'redeemed'
