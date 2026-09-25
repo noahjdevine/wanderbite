@@ -100,9 +100,11 @@ update public.restaurants set current_offer_version_id = 'e2b00000-0000-4000-800
 update public.restaurants set current_offer_version_id = 'e2b00000-0000-4000-8000-0000000000d1' where id = 'e2b00000-0000-4000-8000-000000000061';
 update public.restaurants set current_offer_version_id = 'e2b00000-0000-4000-8000-0000000000d2' where id = 'e2b00000-0000-4000-8000-000000000062';
 update public.restaurants set current_offer_version_id = 'e2b00000-0000-4000-8000-0000000000e1' where id = 'e2b00000-0000-4000-8000-000000000071';
+select set_config('wanderbite.offer_withdraw', 'on', true);
 update public.offer_versions
 set withdrawn_from_selection_at = now()
 where id = 'e2b00000-0000-4000-8000-0000000000c1';
+select set_config('wanderbite.offer_withdraw', 'off', true);
 
 do $$
 declare
