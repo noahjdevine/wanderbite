@@ -3,7 +3,9 @@ import { redirect } from 'next/navigation';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
 import { createClient } from '@/lib/supabase/server';
+import { formatCents, lowestSealedBase } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import type { Json } from '@/types/database.types';
 
 export const dynamic = 'force-dynamic';
 
@@ -70,25 +72,34 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     redirect('/challenges');
   }
 
-  let offerUnavailable = false;
+  let versionId: string | null = null;
   if (row.challenge_item_id) {
     const { data: item } = await admin
       .from('challenge_items')
       .select('offer_version_id')
       .eq('id', row.challenge_item_id)
       .maybeSingle();
-    offerUnavailable = Boolean(
-      (item as { offer_version_id: string | null } | null)?.offer_version_id,
-    );
+    versionId =
+      (item as { offer_version_id: string | null } | null)?.offer_version_id ?? null;
   }
-  const discountCents = offerRow?.discount_amount_cents ?? 1000;
-  const minSpendCents = offerRow?.min_spend_cents ?? 4000;
+  let sealed = null as ReturnType<typeof lowestSealedBase>;
+  if (versionId) {
+    const { data: version } = await admin
+      .from('offer_versions')
+      .select('tiers')
+      .eq('id', versionId)
+      .maybeSingle();
+    sealed = lowestSealedBase((version as { tiers: Json } | null)?.tiers);
+  }
+  const offerUnavailable = Boolean(versionId) && !sealed;
+  const discountCents = sealed?.discount_amount_cents ?? offerRow?.discount_amount_cents ?? 1000;
+  const minSpendCents = sealed?.min_spend_cents ?? offerRow?.min_spend_cents ?? 4000;
   const discountLabel = offerUnavailable
     ? 'Offer unavailable'
-    : `$${(discountCents / 100).toFixed(0)} off`;
+    : `${formatCents(discountCents)} off`;
   const minSpendLabel = offerUnavailable
     ? ''
-    : `$${(minSpendCents / 100).toFixed(0)} minimum spend`;
+    : `${formatCents(minSpendCents)} minimum spend`;
 
   const code = row.status === 'issued' ? await getRedemptionCode(redemptionId) : null;
 

@@ -1,6 +1,7 @@
 'use server';
 
 import { format } from 'date-fns';
+import type { Json } from '@/types/database.types';
 import { headers } from 'next/headers';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
@@ -11,6 +12,7 @@ import {
   VERIFY_UNAVAILABLE_MESSAGE,
   enforcePartnerVerifyLimit,
 } from '@/lib/partner-verify-limit';
+import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { reportVerifyIntegrityError } from '@/lib/report-verify-integrity-error';
 
 const BADGE_ID_TO_NAME: Record<string, string> = {
@@ -34,6 +36,8 @@ export type VerifyRedemptionResult =
       };
       newBadgesEarned: string[];
       hideDiscountAmount: boolean;
+      sealedDiscountCents: number | null;
+      sealedMinSpendCents: number | null;
     }
   | { success: false; message: string };
 
@@ -172,10 +176,27 @@ export async function verifyRedemptionTokenForPartner(
   const supabase = getSupabaseAdmin();
   const tokenHash = hashRedemptionToken(trimmed);
 
-  const { data, error: rpcError } = await supabase.rpc('verify_redemption', {
+  const { data: issuedRow } = await supabase
+    .from('redemptions')
+    .select('challenge_item_id')
+    .eq('token_hash', tokenHash)
+    .maybeSingle();
+  let versionBound = false;
+  if (issuedRow?.challenge_item_id) {
+    const { data: itemRow } = await supabase
+      .from('challenge_items')
+      .select('offer_version_id')
+      .eq('id', issuedRow.challenge_item_id)
+      .maybeSingle();
+    versionBound = Boolean(itemRow?.offer_version_id);
+  }
+  const rpcArgs = {
     p_token_hash: tokenHash,
     p_restaurant_id: partnerRestaurantId,
-  });
+  };
+  const { data, error: rpcError } = versionBound
+    ? await supabase.rpc('verify_redemption_and_settle', rpcArgs)
+    : await supabase.rpc('verify_redemption', rpcArgs);
 
   if (rpcError) {
     if (isDuplicateIssuedError(rpcError.message)) {
@@ -221,15 +242,28 @@ export async function verifyRedemptionTokenForPartner(
     );
 
     let hideDiscountAmount = false;
+    let sealedDiscountCents: number | null = null;
+    let sealedMinSpendCents: number | null = null;
     if (redemption.challenge_item_id) {
       const { data: item } = await supabase
         .from('challenge_items')
         .select('offer_version_id')
         .eq('id', redemption.challenge_item_id)
         .maybeSingle();
-      hideDiscountAmount = Boolean(
-        (item as { offer_version_id: string | null } | null)?.offer_version_id,
-      );
+      const versionId = (item as { offer_version_id: string | null } | null)?.offer_version_id;
+      hideDiscountAmount = Boolean(versionId);
+      if (versionId) {
+        const { data: version } = await supabase
+          .from('offer_versions')
+          .select('tiers')
+          .eq('id', versionId)
+          .maybeSingle();
+        const base = lowestSealedBase((version as { tiers: Json } | null)?.tiers);
+        if (base) {
+          sealedDiscountCents = base.discount_amount_cents;
+          sealedMinSpendCents = base.min_spend_cents;
+        }
+      }
     }
 
     return {
@@ -237,6 +271,8 @@ export async function verifyRedemptionTokenForPartner(
       redemptionDetails: { email, restaurantName, verifiedAt },
       newBadgesEarned,
       hideDiscountAmount,
+      sealedDiscountCents,
+      sealedMinSpendCents,
     };
   }
 

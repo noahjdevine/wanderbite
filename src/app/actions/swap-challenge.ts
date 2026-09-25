@@ -279,7 +279,7 @@ export async function swapChallengeItem(
     // 7. Restaurants in market with active offer, excluding current + other assigned
     const { data: restaurants, error: restaurantsErr } = await supabase
       .from('restaurants')
-      .select('id, name, cuisine_tags, address, lat, lon, status, market_id, org_id')
+      .select('id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, current_offer_version_id')
       .eq('market_id', market.marketId)
       .eq('status', 'active');
 
@@ -308,7 +308,11 @@ export async function swapChallengeItem(
     const offerList = (offers ?? []) as RestaurantOfferRow[];
     const offerByRestaurant = new Map(offerList.map((o) => [o.restaurant_id, o]));
 
-    const withOffer = restaurantList.filter((r) => offerByRestaurant.has(r.id));
+    const withOffer = restaurantList.filter(
+      (r) =>
+        offerByRestaurant.has(r.id) ||
+        Boolean((r as RestaurantRow & { current_offer_version_id?: string | null }).current_offer_version_id)
+    );
     if (withOffer.length === 0) {
       return { ok: false, error: 'No restaurants with an active offer available to swap into.' };
     }
@@ -371,9 +375,15 @@ export async function swapChallengeItem(
         if (verifiedAts.filter((d) => d >= twelveMonthsAgo).length >= 2) return false;
 
         const offer = offerByRestaurant.get(restaurant.id);
-        if (!offer) return false;
-        const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
-        if (monthCount >= offer.max_redemptions_per_month) return false;
+        const versionBound = Boolean(
+          (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
+            .current_offer_version_id
+        );
+        if (!offer && !versionBound) return false;
+        if (offer && !versionBound) {
+          const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
+          if (monthCount >= offer.max_redemptions_per_month) return false;
+        }
         return true;
       },
       passesVariety: () => true,

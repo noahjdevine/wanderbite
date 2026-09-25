@@ -5,6 +5,10 @@
       "schedule": "1 0 1 * *"
     },
     {
+      "path": "/api/cron/issue-version-bound-challenges",
+      "schedule": "0 6 1 * *"
+    },
+    {
       "path": "/api/cron/reset-swap-counters",
       "schedule": "5 0 1 * *"
     },

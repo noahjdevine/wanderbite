@@ -1,6 +1,8 @@
 import { redirect } from 'next/navigation';
 import { format } from 'date-fns';
+import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import type { Json } from '@/types/database.types';
 import { getUserStats } from '@/app/actions/get-user-stats';
 import {
   Card,
@@ -62,20 +64,38 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
     .eq('status', 'verified');
   const verified = (verifiedRows ?? []) as { challenge_item_id: string | null }[];
   const itemIds = verified.flatMap((row) => (row.challenge_item_id ? [row.challenge_item_id] : []));
-  const boundItemIds = new Set<string>();
+  const sealedCentsByItem = new Map<string, number>();
   if (itemIds.length > 0) {
     const { data: items } = await admin
       .from('challenge_items')
       .select('id, offer_version_id')
       .in('id', itemIds);
-    for (const item of (items ?? []) as { id: string; offer_version_id: string | null }[]) {
-      if (item.offer_version_id) boundItemIds.add(item.id);
+    const rows = (items ?? []) as { id: string; offer_version_id: string | null }[];
+    const versionIds = rows.flatMap((item) => (item.offer_version_id ? [item.offer_version_id] : []));
+    const centsByVersion = new Map<string, number>();
+    if (versionIds.length > 0) {
+      const { data: versions } = await admin
+        .from('offer_versions')
+        .select('id, tiers')
+        .in('id', versionIds);
+      for (const version of versions ?? []) {
+        const base = lowestSealedBase((version as { tiers: Json }).tiers);
+        if (base) centsByVersion.set(version.id, base.discount_amount_cents);
+      }
+    }
+    for (const item of rows) {
+      if (!item.offer_version_id) continue;
+      const cents = centsByVersion.get(item.offer_version_id);
+      if (cents != null) sealedCentsByItem.set(item.id, cents);
     }
   }
-  const savingsCount = verified.filter(
-    (row) => !row.challenge_item_id || !boundItemIds.has(row.challenge_item_id),
-  ).length;
-  const totalSavingsDollars = (savingsCount * SAVINGS_PER_REDEMPTION_CENTS) / 100;
+  const totalSavingsCents = verified.reduce((sum, row) => {
+    if (row.challenge_item_id && sealedCentsByItem.has(row.challenge_item_id)) {
+      return sum + (sealedCentsByItem.get(row.challenge_item_id) ?? 0);
+    }
+    return sum + SAVINGS_PER_REDEMPTION_CENTS;
+  }, 0);
+  const totalSavingsDollars = totalSavingsCents / 100;
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">

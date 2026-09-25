@@ -9,26 +9,11 @@ function source(rel: string): string {
 }
 
 describe('E01 publishing boundary', () => {
-  it('does not call publish or withdraw from application code', () => {
-    for (const rel of [
-      'src/app/(site)/admin/actions.ts',
-      'src/app/(site)/admin/offer-actions.ts',
-      'src/app/(site)/admin/admin-client.tsx',
-      'src/app/(site)/admin/offer-draft-card.tsx',
-      'src/lib/challenges/generate.ts',
-      'src/app/actions/swap-challenge.ts',
-      'src/app/actions/partner-verify.ts',
-    ]) {
-      const file = source(rel);
-      expect(file, rel).not.toMatch(/publish_offer_version|withdraw_offer_version/);
-    }
-  });
-
-  it('leaves generate and swap SQL without a 2000-cent pair floor', () => {
-    const sql = source('supabase/migrations/20260909001409_challenge_workflow_transactions.sql');
-    expect(sql).not.toMatch(/2000/);
-    expect(source('src/lib/challenges/generate.ts')).not.toMatch(/pairSavingsModel|below_pair_floor/);
-    expect(source('src/app/actions/swap-challenge.ts')).not.toMatch(/pairSavingsModel|below_pair_floor/);
+  it('keeps the E01 migration free of assignment writes', () => {
+    const e01 = source('supabase/migrations/20260925011529_e01_offer_versions.sql');
+    expect(e01).toMatch(/Assignment does not write challenge_items.offer_version_id/);
+    const legacy = source('supabase/migrations/20260909001409_challenge_workflow_transactions.sql');
+    expect(legacy).not.toMatch(/2000/);
   });
 
   it('does not edit verify_redemption and keeps draft save behind assertAdmin', () => {
@@ -36,6 +21,7 @@ describe('E01 publishing boundary', () => {
     expect(verify).not.toMatch(/offer_version/);
     const drafts = source('src/app/(site)/admin/offer-actions.ts');
     expect(drafts).toMatch(/assertAdmin/);
-    expect(source('src/app/(site)/admin/offer-draft-card.tsx')).not.toMatch(/>\s*Publish|Withdraw/);
+    expect(drafts).toMatch(/publish_offer_version/);
+    expect(drafts).toMatch(/activate_restaurant/);
   });
 });

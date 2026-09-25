@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { runLeasedCron, type CronLeaseContext } from '@/lib/cron-runs';
-import { issueItemStatus, monthlyRunKey } from '@/lib/cron-period';
+import { chicagoMonthStart, issueItemStatus } from '@/lib/cron-period';
 import { generateMonthlyChallengeForUser } from '@/lib/challenges/generate';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
@@ -9,7 +9,7 @@ import type { Json } from '@/types/database.types';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const JOB = 'issue-monthly-challenges';
+const JOB = 'issue-version-bound-challenges';
 const LEASE_SECONDS = 10 * 60;
 const BATCH = 25;
 
@@ -74,9 +74,7 @@ async function issuePending(ctx: CronLeaseContext): Promise<void> {
       if (!(await ctx.guardPeriod())) return;
       if (!(await ctx.renew())) return;
       try {
-        const result = await generateMonthlyChallengeForUser(item.itemKey, {
-          excludeVersionBound: true,
-        });
+        const result = await generateMonthlyChallengeForUser(item.itemKey);
         const recorded = await ctx.record(
           item.itemKey,
           issueItemStatus(result),
@@ -98,11 +96,11 @@ export async function GET(request: Request) {
 
   const exit = await runLeasedCron({
     jobName: JOB,
-    runKey: monthlyRunKey(JOB),
+    runKey: `${JOB}:${chicagoMonthStart()}`,
     leaseSeconds: LEASE_SECONDS,
     resumeExpired: true,
     allowNewAttempt: false,
-    currentPeriod: () => monthlyRunKey(JOB),
+    currentPeriod: () => `${JOB}:${chicagoMonthStart()}`,
     async work(ctx) {
       const snapshotted = await snapshotSubscribers(ctx);
       if (!snapshotted) return;

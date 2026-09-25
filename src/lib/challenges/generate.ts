@@ -2,6 +2,8 @@
 import { randomInt } from 'node:crypto';
 import * as Sentry from '@sentry/nextjs';
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
+import { chicagoMonthStart } from '@/lib/cron-period';
+import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
@@ -110,7 +112,10 @@ export type GenerateFailureReason =
   | 'thin_pool'
   | 'market_unavailable'
   | 'load_failed'
-  | 'assignment_failed';
+  | 'assignment_failed'
+  | 'waiting_for_local_month'
+  | 'pair_below_floor'
+  | 'capacity_full';
 
 export type GenerateChallengeResult =
   | { ok: true; data: GeneratedChallenge }
@@ -196,7 +201,8 @@ const CHALLENGE_ITEMS_PER_MONTH = 2;
  * Eligibility and distance-band validation run before returning an existing cycle.
  */
 export async function generateMonthlyChallengeForUser(
-  userId: string
+  userId: string,
+  options?: { excludeVersionBound?: boolean }
 ): Promise<GenerateChallengeResult> {
   try {
     const supabase = getSupabaseAdmin();
@@ -253,33 +259,36 @@ export async function generateMonthlyChallengeForUser(
     }
 
     const now = new Date();
-    const cycleMonth = startOfMonth(now);
-    const cycleMonthStr = format(cycleMonth, 'yyyy-MM-dd');
+    const utcCycleMonthStr = format(startOfMonth(now), 'yyyy-MM-dd');
+    const lookupMonths = options?.excludeVersionBound
+      ? [utcCycleMonthStr]
+      : [chicagoMonthStart(now), utcCycleMonthStr];
     const threeMonthsAgo = subMonths(now, 3);
     const sixMonthsAgo = subMonths(now, 6);
     const twelveMonthsAgo = subYears(now, 12);
-    const monthStart = cycleMonth;
+    const monthStart = startOfMonth(now);
     const monthEnd = startOfMonth(subMonths(now, -1));
 
-    const { data: existingCycle, error: cycleErr } = await supabase
-      .from('challenge_cycles')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('cycle_month', cycleMonthStr)
-      .eq('status', 'active')
-      .maybeSingle();
-
-    if (cycleErr) {
-      return fail('load_failed', `Failed to check existing cycle: ${cycleErr.message}`);
-    }
-    if (existingCycle) {
-      const cycle = existingCycle as ChallengeCycleRow;
-      const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
-      if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
-        return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
+    for (const month of lookupMonths) {
+      const { data: existingCycle, error: cycleErr } = await supabase
+        .from('challenge_cycles')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('cycle_month', month)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (cycleErr) {
+        return fail('load_failed', `Failed to check existing cycle: ${cycleErr.message}`);
       }
-      const distanceMatch = await distanceMatchForUser(supabase, userId, items);
-      return { ok: true, data: { cycle, items, distanceMatch } };
+      if (existingCycle) {
+        const cycle = existingCycle as ChallengeCycleRow;
+        const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
+        if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
+          return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
+        }
+        const distanceMatch = await distanceMatchForUser(supabase, userId, items);
+        return { ok: true, data: { cycle, items, distanceMatch } };
+      }
     }
 
     const allergyFlags = (profile?.allergy_flags ?? null) as string[] | null;
@@ -295,7 +304,7 @@ export async function generateMonthlyChallengeForUser(
     const { data: restaurants, error: restErr } = await supabase
       .from('restaurants')
       .select(
-        'id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, google_place_id'
+        'id, name, cuisine_tags, address, lat, lon, status, market_id, org_id, google_place_id, current_offer_version_id'
       )
       .eq('market_id', marketId)
       .eq('status', 'active');
@@ -322,9 +331,21 @@ export async function generateMonthlyChallengeForUser(
     const offerList = (offers ?? []) as RestaurantOfferRow[];
     const offerByRestaurant = new Map(offerList.map((o) => [o.restaurant_id, o]));
 
-    const withOffer = restaurantList.filter((r) => offerByRestaurant.has(r.id));
+    const withOffer = restaurantList.filter((restaurant) => {
+      const versionBound = Boolean(
+        (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
+          .current_offer_version_id
+      );
+      if (options?.excludeVersionBound && versionBound) return false;
+      return versionBound || offerByRestaurant.has(restaurant.id);
+    });
     if (withOffer.length === 0) {
-      return fail('thin_pool', 'No restaurants with an active offer in this market.');
+      return fail(
+        options?.excludeVersionBound ? 'waiting_for_local_month' : 'thin_pool',
+        options?.excludeVersionBound
+          ? 'Version-backed restaurants wait for the Chicago month.'
+          : 'No restaurants with an active offer in this market.'
+      );
     }
 
     const { data: userRedemptions, error: redErr } = await supabase
@@ -454,10 +475,16 @@ export async function generateMonthlyChallengeForUser(
         return false;
       }
       if (swappedOutRestaurantIds.has(restaurant.id)) return false;
+      const versionBound = Boolean(
+        (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
+          .current_offer_version_id
+      );
       const offer = offerByRestaurant.get(restaurant.id);
-      if (!offer) return false;
+      if (!versionBound && !offer) return false;
+      if (!versionBound && offer) {
       const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
       if (monthCount >= offer.max_redemptions_per_month) return false;
+      }
       return redemptionHardOk(restaurant);
     }
 
@@ -504,11 +531,16 @@ export async function generateMonthlyChallengeForUser(
       return fail('thin_pool', THIN_POOL_ERROR);
     }
 
+    const versionBacked = chosen.some(
+      (restaurant) =>
+        (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
+          .current_offer_version_id
+    );
     const { data: rpcData, error: rpcError } = await supabase.rpc(
       'generate_challenge_cycle',
       {
         p_user_id: userId,
-        p_cycle_month: cycleMonthStr,
+        p_cycle_month: versionBacked ? chicagoMonthStart(now) : utcCycleMonthStr,
         p_market_id: marketId,
         p_restaurant_ids: chosen.map((restaurant) => restaurant.id),
       }
@@ -524,6 +556,15 @@ export async function generateMonthlyChallengeForUser(
     }
     if (generated.outcome === 'inactive_subscription') {
       return fail('inactive_subscription', INACTIVE_SUBSCRIPTION_ERROR);
+    }
+    if (generated.outcome === 'local_month_not_open') {
+      return fail('waiting_for_local_month', 'This offer pair opens on the Chicago month.');
+    }
+    if (generated.outcome === 'pair_below_floor') {
+      return fail('pair_below_floor', 'This pair is below the $20 base savings floor.');
+    }
+    if (generated.outcome === 'capacity_full') {
+      return fail('capacity_full', 'A restaurant in this pair is at capacity.');
     }
     if (generated.outcome === 'invalid_restaurants') {
       return fail('thin_pool', THIN_POOL_ERROR);
@@ -586,6 +627,20 @@ async function loadChallengeItemsWithRestaurants(
   const offerMap = new Map(
     (offers ?? []).map((o) => [(o as RestaurantOfferRow).restaurant_id, o as RestaurantOfferRow])
   );
+  const versionIds = (items as ChallengeItemRow[])
+    .map((item) => item.offer_version_id)
+    .filter((id): id is string => Boolean(id));
+  const versionBase = new Map<string, { discount_amount_cents: number; min_spend_cents: number }>();
+  if (versionIds.length > 0) {
+    const { data: versions } = await supabase
+      .from('offer_versions')
+      .select('id, tiers')
+      .in('id', versionIds);
+    for (const version of versions ?? []) {
+      const base = lowestSealedBase(version.tiers);
+      if (base) versionBase.set(version.id, base);
+    }
+  }
 
   // redemptions.token_hash is a SHA-256 digest of the WB- code, not the code itself.
   // The display token is shown once at redeem time only; it is not recoverable from the DB.
@@ -630,7 +685,9 @@ async function loadChallengeItemsWithRestaurants(
         google_place_id: restaurant.google_place_id ?? null,
       },
       offer: item.offer_version_id
-        ? { available: false }
+        ? versionBase.get(item.offer_version_id)
+          ? { available: true, ...versionBase.get(item.offer_version_id)! }
+          : { available: false }
         : offer
           ? {
               available: true,

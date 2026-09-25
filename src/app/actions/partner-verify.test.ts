@@ -155,6 +155,7 @@ describe('verifyRedemptionTokenForPartner', () => {
         return {
           select: () => ({
             eq: () => ({
+              maybeSingle: async () => ({ data: null, error: null }),
               eq: () => ({ data: null, error: null, count: 1 }),
             }),
           }),
@@ -199,6 +200,18 @@ describe('verifyRedemptionTokenForPartner', () => {
           }),
         };
       }
+      if (table === 'offer_versions') {
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
       if (table === 'user_profiles') {
         return {
           select: () => ({
@@ -214,7 +227,17 @@ describe('verifyRedemptionTokenForPartner', () => {
         };
       }
       if (table === 'redemptions') {
-        return { select: () => ({ eq: () => ({ eq: () => ({ data: null, error: null, count: 1 }) }) }) };
+        return {
+          select: () => ({
+            eq: () => ({
+              maybeSingle: async () => ({
+                data: { challenge_item_id: 'item-1' },
+                error: null,
+              }),
+              eq: () => ({ data: null, error: null, count: 1 }),
+            }),
+          }),
+        };
       }
       if (table === 'user_badges') {
         return {
@@ -226,8 +249,16 @@ describe('verifyRedemptionTokenForPartner', () => {
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
-    expect(rpc).toHaveBeenCalled();
-    expect(result).toMatchObject({ success: true, hideDiscountAmount: true });
+    expect(rpc).toHaveBeenCalledWith('verify_redemption_and_settle', {
+      p_token_hash: hashRedemptionToken('WB-G6OK1'),
+      p_restaurant_id: ACTIVE_ID,
+    });
+    expect(result).toMatchObject({
+      success: true,
+      hideDiscountAmount: true,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+    });
   });
 
   it('treats a second empty RPC result as already used', async () => {
@@ -237,6 +268,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       return {
         select: () => ({
           eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
             limit: async () => ({
               data: [
                 issuedRow({
@@ -276,7 +308,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       message: 'Verification failed. Please try again later.',
     });
     expect(reportVerifyIntegrityError).toHaveBeenCalled();
-    expect(from).not.toHaveBeenCalled();
+    expect(from.mock.calls.map((call) => call[0])).not.toContain('user_badges');
   });
 
   it('does not award badges when the RPC raises a duplicate-hash error', async () => {
@@ -290,7 +322,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       message: 'Verification failed. Please try again later.',
     });
     expect(reportVerifyIntegrityError).toHaveBeenCalled();
-    expect(from).not.toHaveBeenCalled();
+    expect(from.mock.calls.map((call) => call[0])).not.toContain('user_badges');
   });
 
   it('reports the wrong restaurant from a read-only lookup', async () => {
@@ -300,6 +332,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       return {
         select: () => ({
           eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
             limit: async () => ({
               data: [issuedRow({ restaurant_id: OTHER_ID })],
               error: null,
@@ -322,6 +355,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       return {
         select: () => ({
           eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
             limit: async () => ({
               data: [
                 issuedRow({
