@@ -96,7 +96,7 @@ as $$
 declare
   profile public.user_profiles%rowtype;
   n integer;
-  expires_at timestamptz;
+  v_expires_at timestamptz;
 begin
   select up.* into profile
   from public.user_profiles up
@@ -130,13 +130,13 @@ begin
     return 'incomplete_credits';
   end if;
 
-  expires_at := (p_issue_period + interval '1 month')::timestamp at time zone 'America/Chicago';
+  v_expires_at := (p_issue_period + interval '1 month')::timestamp at time zone 'America/Chicago';
   begin
     insert into public.entitlement_credits (
       user_id, issue_period, slot_number, status, expires_at
     ) values
-      (p_user_id, p_issue_period, 1, 'pending', expires_at),
-      (p_user_id, p_issue_period, 2, 'pending', expires_at);
+      (p_user_id, p_issue_period, 1, 'pending', v_expires_at),
+      (p_user_id, p_issue_period, 2, 'pending', v_expires_at);
   exception
     when unique_violation then
       select count(*) into n
