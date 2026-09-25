@@ -32,8 +32,8 @@ Import tab lists from `src/lib/nav-items.ts` only — **never** duplicate nav li
 
 | Auth | Tabs |
 |------|------|
-| Public | Home, How it Works, Wanderbite Roulette, Restaurants, Pricing |
-| Member | Wanderbite Roulette, Restaurants, Challenges, My Journey |
+| Public | Home, How it Works, Discover, Restaurants, Pricing |
+| Member | Discover, Restaurants, Challenges, My Journey |
 
 - Desktop and mobile must match within the same auth state.
 - Logged-in nav **replaces** public nav (not additive).

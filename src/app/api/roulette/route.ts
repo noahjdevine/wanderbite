@@ -5,17 +5,8 @@ import { LAUNCH_MARKET } from '@/lib/launch-market';
 import { safeManualImagePath } from '@/lib/restaurant-image';
 import { NextRequest, NextResponse } from 'next/server';
 import { randomUUID } from 'crypto';
-import {
-  isRouletteDietaryFlag,
-  restaurantMatchesDietaryQuick,
-  shuffleArray,
-  type RouletteDietaryFlag,
-} from '@/lib/roulette-dietary';
-import {
-  cuisineLabel,
-  isCuisineId,
-  restaurantHasExcludedCuisine,
-} from '@/lib/cuisines';
+import { restaurantMatchesDietaryQuick, shuffleArray } from '@/lib/roulette-dietary';
+import { cuisineLabel, isCuisineId, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { isRoulettePriceRange, ROULETTE_TIMES, ROULETTE_VIBES } from '@/lib/roulette-options';
 import { allowBillableRoulette } from '@/lib/ratelimit';
 import { isWanderbiteAiDisabled } from '@/lib/ai-kill-switch';
@@ -26,15 +17,14 @@ import {
   parseGuestCookieValue,
   AI_GUEST_COOKIE_NAME,
   hasGuestSigningSecret,
+  discoveryReplayMac,
 } from '@/lib/ai-guest';
 import { hashClientIp, hasIpHashSecret } from '@/lib/ai-ip-hash';
 import {
   boundStringArray,
   clipChars,
   isBodyWithinByteLimit,
-  ROULETTE_MAX_ADDRESS_CHARS,
   ROULETTE_MAX_BODY_BYTES,
-  ROULETTE_MAX_DESC_CHARS,
   ROULETTE_MAX_DIETARY,
   ROULETTE_MAX_EXCLUDED,
   ROULETTE_MAX_NAME_CHARS,
@@ -65,6 +55,21 @@ import {
   rpcAiSettle,
   rpcAiStoreResultPayload,
 } from '@/lib/ai-budget/rpcs';
+import {
+  buildStoredDiscoveryPayload,
+  canonicalFilterString,
+  decideReplay,
+  discoveryCardSentence,
+  DISCOVERY_ALLERGY_ERROR,
+  DISCOVERY_PROFILE_ERROR,
+  DISCOVERY_REPLAY_MISMATCH_ERROR,
+  gateDiscoveryMessage,
+  gateSignedInProfile,
+  isIdInPromptRows,
+  mergeDietaryFlags,
+  mergeExcludedCuisines,
+  parseModelRestaurantId,
+} from '@/lib/discovery-turn';
 
 export const dynamic = 'force-dynamic';
 /** Claude + DB can exceed the default serverless limit on cold starts. */
@@ -80,7 +85,6 @@ type RouletteRestaurant = {
   cuisine_tags: string[] | null;
   neighborhood: string | null;
   address: string | null;
-  description: string | null;
   price_range: string | null;
   image_url: string | null;
   google_place_id: string | null;
@@ -89,20 +93,10 @@ type RouletteRestaurant = {
   is_halal?: boolean | null;
 };
 
-type ClaudePick = {
-  restaurantId: string;
-  restaurantName: string;
-  reason: string;
-  vibeMatch?: string;
-  suggestedDish?: string;
-};
-
 type RouletteJson = {
   restaurantId: string;
   restaurantName: string;
   reason: string;
-  vibeMatch: string | null;
-  suggestedDish: string | null;
   cuisine_tags: string[] | null;
   neighborhood: string | null;
   address: string | null;
@@ -112,62 +106,18 @@ type RouletteJson = {
   selectionMode: RouletteSelectionMode;
 };
 
+type DiscoveryProfileRow = {
+  subscription_status: string | null;
+  dietary_flags: string[] | null;
+  allergy_flags: string[] | null;
+};
+
+type DiscoveryPrefsRow = {
+  excluded_cuisines: string[] | null;
+};
+
 function pickRandom<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
-}
-
-function parseClaudeJson(text: string): ClaudePick | null {
-  const trimmed = text.trim();
-  const tryParse = (s: string): ClaudePick | null => {
-    try {
-      const obj = JSON.parse(s) as unknown;
-      if (!obj || typeof obj !== 'object') return null;
-      const o = obj as Record<string, unknown>;
-      const restaurantId = o.restaurantId;
-      const restaurantName = o.restaurantName;
-      const reason = o.reason;
-      if (
-        typeof restaurantId !== 'string' ||
-        typeof restaurantName !== 'string' ||
-        typeof reason !== 'string'
-      ) {
-        return null;
-      }
-      return {
-        restaurantId: clipChars(restaurantId.trim(), 64),
-        restaurantName: clipChars(restaurantName.trim(), ROULETTE_MAX_NAME_CHARS),
-        reason: clipChars(reason.trim(), ROULETTE_MAX_RESULT_REASON_CHARS),
-        vibeMatch:
-          typeof o.vibeMatch === 'string'
-            ? clipChars(o.vibeMatch, ROULETTE_MAX_STRING_CHARS)
-            : undefined,
-        suggestedDish:
-          typeof o.suggestedDish === 'string'
-            ? clipChars(o.suggestedDish, ROULETTE_MAX_STRING_CHARS)
-            : undefined,
-      };
-    } catch {
-      return null;
-    }
-  };
-
-  let direct = tryParse(trimmed);
-  if (direct) return direct;
-
-  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence?.[1]) {
-    direct = tryParse(fence[1].trim());
-    if (direct) return direct;
-  }
-
-  const start = trimmed.indexOf('{');
-  const end = trimmed.lastIndexOf('}');
-  if (start !== -1 && end > start) {
-    direct = tryParse(trimmed.slice(start, end + 1));
-    if (direct) return direct;
-  }
-
-  return null;
 }
 
 function extractAnthropicText(raw: string): string {
@@ -183,29 +133,17 @@ function extractAnthropicText(raw: string): string {
   }
 }
 
-function fallbackPick(restaurants: RouletteRestaurant[]): ClaudePick & { chosen: RouletteRestaurant } {
-  const chosen = pickRandom(restaurants);
-  return {
-    chosen,
-    restaurantId: chosen.id,
-    restaurantName: chosen.name,
-    reason: `We had a little trouble reading the full Wanderbite Roulette pick, so here is a great random ${LAUNCH_MARKET.displayName} partner spot from our list. Enjoy the adventure!`,
-    vibeMatch: 'Surprise pick',
-    suggestedDish: 'Ask your server for the house favorite.',
-  };
-}
-
 function toRouletteJson(
   chosen: RouletteRestaurant,
-  pick: ClaudePick,
   selectionMode: RouletteSelectionMode,
 ): RouletteJson {
   return {
     restaurantId: chosen.id,
     restaurantName: chosen.name,
-    reason: clipChars(pick.reason, ROULETTE_MAX_RESULT_REASON_CHARS),
-    vibeMatch: pick.vibeMatch ?? null,
-    suggestedDish: pick.suggestedDish ?? null,
+    reason: clipChars(
+      discoveryCardSentence(chosen, LAUNCH_MARKET.displayName),
+      ROULETTE_MAX_RESULT_REASON_CHARS,
+    ),
     cuisine_tags: chosen.cuisine_tags,
     neighborhood: chosen.neighborhood,
     address: chosen.address,
@@ -214,33 +152,6 @@ function toRouletteJson(
     google_place_id: chosen.google_place_id,
     selectionMode,
   };
-}
-
-function jsonFromStoredPayload(
-  payload: unknown,
-  byId: Map<string, RouletteRestaurant>,
-): RouletteJson | null {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-  const o = payload as Record<string, unknown>;
-  if (typeof o.restaurantId !== 'string' || typeof o.restaurantName !== 'string' || typeof o.reason !== 'string') {
-    return null;
-  }
-  const chosen = byId.get(o.restaurantId);
-  if (!chosen) return null;
-  const mode = o.selectionMode === 'ai' || o.selectionMode === 'random_fallback'
-    ? o.selectionMode
-    : 'ai';
-  return toRouletteJson(
-    chosen,
-    {
-      restaurantId: chosen.id,
-      restaurantName: chosen.name,
-      reason: o.reason,
-      vibeMatch: typeof o.vibeMatch === 'string' ? o.vibeMatch : undefined,
-      suggestedDish: typeof o.suggestedDish === 'string' ? o.suggestedDish : undefined,
-    },
-    mode,
-  );
 }
 
 function withGuestCookie(response: NextResponse, cookieValue: string | null): NextResponse {
@@ -321,6 +232,7 @@ export async function POST(request: NextRequest) {
       priceRange?: string;
       preferredCuisine?: string;
       idempotencyKey?: string;
+      message?: unknown;
     };
     let body: RouletteBody;
     try {
@@ -329,25 +241,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request body.' }, { status: 400 });
     }
 
-    const dietaryQuick: RouletteDietaryFlag[] = boundStringArray(
-      body.dietaryQuick,
-      ROULETTE_MAX_DIETARY,
-    ).filter((x): x is RouletteDietaryFlag => isRouletteDietaryFlag(x));
+    const messageGate = gateDiscoveryMessage(body.message);
+    if (!messageGate.ok) {
+      return NextResponse.json({ error: messageGate.error }, { status: messageGate.status });
+    }
+    const acceptedMessage = messageGate.message;
 
+    const bodyDietary = boundStringArray(body.dietaryQuick, ROULETTE_MAX_DIETARY);
     const priceRange =
       typeof body.priceRange === 'string' && isRoulettePriceRange(body.priceRange)
         ? body.priceRange
         : undefined;
-
     const preferredCuisine =
       typeof body.preferredCuisine === 'string' && isCuisineId(body.preferredCuisine)
         ? body.preferredCuisine
         : undefined;
-
-    const excludedCuisines = boundStringArray(body.excludedCuisines, ROULETTE_MAX_EXCLUDED).filter(
-      (id) => isCuisineId(id),
-    );
-
+    const bodyExcluded = boundStringArray(body.excludedCuisines, ROULETTE_MAX_EXCLUDED);
     const vibeRaw =
       typeof body.vibe === 'string' ? clipChars(body.vibe.trim(), ROULETTE_MAX_STRING_CHARS) : '';
     const timeRaw =
@@ -374,26 +283,49 @@ export async function POST(request: NextRequest) {
     let userId: string | null = null;
     let guestId: string | null = null;
     let subjectKey: string;
+    let dietaryFlags = mergeDietaryFlags(bodyDietary, []);
+    let excludedCuisines = mergeExcludedCuisines(bodyExcluded, []);
+
+    const admin = getSupabaseAdmin();
 
     if (user) {
       userId = user.id;
-      const admin = getSupabaseAdmin();
-      const { data: profile } = await admin
-        .from('user_profiles')
-        .select('subscription_status')
-        .eq('id', user.id)
-        .maybeSingle();
-      accountTier =
-        (profile as { subscription_status: string | null } | null)?.subscription_status ===
-        'active'
-          ? 'paid'
-          : 'free';
       featureClass = 'optional';
       subjectKey = `user:${user.id}`;
+      const [{ data: profileRow, error: profileError }, { data: prefsRow, error: prefsError }] =
+        await Promise.all([
+          admin
+            .from('user_profiles')
+            .select('subscription_status, dietary_flags, allergy_flags')
+            .eq('id', user.id)
+            .maybeSingle(),
+          admin
+            .from('user_preferences')
+            .select('excluded_cuisines')
+            .eq('user_id', user.id)
+            .maybeSingle(),
+        ]);
+      const profile = profileRow as DiscoveryProfileRow | null;
+      const prefs = prefsRow as DiscoveryPrefsRow | null;
+      const profileGate = gateSignedInProfile({
+        profileError: Boolean(profileError),
+        profile,
+        preferencesError: Boolean(prefsError),
+        excludedCuisines: prefs?.excluded_cuisines ?? null,
+      });
+      if (!profileGate.ok && profileGate.reason === 'allergy') {
+        return NextResponse.json({ error: DISCOVERY_ALLERGY_ERROR }, { status: 422 });
+      }
+      if (!profileGate.ok) {
+        if (profileError) console.error('[roulette] profile', profileError.message);
+        if (prefsError) console.error('[roulette] preferences', prefsError.message);
+        return NextResponse.json({ error: DISCOVERY_PROFILE_ERROR }, { status: 503 });
+      }
+      accountTier = profileGate.accountTier;
+      dietaryFlags = mergeDietaryFlags(bodyDietary, profileGate.dietaryFlags);
+      excludedCuisines = mergeExcludedCuisines(bodyExcluded, profileGate.excludedCuisines);
     } else {
-      const existing = parseGuestCookieValue(
-        request.cookies.get(AI_GUEST_COOKIE_NAME)?.value,
-      );
+      const existing = parseGuestCookieValue(request.cookies.get(AI_GUEST_COOKIE_NAME)?.value);
       if (existing) {
         guestId = existing;
       } else if (hasGuestSigningSecret()) {
@@ -404,53 +336,37 @@ export async function POST(request: NextRequest) {
       subjectKey = guestId ? `guest:${guestId}` : `guest:anon`;
     }
 
-    const admin = getSupabaseAdmin();
+    const errorResponse = (error: string, status: number) =>
+      withGuestCookie(NextResponse.json({ error }, { status }), guestCookieToSet);
+
     const market = await requireLaunchMarketId(admin);
     if (!market.ok) {
-      return withGuestCookie(
-        NextResponse.json({ error: 'No restaurants available right now.' }, { status: 503 }),
-        guestCookieToSet,
-      );
+      return errorResponse('No restaurants available right now.', 503);
     }
     const { data: rows, error: dbError } = await admin
       .from('restaurants')
       .select(
-        'id, name, cuisine_tags, neighborhood, address, description, price_range, image_url, google_place_id, is_dairy_free, is_vegan, is_halal',
+        'id, name, cuisine_tags, neighborhood, address, price_range, image_url, google_place_id, is_dairy_free, is_vegan, is_halal',
       )
       .eq('status', 'active')
       .eq('market_id', market.marketId);
 
     if (dbError) {
       console.error('[roulette] supabase:', dbError.message);
-      return withGuestCookie(
-        NextResponse.json(
-          { error: 'Could not load restaurants. Please try again.' },
-          { status: 500 },
-        ),
-        guestCookieToSet,
-      );
+      return errorResponse('Could not load restaurants. Please try again.', 500);
     }
 
     let restaurants = (rows ?? []) as RouletteRestaurant[];
     if (restaurants.length === 0) {
-      return withGuestCookie(
-        NextResponse.json({ error: 'No restaurants available right now.' }, { status: 503 }),
-        guestCookieToSet,
-      );
+      return errorResponse('No restaurants available right now.', 503);
     }
 
-    if (dietaryQuick.length > 0) {
-      restaurants = restaurants.filter((r) => restaurantMatchesDietaryQuick(r, dietaryQuick));
+    if (dietaryFlags.length > 0) {
+      restaurants = restaurants.filter((r) => restaurantMatchesDietaryQuick(r, dietaryFlags));
       if (restaurants.length === 0) {
-        return withGuestCookie(
-          NextResponse.json(
-            {
-              error:
-                'No restaurants match those dietary filters yet. Try fewer options, or we may still be tagging partners — check back soon.',
-            },
-            { status: 404 },
-          ),
-          guestCookieToSet,
+        return errorResponse(
+          'No restaurants match those dietary filters yet. Try fewer options, or we may still be tagging partners — check back soon.',
+          404,
         );
       }
     }
@@ -464,27 +380,22 @@ export async function POST(request: NextRequest) {
           }),
       );
       if (restaurants.length === 0) {
-        return withGuestCookie(
-          NextResponse.json(
-            {
-              error:
-                'No restaurants match your exclusions right now. Try removing one exclusion, or we may still be tagging partners — check back soon.',
-            },
-            { status: 404 },
-          ),
-          guestCookieToSet,
+        return errorResponse(
+          'No restaurants match your exclusions right now. Try removing one exclusion, or we may still be tagging partners — check back soon.',
+          404,
         );
       }
     }
 
     const byId = new Map(restaurants.map((r) => [r.id, r]));
+    const poolIds = new Set(byId.keys());
 
     const respond = (payload: RouletteJson, status = 200) =>
       withGuestCookie(NextResponse.json(payload, { status }), guestCookieToSet);
 
     const randomFallback = () => {
-      const fb = fallbackPick(restaurants);
-      return respond(toRouletteJson(fb.chosen, fb, 'random_fallback'));
+      const chosen = pickRandom(restaurants);
+      return respond(toRouletteJson(chosen, 'random_fallback'));
     };
 
     const clientIp = trustedClientIpFromHeaders(request.headers);
@@ -510,47 +421,48 @@ export async function POST(request: NextRequest) {
     try {
       await rpcAiRecoverStaleRequests();
     } catch {
-      // Recovery is best-effort; a lock skip must not block the spin.
+      // Recovery is best-effort; a lock skip must not block this ask.
     }
 
-    let shuffledForPrompt = shuffleArray(restaurants).slice(
-      0,
-      ROULETTE_MAX_RESTAURANTS_IN_PROMPT,
-    );
-    const spinNonce = randomUUID();
+    let promptRows = shuffleArray(restaurants).slice(0, ROULETTE_MAX_RESTAURANTS_IN_PROMPT);
+    const requestNonce = randomUUID();
+    const filterCanonical = canonicalFilterString({
+      dietary: dietaryFlags,
+      excluded: excludedCuisines,
+      vibe,
+      timeOfDay,
+      priceRange,
+      preferredCuisine,
+    });
 
-    const dietaryQuickLine =
-      dietaryQuick.length > 0
-        ? `Required dietary filters (ALL must be satisfied — list is pre-filtered): ${dietaryQuick.join(', ')}`
+    const dietaryLine =
+      dietaryFlags.length > 0
+        ? `Dietary filters already applied to this list: ${dietaryFlags.join(', ')}`
         : null;
-    const priceLine = priceRange
-      ? `Price preference (soft — prefer restaurants near ${priceRange} tier when possible): ${priceRange}`
-      : null;
+    const priceLine = priceRange ? `Price preference (soft): ${priceRange}` : null;
     const cuisineLine = preferredCuisine
-      ? `Preferred cuisine (soft — lean toward this style when possible): ${cuisineLabel(preferredCuisine)}`
+      ? `Preferred cuisine (soft): ${cuisineLabel(preferredCuisine)}`
       : null;
+    const messageLine = acceptedMessage ? `Request: ${acceptedMessage}` : null;
     const userPrefs = [
       vibe ? `Vibe: ${vibe}` : null,
       timeOfDay ? `Time of day: ${timeOfDay}` : null,
-      dietaryQuickLine,
+      dietaryLine,
       priceLine,
       cuisineLine,
+      messageLine,
     ]
       .filter(Boolean)
       .join('\n');
 
-    const systemPrompt = `You are Wanderbite Roulette, recommending restaurants for a discovery app in ${LAUNCH_MARKET.displayName}.
+    const systemPrompt = `You choose one restaurant id for a discovery app in ${LAUNCH_MARKET.displayName}.
 
-Variety is critical: do NOT default to the same restaurant on repeated calls. Each user message is an independent spin with a unique random id—explore different options across the list. Lean toward discovery and rotation, not the single "most famous" pick every time.
-
-You will receive a JSON array of partner restaurants (order is randomized each request). Choose exactly ONE restaurant by its id from that array only.
+Each request is independent. Do not default to the same restaurant. Choose exactly one id from the JSON array you receive.
 
 Return ONLY a single JSON object, no markdown fences, no commentary before or after.
-Required keys: "restaurantId" (string uuid from the list), "restaurantName" (string), "reason" (2-4 sentences explaining why this pick fits their vibe/time/dietary choices).
-Also include "vibeMatch" (one short phrase) and "suggestedDish" (one specific dish or order idea plausible for that restaurant).
+Required key: "restaurantId" (string id from the list). Do not include a reason, a vibe, or a dish.
 
-Valid JSON shape:
-{"restaurantId":"...","restaurantName":"...","reason":"...","vibeMatch":"...","suggestedDish":"..."}`;
+{"restaurantId":"..."}`;
 
     const buildUserPrompt = (list: RouletteRestaurant[]) => {
       const listJson = JSON.stringify(
@@ -559,28 +471,33 @@ Valid JSON shape:
           name: clipChars(r.name, ROULETTE_MAX_NAME_CHARS),
           cuisine_tags: r.cuisine_tags,
           neighborhood: r.neighborhood,
-          address: r.address ? clipChars(r.address, ROULETTE_MAX_ADDRESS_CHARS) : null,
-          description: r.description ? clipChars(r.description, ROULETTE_MAX_DESC_CHARS) : null,
           price_range: r.price_range,
         })),
       );
-      return `Random spin id: ${spinNonce}
+      return `Request id: ${requestNonce}
 
-Here is the JSON array of eligible Wanderbite partner restaurants (each has id, name, cuisine_tags, neighborhood, address, description, price_range):
+Here is the JSON array of eligible partner restaurants (each has id, name, cuisine_tags, neighborhood, price_range):
 ${listJson}
 
-User preferences (each line may be absent — use judgment when absent):
-${userPrefs || '(No specific preferences — pick a varied, fun standout for a night out.)'}`;
+User preferences (each line may be absent):
+${userPrefs || '(No specific preferences — pick a varied standout for a night out.)'}`;
     };
 
-    let userPrompt = buildUserPrompt(shuffledForPrompt);
+    let userPrompt = buildUserPrompt(promptRows);
     while (
       Buffer.byteLength(systemPrompt, 'utf8') + Buffer.byteLength(userPrompt, 'utf8') >
         ROULETTE_MAX_PROMPT_BYTES &&
-      shuffledForPrompt.length > 8
+      promptRows.length > 8
     ) {
-      shuffledForPrompt = shuffledForPrompt.slice(0, Math.ceil(shuffledForPrompt.length / 2));
-      userPrompt = buildUserPrompt(shuffledForPrompt);
+      promptRows = promptRows.slice(0, Math.ceil(promptRows.length / 2));
+      userPrompt = buildUserPrompt(promptRows);
+    }
+    const promptIds = promptRows.map((row) => row.id);
+
+    const messageMac = discoveryReplayMac('message', acceptedMessage);
+    const filterMac = discoveryReplayMac('filter', filterCanonical);
+    if (!messageMac || !filterMac) {
+      return randomFallback();
     }
 
     const usageUnits = rouletteQuoteUsageUnits(systemPrompt, userPrompt);
@@ -600,22 +517,34 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
       userId,
     });
 
-    const replayStored = async (): Promise<RouletteJson | null> => {
+    const replayStored = async (): Promise<NextResponse> => {
       const loaded = await rpcAiLoadResultPayload(reserved.request_id);
-      return jsonFromStoredPayload(loaded?.result_payload, byId);
+      const decision = decideReplay({
+        payload: loaded?.result_payload,
+        messageMac,
+        filterMac,
+        poolIds,
+      });
+      if (decision.outcome === 'mismatch') {
+        return errorResponse(DISCOVERY_REPLAY_MISMATCH_ERROR, 409);
+      }
+      if (decision.outcome === 'ai' || decision.outcome === 'legacy') {
+        const chosen = byId.get(decision.restaurantId);
+        if (chosen) {
+          const mode: RouletteSelectionMode = decision.outcome === 'ai' ? 'ai' : 'random_fallback';
+          return respond(toRouletteJson(chosen, mode));
+        }
+      }
+      return randomFallback();
     };
 
     if (!reserved.acquired) {
-      const stored = await replayStored();
-      if (stored) return respond(stored);
-      return randomFallback();
+      return replayStored();
     }
 
     const dispatched = await rpcAiDispatch(reserved.request_id);
     if (!dispatched.acquired) {
-      const stored = await replayStored();
-      if (stored) return respond(stored);
-      return randomFallback();
+      return replayStored();
     }
 
     let usage: Record<string, number> | null = null;
@@ -656,24 +585,18 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
       claudeText = extractAnthropicText(anthropicRaw);
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
-        console.warn('[roulette] anthropic timeout — using random fallback');
+        console.warn('[roulette] anthropic timeout — using template fallback');
       }
       claudeText = '';
     } finally {
       clearTimeout(anthropicTimeout);
     }
 
-    let pick = claudeText ? parseClaudeJson(claudeText) : null;
-    let chosen = pick?.restaurantId ? byId.get(pick.restaurantId) : undefined;
-    const pickValid = Boolean(pick && chosen);
-    let selectionMode: RouletteSelectionMode = 'ai';
-
-    if (!pick || !chosen) {
-      const fb = fallbackPick(restaurants);
-      chosen = fb.chosen;
-      pick = fb;
-      selectionMode = 'random_fallback';
-    }
+    const parsedId = claudeText ? parseModelRestaurantId(claudeText) : null;
+    const pickValid = isIdInPromptRows(parsedId, promptIds);
+    const chosen = pickValid && parsedId ? promptRows.find((row) => row.id === parsedId) : undefined;
+    const selectionMode: RouletteSelectionMode = chosen ? 'ai' : 'random_fallback';
+    const cardRestaurant = chosen ?? pickRandom(restaurants);
 
     await accountForOutcome({
       requestId: reserved.request_id,
@@ -682,11 +605,20 @@ ${userPrefs || '(No specific preferences — pick a varied, fun standout for a n
       usage,
     });
 
-    const payload = toRouletteJson(chosen, pick, selectionMode);
+    const payload = toRouletteJson(cardRestaurant, selectionMode);
     try {
-      await rpcAiStoreResultPayload(reserved.request_id, payload);
+      await rpcAiStoreResultPayload(
+        reserved.request_id,
+        buildStoredDiscoveryPayload({
+          restaurantId: cardRestaurant.id,
+          selectionMode,
+          promptIds,
+          messageMac,
+          filterMac,
+        }),
+      );
     } catch {
-      // Replay can still honest-fallback if the payload does not persist.
+      // Replay can still fall back if the payload does not persist.
     }
     return respond(payload);
   } catch (err) {

@@ -10,7 +10,7 @@ import {
 import { CUISINES, type CuisineId } from '@/lib/cuisines';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
 
-/** Shared Wanderbite Roulette option lists — single source of truth for home + /roulette. */
+/** Shared discovery option lists — single source of truth for home + /roulette. */
 
 export const ROULETTE_VIBES = [
   'Adventurous',
@@ -74,6 +74,7 @@ export type RouletteSpinPayload = {
   excludedCuisines?: CuisineId[];
   priceRange?: RoulettePriceRange;
   preferredCuisine?: CuisineId;
+  message?: string;
 };
 
 export function buildRouletteSpinBody(args: {
@@ -83,14 +84,24 @@ export function buildRouletteSpinBody(args: {
   excludedCuisines: CuisineId[];
   priceRange: RoulettePriceRange | null;
   preferredCuisine: CuisineId | null;
+  message?: string | null;
+  /** Omits the message and soft vibe, time, price, and cuisine. Chips still apply. */
+  surprise?: boolean;
 }): RouletteSpinPayload {
+  const dietaryQuick = args.dietaryFlags.length > 0 ? args.dietaryFlags : undefined;
+  const excludedCuisines =
+    args.excludedCuisines.length > 0 ? args.excludedCuisines : undefined;
+  if (args.surprise) {
+    return { dietaryQuick, excludedCuisines };
+  }
+  const message = args.message && args.message.length > 0 ? args.message : undefined;
   return {
     vibe: args.vibe ?? undefined,
     timeOfDay: args.timeOfDay ?? undefined,
-    dietaryQuick: args.dietaryFlags.length > 0 ? args.dietaryFlags : undefined,
-    excludedCuisines:
-      args.excludedCuisines.length > 0 ? args.excludedCuisines : undefined,
+    dietaryQuick,
+    excludedCuisines,
     priceRange: args.priceRange ?? undefined,
     preferredCuisine: args.preferredCuisine ?? undefined,
+    message,
   };
 }
