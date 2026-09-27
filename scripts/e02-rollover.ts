@@ -434,9 +434,9 @@ export async function runE02Rollover(opts: {
       '${REST_A}'::uuid, '${REST_B}'::uuid)`), 'linked');
 
     scalar(`select public.expire_due_pending_credits()`);
-    assert.equal(creditMark(CARRY_1), '1:pending:t:f');
-    assert.equal(creditMark(INACTIVE_CREDIT), '1:expired:t:f');
-    assert.equal(creditMark(EXPIRY_CREDIT), '1:expired:f:t');
+    assert.equal(creditMark(CARRY_1), '1:pending:true:false');
+    assert.equal(creditMark(INACTIVE_CREDIT), '1:expired:true:false');
+    assert.equal(creditMark(EXPIRY_CREDIT), '1:expired:false:true');
     process.stdout.write(
       'Expiry function, not a worker snapshot hit: inactive credits due T1 expired.\n',
     );
@@ -485,8 +485,8 @@ export async function runE02Rollover(opts: {
 
     assert.equal(detailOf(firstLease.items.get(CARRY)?.detail ?? null).outcome, 'rolled');
     assert.equal(firstLease.items.get(CARRY)?.status, 'succeeded');
-    assert.equal(creditMark(CARRY_1), '1:pending:f:t');
-    assert.equal(creditMark(CARRY_2), '2:pending:f:t');
+    assert.equal(creditMark(CARRY_1), '1:pending:false:true');
+    assert.equal(creditMark(CARRY_2), '2:pending:false:true');
     assert.equal(scalar(`select count(*) from public.entitlement_credits where user_id = '${CARRY}'`), '4');
     assert.equal(scalar(`select count(*) from public.entitlement_credits
       where user_id = '${CARRY}' and issue_period = public.chicago_month_start(now())
@@ -495,8 +495,8 @@ export async function runE02Rollover(opts: {
     assert.equal(scalar(`select count(*) from public.challenge_cycles where user_id = '${CARRY}'`), '0');
 
     assert.equal(detailOf(firstLease.items.get(LINKED_NOW)?.detail ?? null).outcome, 'rolled');
-    assert.equal(creditMark(LINKED_PREV_1), '1:pending:f:t');
-    assert.equal(creditMark(LINKED_PREV_2), '2:pending:f:t');
+    assert.equal(creditMark(LINKED_PREV_1), '1:pending:false:true');
+    assert.equal(creditMark(LINKED_PREV_2), '2:pending:false:true');
     assert.equal(promiseMark(LINKED_NOW, 0), linkedNowBefore);
     assert.equal(scalar(`select count(*) from public.entitlement_credits
       where user_id = '${LINKED_NOW}' and status = 'linked'`), '2');
@@ -504,16 +504,16 @@ export async function runE02Rollover(opts: {
       where user_id = '${LINKED_NOW}' and status = 'pending'`), '2');
 
     assert.equal(detailOf(firstLease.items.get(CROSS)?.detail ?? null).outcome, 'rolled');
-    assert.equal(creditMark(CROSS_OLD_1), '1:expired:t:f');
-    assert.equal(creditMark(CROSS_OLD_2), '2:expired:t:f');
-    assert.equal(creditMark(CROSS_PREV_1), '1:pending:f:t');
-    assert.equal(creditMark(CROSS_PREV_2), '2:pending:f:t');
+    assert.equal(creditMark(CROSS_OLD_1), '1:expired:true:false');
+    assert.equal(creditMark(CROSS_OLD_2), '2:expired:true:false');
+    assert.equal(creditMark(CROSS_PREV_1), '1:pending:false:true');
+    assert.equal(creditMark(CROSS_PREV_2), '2:pending:false:true');
     assert.equal(scalar(`select count(*) from public.challenge_cycles where user_id = '${CROSS}'`), '0');
 
     assert.equal(detailOf(firstLease.items.get(ONE)?.detail ?? null).outcome, 'rolled');
-    assert.equal(creditMark(ONE_OLDER), '2:pending:f:t');
-    assert.equal(creditMark(ONE_NEWER), '1:expired:t:f');
-    assert.equal(creditMark(ONE_LINKED), '1:linked:t:f');
+    assert.equal(creditMark(ONE_OLDER), '2:pending:false:true');
+    assert.equal(creditMark(ONE_NEWER), '1:expired:true:false');
+    assert.equal(creditMark(ONE_LINKED), '1:linked:true:false');
     assert.equal(promiseMark(ONE, 2), oneBefore);
 
     // Previous month has two slots. A future T2 plus two eligible T1 rows cannot be inserted.
@@ -521,9 +521,9 @@ export async function runE02Rollover(opts: {
     // occupies the other keep slot. additional is 0, so the T1 expires. If the future T2
     // did not count, that T1 would be carried.
     assert.equal(detailOf(firstLease.items.get(FUTURE)?.detail ?? null).outcome, 'rolled');
-    assert.equal(creditMark(FUTURE_T2), '1:pending:f:t');
-    assert.equal(creditMark(FUTURE_T1), '2:expired:t:f');
-    assert.equal(creditMark(FUTURE_LINKED), '1:linked:t:f');
+    assert.equal(creditMark(FUTURE_T2), '1:pending:false:true');
+    assert.equal(creditMark(FUTURE_T1), '2:expired:true:false');
+    assert.equal(creditMark(FUTURE_LINKED), '1:linked:true:false');
     assert.equal(promiseMark(FUTURE, 2), futureBefore);
 
     const overflowDetail = detailOf(firstLease.items.get(OVERFLOW)?.detail ?? null);
@@ -532,7 +532,7 @@ export async function runE02Rollover(opts: {
     assert.equal(firstLease.items.get(OVERFLOW)?.status, 'failed');
     assert.equal(exceptionCount(firstLease.finishedExtra), 1);
     assert.deepEqual(firstNotices, [{ userId: OVERFLOW, chicagoMonth: month, outcome: 'rolled_with_exception' }]);
-    assert.equal(creditMark(OV_T1), '1:expired:t:f');
+    assert.equal(creditMark(OV_T1), '1:expired:true:false');
     assert.equal(scalar(`select count(*) from public.credit_rollover_exceptions where user_id = '${OVERFLOW}'`), '1');
     assert.equal(scalar(`select linked_uncompleted_count::text || ':' || future_t2_count::text || ':' || reason
       from public.credit_rollover_exceptions where user_id = '${OVERFLOW}'`), '3:0:carry_cap_exceeded');
@@ -546,7 +546,7 @@ export async function runE02Rollover(opts: {
     where ec.user_id = '${OVERFLOW}' and ec.status = 'linked'`), overflowBefore);
 
     assert.equal(detailOf(firstLease.items.get(PAST)?.detail ?? null).outcome, 'rolled');
-    assert.equal(creditMark(PAST_CREDIT), '1:expired:f:t');
+    assert.equal(creditMark(PAST_CREDIT), '1:expired:false:true');
     assert.equal(detailOf(firstLease.items.get(EXPIRY_PAST)?.detail ?? null).outcome, 'unchanged');
     assert.equal(scalar(`select count(*) from public.entitlement_credits where user_id in ('${CARRY}', '${LINKED_NOW}', '${CROSS}', '${ONE}', '${FUTURE}', '${OVERFLOW}', '${PAST}')`), '23');
 
@@ -569,8 +569,8 @@ export async function runE02Rollover(opts: {
     assert.equal(secondLease.items.has(INACTIVE), false);
     assert.equal(detailOf(secondLease.items.get(CARRY)?.detail ?? null).outcome, 'unchanged');
     assert.equal(secondLease.items.get(CARRY)?.status, 'succeeded');
-    assert.equal(creditMark(CARRY_1), '1:pending:f:t');
-    assert.equal(creditMark(CARRY_2), '2:pending:f:t');
+    assert.equal(creditMark(CARRY_1), '1:pending:false:true');
+    assert.equal(creditMark(CARRY_2), '2:pending:false:true');
     assert.equal(scalar(`select count(*) from public.entitlement_credits where user_id = '${CARRY}'`), '4');
     assert.equal(promiseMark(LINKED_NOW, 0), linkedNowBefore);
     const secondOverflow = detailOf(secondLease.items.get(OVERFLOW)?.detail ?? null);
@@ -600,8 +600,8 @@ export async function runE02Rollover(opts: {
       const line = outcome.split('\n').map((part) => part.trim()).filter((part) => part.length > 0).pop() ?? '';
       assert.match(line, /^(rolled|unchanged)\|f$/, `overlap outcome ${outcome}`);
     }
-    assert.equal(creditMark(OVERLAP_1), '1:pending:f:t');
-    assert.equal(creditMark(OVERLAP_2), '2:pending:f:t');
+    assert.equal(creditMark(OVERLAP_1), '1:pending:false:true');
+    assert.equal(creditMark(OVERLAP_2), '2:pending:false:true');
     assert.equal(scalar(`select count(*) from public.entitlement_credits where user_id = '${OVERLAP}'`), '2');
     assert.equal(scalar(`select count(*) from public.credit_rollover_exceptions where user_id = '${OVERLAP}'`), '0');
     process.stdout.write(
