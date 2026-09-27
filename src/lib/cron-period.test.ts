@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  chicagoMonthStart,
   dailyRunKey,
   httpStatusForCron,
   issueItemStatus,
@@ -16,6 +17,14 @@ describe('G17-E cron period keys', () => {
     expect(monthlyRunKey('end-of-month-reminder', new Date('2026-08-25T18:00:00.000Z'))).toBe(
       'end-of-month-reminder:2026-08-01',
     );
+  });
+
+  it('keeps Chicago month start on the SQL side of both midnights', () => {
+    expect(chicagoMonthStart(new Date('2026-03-01T00:01:00Z'))).toBe('2026-02-01');
+    expect(chicagoMonthStart(new Date('2026-03-01T06:00:00Z'))).toBe('2026-03-01');
+    expect(chicagoMonthStart(new Date('2026-03-02T07:00:00Z'))).toBe('2026-03-01');
+    expect(chicagoMonthStart(new Date('2026-11-01T04:30:00Z'))).toBe('2026-10-01');
+    expect(chicagoMonthStart(new Date('2026-11-01T05:00:00Z'))).toBe('2026-11-01');
   });
 
   it('uses the UTC date for daily keys', () => {
