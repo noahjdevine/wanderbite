@@ -34,6 +34,7 @@ const API_ROUTES = [
   'src/app/api/cron/issue-monthly-challenges/route.ts',
   'src/app/api/cron/issue-version-bound-challenges/route.ts',
   'src/app/api/cron/issue-credit-catchup/route.ts',
+  'src/app/api/cron/rollover-credits/route.ts',
   'src/app/api/cron/end-of-month-reminder/route.ts',
   'src/app/api/cron/refresh-restaurant-photos/route.ts',
 ];

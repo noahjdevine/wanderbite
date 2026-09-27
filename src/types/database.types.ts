@@ -1514,6 +1514,44 @@ export type Database = {
           },
         ]
       }
+      credit_rollover_exceptions: {
+        Row: {
+          id: string
+          user_id: string
+          chicago_month: string
+          reason: string
+          linked_uncompleted_count: number
+          future_t2_count: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          chicago_month: string
+          reason: string
+          linked_uncompleted_count: number
+          future_t2_count: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          chicago_month?: string
+          reason?: string
+          linked_uncompleted_count?: number
+          future_t2_count?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_rollover_exceptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_outbox: {
         Row: {
           attempts: number
@@ -2415,6 +2453,13 @@ export type Database = {
       expire_due_pending_credits: {
         Args: never
         Returns: number
+      }
+      rollover_credits: {
+        Args: { p_user_id: string }
+        Returns: {
+          exception_inserted: boolean
+          outcome: string
+        }[]
       }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
