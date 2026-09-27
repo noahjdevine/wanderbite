@@ -8,9 +8,9 @@ import {
 } from '@/lib/challenges/issue-credit-catchup';
 import type { Json } from '@/types/database.types';
 
-const MISSED = 'e2rc0000-0000-4000-8000-000000000001';
-const LEGACY = 'e2rc0000-0000-4000-8000-000000000002';
-const LATER = 'e2rc0000-0000-4000-8000-000000000004';
+const MISSED = 'e2ac0000-0000-4000-8000-000000000001';
+const LEGACY = 'e2ac0000-0000-4000-8000-000000000002';
+const LATER = 'e2ac0000-0000-4000-8000-000000000004';
 
 type IssueCall = { userId: string; period: string; outcome: string };
 

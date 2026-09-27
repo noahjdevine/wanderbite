@@ -2,13 +2,13 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import assert from 'node:assert/strict';
 import { setTimeout as delay } from 'node:timers/promises';
 
-const ADMIN = 'e2rs0000-0000-4000-8000-000000000003';
-const LEGACY = 'e2rs0000-0000-4000-8000-000000000001';
-const CREDIT = 'e2rs0000-0000-4000-8000-000000000002';
-const MARKET = 'e2rs0000-0000-4000-8000-000000000010';
-const SHARED = 'e2rs0000-0000-4000-8000-000000000021';
-const PRIVATE_CREDIT = 'e2rs0000-0000-4000-8000-000000000022';
-const PRIVATE_LEGACY = 'e2rs0000-0000-4000-8000-000000000023';
+const ADMIN = 'e2ad0000-0000-4000-8000-000000000003';
+const LEGACY = 'e2ad0000-0000-4000-8000-000000000001';
+const CREDIT = 'e2ad0000-0000-4000-8000-000000000002';
+const MARKET = 'e2ad0000-0000-4000-8000-000000000010';
+const SHARED = 'e2ad0000-0000-4000-8000-000000000021';
+const PRIVATE_CREDIT = 'e2ad0000-0000-4000-8000-000000000022';
+const PRIVATE_LEGACY = 'e2ad0000-0000-4000-8000-000000000023';
 const SENTINEL = 'E02RS_DONE';
 
 class PsqlSession {
@@ -88,12 +88,12 @@ export async function runE02RemainderSharedSeat(opts: {
       id, restaurant_id, timezone, valid_from, valid_until, tiers, boosts, exclusions,
       capacity_timezone, capacity_window_kind, capacity_max_redemptions, published_by
     ) values
-      ${versionRow('e2rs0000-0000-4000-8000-0000000000a1', SHARED, 1)},
-      ${versionRow('e2rs0000-0000-4000-8000-0000000000a2', PRIVATE_CREDIT, 5)},
-      ${versionRow('e2rs0000-0000-4000-8000-0000000000a3', PRIVATE_LEGACY, 5)};
-    update public.restaurants set current_offer_version_id = 'e2rs0000-0000-4000-8000-0000000000a1' where id = '${SHARED}';
-    update public.restaurants set current_offer_version_id = 'e2rs0000-0000-4000-8000-0000000000a2' where id = '${PRIVATE_CREDIT}';
-    update public.restaurants set current_offer_version_id = 'e2rs0000-0000-4000-8000-0000000000a3' where id = '${PRIVATE_LEGACY}';
+      ${versionRow('e2ad0000-0000-4000-8000-0000000000a1', SHARED, 1)},
+      ${versionRow('e2ad0000-0000-4000-8000-0000000000a2', PRIVATE_CREDIT, 5)},
+      ${versionRow('e2ad0000-0000-4000-8000-0000000000a3', PRIVATE_LEGACY, 5)};
+    update public.restaurants set current_offer_version_id = 'e2ad0000-0000-4000-8000-0000000000a1' where id = '${SHARED}';
+    update public.restaurants set current_offer_version_id = 'e2ad0000-0000-4000-8000-0000000000a2' where id = '${PRIVATE_CREDIT}';
+    update public.restaurants set current_offer_version_id = 'e2ad0000-0000-4000-8000-0000000000a3' where id = '${PRIVATE_LEGACY}';
     select public.issue_period_credits('${CREDIT}'::uuid, '${month}'::date);
   `);
 
