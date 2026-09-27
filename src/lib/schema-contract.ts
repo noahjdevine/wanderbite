@@ -137,6 +137,15 @@ export const SCHEMA_CONTRACT = {
     'issued_at',
     'expires_at',
   ],
+  credit_rollover_exceptions: [
+    'id',
+    'user_id',
+    'chicago_month',
+    'reason',
+    'linked_uncompleted_count',
+    'future_t2_count',
+    'created_at',
+  ],
   capacity_reservations: [
     'id',
     'challenge_item_id',

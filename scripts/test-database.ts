@@ -13,6 +13,7 @@ import { runG10Concurrency } from './g10-concurrency';
 import { runE02BConcurrency } from './e02-b-concurrency';
 import { runE02RemainderCatchup } from './e02-remainder-catchup';
 import { runE02RemainderSharedSeat } from './e02-remainder-shared-seat';
+import { runE02Rollover } from './e02-rollover';
 import { runG13A1Concurrency } from './g13-a1-concurrency';
 import { runG13A2Concurrency } from './g13-a2-concurrency';
 
@@ -109,6 +110,8 @@ async function main() {
   process.stdout.write('PASS: E02 catch-up worker missed 1st, later activation, and second day.\n');
   await runE02RemainderSharedSeat({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 shared last seat between legacy generate and credit link.\n');
+  await runE02Rollover({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: E02 rollover worker carry, second day, and overflow alert.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });
