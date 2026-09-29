@@ -6,6 +6,8 @@ import {
   issueItemStatus,
   monthlyRunKey,
   reminderCronItemStatus,
+  resetSwapCountersMonthOpen,
+  resetSwapCountersRunKey,
 } from '@/lib/cron-period';
 
 describe('G17-E cron period keys', () => {
@@ -25,6 +27,20 @@ describe('G17-E cron period keys', () => {
     expect(chicagoMonthStart(new Date('2026-03-02T07:00:00Z'))).toBe('2026-03-01');
     expect(chicagoMonthStart(new Date('2026-11-01T04:30:00Z'))).toBe('2026-10-01');
     expect(chicagoMonthStart(new Date('2026-11-01T05:00:00Z'))).toBe('2026-11-01');
+  });
+
+  it('keys only reset-swap-counters on Chicago and skips a UTC 1st while Chicago is still prior', () => {
+    const earlyUtc = new Date('2026-10-01T00:05:00.000Z');
+    expect(chicagoMonthStart(earlyUtc)).toBe('2026-09-01');
+    expect(resetSwapCountersRunKey(earlyUtc)).toBe('reset-swap-counters:2026-09-01');
+    expect(resetSwapCountersMonthOpen(earlyUtc)).toBe(false);
+    const chicagoOpen = new Date('2026-10-01T06:05:00.000Z');
+    expect(chicagoMonthStart(chicagoOpen)).toBe('2026-10-01');
+    expect(resetSwapCountersRunKey(chicagoOpen)).toBe('reset-swap-counters:2026-10-01');
+    expect(resetSwapCountersMonthOpen(chicagoOpen)).toBe(true);
+    expect(monthlyRunKey('issue-monthly-challenges', new Date('2026-09-15T18:00:00.000Z'))).toBe(
+      'issue-monthly-challenges:2026-09-01',
+    );
   });
 
   it('uses the UTC date for daily keys', () => {

@@ -146,6 +146,12 @@ export const SCHEMA_CONTRACT = {
     'future_t2_count',
     'created_at',
   ],
+  credit_swap_allowances: [
+    'user_id',
+    'swap_month',
+    'source_item_id',
+    'consumed_at',
+  ],
   capacity_reservations: [
     'id',
     'challenge_item_id',

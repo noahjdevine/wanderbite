@@ -5,6 +5,23 @@ export function monthlyRunKey(jobName: string, now = new Date()): string {
   return `${jobName}:${format(startOfMonth(now), 'yyyy-MM-dd')}`;
 }
 
+/**
+ * Run key for reset-swap-counters only. Other monthly jobs stay on monthlyRunKey,
+ * which follows the UTC month used by issue-monthly-challenges.
+ */
+export function resetSwapCountersRunKey(now = new Date()): string {
+  return `reset-swap-counters:${chicagoMonthStart(now)}`;
+}
+
+/**
+ * True once America/Chicago has entered the UTC calendar month of `now`.
+ * 00:05 UTC on the 1st is still the previous Chicago evening.
+ */
+export function resetSwapCountersMonthOpen(now = new Date()): boolean {
+  const utcMonth = `${now.toISOString().slice(0, 7)}-01`;
+  return chicagoMonthStart(now) >= utcMonth;
+}
+
 /** America/Chicago calendar month start as YYYY-MM-01. SQL remains the authority. */
 export function chicagoMonthStart(now = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-US', {
