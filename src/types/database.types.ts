@@ -2421,6 +2421,18 @@ export type Database = {
         Args: { p_effect_key: string; p_error: string; p_token: string }
         Returns: boolean
       }
+      assign_carried_credit: {
+        Args: {
+          p_credit_id: string
+          p_market_id: string
+          p_restaurant_id: string
+          p_user_id: string
+        }
+        Returns: {
+          cycle_id: string
+          outcome: string
+        }[]
+      }
       generate_challenge_cycle: {
         Args: {
           p_cycle_month: string
