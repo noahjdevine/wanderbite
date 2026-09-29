@@ -9,6 +9,7 @@ import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
 import { launchAreaState } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
+import { loadCreditsSwapRemaining } from '@/lib/challenges/carried-credits';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,7 +26,7 @@ export default async function DashboardPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, role, subscription_status, username, address_street, address_city, address_state, address_zip')
+    .select('id, role, subscription_status, username, address_street, address_city, address_state, address_zip, workflow_version')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -50,6 +51,7 @@ export default async function DashboardPage() {
     address_city: string | null;
     address_state: string | null;
     address_zip: string | null;
+    workflow_version: string;
   };
 
   const next = nextMemberRedirect(
@@ -72,6 +74,19 @@ export default async function DashboardPage() {
     state: typedProfile.address_state,
     zip: typedProfile.address_zip,
   });
+
+  let creditsSwapRemaining: number | null = null;
+  if (typedProfile.workflow_version === 'credits') {
+    const swapRemaining = await loadCreditsSwapRemaining(typedProfile.id);
+    if (!swapRemaining.ok) {
+      return (
+        <main className="flex min-h-screen items-center justify-center p-6">
+          <p className="text-destructive">{swapRemaining.error}</p>
+        </main>
+      );
+    }
+    creditsSwapRemaining = swapRemaining.remaining;
+  }
 
   let currentChallenge = null;
   try {
@@ -114,6 +129,7 @@ export default async function DashboardPage() {
           currentChallenge={currentChallenge}
           streak={streak}
           biteNotes={biteNotesForDash}
+          creditsSwapRemaining={creditsSwapRemaining}
         />
       </div>
     </main>

@@ -10,6 +10,11 @@ import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { launchAreaState } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
+import {
+  loadCarriedCreditsForUser,
+  loadCreditsSwapRemaining,
+  type CarriedCreditView,
+} from '@/lib/challenges/carried-credits';
 
 export const dynamic = 'force-dynamic';
 
@@ -94,13 +99,18 @@ export default async function ChallengesPage() {
       : [];
 
   let creditHold: { pendingCount: number } | null = null;
-  if (typedProfile.workflow_version === 'credits') {
-    const { count, error: creditError } = await admin
-      .from('entitlement_credits')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', typedProfile.id)
-      .eq('issue_period', chicagoMonthStart())
-      .eq('status', 'pending');
+  let creditsSwapRemaining: number | null = null;
+  const creditsWorkflow = typedProfile.workflow_version === 'credits';
+  if (creditsWorkflow) {
+    const [{ count, error: creditError }, swapRemaining] = await Promise.all([
+      admin
+        .from('entitlement_credits')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', typedProfile.id)
+        .eq('issue_period', chicagoMonthStart())
+        .eq('status', 'pending'),
+      loadCreditsSwapRemaining(typedProfile.id),
+    ]);
     if (creditError) {
       return (
         <main className="flex min-h-screen items-center justify-center p-6">
@@ -108,7 +118,15 @@ export default async function ChallengesPage() {
         </main>
       );
     }
+    if (!swapRemaining.ok) {
+      return (
+        <main className="flex min-h-screen items-center justify-center p-6">
+          <p className="text-destructive">{swapRemaining.error}</p>
+        </main>
+      );
+    }
     creditHold = { pendingCount: count ?? 0 };
+    creditsSwapRemaining = swapRemaining.remaining;
   }
 
   let currentChallenge = null;
@@ -122,6 +140,22 @@ export default async function ChallengesPage() {
         </p>
       </main>
     );
+  }
+
+  let carriedCredits: CarriedCreditView[] = [];
+  if (creditsWorkflow) {
+    const excludeCreditIds = (currentChallenge?.items ?? []).flatMap((item) =>
+      item.challengeItem.credit_id ? [item.challengeItem.credit_id] : [],
+    );
+    const carried = await loadCarriedCreditsForUser(typedProfile.id, { excludeCreditIds });
+    if (!carried.ok) {
+      return (
+        <main className="flex min-h-screen items-center justify-center p-6">
+          <p className="text-destructive">{carried.error}</p>
+        </main>
+      );
+    }
+    carriedCredits = carried.credits;
   }
 
   return (
@@ -139,6 +173,8 @@ export default async function ChallengesPage() {
           streak={streak}
           biteNotes={biteNotesForDash}
           creditHold={creditHold}
+          creditsSwapRemaining={creditsSwapRemaining}
+          carriedCredits={carriedCredits}
         />
       </div>
     </main>

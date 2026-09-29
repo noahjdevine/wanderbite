@@ -2,6 +2,8 @@
 import { randomInt } from 'node:crypto';
 import * as Sentry from '@sentry/nextjs';
 import { startOfMonth, subMonths, subYears, format } from 'date-fns';
+import { cycleMonthForWorkflow } from '@/lib/challenges/challenge-deadline';
+import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -81,6 +83,8 @@ type ChallengeItemRow = {
   slot_number: number;
   status: string;
   offer_version_id?: string | null;
+  redemption_deadline?: string | null;
+  credit_id?: string | null;
 };
 
 export type GeneratedChallengeItem = {
@@ -137,7 +141,8 @@ export async function getCurrentChallengeForUser(
   userId: string
 ): Promise<GeneratedChallenge | null> {
   const supabase = getSupabaseAdmin();
-  const cycleMonthStr = format(startOfMonth(new Date()), 'yyyy-MM-dd');
+  const workflow = await readWorkflowVersion(userId);
+  const cycleMonthStr = cycleMonthForWorkflow(workflow);
   const { data: cycle, error } = await supabase
     .from('challenge_cycles')
     .select('*')
