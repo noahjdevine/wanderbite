@@ -24,7 +24,13 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
       - name: Prepare pinned database image on disposable CI runner
-        run: docker pull public.ecr.aws/supabase/postgres:17.6.1.134
+        # Anonymous pulls from public.ecr.aws hit the ECR Public data-transfer cap
+        # (toomanyrequests: Data limit exceeded). The same tag is published on GHCR
+        # with the same index digest. Retag it to the name scripts/database-contract.ts
+        # pins so npm run test:db can still create the container with --pull=never.
+        run: |
+          docker pull ghcr.io/supabase/postgres:17.6.1.134
+          docker tag ghcr.io/supabase/postgres:17.6.1.134 public.ecr.aws/supabase/postgres:17.6.1.134
       - name: Replay migrations and test database contract
         run: npm run test:db
 
