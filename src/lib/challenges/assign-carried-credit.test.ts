@@ -30,7 +30,8 @@ describe('carried assignment has no caller', () => {
       }
     }
 
-    expect(source('src/app/actions/swap-challenge.ts')).toContain(
+    expect(source('src/app/actions/swap-challenge.ts')).toContain("rpc('swap_linked_credit_item'");
+    expect(source('src/app/actions/swap-challenge.ts')).not.toContain(
       'Swaps are not available for this account yet.',
     );
     const challenges = source('src/app/(site)/challenges/page.tsx');

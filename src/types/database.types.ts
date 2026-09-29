@@ -1552,6 +1552,42 @@ export type Database = {
           },
         ]
       }
+      credit_swap_allowances: {
+        Row: {
+          user_id: string
+          swap_month: string
+          source_item_id: string
+          consumed_at: string
+        }
+        Insert: {
+          user_id: string
+          swap_month: string
+          source_item_id: string
+          consumed_at?: string
+        }
+        Update: {
+          user_id?: string
+          swap_month?: string
+          source_item_id?: string
+          consumed_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "credit_swap_allowances_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_swap_allowances_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       webhook_outbox: {
         Row: {
           attempts: number
@@ -3246,6 +3282,19 @@ export type Database = {
       st_wrapx: {
         Args: { geom: unknown; move: number; wrap: number }
         Returns: unknown
+      }
+      swap_linked_credit_item: {
+        Args: {
+          p_item_id: string
+          p_replacement_restaurant_id: string | null
+          p_user_id: string
+        }
+        Returns: {
+          outcome: string
+          replacement_item_id: string
+          restaurant_id: string
+          source_item_id: string
+        }[]
       }
       swap_challenge_item: {
         Args: {

@@ -70,7 +70,7 @@ describe('G17-E cron routes stay on the approved contract', () => {
     const vercel = source('vercel.json');
     expect(vercel).toContain('"path": "/api/cron/issue-monthly-challenges"');
     expect(vercel).toContain('"schedule": "1 0 1 * *"');
-    expect(vercel).toContain('"schedule": "5 0 1 * *"');
+    expect(vercel).toContain('"schedule": "5 6 1 * *"');
     expect(vercel).toContain('"schedule": "0 2 * * *"');
     expect(vercel).toContain('"schedule": "* * * * *"');
     expect(vercel).toContain('"schedule": "0 14 25 * *"');
