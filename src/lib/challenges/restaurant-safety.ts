@@ -1,4 +1,4 @@
-import { subMonths, subYears } from 'date-fns';
+import { subMonths } from 'date-fns';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
@@ -16,7 +16,7 @@ export function redemptionCooldownOk(
   now: Date,
 ): boolean {
   const sixMonthsAgo = subMonths(now, 6);
-  const twelveMonthsAgo = subYears(now, 12);
+  const twelveMonthsAgo = subMonths(now, 12);
   const verifiedAts = redemptions
     .filter((row) => row.restaurant_id === restaurantId && row.status === 'verified')
     .flatMap((row) => {

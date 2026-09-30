@@ -12,6 +12,7 @@ import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
+import { redemptionCooldownOk } from '@/lib/challenges/restaurant-safety';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
@@ -457,15 +458,7 @@ export async function generateMonthlyChallengeForUser(
     }
 
     function redemptionHardOk(restaurant: RestaurantRow): boolean {
-      const userRedemptionsAtRestaurant = redemptions.filter(
-        (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'
-      );
-      const verifiedAts = userRedemptionsAtRestaurant
-        .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
-        .filter((d) => !isNaN(d.getTime()));
-      if (verifiedAts.some((d) => d >= sixMonthsAgo)) return false;
-      if (verifiedAts.filter((d) => d >= twelveMonthsAgo).length >= 2) return false;
-      return true;
+      return redemptionCooldownOk(restaurant.id, redemptions, now);
     }
 
     function passesHard(restaurant: RestaurantRow): boolean {
