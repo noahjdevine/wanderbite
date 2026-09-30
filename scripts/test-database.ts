@@ -120,6 +120,7 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-credit-safe-swaps.sql'), 'utf8')) + '\n');
   await runE02CreditSafeSwaps({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 credit-safe swap issuance overlap.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-six-month-cohort.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });
