@@ -1,6 +1,8 @@
 // Disposable Docker Postgres only. Rows are deleted before the harness empty-table check.
 import assert from 'node:assert/strict';
 import { chicagoMonthStart } from '../src/lib/cron-period';
+import { lowestSealedBase } from '../src/lib/offers/sealed-base';
+import type { Json } from '../src/types/database.types';
 import {
   bucketsIntersectingDeadline,
   plusAssignmentHours,
@@ -42,7 +44,7 @@ type CreditRow = {
   challenge_item_id: string | null;
   slot: number;
   restaurant_id: string | null;
-  threshold: number | null;
+  tiers: Json | null;
 };
 
 type ReservationRow = {
@@ -99,9 +101,9 @@ function reservationStatements(args: {
 
 function spendFor(rows: CreditRow[], beforeOpen: string | null): number {
   return rows.reduce((sum, row) => {
-    if (!row.challenge_item_id || row.threshold == null) return sum;
+    if (!row.challenge_item_id) return sum;
     if (beforeOpen && row.issue_period >= beforeOpen) return sum;
-    return sum + row.threshold;
+    return sum + (lowestSealedBase(row.tiers)?.min_spend_cents ?? 0);
   }, 0);
 }
 
@@ -536,7 +538,7 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
           'challenge_item_id', ec.challenge_item_id,
           'slot', ec.slot_number,
           'restaurant_id', ci.restaurant_id,
-          'threshold', public.offer_lowest_tier_cents(v.tiers)
+          'tiers', v.tiers
         )), '[]'::json)
         from public.entitlement_credits ec
         left join public.challenge_items ci on ci.id = ec.challenge_item_id
