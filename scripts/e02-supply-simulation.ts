@@ -26,11 +26,11 @@ import {
   type SupplyRestaurant,
 } from '../src/lib/challenges/supply-simulation';
 
-const COVERAGE = 'e2ss0000-0000-4000-8000-00000000a001';
-const OTHER = 'e2ss0000-0000-4000-8000-00000000a002';
-const THIN = 'e2ss0000-0000-4000-8000-00000000a003';
-const TIGHT = 'e2ss0000-0000-4000-8000-00000000a004';
-const ADMIN = 'e2ss0000-0000-4000-8000-00000000a00f';
+const COVERAGE = 'e0250000-0000-4000-8000-00000000a001';
+const OTHER = 'e0250000-0000-4000-8000-00000000a002';
+const THIN = 'e0250000-0000-4000-8000-00000000a003';
+const TIGHT = 'e0250000-0000-4000-8000-00000000a004';
+const ADMIN = 'e0250000-0000-4000-8000-00000000a00f';
 const USERS = [COVERAGE, OTHER, THIN, TIGHT, ADMIN];
 
 type Sql = (query: string) => string;
@@ -62,7 +62,7 @@ function inList(ids: string[]): string {
 let rowSerial = 0x300;
 function rowId(): string {
   rowSerial += 1;
-  return `e2ss${rowSerial.toString(16).padStart(4, '0')}-0000-4000-8000-0000000000a1`;
+  return `e025${rowSerial.toString(16).padStart(4, '0')}-0000-4000-8000-0000000000a1`;
 }
 
 function iso(at: Date): string {
@@ -176,6 +176,7 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
   const swapTo = supplyRestaurant('swap');
 
   let started = false;
+  let cleanupError: unknown;
   try {
     started = true;
     const periods = JSON.parse(
@@ -829,7 +830,14 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
     assert.ok(report.includes('pair_below_floor'));
     assert.equal(report.includes('PASS: E02 supply simulation'), false);
   } finally {
-    if (started) cleanup(sql);
+    if (started) {
+      try {
+        cleanup(sql);
+      } catch (error) {
+        cleanupError = error;
+      }
+    }
   }
+  if (cleanupError) throw cleanupError;
   process.stdout.write('PASS: E02 supply simulation\n');
 }

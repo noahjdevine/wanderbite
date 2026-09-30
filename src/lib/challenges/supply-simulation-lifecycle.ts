@@ -321,7 +321,7 @@ export function issueTwoCredits(
   const slots: Array<1 | 2> = [1, 2];
   const created = slots.map((slot) => {
     const credit: SimCredit = {
-      id: nextSupplyId('e2ssc001'),
+      id: nextSupplyId('e025c001'),
       issuePeriod,
       slot,
       status: 'pending',
@@ -372,7 +372,7 @@ export function assignLinkedRestaurant(args: {
     return 'capacity_full';
   }
   const item: SimItem = {
-    id: nextSupplyId('e2ssi001'),
+    id: nextSupplyId('e025i001'),
     creditId: args.credit.id,
     restaurantId: args.restaurantId,
     slot: args.credit.slot,
@@ -441,7 +441,7 @@ export function swapLinkedCredit(args: {
   source.creditId = null;
   releaseItemReservations(args.ledger, source.id);
   const successor: SimItem = {
-    id: nextSupplyId('e2ssi001'),
+    id: nextSupplyId('e025i001'),
     creditId: args.credit.id,
     restaurantId: args.replacementRestaurantId,
     slot: source.slot,

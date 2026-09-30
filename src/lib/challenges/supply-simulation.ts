@@ -37,8 +37,8 @@ import {
   type CooldownRedemption,
 } from '@/lib/challenges/restaurant-safety';
 
-export const SUPPLY_MARKET_ID = 'e2ss0000-0000-4000-8000-00000000b001';
-export const SUPPLY_OTHER_MARKET_ID = 'e2ss0000-0000-4000-8000-00000000b002';
+export const SUPPLY_MARKET_ID = 'e0250000-0000-4000-8000-00000000b001';
+export const SUPPLY_OTHER_MARKET_ID = 'e0250000-0000-4000-8000-00000000b002';
 
 const EARTH_RADIUS_MILES = 3958.7613;
 const originPoint = originFromZip('75069');
@@ -70,8 +70,8 @@ export type SupplyRestaurant = {
 function ids(n: number): { id: string; versionId: string } {
   const head = n.toString(16).padStart(4, '0');
   return {
-    id: `e2ss${head}-0000-4000-8000-000000000001`,
-    versionId: `e2ss${head}-0000-4000-8000-000000000002`,
+    id: `e025${head}-0000-4000-8000-000000000001`,
+    versionId: `e025${head}-0000-4000-8000-000000000002`,
   };
 }
 
@@ -476,7 +476,7 @@ export function runSimulatedSupplyMonths(args: {
       status: 'verified',
       verified_at: verifiedAt.toISOString(),
       created_at: verifiedAt.toISOString(),
-      challengeItemId: 'e2ssseed-0000-4000-8000-0000000000c0',
+      challengeItemId: 'e025seed-0000-4000-8000-0000000000c0',
     });
   }
   const bag = new Map<string, SupplyRejection>();
