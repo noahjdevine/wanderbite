@@ -274,7 +274,6 @@ export async function generateMonthlyChallengeForUser(
       ? [utcCycleMonthStr]
       : [chicagoMonthStart(now), utcCycleMonthStr];
     const threeMonthsAgo = subMonths(now, 3);
-    const sixMonthsAgo = subMonths(now, 6);
     const monthStart = startOfMonth(now);
     const monthEnd = startOfMonth(subMonths(now, -1));
 
@@ -385,13 +384,14 @@ export async function generateMonthlyChallengeForUser(
       }
     }
 
-    const sixMonthsAgoStr = format(sixMonthsAgo, 'yyyy-MM-dd');
-    const twelveMonthsAgoStr = varietyCycleMonthLowerBound(now);
+    const sixMonthVarietyStart = varietyCycleMonthLowerBound(now, 6);
+    const twelveMonthVarietyStart = varietyCycleMonthLowerBound(now, 12);
     const { data: cyclesLast6 } = await supabase
       .from('challenge_cycles')
       .select('id')
       .eq('user_id', userId)
-      .gte('cycle_month', sixMonthsAgoStr);
+      .gte('cycle_month', sixMonthVarietyStart)
+      .lt('cycle_month', chicagoMonthStart(now));
     const cycles6Ids = (cyclesLast6 ?? []).map((c) => (c as { id: string }).id);
     const receivedInLast6Months = new Set<string>();
     if (cycles6Ids.length > 0) {
@@ -408,7 +408,8 @@ export async function generateMonthlyChallengeForUser(
       .from('challenge_cycles')
       .select('id')
       .eq('user_id', userId)
-      .gte('cycle_month', twelveMonthsAgoStr);
+      .gte('cycle_month', twelveMonthVarietyStart)
+      .lt('cycle_month', chicagoMonthStart(now));
     const cycles12Ids = (cyclesLast12 ?? []).map((c) => (c as { id: string }).id);
     const restaurantCycleCount = new Map<string, number>();
     if (cycles12Ids.length > 0) {

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { format, startOfMonth, subMonths } from 'date-fns';
+import { subMonths } from 'date-fns';
 import { describe, expect, it } from 'vitest';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import {
@@ -120,8 +120,8 @@ describe('rolling twelve-month redemption window', () => {
     const later = new Date('2026-10-01T06:00:00.000Z');
     expect(chicagoMonthStart(early)).toBe('2026-09-01');
     expect(chicagoMonthStart(later)).toBe('2026-10-01');
-    expect(format(startOfMonth(early), 'yyyy-MM-dd')).toBe('2026-10-01');
-    expect(format(startOfMonth(later), 'yyyy-MM-dd')).toBe('2026-10-01');
+    expect(early.toISOString().slice(0, 10)).toBe('2026-10-01');
+    expect(later.toISOString().slice(0, 10)).toBe('2026-10-01');
 
     const verifiedAt = new Date('2025-11-15T12:00:00.000Z');
     for (const instant of [early, later]) {
@@ -151,46 +151,135 @@ describe('rolling twelve-month redemption window', () => {
       ).toBe(true);
     }
   });
+
+  it('keeps March 31 on March 31 and clamps Feb 29 to Feb 28', () => {
+    const marchNow = new Date('2027-03-31T15:00:00.000Z');
+    const marchCutoff = new Date('2026-03-31T15:00:00.000Z');
+    const marchDayBefore = new Date('2026-03-30T15:00:00.000Z');
+    const marchLater = new Date('2026-08-31T15:00:00.000Z');
+    expect(rollingTwelveMonthStart(marchNow).toISOString()).toBe(marchCutoff.toISOString());
+    expect(
+      redemptionCooldownOk(RESTAURANT, [visit(marchCutoff), visit(marchLater)], marchNow),
+    ).toBe(false);
+    expect(
+      redemptionCooldownOk(RESTAURANT, [visit(marchDayBefore), visit(marchLater)], marchNow),
+    ).toBe(true);
+
+    const leapNow = new Date('2028-02-29T15:00:00.000Z');
+    const leapCutoff = new Date('2027-02-28T15:00:00.000Z');
+    const leapJustBefore = new Date('2027-02-28T14:59:59.999Z');
+    const leapLater = new Date('2027-07-29T15:00:00.000Z');
+    expect(rollingTwelveMonthStart(leapNow).toISOString()).toBe(leapCutoff.toISOString());
+    expect(redemptionCooldownOk(RESTAURANT, [visit(leapCutoff), visit(leapLater)], leapNow)).toBe(
+      false,
+    );
+    expect(
+      redemptionCooldownOk(RESTAURANT, [visit(leapJustBefore), visit(leapLater)], leapNow),
+    ).toBe(true);
+  });
 });
 
 describe('variety cycle_month window', () => {
-  function counted(cycleMonth: string, now: Date): boolean {
-    return cycleMonth >= varietyCycleMonthLowerBound(now);
+  function monthIndex(monthStart: string): number {
+    return Number(monthStart.slice(0, 4)) * 12 + Number(monthStart.slice(5, 7));
   }
 
-  it('uses the same Chicago window on the 1st and mid-month', () => {
+  function excluded(cycleMonth: string, now: Date, months: number): boolean {
+    return (
+      cycleMonth >= varietyCycleMonthLowerBound(now, months) &&
+      cycleMonth < chicagoMonthStart(now)
+    );
+  }
+
+  function expectSharedBounds(now: Date): void {
+    const current = chicagoMonthStart(now);
+    const six = varietyCycleMonthLowerBound(now, 6);
+    const twelve = varietyCycleMonthLowerBound(now, 12);
+    expect(monthIndex(current) - monthIndex(six)).toBe(6);
+    expect(monthIndex(current) - monthIndex(twelve)).toBe(12);
+    expect(monthIndex(six) - monthIndex(twelve)).toBe(6);
+  }
+
+  it('shares one helper for six and twelve Chicago months', () => {
     const first = new Date('2026-10-01T05:00:00.000Z');
     const mid = new Date('2026-10-15T15:00:00.000Z');
     expect(chicagoMonthStart(first)).toBe('2026-10-01');
     expect(chicagoMonthStart(mid)).toBe('2026-10-01');
-    expect(varietyCycleMonthLowerBound(first)).toBe('2025-11-01');
-    expect(varietyCycleMonthLowerBound(mid)).toBe(varietyCycleMonthLowerBound(first));
-    expect(counted('2025-10-01', mid)).toBe(false);
-    expect(counted('2025-11-01', mid)).toBe(true);
-    expect(counted('2025-10-01', first)).toBe(false);
-    expect(counted('2025-11-01', first)).toBe(true);
-
-    const january = new Date('2026-01-15T18:00:00.000Z');
-    expect(chicagoMonthStart(january)).toBe('2026-01-01');
-    expect(varietyCycleMonthLowerBound(january)).toBe('2025-02-01');
-    expect(counted('2025-01-01', january)).toBe(false);
-    expect(counted('2025-02-01', january)).toBe(true);
+    expectSharedBounds(first);
+    expectSharedBounds(mid);
+    expect(varietyCycleMonthLowerBound(first, 6)).toBe('2026-04-01');
+    expect(varietyCycleMonthLowerBound(first, 12)).toBe('2025-10-01');
+    expect(varietyCycleMonthLowerBound(mid, 6)).toBe(varietyCycleMonthLowerBound(first, 6));
+    expect(varietyCycleMonthLowerBound(mid, 12)).toBe(varietyCycleMonthLowerBound(first, 12));
+    expect(excluded('2026-10-01', mid, 6)).toBe(false);
+    expect(excluded('2026-10-01', mid, 12)).toBe(false);
+    expect(excluded('2026-09-01', mid, 6)).toBe(true);
+    expect(excluded('2026-09-01', mid, 12)).toBe(true);
   });
 
-  it('stays on the Chicago month when UTC has already entered the next month', () => {
-    const lateSeptember = new Date('2026-10-01T00:30:00.000Z');
-    expect(chicagoMonthStart(lateSeptember)).toBe('2026-09-01');
-    expect(format(startOfMonth(lateSeptember), 'yyyy-MM-dd')).toBe('2026-10-01');
-    expect(varietyCycleMonthLowerBound(lateSeptember)).toBe('2025-10-01');
-    expect(counted('2025-09-01', lateSeptember)).toBe(false);
-    expect(counted('2025-10-01', lateSeptember)).toBe(true);
+  it('blocks an October 2025 cycle through October 2026 and an April 2026 cycle on the six-month rule', () => {
+    const october = new Date('2026-10-15T15:00:00.000Z');
+    const november = new Date('2026-11-15T18:00:00.000Z');
+    expect(chicagoMonthStart(october)).toBe('2026-10-01');
+    expect(chicagoMonthStart(november)).toBe('2026-11-01');
+    expect(excluded('2025-10-01', october, 12)).toBe(true);
+    expect(excluded('2025-10-01', november, 12)).toBe(false);
+    expect(excluded('2026-04-01', october, 6)).toBe(true);
+    expect(excluded('2026-04-01', november, 6)).toBe(false);
+  });
 
-    const lateOctober = new Date('2026-11-01T04:30:00.000Z');
-    expect(chicagoMonthStart(lateOctober)).toBe('2026-10-01');
-    expect(format(startOfMonth(lateOctober), 'yyyy-MM-dd')).toBe('2026-11-01');
-    expect(varietyCycleMonthLowerBound(lateOctober)).toBe('2025-11-01');
-    expect(counted('2025-10-01', lateOctober)).toBe(false);
-    expect(counted('2025-11-01', lateOctober)).toBe(true);
+  it('treats 2026-11-01T03:00Z as Chicago October', () => {
+    const now = new Date('2026-11-01T03:00:00.000Z');
+    expect(chicagoMonthStart(now)).toBe('2026-10-01');
+    expect(now.toISOString().slice(0, 10)).toBe('2026-11-01');
+    expectSharedBounds(now);
+    expect(varietyCycleMonthLowerBound(now, 12)).toBe('2025-10-01');
+    expect(varietyCycleMonthLowerBound(now, 6)).toBe('2026-04-01');
+    expect(excluded('2025-10-01', now, 12)).toBe(true);
+    expect(excluded('2026-04-01', now, 6)).toBe(true);
+    expect(excluded('2026-10-01', now, 12)).toBe(false);
+  });
+
+  it('keeps Chicago months across DST and a January year boundary', () => {
+    for (const iso of ['2026-03-08T07:30:00.000Z', '2026-03-08T08:30:00.000Z']) {
+      const now = new Date(iso);
+      expect(chicagoMonthStart(now)).toBe('2026-03-01');
+      expectSharedBounds(now);
+      expect(varietyCycleMonthLowerBound(now, 12)).toBe('2025-03-01');
+      expect(varietyCycleMonthLowerBound(now, 6)).toBe('2025-09-01');
+      expect(excluded('2025-03-01', now, 12)).toBe(true);
+      expect(excluded('2026-02-01', now, 6)).toBe(true);
+      expect(excluded('2026-03-01', now, 12)).toBe(false);
+    }
+
+    const stillOctober = new Date('2026-11-01T03:00:00.000Z');
+    for (const iso of ['2026-11-01T06:30:00.000Z', '2026-11-01T07:30:00.000Z']) {
+      const now = new Date(iso);
+      expect(chicagoMonthStart(now)).toBe('2026-11-01');
+      expect(chicagoMonthStart(stillOctober)).toBe('2026-10-01');
+      expectSharedBounds(now);
+      expect(varietyCycleMonthLowerBound(now, 12)).toBe('2025-11-01');
+      expect(varietyCycleMonthLowerBound(now, 6)).toBe('2026-05-01');
+      expect(varietyCycleMonthLowerBound(now, 12)).not.toBe(
+        varietyCycleMonthLowerBound(stillOctober, 12),
+      );
+      expect(excluded('2025-10-01', now, 12)).toBe(false);
+      expect(excluded('2025-11-01', now, 12)).toBe(true);
+      expect(excluded('2026-04-01', now, 6)).toBe(false);
+      expect(excluded('2026-05-01', now, 6)).toBe(true);
+    }
+
+    const january = new Date('2027-01-15T18:00:00.000Z');
+    expect(chicagoMonthStart(january)).toBe('2027-01-01');
+    expectSharedBounds(january);
+    expect(varietyCycleMonthLowerBound(january, 12)).toBe('2026-01-01');
+    expect(varietyCycleMonthLowerBound(january, 6)).toBe('2026-07-01');
+    expect(excluded('2026-01-01', january, 12)).toBe(true);
+    expect(excluded('2026-01-01', january, 6)).toBe(false);
+    expect(excluded('2026-12-01', january, 12)).toBe(true);
+    expect(excluded('2026-12-01', january, 6)).toBe(true);
+    expect(excluded('2027-01-01', january, 12)).toBe(false);
+    expect(excluded('2026-06-01', january, 6)).toBe(false);
   });
 });
 
@@ -217,14 +306,27 @@ describe('cooldown call sites', () => {
     expect(legacy).not.toContain('chicagoMonthStart');
   });
 
-  it('takes the cyclesLast12 lower bound from the helper', () => {
+  it('takes both variety bounds from varietyCycleMonthLowerBound', () => {
+    const safety = source('src/lib/challenges/restaurant-safety.ts');
     expect(generate).not.toContain('subYears');
-    expect(generate).toContain('const twelveMonthsAgoStr = varietyCycleMonthLowerBound(now)');
-    const cycles = between(generate, 'const { data: cyclesLast12 }', 'const cycles12Ids');
-    expect(cycles).toContain(".gte('cycle_month', twelveMonthsAgoStr)");
-    expect(cycles).not.toMatch(/\.lt\('cycle_month'/);
-    expect(cycles).not.toContain('subYears');
-    expect(cycles).not.toContain('subMonths');
+    expect(safety.match(/function varietyCycleMonthLowerBound/g)).toHaveLength(1);
+    expect(generate.match(/varietyCycleMonthLowerBound\(now, 6\)/g)).toHaveLength(1);
+    expect(generate.match(/varietyCycleMonthLowerBound\(now, 12\)/g)).toHaveLength(1);
+    expect(generate).not.toMatch(/varietyCycleMonthLowerBound\(now\)/);
+    expect(generate).not.toContain('year * 12');
+    expect(generate).not.toContain('format(sixMonthsAgo');
+    expect(generate).not.toContain('const sixMonthsAgo');
+
+    const cycles6 = between(generate, 'const { data: cyclesLast6 }', 'const cycles6Ids');
+    const cycles12 = between(generate, 'const { data: cyclesLast12 }', 'const cycles12Ids');
+    expect(cycles6).toContain(".gte('cycle_month', sixMonthVarietyStart)");
+    expect(cycles12).toContain(".gte('cycle_month', twelveMonthVarietyStart)");
+    for (const cycles of [cycles6, cycles12]) {
+      expect(cycles).toContain(".lt('cycle_month', chicagoMonthStart(now))");
+      expect(cycles).not.toContain('subYears');
+      expect(cycles).not.toContain('subMonths');
+      expect(cycles).not.toContain('format(');
+    }
     expect(generate).toContain('chicagoMonthStart(now)');
     expect(generate).toContain('format(startOfMonth(now),');
   });

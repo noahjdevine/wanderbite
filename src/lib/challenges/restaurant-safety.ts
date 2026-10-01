@@ -19,21 +19,23 @@ export function rollingTwelveMonthStart(now: Date): Date {
 }
 
 /**
- * Inclusive `cycle_month` lower bound for variety (`cyclesLast12`).
+ * Inclusive `cycle_month` lower bound for a variety lookback of `months`
+ * full Chicago calendar months.
  *
- * Chicago month start 11 months before the Chicago month of `now`.
- * During October 2026 the bound is `2025-11-01`, so the October 2025 cycle
- * is outside and a full 12 Chicago months have passed. The day of the month
- * and the server clock do not move it.
+ * Chicago month start of `chicagoMonthStart(now)` minus `months` months.
+ * With `now` in Chicago month M, cycles from M−`months` through M−1 match
+ * `cycle_month >=` this value and `cycle_month < chicagoMonthStart(now)`.
+ * The current Chicago month is outside that window. The day of the month
+ * and the server clock do not move the bound.
  *
- * The variety query is `cycle_month >=` this value and has no upper bound,
- * so a row for the current month is included when one exists.
+ * Six-month and twelve-month variety both use this helper. The redemption
+ * cooldown stays `rollingTwelveMonthStart` (`subMonths(now, 12)`).
  */
-export function varietyCycleMonthLowerBound(now: Date): string {
+export function varietyCycleMonthLowerBound(now: Date, months: number): string {
   const current = chicagoMonthStart(now);
   const year = Number(current.slice(0, 4));
   const monthIndex = Number(current.slice(5, 7)) - 1;
-  const shifted = year * 12 + monthIndex - 11;
+  const shifted = year * 12 + monthIndex - months;
   const shiftedYear = Math.floor(shifted / 12);
   const shiftedMonth = shifted - shiftedYear * 12 + 1;
   return `${String(shiftedYear).padStart(4, '0')}-${String(shiftedMonth).padStart(2, '0')}-01`;
