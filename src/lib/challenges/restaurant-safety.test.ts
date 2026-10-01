@@ -139,17 +139,18 @@ describe('rolling twelve-month redemption window', () => {
       ).toBe(false);
     }
 
-    for (const iso of ['2026-03-08T09:30:00.000Z', '2026-11-01T08:30:00.000Z']) {
+    for (const [iso, chicagoCutoff, insideIso] of [
+      ['2026-03-08T09:30:00.000Z', '2025-03-08T10:30:00.000Z', '2025-07-08T09:30:00.000Z'],
+      ['2026-11-01T08:30:00.000Z', '2025-11-01T07:30:00.000Z', '2026-03-01T08:30:00.000Z'],
+    ] as const) {
       const dstNow = new Date(iso);
-      const cutoff = subMonths(dstNow, 12);
+      const processCutoff = subMonths(dstNow, 12);
+      expect(rollingTwelveMonthStart(dstNow).toISOString()).toBe(processCutoff.toISOString());
+      const cutoff = new Date(chicagoCutoff);
       const before = new Date(cutoff.getTime() - 1);
-      expect(rollingTwelveMonthStart(dstNow).toISOString()).toBe(cutoff.toISOString());
-      expect(
-        redemptionCooldownOk(RESTAURANT, [visit(cutoff), visit(subMonths(dstNow, 8))], dstNow),
-      ).toBe(false);
-      expect(
-        redemptionCooldownOk(RESTAURANT, [visit(before), visit(subMonths(dstNow, 8))], dstNow),
-      ).toBe(true);
+      const inside = new Date(insideIso);
+      expect(redemptionCooldownOk(RESTAURANT, [visit(cutoff), visit(inside)], dstNow)).toBe(false);
+      expect(redemptionCooldownOk(RESTAURANT, [visit(before), visit(inside)], dstNow)).toBe(true);
     }
   });
 
@@ -370,5 +371,28 @@ describe('redemptionCooldownReason', () => {
         now,
       ),
     ).toBe('recent_visit_6m');
+  });
+
+  it('keeps a May score stable across the November and February boundaries', () => {
+    const now = new Date('2026-05-15T18:00:00.000Z');
+    const november = new Date('2025-11-15T18:30:00.000Z');
+    const august = new Date('2025-08-15T18:00:00.000Z');
+    const february = new Date('2025-02-15T18:00:00.000Z');
+    const onSixMonthCutoff = new Date('2025-11-15T19:00:00.000Z');
+    const justBeforeSix = new Date(onSixMonthCutoff.getTime() - 1);
+
+    expect(redemptionCooldownReason(RESTAURANT, [visit(november)], now)).toBeNull();
+    expect(redemptionCooldownOk(RESTAURANT, [visit(november)], now)).toBe(
+      redemptionCooldownReason(RESTAURANT, [visit(november)], now) === null,
+    );
+    expect(redemptionCooldownReason(RESTAURANT, [visit(november), visit(august)], now)).toBe(
+      'two_in_12m',
+    );
+    expect(redemptionCooldownOk(RESTAURANT, [visit(november), visit(august)], now)).toBe(false);
+    expect(redemptionCooldownReason(RESTAURANT, [visit(november), visit(february)], now)).toBeNull();
+    expect(redemptionCooldownReason(RESTAURANT, [visit(onSixMonthCutoff)], now)).toBe(
+      'recent_visit_6m',
+    );
+    expect(redemptionCooldownReason(RESTAURANT, [visit(justBeforeSix)], now)).toBeNull();
   });
 });
