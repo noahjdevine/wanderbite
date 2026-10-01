@@ -6,8 +6,8 @@ import { chicagoMonthStart } from '@/lib/cron-period';
 import {
   passesRestaurantHardFilters,
   redemptionCooldownOk,
-  rollingTwelveMonthCycleBound,
   rollingTwelveMonthStart,
+  varietyCycleMonthLowerBound,
   type CooldownRedemption,
 } from '@/lib/challenges/restaurant-safety';
 
@@ -128,13 +128,6 @@ describe('rolling twelve-month redemption window', () => {
       expect(rollingTwelveMonthStart(instant).toISOString()).toBe(
         subMonths(instant, 12).toISOString(),
       );
-      expect(rollingTwelveMonthCycleBound(instant)).toBe(
-        format(subMonths(instant, 12), 'yyyy-MM-dd'),
-      );
-      expect(rollingTwelveMonthCycleBound(instant)).not.toBe(chicagoMonthStart(instant));
-      expect(rollingTwelveMonthCycleBound(instant)).not.toBe(
-        format(startOfMonth(instant), 'yyyy-MM-dd'),
-      );
       expect(redemptionCooldownOk(RESTAURANT, [visit(verifiedAt)], instant)).toBe(true);
       expect(
         redemptionCooldownOk(
@@ -157,6 +150,47 @@ describe('rolling twelve-month redemption window', () => {
         redemptionCooldownOk(RESTAURANT, [visit(before), visit(subMonths(dstNow, 8))], dstNow),
       ).toBe(true);
     }
+  });
+});
+
+describe('variety cycle_month window', () => {
+  function counted(cycleMonth: string, now: Date): boolean {
+    return cycleMonth >= varietyCycleMonthLowerBound(now);
+  }
+
+  it('uses the same Chicago window on the 1st and mid-month', () => {
+    const first = new Date('2026-10-01T05:00:00.000Z');
+    const mid = new Date('2026-10-15T15:00:00.000Z');
+    expect(chicagoMonthStart(first)).toBe('2026-10-01');
+    expect(chicagoMonthStart(mid)).toBe('2026-10-01');
+    expect(varietyCycleMonthLowerBound(first)).toBe('2025-11-01');
+    expect(varietyCycleMonthLowerBound(mid)).toBe(varietyCycleMonthLowerBound(first));
+    expect(counted('2025-10-01', mid)).toBe(false);
+    expect(counted('2025-11-01', mid)).toBe(true);
+    expect(counted('2025-10-01', first)).toBe(false);
+    expect(counted('2025-11-01', first)).toBe(true);
+
+    const january = new Date('2026-01-15T18:00:00.000Z');
+    expect(chicagoMonthStart(january)).toBe('2026-01-01');
+    expect(varietyCycleMonthLowerBound(january)).toBe('2025-02-01');
+    expect(counted('2025-01-01', january)).toBe(false);
+    expect(counted('2025-02-01', january)).toBe(true);
+  });
+
+  it('stays on the Chicago month when UTC has already entered the next month', () => {
+    const lateSeptember = new Date('2026-10-01T00:30:00.000Z');
+    expect(chicagoMonthStart(lateSeptember)).toBe('2026-09-01');
+    expect(format(startOfMonth(lateSeptember), 'yyyy-MM-dd')).toBe('2026-10-01');
+    expect(varietyCycleMonthLowerBound(lateSeptember)).toBe('2025-10-01');
+    expect(counted('2025-09-01', lateSeptember)).toBe(false);
+    expect(counted('2025-10-01', lateSeptember)).toBe(true);
+
+    const lateOctober = new Date('2026-11-01T04:30:00.000Z');
+    expect(chicagoMonthStart(lateOctober)).toBe('2026-10-01');
+    expect(format(startOfMonth(lateOctober), 'yyyy-MM-dd')).toBe('2026-11-01');
+    expect(varietyCycleMonthLowerBound(lateOctober)).toBe('2025-11-01');
+    expect(counted('2025-10-01', lateOctober)).toBe(false);
+    expect(counted('2025-11-01', lateOctober)).toBe(true);
   });
 });
 
@@ -185,9 +219,10 @@ describe('cooldown call sites', () => {
 
   it('takes the cyclesLast12 lower bound from the helper', () => {
     expect(generate).not.toContain('subYears');
-    expect(generate).toContain('const twelveMonthsAgoStr = rollingTwelveMonthCycleBound(now)');
+    expect(generate).toContain('const twelveMonthsAgoStr = varietyCycleMonthLowerBound(now)');
     const cycles = between(generate, 'const { data: cyclesLast12 }', 'const cycles12Ids');
     expect(cycles).toContain(".gte('cycle_month', twelveMonthsAgoStr)");
+    expect(cycles).not.toMatch(/\.lt\('cycle_month'/);
     expect(cycles).not.toContain('subYears');
     expect(cycles).not.toContain('subMonths');
     expect(generate).toContain('chicagoMonthStart(now)');

@@ -14,7 +14,7 @@ import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
 import {
   redemptionCooldownOk,
-  rollingTwelveMonthCycleBound,
+  varietyCycleMonthLowerBound,
 } from '@/lib/challenges/restaurant-safety';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
@@ -386,7 +386,7 @@ export async function generateMonthlyChallengeForUser(
     }
 
     const sixMonthsAgoStr = format(sixMonthsAgo, 'yyyy-MM-dd');
-    const twelveMonthsAgoStr = rollingTwelveMonthCycleBound(now);
+    const twelveMonthsAgoStr = varietyCycleMonthLowerBound(now);
     const { data: cyclesLast6 } = await supabase
       .from('challenge_cycles')
       .select('id')

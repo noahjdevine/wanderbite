@@ -1,4 +1,5 @@
-import { format, subMonths } from 'date-fns';
+import { subMonths } from 'date-fns';
+import { chicagoMonthStart } from '@/lib/cron-period';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
@@ -18,11 +19,24 @@ export function rollingTwelveMonthStart(now: Date): Date {
 }
 
 /**
- * `cycle_month` lower bound for {@link rollingTwelveMonthStart}.
- * Same shape as the six-month variety bound: `format(subMonths(now, n), 'yyyy-MM-dd')`.
+ * Inclusive `cycle_month` lower bound for variety (`cyclesLast12`).
+ *
+ * Chicago month start 11 months before the Chicago month of `now`.
+ * During October 2026 the bound is `2025-11-01`, so the October 2025 cycle
+ * is outside and a full 12 Chicago months have passed. The day of the month
+ * and the server clock do not move it.
+ *
+ * The variety query is `cycle_month >=` this value and has no upper bound,
+ * so a row for the current month is included when one exists.
  */
-export function rollingTwelveMonthCycleBound(now: Date): string {
-  return format(rollingTwelveMonthStart(now), 'yyyy-MM-dd');
+export function varietyCycleMonthLowerBound(now: Date): string {
+  const current = chicagoMonthStart(now);
+  const year = Number(current.slice(0, 4));
+  const monthIndex = Number(current.slice(5, 7)) - 1;
+  const shifted = year * 12 + monthIndex - 11;
+  const shiftedYear = Math.floor(shifted / 12);
+  const shiftedMonth = shifted - shiftedYear * 12 + 1;
+  return `${String(shiftedYear).padStart(4, '0')}-${String(shiftedMonth).padStart(2, '0')}-01`;
 }
 
 /** No verified visit in six months, and fewer than two verified visits in twelve. */
