@@ -29,7 +29,8 @@ export function rollingTwelveMonthStart(now: Date): Date {
  * and the server clock do not move the bound.
  *
  * Six-month and twelve-month variety both use this helper. The redemption
- * cooldown stays `rollingTwelveMonthStart` (`subMonths(now, 12)`).
+ * cooldown is still a rolling instant, measured on the America/Chicago
+ * wall clock so the process timezone cannot move the cutoff.
  */
 export function varietyCycleMonthLowerBound(now: Date, months: number): string {
   const current = chicagoMonthStart(now);
@@ -41,14 +42,95 @@ export function varietyCycleMonthLowerBound(now: Date, months: number): string {
   return `${String(shiftedYear).padStart(4, '0')}-${String(shiftedMonth).padStart(2, '0')}-01`;
 }
 
-/** No verified visit in six months, and fewer than two verified visits in twelve. */
-export function redemptionCooldownOk(
+export type CooldownBlockReason = 'recent_visit_6m' | 'two_in_12m';
+
+const CHICAGO = 'America/Chicago';
+
+const chicagoWallFormat = new Intl.DateTimeFormat('en-US', {
+  timeZone: CHICAGO,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hourCycle: 'h23',
+});
+
+function chicagoWallClock(instant: Date): {
+  year: number;
+  month: number;
+  day: number;
+  hour: number;
+  minute: number;
+  second: number;
+  ms: number;
+} {
+  const parts = chicagoWallFormat.formatToParts(instant);
+  const pick = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((part) => part.type === type)?.value ?? '0');
+  let hour = pick('hour');
+  if (hour === 24) hour = 0;
+  return {
+    year: pick('year'),
+    month: pick('month'),
+    day: pick('day'),
+    hour,
+    minute: pick('minute'),
+    second: pick('second'),
+    ms: instant.getUTCMilliseconds(),
+  };
+}
+
+/** Milliseconds to add to a UTC instant to get the Chicago wall clock read as UTC. */
+function chicagoOffsetMs(instant: Date): number {
+  const wall = chicagoWallClock(instant);
+  const asUtc = Date.UTC(wall.year, wall.month - 1, wall.day, wall.hour, wall.minute, wall.second, wall.ms);
+  return asUtc - instant.getTime();
+}
+
+function chicagoWallClockToUtc(
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  ms: number,
+): Date {
+  const guess = Date.UTC(year, month - 1, day, hour, minute, second, ms);
+  const offset = chicagoOffsetMs(new Date(guess));
+  let utc = guess - offset;
+  const corrected = chicagoOffsetMs(new Date(utc));
+  if (corrected !== offset) utc = guess - corrected;
+  return new Date(utc);
+}
+
+/**
+ * `subMonths` on the America/Chicago wall clock. The process timezone does
+ * not change the instant. Day-of-month clamps the same way date-fns does.
+ */
+function subMonthsChicago(now: Date, months: number): Date {
+  const wall = chicagoWallClock(now);
+  const shifted = wall.year * 12 + (wall.month - 1) - months;
+  const year = Math.floor(shifted / 12);
+  const monthIndex = shifted - year * 12;
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  const day = Math.min(wall.day, daysInMonth);
+  return chicagoWallClockToUtc(year, monthIndex + 1, day, wall.hour, wall.minute, wall.second, wall.ms);
+}
+
+/**
+ * Why a verified history blocks this restaurant, if it does.
+ * A visit inside six Chicago months wins over two visits inside twelve.
+ */
+export function redemptionCooldownReason(
   restaurantId: string,
   redemptions: CooldownRedemption[],
   now: Date,
-): boolean {
-  const sixMonthsAgo = subMonths(now, 6);
-  const twelveMonthsAgo = rollingTwelveMonthStart(now);
+): CooldownBlockReason | null {
+  const sixMonthsAgo = subMonthsChicago(now, 6);
+  const twelveMonthsAgo = subMonthsChicago(now, 12);
   const verifiedAts = redemptions
     .filter((row) => row.restaurant_id === restaurantId && row.status === 'verified')
     .flatMap((row) => {
@@ -57,9 +139,18 @@ export function redemptionCooldownOk(
       const at = new Date(raw);
       return Number.isNaN(at.getTime()) ? [] : [at];
     });
-  if (verifiedAts.some((at) => at >= sixMonthsAgo)) return false;
-  if (verifiedAts.filter((at) => at >= twelveMonthsAgo).length >= 2) return false;
-  return true;
+  if (verifiedAts.some((at) => at >= sixMonthsAgo)) return 'recent_visit_6m';
+  if (verifiedAts.filter((at) => at >= twelveMonthsAgo).length >= 2) return 'two_in_12m';
+  return null;
+}
+
+/** No verified visit in six months, and fewer than two verified visits in twelve. */
+export function redemptionCooldownOk(
+  restaurantId: string,
+  redemptions: CooldownRedemption[],
+  now: Date,
+): boolean {
+  return redemptionCooldownReason(restaurantId, redemptions, now) === null;
 }
 
 export function passesRestaurantHardFilters(args: {

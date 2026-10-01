@@ -189,7 +189,7 @@ export type SupplySimulationConfig = {
   catalogKeys?: string[];
 };
 
-const MEMBER_FLAGS = {
+export const MEMBER_FLAGS = {
   dietaryFlags: ['vegan'],
   allergyFlags: ['peanut'],
   excludedCuisineIds: ['italian'],

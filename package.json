@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:db": "tsx scripts/test-database.ts",
+    "supply:gate": "tsx scripts/e02-supply-gate.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:crypto": "tsx scripts/redemption-crypto-selftest.ts",
