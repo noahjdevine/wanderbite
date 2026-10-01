@@ -37,7 +37,29 @@ This numbered list is a **draft**, taken only from merged PR bodies #42–#52 an
 
 **Determinism.** The simulation sorts with `byId` (line 360; lines 576 and 605). Production `generate.ts` shuffles with `randomInt` (lines 171–175) at line 527. A gate pass does not fix a member’s draw.
 
-**D2. Gate score?** A) Catalog A, `numerator === denominator` on `COVERAGE_CONFIG`. B) Catalog B with a threshold Noah names. C) Both must pass. **Recommended, needs Noah: A.**
+**D2. Gate score?** A) Catalog A, `numerator === denominator` on `COVERAGE_CONFIG`. B) Catalog B with a threshold Noah names. C) Both must pass. **Decided by Noah 2026-10-01: B, hosted active snapshot, threshold 100% of credits issued over 6 Chicago months, every seeded trial.**
+
+### Supply gate (D2=B)
+
+Catalog A (`SUPPLY_RESTAURANTS`, criterion 9) stays the logic regression. It is not this gate. The #51 SQL cohort is not this gate.
+
+**Metric.** Denominator is 16 members × 6 Chicago months × 2 credits = 192. Numerator is those credits with `challengeItemId !== null` at the end of M5. A carry match counts in the numerator and is reported `matched_via_carry`. Do not use `seededMatchRate`. PASS only when numerator === denominator in every seeded trial. One unmatched credit is FAIL.
+
+**Cohort.** `SUPPLY_GATE_COHORT`: 4 launch ZIPs (75069, 75070, 75071, 75072) × open/restricted × new/tenured. Open has no flags. Restricted uses `MEMBER_FLAGS` (vegan, peanut, italian) and counts toward 100% unless Noah later makes that persona report-only. Distance band `5_mi`, no cocktail reserve, no swaps, completion `verify_on_assign`. Tenured members get 6 unscored warm-up months (M−6..M−1, ks 11..6) on a private capacity table with offer-validity checks off. Warm-up seeds redemptions and cycles only.
+
+**Window.** M0 is the first Chicago month whose simulated 15th 18:00Z is at or after the snapshot `exported_at`. Score M0..M5. Each month: `applyRollover` after the member’s first month, `issueTwoCredits`, carried assign (single base >= 2000), then a pair link.
+
+**Trials.** Default 20, seeds 1..N, mulberry32 shuffle. `--seed` repeats one trial. Never `Math.random`.
+
+**Funnel.** First failing rule at the radius actually used: outside_market, no_offer_version (legacy offers are diagnostic only; `legacy_offer_only`), offer_version_not_selectable (`offerVersionCoversDeadline`: not_yet_valid, expires_before_deadline, withdrawn), offer_tiers_invalid, missing_coordinates, dietary_exclusion, allergy, excluded_cuisine, cooldown_recent_visit_6m, cooldown_two_in_12m, capacity_full, variety_6m, variety_12m, relaxed_variety_last_month, outside_distance, pair_below_floor / carried_below_floor. Variety uses `varietyCycleMonthLowerBound(now, 6|12)` with `cycle_month >= bound` and `< chicagoMonthStart(now)`. Redemption cooldown stays rolling (`redemptionCooldownReason` / `redemptionCooldownOk`).
+
+**Offer versions.** A restaurant is selectable only with a current offer version that passes the same window as `version_selection_ok` (`20260925175518`) and that `link_pending_credits` (`20260925215534`) requires. Legacy `restaurant_offers` do not make a restaurant eligible. Pair floor is lowest-tier `discount_cents` summed >= 2000, the same cents `offer_lowest_tier_cents` adds in `link_pending_credits`.
+
+**Floor-aware selector.** No production caller of `link_pending_credits` exists under `src/` (the SQL function receives the pair; it does not choose it). This gate picks the first seeded `(i < j)` pair with base sum >= 2000 and capacity in both. The future credits selector must be floor-aware or this gate overstates supply.
+
+**How Noah runs it.** In the Supabase SQL editor or another read-only session, run `scripts/sql/e02-supply-snapshot.sql` (`begin transaction read only`, one `select`, `rollback`). Save the single JSON cell to `.supply-gate/hosted-catalog.json` (gitignored). Then `npm run supply:gate`. Paste the summary lines only. Never paste or commit the snapshot. An agent or CI must not run that SQL against the hosted project.
+
+**Checklist.** Six-month supply gate (D2=B): built in this PR; not yet run on the hosted snapshot; expected FAIL. Open. Master E02 is open. Master E04 is open. Criterion 11 stays blocked. This doc does not claim the gate passed.
 
 ## 2. Hosted state
 

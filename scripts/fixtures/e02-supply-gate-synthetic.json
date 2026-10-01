@@ -1,0 +1,622 @@
+{
+  "schema": "wanderbite.e02.supply_snapshot.v1",
+  "exported_at": "2026-10-10T15:00:00.000Z",
+  "launch_market": {
+    "id": "e0255100-0000-4000-8000-0000000000aa",
+    "slug": "mckinney-tx",
+    "status": "active"
+  },
+  "restaurants": [
+    {
+      "id": "e0255101-0000-4000-8000-000000000001",
+      "slug": "synthetic-01",
+      "name": "Synthetic 01",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1941,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255101-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255102-0000-4000-8000-000000000001",
+      "slug": "synthetic-02",
+      "name": "Synthetic 02",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1942,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255102-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255103-0000-4000-8000-000000000001",
+      "slug": "synthetic-03",
+      "name": "Synthetic 03",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1943,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255103-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255104-0000-4000-8000-000000000001",
+      "slug": "synthetic-04",
+      "name": "Synthetic 04",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1944,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255104-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255105-0000-4000-8000-000000000001",
+      "slug": "synthetic-05",
+      "name": "Synthetic 05",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1945,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255105-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255106-0000-4000-8000-000000000001",
+      "slug": "synthetic-05-2",
+      "name": "Synthetic 06",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1945,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255106-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255107-0000-4000-8000-000000000001",
+      "slug": "synthetic-07",
+      "name": "Synthetic 07",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1947,
+      "lon": -96.65,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0255108-0000-4000-8000-000000000001",
+      "slug": "synthetic-08",
+      "name": "Synthetic 08",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "bbq"
+      ],
+      "lat": 33.1948,
+      "lon": -96.65,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0255109-0000-4000-8000-000000000001",
+      "slug": "synthetic-09",
+      "name": "Synthetic 09",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1949,
+      "lon": -96.65,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0255110-0000-4000-8000-000000000001",
+      "slug": "synthetic-10",
+      "name": "Synthetic 10",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.195,
+      "lon": -96.65,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0255111-0000-4000-8000-000000000001",
+      "slug": "synthetic-11",
+      "name": "Synthetic 11",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "cheese"
+      ],
+      "lat": 33.1951,
+      "lon": -96.65,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0255112-0000-4000-8000-000000000001",
+      "slug": "synthetic-12",
+      "name": "Synthetic 12",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "bbq"
+      ],
+      "lat": 33.1952,
+      "lon": -96.65,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0255113-0000-4000-8000-000000000001",
+      "slug": "synthetic-13",
+      "name": "Synthetic 13",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "italian"
+      ],
+      "lat": 33.1953,
+      "lon": -96.65,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0255114-0000-4000-8000-000000000001",
+      "slug": "synthetic-14",
+      "name": "Synthetic 14",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1954,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255114-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255115-0000-4000-8000-000000000001",
+      "slug": "synthetic-15",
+      "name": "Synthetic 15",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "bbq"
+      ],
+      "lat": 33.1955,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255115-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255116-0000-4000-8000-000000000001",
+      "slug": "synthetic-16",
+      "name": "Synthetic 16",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1956,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255116-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255117-0000-4000-8000-000000000001",
+      "slug": "synthetic-17",
+      "name": "Synthetic 17",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1957,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255117-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255118-0000-4000-8000-000000000001",
+      "slug": "synthetic-18",
+      "name": "Synthetic 18",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1958,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255118-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255119-0000-4000-8000-000000000001",
+      "slug": "synthetic-19",
+      "name": "Synthetic 19",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": null,
+      "lon": null,
+      "current_offer_version_id": "e0255119-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255120-0000-4000-8000-000000000001",
+      "slug": "synthetic-20",
+      "name": "Synthetic 20",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "cheese"
+      ],
+      "lat": null,
+      "lon": null,
+      "current_offer_version_id": "e0255120-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255121-0000-4000-8000-000000000001",
+      "slug": "synthetic-21",
+      "name": "Synthetic 21",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.917658,
+      "lon": -96.6479,
+      "current_offer_version_id": "e0255121-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255122-0000-4000-8000-000000000001",
+      "slug": "synthetic-22",
+      "name": "Synthetic 22",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "bbq"
+      ],
+      "lat": 33.917658,
+      "lon": -96.6478,
+      "current_offer_version_id": "e0255122-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255123-0000-4000-8000-000000000001",
+      "slug": "synthetic-23",
+      "name": "Synthetic 23",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000bb",
+      "cuisine_tags": [
+        "salad"
+      ],
+      "lat": 33.1963,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255123-0000-4000-8000-000000000002"
+    },
+    {
+      "id": "e0255124-0000-4000-8000-000000000001",
+      "slug": "synthetic-24",
+      "name": "Synthetic 24",
+      "status": "active",
+      "market_id": "e0255100-0000-4000-8000-0000000000aa",
+      "cuisine_tags": [
+        "cheese",
+        "peanut",
+        "italian"
+      ],
+      "lat": 33.1964,
+      "lon": -96.65,
+      "current_offer_version_id": "e0255124-0000-4000-8000-000000000002"
+    }
+  ],
+  "offer_versions": [
+    {
+      "id": "e0255101-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255101-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255102-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255102-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255103-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255103-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255104-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255104-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255105-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255105-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255106-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255106-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255114-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255114-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2026-12-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255115-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255115-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2026-12-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255116-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255116-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2026-12-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255117-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255117-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": "2026-01-01T00:00:00.000Z",
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255118-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255118-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2027-06-01T00:00:00.000Z",
+      "valid_until": "2028-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255119-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255119-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255120-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255120-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255121-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255121-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255122-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255122-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255123-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255123-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    },
+    {
+      "id": "e0255124-0000-4000-8000-000000000002",
+      "restaurant_id": "e0255124-0000-4000-8000-000000000001",
+      "tiers": [
+        {
+          "threshold_cents": 4000,
+          "discount_cents": 1000
+        }
+      ],
+      "valid_from": "2020-01-01T00:00:00.000Z",
+      "valid_until": "2030-01-01T00:00:00.000Z",
+      "withdrawn_from_selection_at": null,
+      "capacity_max_redemptions": 80,
+      "capacity_timezone": "America/Chicago",
+      "capacity_window_kind": "calendar_month"
+    }
+  ],
+  "legacy_offers": [
+    {
+      "restaurant_id": "e0255111-0000-4000-8000-000000000001",
+      "discount_amount_cents": 1000,
+      "min_spend_cents": 4000,
+      "max_redemptions_per_month": 50,
+      "active": true
+    },
+    {
+      "restaurant_id": "e0255112-0000-4000-8000-000000000001",
+      "discount_amount_cents": 1000,
+      "min_spend_cents": 4000,
+      "max_redemptions_per_month": 50,
+      "active": true
+    },
+    {
+      "restaurant_id": "e0255113-0000-4000-8000-000000000001",
+      "discount_amount_cents": 1000,
+      "min_spend_cents": 4000,
+      "max_redemptions_per_month": 50,
+      "active": true
+    }
+  ]
+}

@@ -41,12 +41,17 @@ export function varietyCycleMonthLowerBound(now: Date, months: number): string {
   return `${String(shiftedYear).padStart(4, '0')}-${String(shiftedMonth).padStart(2, '0')}-01`;
 }
 
-/** No verified visit in six months, and fewer than two verified visits in twelve. */
-export function redemptionCooldownOk(
+export type CooldownBlockReason = 'recent_visit_6m' | 'two_in_12m';
+
+/**
+ * Why a verified history blocks this restaurant, if it does.
+ * A visit inside six months wins over two visits inside twelve.
+ */
+export function redemptionCooldownReason(
   restaurantId: string,
   redemptions: CooldownRedemption[],
   now: Date,
-): boolean {
+): CooldownBlockReason | null {
   const sixMonthsAgo = subMonths(now, 6);
   const twelveMonthsAgo = rollingTwelveMonthStart(now);
   const verifiedAts = redemptions
@@ -57,9 +62,18 @@ export function redemptionCooldownOk(
       const at = new Date(raw);
       return Number.isNaN(at.getTime()) ? [] : [at];
     });
-  if (verifiedAts.some((at) => at >= sixMonthsAgo)) return false;
-  if (verifiedAts.filter((at) => at >= twelveMonthsAgo).length >= 2) return false;
-  return true;
+  if (verifiedAts.some((at) => at >= sixMonthsAgo)) return 'recent_visit_6m';
+  if (verifiedAts.filter((at) => at >= twelveMonthsAgo).length >= 2) return 'two_in_12m';
+  return null;
+}
+
+/** No verified visit in six months, and fewer than two verified visits in twelve. */
+export function redemptionCooldownOk(
+  restaurantId: string,
+  redemptions: CooldownRedemption[],
+  now: Date,
+): boolean {
+  return redemptionCooldownReason(restaurantId, redemptions, now) === null;
 }
 
 export function passesRestaurantHardFilters(args: {

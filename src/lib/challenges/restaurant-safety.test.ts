@@ -6,6 +6,7 @@ import { chicagoMonthStart } from '@/lib/cron-period';
 import {
   passesRestaurantHardFilters,
   redemptionCooldownOk,
+  redemptionCooldownReason,
   rollingTwelveMonthStart,
   varietyCycleMonthLowerBound,
   type CooldownRedemption,
@@ -329,5 +330,45 @@ describe('cooldown call sites', () => {
     }
     expect(generate).toContain('chicagoMonthStart(now)');
     expect(generate).toContain('format(startOfMonth(now),');
+  });
+});
+
+describe('redemptionCooldownReason', () => {
+  const now = new Date('2026-10-15T15:00:00.000Z');
+
+  it('keeps every boolean from redemptionCooldownOk', () => {
+    const rows: CooldownRedemption[][] = [
+      [visit(subMonths(now, 13))],
+      [visit(subMonths(now, 13)), visit(subMonths(now, 14))],
+      [visit(subMonths(now, 7)), visit(subMonths(now, 11))],
+      [visit(subMonths(now, 8))],
+      [visit(subMonths(now, 12)), visit(subMonths(now, 8))],
+      [visit(new Date(subMonths(now, 12).getTime() - 1)), visit(subMonths(now, 8))],
+    ];
+    for (const redemptions of rows) {
+      expect(redemptionCooldownOk(RESTAURANT, redemptions, now)).toBe(
+        redemptionCooldownReason(RESTAURANT, redemptions, now) === null,
+      );
+    }
+    expect(source('src/lib/challenges/restaurant-safety.ts')).toContain(
+      'return redemptionCooldownReason(restaurantId, redemptions, now) === null',
+    );
+  });
+
+  it('returns recent_visit_6m and two_in_12m for matching rows', () => {
+    expect(redemptionCooldownReason(RESTAURANT, [visit(subMonths(now, 3))], now)).toBe(
+      'recent_visit_6m',
+    );
+    expect(
+      redemptionCooldownReason(RESTAURANT, [visit(subMonths(now, 7)), visit(subMonths(now, 11))], now),
+    ).toBe('two_in_12m');
+    expect(redemptionCooldownReason(RESTAURANT, [visit(subMonths(now, 13))], now)).toBeNull();
+    expect(
+      redemptionCooldownReason(
+        RESTAURANT,
+        [visit(subMonths(now, 3)), visit(subMonths(now, 8))],
+        now,
+      ),
+    ).toBe('recent_visit_6m');
   });
 });

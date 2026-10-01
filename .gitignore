@@ -44,3 +44,6 @@ next-env.d.ts
 
 .vercel
 .env.local
+
+# Noah-run hosted catalog for the E02 supply gate. Never commit.
+/.supply-gate/
