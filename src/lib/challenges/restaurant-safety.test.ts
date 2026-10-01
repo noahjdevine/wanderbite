@@ -8,6 +8,7 @@ import {
   redemptionCooldownOk,
   redemptionCooldownReason,
   rollingTwelveMonthStart,
+  subMonthsChicago,
   varietyCycleMonthLowerBound,
   type CooldownRedemption,
 } from '@/lib/challenges/restaurant-safety';
@@ -282,6 +283,120 @@ describe('variety cycle_month window', () => {
     expect(excluded('2026-12-01', january, 6)).toBe(true);
     expect(excluded('2027-01-01', january, 12)).toBe(false);
     expect(excluded('2026-06-01', january, 6)).toBe(false);
+  });
+});
+
+describe('Chicago DST cooldown cutoff', () => {
+  function expectSixMonthCutoff(nowIso: string, cutoffIso: string): void {
+    const now = new Date(nowIso);
+    const cutoff = new Date(cutoffIso);
+    expect(subMonthsChicago(now, 6).toISOString()).toBe(cutoff.toISOString());
+    expect(redemptionCooldownReason(RESTAURANT, [visit(cutoff)], now)).toBe('recent_visit_6m');
+    expect(redemptionCooldownReason(RESTAURANT, [visit(new Date(cutoff.getTime() - 1))], now)).toBeNull();
+  }
+
+  function expectTwelveMonthCutoff(nowIso: string, cutoffIso: string, insideIso: string): void {
+    const now = new Date(nowIso);
+    const cutoff = new Date(cutoffIso);
+    const inside = new Date(insideIso);
+    expect(subMonthsChicago(now, 12).toISOString()).toBe(cutoff.toISOString());
+    expect(redemptionCooldownReason(RESTAURANT, [visit(cutoff), visit(inside)], now)).toBe('two_in_12m');
+    expect(
+      redemptionCooldownReason(RESTAURANT, [visit(new Date(cutoff.getTime() - 1)), visit(inside)], now),
+    ).toBeNull();
+  }
+
+  function expectMonotonic(startIso: string, minutes: number, months: number): void {
+    let previous = Number.NEGATIVE_INFINITY;
+    for (let step = 0; step <= minutes; step += 1) {
+      const now = new Date(Date.parse(startIso) + step * 60_000);
+      const cutoff = subMonthsChicago(now, months).getTime();
+      expect(cutoff).toBeGreaterThanOrEqual(previous);
+      previous = cutoff;
+    }
+  }
+
+  it('resolves the spring gap to the transition and keeps the March visit eligible', () => {
+    expectSixMonthCutoff('2026-09-08T06:59:00.000Z', '2026-03-08T07:59:00.000Z');
+    expectSixMonthCutoff('2026-09-08T07:01:00.000Z', '2026-03-08T08:00:00.000Z');
+    expectSixMonthCutoff('2026-09-08T08:01:00.000Z', '2026-03-08T08:01:00.000Z');
+
+    const earlyVisit = visit(new Date('2026-03-08T07:30:00.000Z'));
+    const laterVisit = visit(new Date('2026-03-08T08:00:30.000Z'));
+    for (const nowIso of ['2026-09-08T06:59:00.000Z', '2026-09-08T07:01:00.000Z', '2026-09-08T08:01:00.000Z']) {
+      const now = new Date(nowIso);
+      expect(redemptionCooldownReason(RESTAURANT, [earlyVisit], now)).toBeNull();
+    }
+    expect(redemptionCooldownReason(RESTAURANT, [laterVisit], new Date('2026-09-08T06:59:00.000Z'))).toBe(
+      'recent_visit_6m',
+    );
+    expect(redemptionCooldownReason(RESTAURANT, [laterVisit], new Date('2026-09-08T07:01:00.000Z'))).toBe(
+      'recent_visit_6m',
+    );
+    expect(redemptionCooldownReason(RESTAURANT, [laterVisit], new Date('2026-09-08T08:01:00.000Z'))).toBeNull();
+  });
+
+  it('exercises two_in_12m across the spring gap with both visits outside six months', () => {
+    const now = new Date('2027-03-08T08:01:00.000Z');
+    expect(subMonthsChicago(now, 12).toISOString()).toBe('2026-03-08T08:00:00.000Z');
+    expect(subMonthsChicago(now, 6).toISOString()).toBe('2026-09-08T07:01:00.000Z');
+    const april = visit(new Date('2026-04-15T12:00:00.000Z'));
+    const august = visit(new Date('2026-08-15T12:00:00.000Z'));
+    const beforeGap = visit(new Date('2026-03-08T07:30:00.000Z'));
+    expect(redemptionCooldownReason(RESTAURANT, [april, august], now)).toBe('two_in_12m');
+    expect(redemptionCooldownReason(RESTAURANT, [beforeGap, august], now)).toBeNull();
+    expectTwelveMonthCutoff('2027-03-08T07:59:00.000Z', '2026-03-08T07:59:00.000Z', '2026-08-15T12:00:00.000Z');
+    expectTwelveMonthCutoff('2027-03-08T08:01:00.000Z', '2026-03-08T08:00:00.000Z', '2026-08-15T12:00:00.000Z');
+    expectTwelveMonthCutoff('2027-03-08T09:01:00.000Z', '2026-03-08T08:01:00.000Z', '2026-08-15T12:00:00.000Z');
+  });
+
+  it('does not move the cutoff backward during the second fall-back hour', () => {
+    const visitAt = visit(new Date('2026-05-01T06:30:00.000Z'));
+    expect(redemptionCooldownReason(RESTAURANT, [visitAt], new Date('2026-11-01T06:29:00.000Z'))).toBe(
+      'recent_visit_6m',
+    );
+    for (const nowIso of ['2026-11-01T06:31:00.000Z', '2026-11-01T07:29:00.000Z', '2026-11-01T07:31:00.000Z']) {
+      expect(redemptionCooldownReason(RESTAURANT, [visitAt], new Date(nowIso))).toBeNull();
+    }
+    expectSixMonthCutoff('2026-11-01T07:29:00.000Z', '2026-05-01T06:59:59.999Z');
+    expectSixMonthCutoff('2026-11-01T08:01:00.000Z', '2026-05-01T07:01:00.000Z');
+    expect(subMonthsChicago(new Date('2026-11-01T07:29:00.000Z'), 12).toISOString()).toBe(
+      '2025-11-01T06:59:59.999Z',
+    );
+  });
+
+  it('uses the earlier occurrence when the cutoff itself falls in a repeated hour', () => {
+    expect(subMonthsChicago(new Date('2027-05-01T06:30:00.000Z'), 6).toISOString()).toBe(
+      '2026-11-01T06:30:00.000Z',
+    );
+    expect(subMonthsChicago(new Date('2026-11-02T07:30:00.000Z'), 12).toISOString()).toBe(
+      '2025-11-02T06:30:00.000Z',
+    );
+    expectSixMonthCutoff('2027-05-01T06:30:00.000Z', '2026-11-01T06:30:00.000Z');
+    expectTwelveMonthCutoff('2026-11-02T07:30:00.000Z', '2025-11-02T06:30:00.000Z', '2026-02-02T12:00:00.000Z');
+  });
+
+  it('keeps six- and twelve-month cutoffs monotonic around the spring and autumn transitions', () => {
+    expectMonotonic('2026-09-08T05:30:00.000Z', 210, 6);
+    expectMonotonic('2026-11-01T05:30:00.000Z', 210, 6);
+    expectMonotonic('2027-03-08T06:30:00.000Z', 210, 12);
+    expectMonotonic('2026-11-01T05:30:00.000Z', 210, 12);
+    expectMonotonic('2027-05-01T05:30:00.000Z', 180, 6);
+    expectMonotonic('2026-11-02T05:30:00.000Z', 180, 12);
+  });
+
+  it('still clamps month-end and leap day, including a backward month-end step', () => {
+    expect(subMonthsChicago(new Date('2027-03-31T15:00:00.000Z'), 12).toISOString()).toBe(
+      '2026-03-31T15:00:00.000Z',
+    );
+    expect(subMonthsChicago(new Date('2028-02-29T15:00:00.000Z'), 12).toISOString()).toBe(
+      '2027-02-28T15:00:00.000Z',
+    );
+    const march30Late = subMonthsChicago(new Date('2026-03-31T04:00:00.000Z'), 1);
+    const march31Early = subMonthsChicago(new Date('2026-03-31T05:00:00.000Z'), 1);
+    expect(march30Late.toISOString()).toBe('2026-03-01T05:00:00.000Z');
+    expect(march31Early.toISOString()).toBe('2026-02-28T06:00:00.000Z');
+    expect(march31Early.getTime()).toBeLessThan(march30Late.getTime());
   });
 });
 

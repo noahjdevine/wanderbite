@@ -89,6 +89,53 @@ function chicagoOffsetMs(instant: Date): number {
   return asUtc - instant.getTime();
 }
 
+/** America/Chicago is CST (UTC−6) or CDT (UTC−5). Intl confirms which one applies. */
+const CHICAGO_STANDARD_OFFSET_MS = -6 * 60 * 60 * 1000;
+const CHICAGO_DAYLIGHT_OFFSET_MS = -5 * 60 * 60 * 1000;
+
+function wallMatchesInstant(
+  instantMs: number,
+  year: number,
+  month: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second: number,
+  ms: number,
+): boolean {
+  const wall = chicagoWallClock(new Date(instantMs));
+  return (
+    wall.year === year &&
+    wall.month === month &&
+    wall.day === day &&
+    wall.hour === hour &&
+    wall.minute === minute &&
+    wall.second === second &&
+    wall.ms === ms
+  );
+}
+
+/**
+ * First valid Chicago instant after the spring-forward gap on this civil date.
+ * US Chicago springs forward at 02:00, so the transition is 03:00 CDT.
+ */
+function chicagoSpringTransitionMs(year: number, month: number, day: number): number {
+  const start = Date.UTC(year, month - 1, day, 6, 0, 0, 0);
+  let lo = start;
+  let hi = start + 6 * 60 * 60 * 1000;
+  while (lo + 1 < hi) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (chicagoOffsetMs(new Date(mid)) === CHICAGO_DAYLIGHT_OFFSET_MS) hi = mid;
+    else lo = mid;
+  }
+  return hi;
+}
+
+/**
+ * Chicago wall clock to UTC. A nonexistent spring-forward time resolves to
+ * the transition instant. An ambiguous fall-back time resolves to the
+ * earlier occurrence. The process timezone is not consulted.
+ */
 function chicagoWallClockToUtc(
   year: number,
   month: number,
@@ -98,26 +145,86 @@ function chicagoWallClockToUtc(
   second: number,
   ms: number,
 ): Date {
-  const guess = Date.UTC(year, month - 1, day, hour, minute, second, ms);
-  const offset = chicagoOffsetMs(new Date(guess));
-  let utc = guess - offset;
-  const corrected = chicagoOffsetMs(new Date(utc));
-  if (corrected !== offset) utc = guess - corrected;
-  return new Date(utc);
+  const wallMs = Date.UTC(year, month - 1, day, hour, minute, second, ms);
+  const matches: number[] = [];
+  for (const offsetMs of [CHICAGO_STANDARD_OFFSET_MS, CHICAGO_DAYLIGHT_OFFSET_MS]) {
+    const instantMs = wallMs - offsetMs;
+    if (chicagoOffsetMs(new Date(instantMs)) !== offsetMs) continue;
+    if (wallMatchesInstant(instantMs, year, month, day, hour, minute, second, ms)) {
+      matches.push(instantMs);
+    }
+  }
+  if (matches.length > 0) return new Date(Math.min(...matches));
+  return new Date(chicagoSpringTransitionMs(year, month, day));
+}
+
+type ChicagoWall = ReturnType<typeof chicagoWallClock>;
+
+function shiftChicagoWall(wall: ChicagoWall, months: number): { year: number; month: number; day: number } {
+  const shifted = wall.year * 12 + (wall.month - 1) - months;
+  const year = Math.floor(shifted / 12);
+  const monthIndex = shifted - year * 12;
+  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+  return {
+    year,
+    month: monthIndex + 1,
+    day: Math.min(wall.day, daysInMonth),
+  };
+}
+
+function subMonthsChicagoWall(now: Date, months: number): Date {
+  const wall = chicagoWallClock(now);
+  const shifted = shiftChicagoWall(wall, months);
+  return chicagoWallClockToUtc(
+    shifted.year,
+    shifted.month,
+    shifted.day,
+    wall.hour,
+    wall.minute,
+    wall.second,
+    wall.ms,
+  );
+}
+
+/**
+ * Instant when `now` is the later occurrence of a repeated Chicago hour,
+ * otherwise null. The returned value is the start of that later hour.
+ */
+function laterChicagoFoldStartMs(now: Date): number | null {
+  const wall = chicagoWallClock(now);
+  const earlier = chicagoWallClockToUtc(
+    wall.year,
+    wall.month,
+    wall.day,
+    wall.hour,
+    wall.minute,
+    wall.second,
+    wall.ms,
+  );
+  if (earlier.getTime() === now.getTime()) return null;
+  const elapsedInHour = wall.minute * 60_000 + wall.second * 1000 + wall.ms;
+  return now.getTime() - elapsedInHour;
 }
 
 /**
  * `subMonths` on the America/Chicago wall clock. The process timezone does
  * not change the instant. Day-of-month clamps the same way date-fns does.
+ *
+ * A missing spring-forward target resolves to the transition instant. An
+ * ambiguous fall-back target resolves to the earlier occurrence. While `now`
+ * is inside the later copy of a repeated hour, the cutoff stays at the value
+ * it had one millisecond before the backward transition.
+ *
+ * Month-end and leap-day clamping can still move a cutoff backward as `now`
+ * advances (31 March → 28 February, for example). This helper does not hide
+ * that calendar clamp.
  */
-function subMonthsChicago(now: Date, months: number): Date {
-  const wall = chicagoWallClock(now);
-  const shifted = wall.year * 12 + (wall.month - 1) - months;
-  const year = Math.floor(shifted / 12);
-  const monthIndex = shifted - year * 12;
-  const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
-  const day = Math.min(wall.day, daysInMonth);
-  return chicagoWallClockToUtc(year, monthIndex + 1, day, wall.hour, wall.minute, wall.second, wall.ms);
+export function subMonthsChicago(now: Date, months: number): Date {
+  const naive = subMonthsChicagoWall(now, months);
+  const foldStartMs = laterChicagoFoldStartMs(now);
+  if (foldStartMs == null) return naive;
+  const held = subMonthsChicagoWall(new Date(foldStartMs - 1), months);
+  return naive.getTime() < held.getTime() ? held : naive;
 }
 
 /**

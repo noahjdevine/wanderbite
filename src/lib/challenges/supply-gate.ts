@@ -1,7 +1,11 @@
 import { z } from 'zod';
 import type { Json } from '@/types/database.types';
 import { chicagoMonthStart } from '@/lib/cron-period';
-import { selectDistancePool } from '@/lib/challenges/distance-pool';
+import {
+  floorPairExists,
+  pickFloorPair,
+  selectDistancePool,
+} from '@/lib/challenges/distance-pool';
 import { offerVersionCoversDeadline } from '@/lib/challenges/challenge-deadline';
 import {
   applyRollover,
@@ -41,9 +45,11 @@ import { createSeededShuffle } from '@/lib/simulation/seeded-shuffle';
  *
  * No production caller of `link_pending_credits` exists under `src/`.
  * That SQL function checks a caller-supplied pair (`offer_lowest_tier_cents`
- * sum >= 2000) and does not choose the pair. This gate takes the first
- * seeded (i < j) pair whose bases sum to >= 2000 with capacity in both.
- * The future credits selector must be floor-aware or this gate overstates supply.
+ * sum >= 2000) and does not choose the pair. This gate searches for the first
+ * seeded (i < j) pair whose bases sum to >= 2000, expanding one distance band
+ * when the requested radius has no qualifying pair. A PASS measures that
+ * floor-aware policy. `generate.ts` still picks two candidates at random and
+ * can receive `pair_below_floor` from the RPC.
  */
 
 export const SUPPLY_GATE_SCHEMA = 'wanderbite.e02.supply_snapshot.v1';
@@ -706,6 +712,21 @@ function explainFunnel(args: {
   return { binding, sub, counts };
 }
 
+function meetsPairFloor(candidates: readonly GateRestaurant[]): boolean {
+  return floorPairExists(
+    candidates.map((restaurant) => ({
+      id: restaurant.id,
+      baseCents: baseCents(restaurant.version),
+    })),
+    PAIR_FLOOR_CENTS,
+  );
+}
+
+function scopeRestaurants(restaurants: GateRestaurant[], floor: AttemptKind): GateRestaurant[] {
+  if (floor !== 'carried') return restaurants;
+  return restaurants.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= CARRIED_FLOOR_CENTS);
+}
+
 function selectPool(args: {
   restaurants: GateRestaurant[];
   ctx: FilterCtx;
@@ -723,6 +744,7 @@ function selectPool(args: {
     passesVariety: (restaurant) =>
       passesVariety6(restaurant, args.ctx) && passesVariety12(restaurant, args.ctx),
     passesRelaxedVariety: (restaurant) => passesRelaxed(restaurant, args.ctx),
+    poolSatisfies: args.need === 2 ? meetsPairFloor : undefined,
   });
   return { candidates: pool.candidates, usedMiles: pool.match.usedMiles };
 }
@@ -760,18 +782,16 @@ function explainAttempt(args: {
     origin,
     floor: args.floor,
   });
-  if (args.candidates.length >= args.need) {
-    return {
-      binding: args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor',
-      sub: null,
-      counts: walked.counts,
-    };
+  const floorBinding: GateRule = args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor';
+  const meetsFloor =
+    args.floor === 'pair'
+      ? meetsPairFloor(args.candidates)
+      : args.candidates.some((restaurant) => (baseCents(restaurant.version) ?? 0) >= CARRIED_FLOOR_CENTS);
+  if (!meetsFloor && args.candidates.length >= args.need) {
+    return { binding: floorBinding, sub: null, counts: walked.counts };
   }
-  return {
-    binding: walked.binding ?? (args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor'),
-    sub: walked.sub,
-    counts: walked.counts,
-  };
+  if (walked.binding) return { binding: walked.binding, sub: walked.sub, counts: walked.counts };
+  return { binding: floorBinding, sub: walked.sub, counts: walked.counts };
 }
 
 /**
@@ -788,7 +808,7 @@ export function explainSupplyBinding(args: {
   cycles: CycleHit[];
   reservations?: SupplyLedger['reservations'];
   skipOffer?: boolean;
-}): { binding: GateRule; sub: string | null } {
+}): { binding: GateRule | null; sub: string | null } {
   const ledger = createLedger();
   ledger.redemptions = args.redemptions.map((row) => ({
     restaurant_id: row.restaurant_id ?? '',
@@ -811,7 +831,11 @@ export function explainSupplyBinding(args: {
   const restaurants = buildRestaurants(args.snapshot);
   const origin = originFromZip(args.member.zip);
   if (!origin) return { binding: 'outside_distance', sub: null };
-  const pool = selectPool({ restaurants, ctx, need: args.need });
+  const pool = selectPool({
+    restaurants: scopeRestaurants(restaurants, args.floor),
+    ctx,
+    need: args.need,
+  });
   const walked = explainFunnel({
     restaurants,
     ctx,
@@ -820,10 +844,43 @@ export function explainSupplyBinding(args: {
     origin,
     floor: args.floor,
   });
-  return {
-    binding: walked.binding ?? (args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor'),
-    sub: walked.sub,
-  };
+  return { binding: walked.binding, sub: walked.sub };
+}
+
+/** Candidates the gate's distance policy would hand the carried or pair picker. */
+export function selectSupplyGateCandidates(args: {
+  snapshot: SupplySnapshot;
+  member: SupplyGateMember;
+  now: Date;
+  deadline: Date;
+  need: 1 | 2;
+  floor: 'pair' | 'carried';
+  redemptions: CooldownRedemption[];
+  cycles: CycleHit[];
+}): { ids: string[]; usedMiles: number } {
+  const ledger = createLedger();
+  ledger.redemptions = args.redemptions.map((row) => ({
+    restaurant_id: row.restaurant_id ?? '',
+    status: 'verified' as const,
+    verified_at: row.verified_at ?? row.created_at ?? args.now.toISOString(),
+    created_at: row.created_at ?? row.verified_at ?? args.now.toISOString(),
+    challengeItemId: 'primed',
+  }));
+  const ctx = makeCtx({
+    marketId: args.snapshot.launch_market.id,
+    member: args.member,
+    now: args.now,
+    deadline: args.deadline,
+    ledger,
+    cycles: args.cycles,
+    skipOffer: false,
+  });
+  const pool = selectPool({
+    restaurants: scopeRestaurants(buildRestaurants(args.snapshot), args.floor),
+    ctx,
+    need: args.need,
+  });
+  return { ids: pool.candidates.map((restaurant) => restaurant.id), usedMiles: pool.usedMiles };
 }
 
 function mark(
@@ -875,7 +932,11 @@ function runMemberMonth(args: {
       cycles: args.state.cycles,
       skipOffer: args.skipOffer,
     });
-    const pool = selectPool({ restaurants: args.restaurants, ctx, need: 1 });
+    const pool = selectPool({
+      restaurants: scopeRestaurants(args.restaurants, 'carried'),
+      ctx,
+      need: 1,
+    });
     const ordered = args.shuffle(pool.candidates);
     const choice = ordered.find((restaurant) => {
       const base = baseCents(restaurant.version);
@@ -952,22 +1013,17 @@ function runMemberMonth(args: {
     skipOffer: args.skipOffer,
   });
   const pairPool = selectPool({ restaurants: args.restaurants, ctx: pairCtx, need: 2 });
-  const ordered = args.shuffle(pairPool.candidates);
-  let pair: [GateRestaurant, GateRestaurant] | null = null;
-  for (let i = 0; i < ordered.length && !pair; i += 1) {
-    for (let j = i + 1; j < ordered.length; j += 1) {
-      const left = ordered[i];
-      const right = ordered[j];
-      if (!left || !right) continue;
-      const leftBase = baseCents(left.version);
-      const rightBase = baseCents(right.version);
-      if (leftBase == null || rightBase == null) continue;
-      if (leftBase + rightBase < PAIR_FLOOR_CENTS) continue;
-      if (!passesCapacity(left, pairCtx) || !passesCapacity(right, pairCtx)) continue;
-      pair = [left, right];
-      break;
-    }
-  }
+  const priced = pairPool.candidates
+    .filter((restaurant) => passesCapacity(restaurant, pairCtx))
+    .map((restaurant) => ({
+      ...restaurant,
+      baseCents: baseCents(restaurant.version),
+    }));
+  const pair = pickFloorPair(priced, {
+    shuffle: args.shuffle,
+    floorCents: PAIR_FLOOR_CENTS,
+    reserveCocktail: args.state.member.wantsCocktailExperience,
+  });
 
   if (!pair || pending.length < 2) {
     if (args.score && pending.length > 0) {
@@ -1466,7 +1522,7 @@ export function supplyGateJson(result: SupplyGateResult): string {
       matched_via_carry: trial.matchedViaCarry,
     })),
     pair_selector:
-      'No production caller of link_pending_credits under src/. Seeded first i<j pair with base sum >= 2000. The future credits selector must be floor-aware or this gate overstates supply.',
+      'Seeded first i<j pair with base sum >= 2000, expanding one distance band when the requested radius has no qualifying pair. A gate PASS measures that floor-aware policy. generate.ts still picks two candidates at random and can receive pair_below_floor from the RPC.',
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
 }
