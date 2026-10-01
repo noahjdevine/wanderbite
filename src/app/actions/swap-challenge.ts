@@ -2,11 +2,12 @@
 
 import { randomInt } from 'node:crypto';
 import { revalidatePath } from 'next/cache';
-import { addHours, isAfter, min as earliest, startOfMonth, subMonths, subYears } from 'date-fns';
+import { addHours, isAfter, min as earliest, startOfMonth, subMonths } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import { redemptionCooldownOk } from '@/lib/challenges/restaurant-safety';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
@@ -301,8 +302,6 @@ async function swapLinkedCreditItem(
   try {
     const supabase = getSupabaseAdmin();
     const now = new Date();
-    const sixMonthsAgo = subMonths(now, 6);
-    const twelveMonthsAgo = subYears(now, 12);
 
     const { data: item, error: itemErr } = await supabase
       .from('challenge_items')
@@ -511,13 +510,7 @@ async function swapLinkedCreditItem(
         ) {
           return false;
         }
-        const verifiedAts = redemptions
-          .filter((rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified')
-          .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
-          .filter((verifiedAt) => !isNaN(verifiedAt.getTime()));
-        if (verifiedAts.some((verifiedAt) => verifiedAt >= sixMonthsAgo)) return false;
-        if (verifiedAts.filter((verifiedAt) => verifiedAt >= twelveMonthsAgo).length >= 2) return false;
-        return true;
+        return redemptionCooldownOk(restaurant.id, redemptions, now);
       },
       passesVariety: () => true,
       passesRelaxedVariety: () => true,
@@ -554,8 +547,6 @@ export async function swapChallengeItem(
   try {
     const supabase = getSupabaseAdmin();
     const now = new Date();
-    const sixMonthsAgo = subMonths(now, 6);
-    const twelveMonthsAgo = subYears(now, 12);
     const monthStart = startOfMonth(now);
     const monthEnd = startOfMonth(subMonths(now, -1));
 
@@ -779,15 +770,7 @@ export async function swapChallengeItem(
           return false;
         }
 
-        const userRedemptionsAtRestaurant = redemptions.filter(
-          (rd) => rd.restaurant_id === restaurant.id && rd.status === 'verified'
-        );
-        const verifiedAts = userRedemptionsAtRestaurant
-          .map((rd) => (rd.verified_at ? new Date(rd.verified_at) : new Date(rd.created_at)))
-          .filter((d) => !isNaN(d.getTime()));
-
-        if (verifiedAts.some((d) => d >= sixMonthsAgo)) return false;
-        if (verifiedAts.filter((d) => d >= twelveMonthsAgo).length >= 2) return false;
+        if (!redemptionCooldownOk(restaurant.id, redemptions, now)) return false;
 
         const offer = offerByRestaurant.get(restaurant.id);
         const versionBound = Boolean(

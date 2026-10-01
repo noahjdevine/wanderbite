@@ -90,7 +90,7 @@ The rule being restored is `.cursor/rules/project-context.mdc` Business Rule 2 (
 
 **D8. Move the inline dietary, allergy, and cuisine checks?** A) Both swap paths call `passesRestaurantHardFilters` in [#55](https://github.com/noahjdevine/wanderbite/pull/55). B) That PR only replaces the cooldown math with `redemptionCooldownOk`; the inline checks stay. **Recommended, needs Noah: B.** `passesRestaurantHardFilters` does not emit the dietary `console.warn` those paths have today. Unifying filters is a later slice.
 
-**D3. `cyclesLast12` bound?** A) `format(subMonths(now, 12), 'yyyy-MM-dd')`. B) Chicago month start of that instant (`chicagoMonthStart` in `src/lib/cron-period.ts`). `cycle_month` is stored as `YYYY-MM-01`, so a mid-month string from A drops that month’s row on `gte`. **Recommended, needs Noah: B.**
+**D3. Variety `cycle_month` bounds. Decided by Noah.** The six-month and twelve-month variety lookbacks both use full Chicago calendar months. With `now` in Chicago month M, the six-month window excludes cycles from M−6 through M−1, and the twelve-month window excludes cycles from M−12 through M−1. `varietyCycleMonthLowerBound(now, months)` in `src/lib/challenges/restaurant-safety.ts` is the Chicago month start of `chicagoMonthStart(now)` minus `months` months (`yyyy-MM-dd`). A cycle counts when `cycle_month >=` that bound and `cycle_month < chicagoMonthStart(now)`. An October 2025 cycle stays blocked through October 2026 and is eligible again in November 2026 on the twelve-month rule. An April 2026 cycle is eligible again in November 2026 on the six-month rule. The redemption cooldown is a separate rule and stays rolling twelve months: `verified_at >= subMonths(now, 12)` via `redemptionCooldownOk`.
 
 ### Cooldown cases
 
