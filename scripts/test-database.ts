@@ -16,6 +16,7 @@ import { runE02RemainderSharedSeat } from './e02-remainder-shared-seat';
 import { runE02Rollover } from './e02-rollover';
 import { runE02AssignCarried } from './e02-assign-carried';
 import { runE02CreditSafeSwaps } from './e02-credit-safe-swaps';
+import { runE02SupplySimulation } from './e02-supply-simulation';
 import { runG13A1Concurrency } from './g13-a1-concurrency';
 import { runG13A2Concurrency } from './g13-a2-concurrency';
 
@@ -121,6 +122,7 @@ async function main() {
   await runE02CreditSafeSwaps({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 credit-safe swap issuance overlap.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-six-month-cohort.sql'), 'utf8')) + '\n');
+  await runE02SupplySimulation({ sql });
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });
