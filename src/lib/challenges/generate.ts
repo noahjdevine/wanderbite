@@ -1,7 +1,7 @@
 ﻿
 import { randomInt } from 'node:crypto';
 import * as Sentry from '@sentry/nextjs';
-import { startOfMonth, subMonths, subYears, format } from 'date-fns';
+import { startOfMonth, subMonths, format } from 'date-fns';
 import { cycleMonthForWorkflow } from '@/lib/challenges/challenge-deadline';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
@@ -12,7 +12,10 @@ import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
-import { redemptionCooldownOk } from '@/lib/challenges/restaurant-safety';
+import {
+  redemptionCooldownOk,
+  rollingTwelveMonthCycleBound,
+} from '@/lib/challenges/restaurant-safety';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
@@ -272,7 +275,6 @@ export async function generateMonthlyChallengeForUser(
       : [chicagoMonthStart(now), utcCycleMonthStr];
     const threeMonthsAgo = subMonths(now, 3);
     const sixMonthsAgo = subMonths(now, 6);
-    const twelveMonthsAgo = subYears(now, 12);
     const monthStart = startOfMonth(now);
     const monthEnd = startOfMonth(subMonths(now, -1));
 
@@ -384,7 +386,7 @@ export async function generateMonthlyChallengeForUser(
     }
 
     const sixMonthsAgoStr = format(sixMonthsAgo, 'yyyy-MM-dd');
-    const twelveMonthsAgoStr = format(twelveMonthsAgo, 'yyyy-MM-dd');
+    const twelveMonthsAgoStr = rollingTwelveMonthCycleBound(now);
     const { data: cyclesLast6 } = await supabase
       .from('challenge_cycles')
       .select('id')

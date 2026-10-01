@@ -1,4 +1,4 @@
-import { subMonths } from 'date-fns';
+import { format, subMonths } from 'date-fns';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { restaurantHasExcludedCuisine } from '@/lib/cuisines';
 
@@ -9,6 +9,22 @@ export type CooldownRedemption = {
   created_at: string | null;
 };
 
+/**
+ * Inclusive start of the rolling 12-month window.
+ * This is the date-fns instant, not a Chicago month key and not `startOfMonth`.
+ */
+export function rollingTwelveMonthStart(now: Date): Date {
+  return subMonths(now, 12);
+}
+
+/**
+ * `cycle_month` lower bound for {@link rollingTwelveMonthStart}.
+ * Same shape as the six-month variety bound: `format(subMonths(now, n), 'yyyy-MM-dd')`.
+ */
+export function rollingTwelveMonthCycleBound(now: Date): string {
+  return format(rollingTwelveMonthStart(now), 'yyyy-MM-dd');
+}
+
 /** No verified visit in six months, and fewer than two verified visits in twelve. */
 export function redemptionCooldownOk(
   restaurantId: string,
@@ -16,7 +32,7 @@ export function redemptionCooldownOk(
   now: Date,
 ): boolean {
   const sixMonthsAgo = subMonths(now, 6);
-  const twelveMonthsAgo = subMonths(now, 12);
+  const twelveMonthsAgo = rollingTwelveMonthStart(now);
   const verifiedAts = redemptions
     .filter((row) => row.restaurant_id === restaurantId && row.status === 'verified')
     .flatMap((row) => {
