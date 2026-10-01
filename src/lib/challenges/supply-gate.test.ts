@@ -4,7 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { subMonths } from 'date-fns';
 import { describe, expect, it } from 'vitest';
+import { filterCarriedAssignCandidates } from '@/lib/challenges/carried-assign-pool';
 import { MEMBER_FLAGS } from '@/lib/challenges/supply-simulation';
+import {
+  assignLinkedRestaurant,
+  createLedger,
+  issueTwoCredits,
+} from '@/lib/challenges/supply-simulation-lifecycle';
 import {
   SUPPLY_GATE_COHORT,
   SUPPLY_GATE_DENOMINATOR,
@@ -12,8 +18,10 @@ import {
   firstScoredMonth,
   parseSupplySnapshot,
   runSupplyGate,
+  selectSupplyGateCandidates,
   type SupplySnapshot,
 } from '@/lib/challenges/supply-gate';
+import { haversineMiles, originFromZip } from '@/lib/launch-market';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const FIXTURE = path.join(ROOT, 'scripts/fixtures/e02-supply-gate-synthetic.json');
@@ -177,9 +185,8 @@ describe('supply gate cohort', () => {
 describe('synthetic supply gate', () => {
   const seeds = Array.from({ length: 20 }, (_, index) => index + 1);
 
-  it('fails the thin fixture and passes once padded', () => {
-    const thin = loadFixture();
-    const failed = runSupplyGate({ snapshot: thin, seeds });
+  it('fails the thin fixture across 20 seeds', () => {
+    const failed = runSupplyGate({ snapshot: loadFixture(), seeds });
     expect(failed.result).toBe('FAIL');
     expect(failed.matchedMin).toBeLessThan(SUPPLY_GATE_DENOMINATOR);
     expect(failed.text).toContain('unmatched_by_month ');
@@ -209,26 +216,34 @@ describe('synthetic supply gate', () => {
     expect(failed.text).toContain('synthetic-05+synthetic-05-2');
     expect(failed.text).toContain('possible_duplicates=synthetic-05+synthetic-05-2');
     expect(failed.text).toMatch(/FAIL: E02 supply gate \(\d+ unmatched credits\)\n$/);
+    expect(failed.seeds).toEqual(seeds);
+  });
 
+  it('repeats the same thin 20-seed report', () => {
+    const thin = loadFixture();
+    const first = runSupplyGate({ snapshot: thin, seeds });
     const again = runSupplyGate({ snapshot: thin, seeds });
-    expect(again.text).toBe(failed.text);
+    expect(again.text).toBe(first.text);
+    expect(first.result).toBe('FAIL');
+  });
 
-    const paddedSnapshot = padSnapshot(thin, PASS_PADDING);
-    const padded = runSupplyGate({ snapshot: paddedSnapshot, seeds });
+  it('passes the padded fixture across 20 seeds', () => {
+    const padded = runSupplyGate({ snapshot: padSnapshot(loadFixture(), PASS_PADDING), seeds });
     expect(padded.result).toBe('PASS');
     expect(padded.matchedMin).toBe(SUPPLY_GATE_DENOMINATOR);
     expect(padded.trialsFailed).toBe(0);
     expect(padded.text).toContain('PASS: E02 supply gate');
+    expect(padded.seeds).toEqual(seeds);
+  });
 
+  it('prints a one-trial padded pass from the CLI', () => {
     const paddedPath = path.join(os.tmpdir(), `e02-padded-${process.pid}.json`);
-    writeFileSync(paddedPath, JSON.stringify(paddedSnapshot));
-    const paddedCli = runCli(['--snapshot', paddedPath, '--trials', '20']);
+    writeFileSync(paddedPath, JSON.stringify(padSnapshot(loadFixture(), PASS_PADDING)));
+    const paddedCli = runCli(['--snapshot', paddedPath, '--trials', '1']);
     expect(paddedCli.status).toBe(0);
+    expect(paddedCli.output).toContain('trials=1');
     expect(paddedCli.output).toContain('PASS: E02 supply gate');
-
-    const removed = runSupplyGate({ snapshot: thin, seeds: [1] });
-    expect(removed.result).toBe('FAIL');
-  }, 180_000);
+  });
 });
 
 describe('single-cause catalogs', () => {
@@ -476,6 +491,188 @@ describe('snapshot loader', () => {
     expect(outside.output).not.toContain('pin_hash');
     expect(existsSync(outsideJson)).toBe(false);
   }, 60_000);
+});
+
+describe('floor-aware supply gate', () => {
+  const zips = ['75069', '75070', '75071', '75072'] as const;
+  const origins = zips.map((zip) => {
+    const origin = originFromZip(zip);
+    if (!origin) throw new Error(`missing ${zip}`);
+    return origin;
+  });
+
+  function farPoint(n: number): { lat: number; lon: number } {
+    return { lat: 33.2 + n * 0.0001, lon: -96.5 };
+  }
+
+  const nearA = { lat: 33.188, lon: -96.65 };
+  const nearB = { lat: 33.1882, lon: -96.65 };
+
+  function assertDistances(): void {
+    for (let n = 1; n <= 30; n += 1) {
+      const point = farPoint(n);
+      for (const origin of origins) {
+        const miles = haversineMiles(origin, point);
+        expect(miles).toBeGreaterThan(5);
+        expect(miles).toBeLessThanOrEqual(15);
+      }
+    }
+    for (const point of [nearA, nearB]) {
+      for (const origin of origins) expect(haversineMiles(origin, point)).toBeLessThanOrEqual(5);
+    }
+  }
+
+  function offerSnapshot(
+    rows: Array<{ lat: number; lon: number; discount: number; validUntil?: string }>,
+  ): SupplySnapshot {
+    const restaurants = [];
+    const versions = [];
+    for (let index = 0; index < rows.length; index += 1) {
+      const row = rows[index];
+      if (!row) continue;
+      const restaurantId = `e0255800-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
+      const versionId = `e0255801-0000-4000-8000-${String(index + 1).padStart(12, '0')}`;
+      restaurants.push({
+        id: restaurantId,
+        slug: `placed-${index + 1}`,
+        name: `Placed ${index + 1}`,
+        status: 'active',
+        market_id: MARKET,
+        cuisine_tags: ['salad'],
+        lat: row.lat,
+        lon: row.lon,
+        current_offer_version_id: versionId,
+      });
+      versions.push({
+        id: versionId,
+        restaurant_id: restaurantId,
+        tiers: [{ threshold_cents: 4000, discount_cents: row.discount }],
+        valid_from: '2020-01-01T00:00:00.000Z',
+        valid_until: row.validUntil ?? '2030-01-01T00:00:00.000Z',
+        withdrawn_from_selection_at: null,
+        capacity_max_redemptions: 80,
+        capacity_timezone: 'America/Chicago',
+        capacity_window_kind: 'calendar_month',
+      });
+    }
+    return {
+      schema: 'wanderbite.e02.supply_snapshot.v1',
+      exported_at: EXPORTED,
+      launch_market: { id: MARKET, slug: 'mckinney-tx', status: 'active' },
+      restaurants,
+      offer_versions: versions,
+      legacy_offers: [],
+    };
+  }
+
+  function farTenDollarRows(): Array<{ lat: number; lon: number; discount: number }> {
+    return Array.from({ length: 30 }, (_, index) => ({ ...farPoint(index + 1), discount: 1000 }));
+  }
+
+  const distanceSeeds = Array.from({ length: 20 }, (_, index) => index + 1);
+
+  function expectDistancePass(rows: Array<{ lat: number; lon: number; discount: number }>): void {
+    const result = runSupplyGate({ snapshot: offerSnapshot(rows), seeds: distanceSeeds });
+    expect(result.result).toBe('PASS');
+    expect(result.matchedMin).toBe(SUPPLY_GATE_DENOMINATOR);
+    expect(result.seeds).toEqual(distanceSeeds);
+  }
+
+  it('places far rows between 5 and 15 miles and near rows inside 5', () => {
+    assertDistances();
+  });
+
+  it('reaches 192/192 for 30 far $10 offers', () => {
+    expectDistancePass(farTenDollarRows());
+  });
+
+  it('reaches 192/192 for 30 far $10 offers plus one near $9 offer', () => {
+    expectDistancePass([...farTenDollarRows(), { ...nearA, discount: 900 }]);
+  });
+
+  it('reaches 192/192 for 30 far $10 offers plus two near $9 offers', () => {
+    expectDistancePass([...farTenDollarRows(), { ...nearA, discount: 900 }, { ...nearB, discount: 900 }]);
+  });
+
+  it('finds far carried candidates and assigns one', () => {
+    assertDistances();
+    const farRows = Array.from({ length: 30 }, (_, index) => ({ ...farPoint(index + 1), discount: 2000 }));
+    const snapshot = offerSnapshot([...farRows, { ...nearA, discount: 1500 }]);
+    const member = SUPPLY_GATE_COHORT.find((row) => row.persona === 'open' && row.zip === '75069');
+    if (!member) throw new Error('missing member');
+    const now = new Date('2026-10-15T18:00:00.000Z');
+    const deadline = new Date('2026-11-19T18:00:00.000Z');
+    const blockedId = snapshot.restaurants[0]?.id;
+    const expiredId = snapshot.restaurants[1]?.id;
+    const nearId = snapshot.restaurants[30]?.id;
+    if (!blockedId || !expiredId || !nearId) throw new Error('missing rows');
+    const expired = snapshot.offer_versions.find((row) => row.restaurant_id === expiredId);
+    if (!expired) throw new Error('missing version');
+    expired.valid_until = '2026-10-01T00:00:00.000Z';
+    const redemptions = [
+      {
+        restaurant_id: blockedId,
+        status: 'verified',
+        verified_at: '2026-09-01T18:00:00.000Z',
+        created_at: '2026-09-01T18:00:00.000Z',
+      },
+    ];
+    const selected = selectSupplyGateCandidates({
+      snapshot,
+      member,
+      now,
+      deadline,
+      need: 1,
+      floor: 'carried',
+      redemptions,
+      cycles: [],
+    });
+    expect(selected.usedMiles).toBe(15);
+    expect(selected.ids).not.toContain(nearId);
+    expect(selected.ids).not.toContain(blockedId);
+    expect(selected.ids).not.toContain(expiredId);
+    expect(selected.ids).toHaveLength(28);
+
+    const origin = originFromZip(member.zip);
+    if (!origin) throw new Error('missing origin');
+    const compared = filterCarriedAssignCandidates({
+      restaurants: snapshot.restaurants.map((row) => ({
+        id: row.id,
+        name: row.name,
+        cuisine_tags: row.cuisine_tags,
+        lat: row.lat,
+        lon: row.lon,
+        current_offer_version_id: row.current_offer_version_id,
+      })),
+      versionsById: new Map(snapshot.offer_versions.map((row) => [row.id, row])),
+      origin,
+      requestedMiles: 5,
+      allergyFlags: member.allergyFlags,
+      dietaryFlags: member.dietaryFlags,
+      excludedCuisineIds: member.excludedCuisineIds,
+      redemptions,
+      now,
+      deadline,
+    });
+    expect(compared.map((row) => row.id)).toEqual(selected.ids);
+
+    const ledger = createLedger();
+    const [credit] = issueTwoCredits(ledger, now, 0);
+    if (!credit || !selected.ids[0]) throw new Error('missing credit');
+    const assigned = assignLinkedRestaurant({
+      ledger,
+      credit,
+      restaurantId: selected.ids[0],
+      assignedAt: now,
+      deadline,
+      capacityMax: 80,
+      discountCents: 2000,
+      floor: 'carried',
+    });
+    expect(typeof assigned).toBe('object');
+    if (typeof assigned === 'string') throw new Error(assigned);
+    expect(assigned.restaurantId).toBe(selected.ids[0]);
+  });
 });
 
 describe('supply gate source guard', () => {

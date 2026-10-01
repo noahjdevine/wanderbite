@@ -32,8 +32,10 @@ import type { DistanceBand } from '@/lib/onboarding-shared';
 import { pairSavingsModel, type OfferTier } from '@/lib/offers/calculator';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import {
+  createCooldownCutoffCache,
   passesRestaurantHardFilters,
   redemptionCooldownOk,
+  type CooldownCutoffCache,
   type CooldownRedemption,
 } from '@/lib/challenges/restaurant-safety';
 
@@ -317,6 +319,7 @@ export function selectorReason(args: {
   redemptions: CooldownRedemption[];
   now: Date;
   maxQualifyingSpendCents: number;
+  cutoffCache?: CooldownCutoffCache;
 }): SupplyRejectionReason | null {
   if (args.restaurant.marketId !== args.marketId) return 'outside_market';
   if (getDietaryConflict(args.restaurant.cuisineTags, args.dietaryFlags)) return 'dietary_exclusion';
@@ -329,7 +332,7 @@ export function selectorReason(args: {
   ) {
     return 'excluded_cuisine';
   }
-  if (!redemptionCooldownOk(args.restaurant.id, args.redemptions, args.now)) return 'cooldown';
+  if (!redemptionCooldownOk(args.restaurant.id, args.redemptions, args.now, args.cutoffCache)) return 'cooldown';
   const base = lowestSealedBase([
     { threshold_cents: args.restaurant.thresholdCents, discount_cents: args.restaurant.discountCents },
   ]);
@@ -422,6 +425,7 @@ function selectPool(
   redemptions: CooldownRedemption[],
   now: Date,
   requiredCount: number,
+  cutoffCache?: CooldownCutoffCache,
 ): PoolSelection {
   const origin = originFromZip(config.zip);
   if (!origin) throw new Error('zip origin missing');
@@ -444,6 +448,7 @@ function selectPool(
         restaurantId: restaurant.id,
         redemptions,
         now,
+        cutoffCache,
       });
     },
     passesVariety: () => true,
@@ -465,6 +470,7 @@ export function runSimulatedSupplyMonths(args: {
 }): SupplyModelResult {
   resetSupplyIds();
   const config = args.config;
+  const cutoffCache = createCooldownCutoffCache();
   const fullCatalog = args.catalog ?? SUPPLY_RESTAURANTS;
   const catalog = catalogFor(config, fullCatalog);
   const ledger = createLedger();
@@ -505,6 +511,7 @@ export function runSimulatedSupplyMonths(args: {
         redemptions,
         now: monthNow,
         maxQualifyingSpendCents: config.maxQualifyingSpendCents,
+        cutoffCache,
       });
       if (!reason) continue;
       rejected.add(restaurant.id);
@@ -532,7 +539,7 @@ export function runSimulatedSupplyMonths(args: {
     };
 
     if (needsCarried) {
-      const carriedPool = selectPool(config, poolInput, redemptions, monthNow, 1);
+      const carriedPool = selectPool(config, poolInput, redemptions, monthNow, 1, cutoffCache);
       if (!needsPair) markDistance(carriedPool);
       const planned = config.carriedAssigns.find((entry) => entry.k === k);
       if (planned) {
@@ -600,7 +607,7 @@ export function runSimulatedSupplyMonths(args: {
     }
 
     if (needsPair) {
-      const pairPool = selectPool(config, poolInput, redemptions, monthNow, 2);
+      const pairPool = selectPool(config, poolInput, redemptions, monthNow, 2, cutoffCache);
       markDistance(pairPool);
       const ranked = [...pairPool.candidates].sort(byId);
       if (ranked.length >= 2) {

@@ -79,17 +79,31 @@ export function createLedger(): SupplyLedger {
   };
 }
 
+const chicagoOffsetFormat = new Intl.DateTimeFormat('en-US', {
+  timeZone: CHICAGO,
+  hourCycle: 'h23',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
 function timeZoneOffsetMs(instant: Date, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).formatToParts(instant);
+  const format = timeZone === CHICAGO
+    ? chicagoOffsetFormat
+    : new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        hourCycle: 'h23',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      });
+  const parts = format.formatToParts(instant);
   const pick = (type: Intl.DateTimeFormatPartTypes) =>
     Number(parts.find((part) => part.type === type)?.value ?? '0');
   let hour = pick('hour');
@@ -99,14 +113,25 @@ function timeZoneOffsetMs(instant: Date, timeZone: string): number {
   return asUtc - instant.getTime();
 }
 
+/** Midnight instants for date keys reused inside one gate or simulation pass. */
+const chicagoMidnightCache = new Map<string, number>();
+const CHICAGO_MIDNIGHT_LIMIT = 64;
+
 /** Chicago wall-clock midnight as a UTC instant. Matches `timestamp at time zone`. */
 export function chicagoMidnight(yyyyMmDd: string): Date {
+  const hit = chicagoMidnightCache.get(yyyyMmDd);
+  if (hit !== undefined) return new Date(hit);
   const [year, month, day] = yyyyMmDd.split('-').map(Number);
   const guess = Date.UTC(year, month - 1, day, 0, 0, 0);
   const offset = timeZoneOffsetMs(new Date(guess), CHICAGO);
   let utc = guess - offset;
   const corrected = timeZoneOffsetMs(new Date(utc), CHICAGO);
   if (corrected !== offset) utc = guess - corrected;
+  chicagoMidnightCache.set(yyyyMmDd, utc);
+  if (chicagoMidnightCache.size > CHICAGO_MIDNIGHT_LIMIT) {
+    const oldest = chicagoMidnightCache.keys().next().value;
+    if (oldest !== undefined) chicagoMidnightCache.delete(oldest);
+  }
   return new Date(utc);
 }
 

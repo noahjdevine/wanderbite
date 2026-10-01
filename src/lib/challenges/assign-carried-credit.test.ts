@@ -182,4 +182,64 @@ describe('carried assignment caller', () => {
     });
     expect(candidates.map((row) => row.id)).toEqual(['safe']);
   });
+
+  it('keeps a restaurant whose visit is before the spring-gap cutoff', () => {
+    const now = new Date('2026-09-08T07:01:00.000Z');
+    const origin = { lat: 33.1984, lon: -96.6397 };
+    const covering = {
+      valid_from: '2020-01-01T00:00:00.000Z',
+      valid_until: '2030-01-01T00:00:00.000Z',
+      withdrawn_from_selection_at: null,
+      tiers: [{ threshold_cents: 4000, discount_cents: 2000 }],
+    };
+    const restaurant = {
+      id: 'spring-gap',
+      name: 'Spring Gap',
+      cuisine_tags: ['thai'],
+      lat: origin.lat,
+      lon: origin.lon,
+      current_offer_version_id: 'v-spring',
+    };
+    const kept = filterCarriedAssignCandidates({
+      restaurants: [restaurant],
+      versionsById: new Map([['v-spring', { id: 'v-spring', restaurant_id: restaurant.id, ...covering }]]),
+      origin,
+      requestedMiles: 5,
+      allergyFlags: [],
+      dietaryFlags: [],
+      excludedCuisineIds: [],
+      redemptions: [
+        {
+          restaurant_id: restaurant.id,
+          status: 'verified',
+          verified_at: '2026-03-08T07:30:00.000Z',
+          created_at: '2026-03-08T07:30:00.000Z',
+        },
+      ],
+      now,
+      deadline: new Date('2026-10-08T07:01:00.000Z'),
+    });
+    expect(kept.map((row) => row.id)).toEqual([restaurant.id]);
+
+    const blocked = filterCarriedAssignCandidates({
+      restaurants: [restaurant],
+      versionsById: new Map([['v-spring', { id: 'v-spring', restaurant_id: restaurant.id, ...covering }]]),
+      origin,
+      requestedMiles: 5,
+      allergyFlags: [],
+      dietaryFlags: [],
+      excludedCuisineIds: [],
+      redemptions: [
+        {
+          restaurant_id: restaurant.id,
+          status: 'verified',
+          verified_at: '2026-03-08T08:00:30.000Z',
+          created_at: '2026-03-08T08:00:30.000Z',
+        },
+      ],
+      now,
+      deadline: new Date('2026-10-08T07:01:00.000Z'),
+    });
+    expect(blocked).toEqual([]);
+  });
 });
