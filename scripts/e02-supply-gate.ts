@@ -36,6 +36,7 @@ function parseArgs(argv: string[]): {
       i += 1;
     } else if (arg === '--json') {
       if (!next) fail('E02 supply gate: --json needs a path');
+      assertJsonInsideSupplyGate(next);
       jsonPath = next;
       i += 1;
     } else {
@@ -44,6 +45,15 @@ function parseArgs(argv: string[]): {
   }
   const seeds = seed == null ? Array.from({ length: trials }, (_, index) => index + 1) : [seed];
   return { snapshot, seeds, jsonPath };
+}
+
+function assertJsonInsideSupplyGate(jsonPath: string): void {
+  const root = path.resolve('.supply-gate');
+  const destination = path.resolve(jsonPath);
+  const relative = path.relative(root, destination);
+  if (relative === '' || relative.startsWith('..') || path.isAbsolute(relative)) {
+    fail('E02 supply gate: --json must stay inside .supply-gate/');
+  }
 }
 
 function readSnapshot(filePath: string): unknown {

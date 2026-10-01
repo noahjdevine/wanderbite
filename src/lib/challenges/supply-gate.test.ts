@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
@@ -187,11 +187,24 @@ describe('synthetic supply gate', () => {
     const rules = [...failed.unmatchedByRule.keys()];
     expect(rules.length).toBeGreaterThanOrEqual(2);
     expect(failed.funnel.length).toBeGreaterThan(0);
+    expect(failed.funnel[0]).toMatch(
+      /active=\d+ market=\d+ offer_version=\d+ selectable=\d+ coords=\d+ dietary=\d+ allergy=\d+ cuisine=\d+ cooldown=\d+ capacity=\d+ distance=\d+ variety=\d+ floor=\d+ need=\d+ binding=/,
+    );
+    expect(failed.text).toMatch(/unmatched_by_month .+ \(all trials\) \| worst seed=\d+: /);
+    expect(failed.text).toMatch(/unmatched_by_rule .+ \(all trials\) \| worst seed=\d+: /);
+    expect(failed.text).toMatch(/unmatched_by_persona .+ \(all trials\) \| worst seed=\d+: /);
     expect(failed.shortfall).toHaveLength(8);
     for (const row of failed.shortfall) {
       expect(row.addAtLeast).toBeGreaterThan(0);
+      expect(row.eligibleStatic5).toBe(row.persona === 'open' ? 7 : 6);
+      expect(row.eligibleStatic15).toBe(row.eligibleStatic5);
       expect(failed.text).toContain(`shortfall persona=${row.persona} zip=${row.zip}`);
-      expect(failed.text).toContain('kind="lower bound"');
+      expect(failed.text).toContain('lower bound');
+      expect(failed.text).toContain(`kind="${row.kind}" lower bound`);
+      expect(row.kind).toContain('published selectable offer version valid >= 2027-03+840h');
+      if (row.persona === 'restricted') {
+        expect(row.kind).toContain('vegan-compatible, no peanut, not italian');
+      }
     }
     expect(failed.text).toContain('synthetic-05+synthetic-05-2');
     expect(failed.text).toContain('possible_duplicates=synthetic-05+synthetic-05-2');
@@ -200,15 +213,22 @@ describe('synthetic supply gate', () => {
     const again = runSupplyGate({ snapshot: thin, seeds });
     expect(again.text).toBe(failed.text);
 
-    const padded = runSupplyGate({ snapshot: padSnapshot(thin, PASS_PADDING), seeds });
+    const paddedSnapshot = padSnapshot(thin, PASS_PADDING);
+    const padded = runSupplyGate({ snapshot: paddedSnapshot, seeds });
     expect(padded.result).toBe('PASS');
     expect(padded.matchedMin).toBe(SUPPLY_GATE_DENOMINATOR);
     expect(padded.trialsFailed).toBe(0);
     expect(padded.text).toContain('PASS: E02 supply gate');
 
+    const paddedPath = path.join(os.tmpdir(), `e02-padded-${process.pid}.json`);
+    writeFileSync(paddedPath, JSON.stringify(paddedSnapshot));
+    const paddedCli = runCli(['--snapshot', paddedPath, '--trials', '20']);
+    expect(paddedCli.status).toBe(0);
+    expect(paddedCli.output).toContain('PASS: E02 supply gate');
+
     const removed = runSupplyGate({ snapshot: thin, seeds: [1] });
     expect(removed.result).toBe('FAIL');
-  }, 120_000);
+  }, 180_000);
 });
 
 describe('single-cause catalogs', () => {
@@ -248,6 +268,24 @@ describe('single-cause catalogs', () => {
     expect(result.unmatchedByPersona.get('restricted/tenured')).toBeGreaterThan(0);
     expect(result.funnel.every((line) => line.includes('persona=restricted/'))).toBe(true);
     expect(result.funnel.every((line) => line.includes('binding=dietary_exclusion'))).toBe(true);
+  });
+
+  it('binds missing_coordinates when half the rows have no coordinates and the rest are too few', () => {
+    // The versioned half has null coordinates. The located half has no offer version, so it cannot refill the pool.
+    const snapshot = makeSnapshot({ count: 4, discount: 2000 });
+    for (const restaurant of snapshot.restaurants.slice(0, 2)) {
+      restaurant.lat = null;
+      restaurant.lon = null;
+    }
+    const located = snapshot.restaurants.slice(2);
+    const locatedIds = new Set(located.map((restaurant) => restaurant.id));
+    for (const restaurant of located) restaurant.current_offer_version_id = null;
+    snapshot.offer_versions = snapshot.offer_versions.filter((version) => !locatedIds.has(version.restaurant_id));
+    const result = runSupplyGate({ snapshot, seeds: [1] });
+    expect(result.funnel.length).toBeGreaterThan(0);
+    expect(result.funnel.every((line) => line.includes('binding=missing_coordinates'))).toBe(true);
+    expect(result.unmatchedByRule.get('missing_coordinates')).toBeGreaterThan(0);
+    expect(result.funnel.some((line) => line.includes('outside_distance'))).toBe(false);
   });
 
   it('binds outside_distance when every restaurant is beyond 40 miles', () => {
@@ -379,7 +417,23 @@ describe('snapshot loader', () => {
     const wrong = { ...thin, schema: 'not-the-schema' };
     const wrongResult = parseSupplySnapshot(wrong);
     expect(wrongResult.ok).toBe(false);
-    if (!wrongResult.ok) expect(wrongResult.message).not.toContain('not-the-schema');
+    if (!wrongResult.ok) {
+      expect(wrongResult.message).toBe('snapshot rejected: schema');
+      expect(wrongResult.message).not.toContain('not-the-schema');
+    }
+
+    const labeled = structuredClone(thin) as unknown as {
+      offer_versions: Array<{ tiers: Array<Record<string, unknown>> }>;
+    };
+    const labeledTier = labeled.offer_versions[3]?.tiers[0];
+    if (!labeledTier) throw new Error('missing tier');
+    labeledTier.label = { nested: secret };
+    const labeledResult = parseSupplySnapshot(labeled);
+    expect(labeledResult.ok).toBe(false);
+    if (!labeledResult.ok) {
+      expect(labeledResult.message).toBe('snapshot rejected: offer_versions[3].tiers[0].label');
+      expect(labeledResult.message).not.toContain(secret);
+    }
 
     const missing = runCli(['--snapshot', path.join(os.tmpdir(), 'e02-missing-snapshot.json')]);
     expect(missing.status).toBe(2);
@@ -406,6 +460,21 @@ describe('snapshot loader', () => {
     });
     expect(schema.status).toBe(2);
     expect(schema.output).not.toContain('not-the-schema');
+
+    const labeledCli = runCli([], {
+      name: `e02-label-${process.pid}.json`,
+      body: labeled,
+    });
+    expect(labeledCli.status).toBe(2);
+    expect(labeledCli.output).toContain('offer_versions[3].tiers[0].label');
+    expect(labeledCli.output).not.toContain(secret);
+
+    const outsideJson = path.join(os.tmpdir(), `e02-json-${process.pid}.json`);
+    const outside = runCli(['--json', outsideJson, '--snapshot', FIXTURE, '--trials', '1']);
+    expect(outside.status).toBe(2);
+    expect(outside.output).toContain('.supply-gate/');
+    expect(outside.output).not.toContain('pin_hash');
+    expect(existsSync(outsideJson)).toBe(false);
   }, 60_000);
 });
 

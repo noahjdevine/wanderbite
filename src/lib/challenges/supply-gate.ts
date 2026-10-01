@@ -194,6 +194,33 @@ export type SnapshotParseResult =
   | { ok: true; snapshot: SupplySnapshot }
   | { ok: false; message: string };
 
+function formatZodPath(path: ReadonlyArray<PropertyKey>): string {
+  let out = '';
+  for (const part of path) {
+    if (typeof part === 'number') {
+      out += `[${part}]`;
+      continue;
+    }
+    const text = String(part);
+    out += out.length === 0 ? text : `.${text}`;
+  }
+  return out;
+}
+
+/** Key paths only. Zod messages and input values stay out of the text. */
+function formatZodPaths(issues: ReadonlyArray<{ code?: string; path: ReadonlyArray<PropertyKey>; keys?: ReadonlyArray<string> }>): string {
+  const paths: string[] = [];
+  for (const issue of issues) {
+    const base = formatZodPath(issue.path);
+    if (issue.code === 'unrecognized_keys' && issue.keys && issue.keys.length > 0) {
+      for (const key of issue.keys) paths.push(base.length === 0 ? key : `${base}.${key}`);
+      continue;
+    }
+    paths.push(base.length === 0 ? '(root)' : base);
+  }
+  return [...new Set(paths)].join(', ');
+}
+
 function forbiddenKey(value: unknown): boolean {
   if (Array.isArray(value)) return value.some((entry) => forbiddenKey(entry));
   if (!value || typeof value !== 'object') return false;
@@ -218,7 +245,7 @@ export function parseSupplySnapshot(raw: unknown): SnapshotParseResult {
   }
   const parsed = snapshotSchema.safeParse(raw);
   if (!parsed.success) {
-    return { ok: false, message: 'snapshot rejected: schema mismatch' };
+    return { ok: false, message: `snapshot rejected: ${formatZodPaths(parsed.error.issues)}` };
   }
   if (parsed.data.launch_market.slug !== 'mckinney-tx') {
     return { ok: false, message: 'snapshot rejected: schema mismatch' };
@@ -251,6 +278,7 @@ type FailureMark = {
   sub: string | null;
   attempt: AttemptKind;
   need: 1 | 2;
+  counts: FunnelCounts;
 };
 
 export type SupplyGateTrial = {
@@ -292,6 +320,9 @@ export type SupplyGateResult = {
   unmatchedByMonth: Map<string, number>;
   unmatchedByRule: Map<string, number>;
   unmatchedByPersona: Map<string, number>;
+  unmatchedByMonthAll: Map<string, number>;
+  unmatchedByRuleAll: Map<string, number>;
+  unmatchedByPersonaAll: Map<string, number>;
   funnel: string[];
   shortfall: SupplyGateShortfall[];
   minSpendDistribution: Record<string, number>;
@@ -547,72 +578,132 @@ function offerFailureSub(
   return null;
 }
 
-function explainShortPool(args: {
+type FunnelCounts = {
+  active: number;
+  market: number;
+  offerVersion: number;
+  selectable: number;
+  coords: number;
+  dietary: number;
+  allergy: number;
+  cuisine: number;
+  cooldown: number;
+  capacity: number;
+  distance: number;
+  variety: number;
+  floor: number;
+};
+
+function countFloor(restaurants: GateRestaurant[], floor: AttemptKind): number {
+  if (floor === 'carried') {
+    return restaurants.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= CARRIED_FLOOR_CENTS).length;
+  }
+  const bases = restaurants.map((restaurant) => baseCents(restaurant.version));
+  let count = 0;
+  for (let i = 0; i < restaurants.length; i += 1) {
+    const left = bases[i];
+    if (left == null) continue;
+    const canPair = bases.some((right, j) => j !== i && right != null && left + right >= PAIR_FLOOR_CENTS);
+    if (canPair) count += 1;
+  }
+  return count;
+}
+
+/**
+ * Walk the full active catalog. Coordinates drop at missing_coordinates.
+ * Distance (usedMiles) runs only after the hard filters and variety.
+ */
+function explainFunnel(args: {
   restaurants: GateRestaurant[];
   ctx: FilterCtx;
   usedMiles: number;
   need: 1 | 2;
   origin: { lat: number; lon: number };
-}): { binding: GateRule; sub: string | null } | null {
-  const inRadius = args.restaurants.filter((restaurant) =>
-    withinMiles(restaurant, args.origin.lat, args.origin.lon, args.usedMiles),
-  );
-  if (inRadius.length < args.need) {
-    const located = args.restaurants.filter((restaurant) => hasCoords(restaurant));
-    if (located.length === 0 && args.restaurants.length > 0) {
-      return { binding: 'missing_coordinates', sub: null };
-    }
-    return { binding: 'outside_distance', sub: null };
-  }
-
+  floor: AttemptKind;
+}): { binding: GateRule | null; sub: string | null; counts: FunnelCounts } {
   const stages: Array<{
     id: GateRule;
+    key: keyof FunnelCounts | null;
     ok: (restaurant: GateRestaurant) => boolean;
   }> = [
-    { id: 'outside_market', ok: (restaurant) => passesMarket(restaurant, args.ctx) },
-    { id: 'no_offer_version', ok: (restaurant) => passesOfferVersion(restaurant, args.ctx) },
-    { id: 'offer_version_not_selectable', ok: (restaurant) => passesSelectable(restaurant, args.ctx) },
-    { id: 'offer_tiers_invalid', ok: (restaurant) => passesTiers(restaurant, args.ctx) },
-    { id: 'missing_coordinates', ok: (restaurant) => hasCoords(restaurant) },
-    { id: 'dietary_exclusion', ok: (restaurant) => passesDietary(restaurant, args.ctx) },
-    { id: 'allergy', ok: (restaurant) => passesAllergy(restaurant, args.ctx) },
-    { id: 'excluded_cuisine', ok: (restaurant) => passesCuisine(restaurant, args.ctx) },
-    { id: 'cooldown_recent_visit_6m', ok: (restaurant) => passesRecent(restaurant, args.ctx) },
-    { id: 'cooldown_two_in_12m', ok: (restaurant) => passesTwoIn12(restaurant, args.ctx) },
-    { id: 'capacity_full', ok: (restaurant) => passesCapacity(restaurant, args.ctx) },
+    { id: 'outside_market', key: 'market', ok: (restaurant) => passesMarket(restaurant, args.ctx) },
+    { id: 'no_offer_version', key: 'offerVersion', ok: (restaurant) => passesOfferVersion(restaurant, args.ctx) },
+    { id: 'offer_version_not_selectable', key: 'selectable', ok: (restaurant) => passesSelectable(restaurant, args.ctx) },
+    { id: 'offer_tiers_invalid', key: null, ok: (restaurant) => passesTiers(restaurant, args.ctx) },
+    { id: 'missing_coordinates', key: 'coords', ok: (restaurant) => hasCoords(restaurant) },
+    { id: 'dietary_exclusion', key: 'dietary', ok: (restaurant) => passesDietary(restaurant, args.ctx) },
+    { id: 'allergy', key: 'allergy', ok: (restaurant) => passesAllergy(restaurant, args.ctx) },
+    { id: 'excluded_cuisine', key: 'cuisine', ok: (restaurant) => passesCuisine(restaurant, args.ctx) },
+    { id: 'cooldown_recent_visit_6m', key: null, ok: (restaurant) => passesRecent(restaurant, args.ctx) },
+    { id: 'cooldown_two_in_12m', key: 'cooldown', ok: (restaurant) => passesTwoIn12(restaurant, args.ctx) },
+    { id: 'capacity_full', key: 'capacity', ok: (restaurant) => passesCapacity(restaurant, args.ctx) },
   ];
 
-  let survivors = inRadius;
+  let binding: GateRule | null = null;
+  let sub: string | null = null;
+  let survivors = args.restaurants;
+  const counts: FunnelCounts = {
+    active: survivors.length,
+    market: 0,
+    offerVersion: 0,
+    selectable: 0,
+    coords: 0,
+    dietary: 0,
+    allergy: 0,
+    cuisine: 0,
+    cooldown: 0,
+    capacity: 0,
+    distance: 0,
+    variety: 0,
+    floor: 0,
+  };
+
   for (const stage of stages) {
     const next = survivors.filter(stage.ok);
-    if (next.length < args.need) {
+    if (binding == null && next.length < args.need) {
+      binding = stage.id;
       if (stage.id === 'no_offer_version') {
         const blocked = survivors.filter((restaurant) => !stage.ok(restaurant));
         const legacyOnly =
           blocked.length > 0 && blocked.every((restaurant) => restaurant.legacy && !restaurant.version);
-        return { binding: stage.id, sub: legacyOnly ? 'legacy_offer_only' : null };
+        sub = legacyOnly ? 'legacy_offer_only' : null;
+      } else if (stage.id === 'offer_version_not_selectable') {
+        sub = offerFailureSub(survivors, args.ctx);
       }
-      if (stage.id === 'offer_version_not_selectable') {
-        return { binding: stage.id, sub: offerFailureSub(survivors, args.ctx) };
-      }
-      return { binding: stage.id, sub: null };
     }
     survivors = next;
+    if (stage.key) counts[stage.key] = next.length;
   }
 
   const after6 = survivors.filter((restaurant) => passesVariety6(restaurant, args.ctx));
-  if (after6.length < args.need) {
-    return { binding: 'variety_6m', sub: null };
-  }
   const after12 = after6.filter((restaurant) => passesVariety12(restaurant, args.ctx));
-  if (after12.length < args.need) {
-    return { binding: 'variety_12m', sub: null };
-  }
   const relaxed = survivors.filter((restaurant) => passesRelaxed(restaurant, args.ctx));
-  if (relaxed.length < args.need) {
-    return { binding: 'relaxed_variety_last_month', sub: null };
+  let varietyRows = after12;
+  if (after12.length < args.need) {
+    if (after6.length < args.need) {
+      if (binding == null) binding = 'variety_6m';
+      varietyRows = after6;
+    } else if (binding == null) {
+      binding = 'variety_12m';
+    }
   }
-  return null;
+  if (binding == null && relaxed.length < args.need) {
+    binding = 'relaxed_variety_last_month';
+    varietyRows = relaxed;
+  }
+  counts.variety = varietyRows.length;
+
+  const inRadius = varietyRows.filter((restaurant) =>
+    withinMiles(restaurant, args.origin.lat, args.origin.lon, args.usedMiles),
+  );
+  counts.distance = inRadius.length;
+  if (binding == null && inRadius.length < args.need) binding = 'outside_distance';
+
+  counts.floor = countFloor(inRadius, args.floor);
+  if (binding == null && counts.floor < args.need) {
+    binding = args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor';
+  }
+  return { binding, sub, counts };
 }
 
 function selectPool(args: {
@@ -643,27 +734,44 @@ function explainAttempt(args: {
   floor: AttemptKind;
   candidates: GateRestaurant[];
   usedMiles: number;
-}): { binding: GateRule; sub: string | null } {
+}): { binding: GateRule; sub: string | null; counts: FunnelCounts } {
+  const origin = originFromZip(args.ctx.member.zip);
+  const empty: FunnelCounts = {
+    active: args.restaurants.length,
+    market: 0,
+    offerVersion: 0,
+    selectable: 0,
+    coords: 0,
+    dietary: 0,
+    allergy: 0,
+    cuisine: 0,
+    cooldown: 0,
+    capacity: 0,
+    distance: 0,
+    variety: 0,
+    floor: 0,
+  };
+  if (!origin) return { binding: 'outside_distance', sub: null, counts: empty };
+  const walked = explainFunnel({
+    restaurants: args.restaurants,
+    ctx: args.ctx,
+    usedMiles: args.usedMiles,
+    need: args.need,
+    origin,
+    floor: args.floor,
+  });
   if (args.candidates.length >= args.need) {
     return {
       binding: args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor',
       sub: null,
+      counts: walked.counts,
     };
   }
-  const origin = originFromZip(args.ctx.member.zip);
-  if (!origin) return { binding: 'outside_distance', sub: null };
-  return (
-    explainShortPool({
-      restaurants: args.restaurants,
-      ctx: args.ctx,
-      usedMiles: args.usedMiles,
-      need: args.need,
-      origin,
-    }) ?? {
-      binding: args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor',
-      sub: null,
-    }
-  );
+  return {
+    binding: walked.binding ?? (args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor'),
+    sub: walked.sub,
+    counts: walked.counts,
+  };
 }
 
 /**
@@ -704,18 +812,18 @@ export function explainSupplyBinding(args: {
   const origin = originFromZip(args.member.zip);
   if (!origin) return { binding: 'outside_distance', sub: null };
   const pool = selectPool({ restaurants, ctx, need: args.need });
-  return (
-    explainShortPool({
-      restaurants,
-      ctx,
-      usedMiles: pool.usedMiles,
-      need: args.need,
-      origin,
-    }) ?? {
-      binding: args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor',
-      sub: null,
-    }
-  );
+  const walked = explainFunnel({
+    restaurants,
+    ctx,
+    usedMiles: pool.usedMiles,
+    need: args.need,
+    origin,
+    floor: args.floor,
+  });
+  return {
+    binding: walked.binding ?? (args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor'),
+    sub: walked.sub,
+  };
 }
 
 function mark(
@@ -789,6 +897,7 @@ function runMemberMonth(args: {
           sub: explained.sub,
           attempt: 'carried',
           need: 1,
+          counts: explained.counts,
         });
       }
       continue;
@@ -806,14 +915,22 @@ function runMemberMonth(args: {
     });
     if (typeof assigned === 'string') {
       if (args.score) {
-        const binding: GateRule =
-          assigned === 'below_floor' ? 'carried_below_floor' : 'capacity_full';
+        const explained = explainAttempt({
+          restaurants: args.restaurants,
+          ctx,
+          need: 1,
+          floor: 'carried',
+          candidates: pool.candidates,
+          usedMiles: pool.usedMiles,
+        });
+        const binding: GateRule = assigned === 'below_floor' ? 'carried_below_floor' : 'capacity_full';
         mark(args.marks, [credit], {
           month: args.monthKey,
           binding,
           sub: null,
           attempt: 'carried',
           need: 1,
+          counts: explained.counts,
         });
       }
       continue;
@@ -868,6 +985,7 @@ function runMemberMonth(args: {
         sub: explained.sub,
         attempt: 'pair',
         need: 2,
+        counts: explained.counts,
       });
     }
     return;
@@ -900,12 +1018,21 @@ function runMemberMonth(args: {
     }
   }
   if (args.score && failed.length > 0) {
+    const explained = explainAttempt({
+      restaurants: args.restaurants,
+      ctx: pairCtx,
+      need: 2,
+      floor: 'pair',
+      candidates: pairPool.candidates,
+      usedMiles: pairPool.usedMiles,
+    });
     mark(args.marks, failed, {
       month: args.monthKey,
       binding: 'capacity_full',
       sub: null,
       attempt: 'pair',
       need: 2,
+      counts: explained.counts,
     });
   }
 }
@@ -1016,8 +1143,9 @@ export function runSupplyGateTrial(args: {
       const persona = personaKey(state.member);
       unmatchedByPersona.set(persona, (unmatchedByPersona.get(persona) ?? 0) + 1);
       if (!failure) continue;
+      const counts = failure.counts;
       const sub = failure.sub ? ` sub=${failure.sub}` : '';
-      const line = `funnel month=${ym(failure.month)} persona=${persona} zip=${state.member.zip} seed=${args.seed} attempt=${failure.attempt} need=${failure.need} binding=${failure.binding}${sub}`;
+      const line = `funnel month=${ym(failure.month)} persona=${persona} zip=${state.member.zip} seed=${args.seed} attempt=${failure.attempt} active=${counts.active} market=${counts.market} offer_version=${counts.offerVersion} selectable=${counts.selectable} coords=${counts.coords} dietary=${counts.dietary} allergy=${counts.allergy} cuisine=${counts.cuisine} cooldown=${counts.cooldown} capacity=${counts.capacity} distance=${counts.distance} variety=${counts.variety} floor=${counts.floor} need=${failure.need} binding=${failure.binding}${sub}`;
       if (funnelKeys.has(line)) continue;
       funnelKeys.add(line);
       funnel.push(line);
@@ -1140,10 +1268,17 @@ function minSpendDistribution(snapshot: SupplySnapshot): Record<string, number> 
   return Object.fromEntries([...counts.entries()].sort((a, b) => Number(a[0]) - Number(b[0])));
 }
 
+function shortfallKind(persona: GatePersona, windowEndLabel: string): string {
+  const requirement = `published selectable offer version valid >= ${windowEndLabel}+840h`;
+  if (persona === 'open') return requirement;
+  return `${requirement}; vegan-compatible, no peanut, not italian`;
+}
+
 function shortfallLines(args: {
   restaurants: GateRestaurant[];
   marketId: string;
-  now: Date;
+  windowEnd: Date;
+  windowEndLabel: string;
 }): SupplyGateShortfall[] {
   const seen = new Set<string>();
   const lines: SupplyGateShortfall[] = [];
@@ -1151,8 +1286,14 @@ function shortfallLines(args: {
     const key = `${member.persona}:${member.zip}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const at5 = staticEligible({ ...args, member, miles: 5 });
-    const at15 = staticEligible({ ...args, member, miles: 15 });
+    const eligibleArgs = {
+      restaurants: args.restaurants,
+      marketId: args.marketId,
+      now: args.windowEnd,
+      member,
+    };
+    const at5 = staticEligible({ ...eligibleArgs, miles: 5 });
+    const at15 = staticEligible({ ...eligibleArgs, miles: 15 });
     const base1000 = at15.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= 1000).length;
     const base2000 = at15.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= 2000).length;
     lines.push({
@@ -1164,10 +1305,27 @@ function shortfallLines(args: {
       baseAtLeast1000: base1000,
       baseAtLeast2000: base2000,
       addAtLeast: Math.max(0, 12 - at15.length),
-      kind: 'lower bound',
+      kind: shortfallKind(member.persona, args.windowEndLabel),
     });
   }
   return lines;
+}
+
+function sumCountMaps(maps: Array<Map<string, number>>): Map<string, number> {
+  const total = new Map<string, number>();
+  for (const map of maps) {
+    for (const [key, count] of map) total.set(key, (total.get(key) ?? 0) + count);
+  }
+  return total;
+}
+
+function formatSplitCounts(
+  all: Map<string, number>,
+  worst: Map<string, number>,
+  order: 'month' | 'rule' | 'persona',
+  worstSeed: number,
+): string {
+  return `${formatCountMap(all, order)} (all trials) | worst seed=${worstSeed}: ${formatCountMap(worst, order)}`;
 }
 
 function formatCountMap(map: Map<string, number>, order: 'month' | 'rule' | 'persona'): string {
@@ -1192,13 +1350,13 @@ export function formatSupplyGateReport(result: Omit<SupplyGateResult, 'text'> & 
     result.catalogLine,
     `window=${result.windowLabel} cohort=16 (4 zips x open/restricted x new/tenured) trials=${result.seeds.length} seeds=${result.seeds[0]}..${result.seeds[result.seeds.length - 1]}`,
     `result=${result.result} matched_min=${result.matchedMin}/${SUPPLY_GATE_DENOMINATOR} matched_via_carry=${result.matchedViaCarry} worst_seed=${result.worstSeed} trials_failed=${result.trialsFailed}/${result.seeds.length}`,
-    `unmatched_by_month ${formatCountMap(result.unmatchedByMonth, 'month')}`,
-    `unmatched_by_rule ${formatCountMap(result.unmatchedByRule, 'rule')}`,
-    `unmatched_by_persona ${formatCountMap(result.unmatchedByPersona, 'persona')}`,
+    `unmatched_by_month ${formatSplitCounts(result.unmatchedByMonthAll, result.unmatchedByMonth, 'month', result.worstSeed)}`,
+    `unmatched_by_rule ${formatSplitCounts(result.unmatchedByRuleAll, result.unmatchedByRule, 'rule', result.worstSeed)}`,
+    `unmatched_by_persona ${formatSplitCounts(result.unmatchedByPersonaAll, result.unmatchedByPersona, 'persona', result.worstSeed)}`,
     ...result.funnel,
     ...result.shortfall.map(
       (row) =>
-        `shortfall persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} base>=2000=${row.baseAtLeast2000} add_at_least=${row.addAtLeast} kind="${row.kind}"`,
+        `shortfall persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} base>=2000=${row.baseAtLeast2000} add_at_least=${row.addAtLeast} kind="${row.kind}" lower bound`,
     ),
     result.result === 'PASS'
       ? 'PASS: E02 supply gate'
@@ -1243,11 +1401,15 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
     unmatchedByMonth: worst.unmatchedByMonth,
     unmatchedByRule: worst.unmatchedByRule,
     unmatchedByPersona: worst.unmatchedByPersona,
+    unmatchedByMonthAll: sumCountMaps(trials.map((trial) => trial.unmatchedByMonth)),
+    unmatchedByRuleAll: sumCountMaps(trials.map((trial) => trial.unmatchedByRule)),
+    unmatchedByPersonaAll: sumCountMaps(trials.map((trial) => trial.unmatchedByPersona)),
     funnel: worst.funnel,
     shortfall: shortfallLines({
       restaurants,
       marketId: args.snapshot.launch_market.id,
-      now,
+      windowEnd: monthInstant(m5),
+      windowEndLabel: ym(m5),
     }),
     minSpendDistribution: minSpendDistribution(args.snapshot),
     trials,
@@ -1269,16 +1431,32 @@ export function supplyGateJson(result: SupplyGateResult): string {
     matched_via_carry: result.matchedViaCarry,
     worst_seed: result.worstSeed,
     trials_failed: result.trialsFailed,
-    unmatched_by_month: Object.fromEntries([...result.unmatchedByMonth.entries()].sort()),
-    unmatched_by_rule: Object.fromEntries(
-      [...result.unmatchedByRule.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)),
-    ),
-    unmatched_by_persona: Object.fromEntries(
-      ['open/new', 'open/tenured', 'restricted/new', 'restricted/tenured'].map((key) => [
-        key,
-        result.unmatchedByPersona.get(key) ?? 0,
-      ]),
-    ),
+    unmatched_by_month: {
+      all_trials: Object.fromEntries([...result.unmatchedByMonthAll.entries()].sort()),
+      worst: Object.fromEntries([...result.unmatchedByMonth.entries()].sort()),
+    },
+    unmatched_by_rule: {
+      all_trials: Object.fromEntries(
+        [...result.unmatchedByRuleAll.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)),
+      ),
+      worst: Object.fromEntries(
+        [...result.unmatchedByRule.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1)),
+      ),
+    },
+    unmatched_by_persona: {
+      all_trials: Object.fromEntries(
+        ['open/new', 'open/tenured', 'restricted/new', 'restricted/tenured'].map((key) => [
+          key,
+          result.unmatchedByPersonaAll.get(key) ?? 0,
+        ]),
+      ),
+      worst: Object.fromEntries(
+        ['open/new', 'open/tenured', 'restricted/new', 'restricted/tenured'].map((key) => [
+          key,
+          result.unmatchedByPersona.get(key) ?? 0,
+        ]),
+      ),
+    },
     funnel: result.funnel,
     shortfall: result.shortfall,
     min_spend_distribution: result.minSpendDistribution,

@@ -1,4 +1,9 @@
--- Run by Noah only (Supabase SQL editor or another read-only session). Never by an agent or CI. Save the single JSON cell to .supply-gate/hosted-catalog.json.
+-- Run by Noah only (Supabase SQL editor or another read-only session). Never by an agent or CI.
+-- Supabase SQL editor: highlight only the select statement and use "Run selected"
+-- (the editor shows only the last statement's result). Copy only the single cell value,
+-- not "Export as JSON", which wraps it in [{"snapshot":...}].
+-- Save that cell to .supply-gate/hosted-catalog.json.
+-- psql alternative: psql -qAt -f scripts/sql/e02-supply-snapshot.sql > .supply-gate/hosted-catalog.json
 -- Read-only. One JSON object. Does not select pins, verification codes, addresses, photos, or member rows.
 
 begin transaction read only;
