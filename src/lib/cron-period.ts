@@ -22,16 +22,31 @@ export function resetSwapCountersMonthOpen(now = new Date()): boolean {
   return chicagoMonthStart(now) >= utcMonth;
 }
 
+const chicagoMonthFormat = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Chicago',
+  year: 'numeric',
+  month: '2-digit',
+});
+
+/** Pure month keys for timestamps reused inside one gate or simulation pass. */
+const chicagoMonthStartCache = new Map<number, string>();
+const CHICAGO_MONTH_START_LIMIT = 64;
+
 /** America/Chicago calendar month start as YYYY-MM-01. SQL remains the authority. */
 export function chicagoMonthStart(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    year: 'numeric',
-    month: '2-digit',
-  }).formatToParts(now);
+  const key = now.getTime();
+  const hit = chicagoMonthStartCache.get(key);
+  if (hit) return hit;
+  const parts = chicagoMonthFormat.formatToParts(now);
   const year = parts.find((part) => part.type === 'year')?.value ?? '1970';
   const month = parts.find((part) => part.type === 'month')?.value ?? '01';
-  return `${year}-${month}-01`;
+  const value = `${year}-${month}-01`;
+  chicagoMonthStartCache.set(key, value);
+  if (chicagoMonthStartCache.size > CHICAGO_MONTH_START_LIMIT) {
+    const oldest = chicagoMonthStartCache.keys().next().value;
+    if (oldest !== undefined) chicagoMonthStartCache.delete(oldest);
+  }
+  return value;
 }
 
 /** UTC calendar date. Daily jobs do not follow the generator's local month. */

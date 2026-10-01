@@ -4,6 +4,7 @@ import { subMonths } from 'date-fns';
 import { describe, expect, it } from 'vitest';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import {
+  createCooldownCutoffCache,
   passesRestaurantHardFilters,
   redemptionCooldownOk,
   redemptionCooldownReason,
@@ -467,7 +468,7 @@ describe('redemptionCooldownReason', () => {
       );
     }
     expect(source('src/lib/challenges/restaurant-safety.ts')).toContain(
-      'return redemptionCooldownReason(restaurantId, redemptions, now) === null',
+      'return redemptionCooldownReason(restaurantId, redemptions, now, cutoffCache) === null',
     );
   });
 
@@ -509,5 +510,26 @@ describe('redemptionCooldownReason', () => {
       'recent_visit_6m',
     );
     expect(redemptionCooldownReason(RESTAURANT, [visit(justBeforeSix)], now)).toBeNull();
+  });
+
+  it('reuses cutoff instants and rereads redemption history', () => {
+    const cache = createCooldownCutoffCache();
+    const cutoffs = cache.forInstant(now);
+    expect(cutoffs.sixMs).toBe(subMonthsChicago(now, 6).getTime());
+    expect(cutoffs.twelveMs).toBe(subMonthsChicago(now, 12).getTime());
+    expect(cache.forInstant(now)).toBe(cutoffs);
+
+    const springNow = new Date('2026-09-08T07:01:00.000Z');
+    expect(cache.forInstant(springNow).sixMs).toBe(new Date('2026-03-08T08:00:00.000Z').getTime());
+    const fallNow = new Date('2026-11-01T07:29:00.000Z');
+    expect(cache.forInstant(fallNow).sixMs).toBe(new Date('2026-05-01T06:59:59.999Z').getTime());
+    expect(cache.forInstant(fallNow).twelveMs).toBe(new Date('2025-11-01T06:59:59.999Z').getTime());
+
+    expect(redemptionCooldownReason(RESTAURANT, [], now, cache)).toBeNull();
+    expect(redemptionCooldownReason(RESTAURANT, [visit(subMonths(now, 3))], now, cache)).toBe(
+      'recent_visit_6m',
+    );
+    expect(redemptionCooldownReason(RESTAURANT, [], now, cache)).toBeNull();
+    expect(cache.forInstant(now)).toBe(cutoffs);
   });
 });

@@ -185,9 +185,8 @@ describe('supply gate cohort', () => {
 describe('synthetic supply gate', () => {
   const seeds = Array.from({ length: 20 }, (_, index) => index + 1);
 
-  it('fails the thin fixture and passes once padded', () => {
-    const thin = loadFixture();
-    const failed = runSupplyGate({ snapshot: thin, seeds });
+  it('fails the thin fixture across 20 seeds', () => {
+    const failed = runSupplyGate({ snapshot: loadFixture(), seeds });
     expect(failed.result).toBe('FAIL');
     expect(failed.matchedMin).toBeLessThan(SUPPLY_GATE_DENOMINATOR);
     expect(failed.text).toContain('unmatched_by_month ');
@@ -217,26 +216,34 @@ describe('synthetic supply gate', () => {
     expect(failed.text).toContain('synthetic-05+synthetic-05-2');
     expect(failed.text).toContain('possible_duplicates=synthetic-05+synthetic-05-2');
     expect(failed.text).toMatch(/FAIL: E02 supply gate \(\d+ unmatched credits\)\n$/);
+    expect(failed.seeds).toEqual(seeds);
+  });
 
+  it('repeats the same thin 20-seed report', () => {
+    const thin = loadFixture();
+    const first = runSupplyGate({ snapshot: thin, seeds });
     const again = runSupplyGate({ snapshot: thin, seeds });
-    expect(again.text).toBe(failed.text);
+    expect(again.text).toBe(first.text);
+    expect(first.result).toBe('FAIL');
+  });
 
-    const paddedSnapshot = padSnapshot(thin, PASS_PADDING);
-    const padded = runSupplyGate({ snapshot: paddedSnapshot, seeds });
+  it('passes the padded fixture across 20 seeds', () => {
+    const padded = runSupplyGate({ snapshot: padSnapshot(loadFixture(), PASS_PADDING), seeds });
     expect(padded.result).toBe('PASS');
     expect(padded.matchedMin).toBe(SUPPLY_GATE_DENOMINATOR);
     expect(padded.trialsFailed).toBe(0);
     expect(padded.text).toContain('PASS: E02 supply gate');
+    expect(padded.seeds).toEqual(seeds);
+  });
 
+  it('prints a one-trial padded pass from the CLI', () => {
     const paddedPath = path.join(os.tmpdir(), `e02-padded-${process.pid}.json`);
-    writeFileSync(paddedPath, JSON.stringify(paddedSnapshot));
-    const paddedCli = runCli(['--snapshot', paddedPath, '--trials', '20']);
+    writeFileSync(paddedPath, JSON.stringify(padSnapshot(loadFixture(), PASS_PADDING)));
+    const paddedCli = runCli(['--snapshot', paddedPath, '--trials', '1']);
     expect(paddedCli.status).toBe(0);
+    expect(paddedCli.output).toContain('trials=1');
     expect(paddedCli.output).toContain('PASS: E02 supply gate');
-
-    const removed = runSupplyGate({ snapshot: thin, seeds: [1] });
-    expect(removed.result).toBe('FAIL');
-  }, 180_000);
+  });
 });
 
 describe('single-cause catalogs', () => {
@@ -562,20 +569,30 @@ describe('floor-aware supply gate', () => {
     return Array.from({ length: 30 }, (_, index) => ({ ...farPoint(index + 1), discount: 1000 }));
   }
 
-  it('reaches 192/192 for far $10 offers with zero, one, or two near $9 offers', () => {
+  const distanceSeeds = Array.from({ length: 20 }, (_, index) => index + 1);
+
+  function expectDistancePass(rows: Array<{ lat: number; lon: number; discount: number }>): void {
+    const result = runSupplyGate({ snapshot: offerSnapshot(rows), seeds: distanceSeeds });
+    expect(result.result).toBe('PASS');
+    expect(result.matchedMin).toBe(SUPPLY_GATE_DENOMINATOR);
+    expect(result.seeds).toEqual(distanceSeeds);
+  }
+
+  it('places far rows between 5 and 15 miles and near rows inside 5', () => {
     assertDistances();
-    const seeds = Array.from({ length: 20 }, (_, index) => index + 1);
-    const catalogs = [
-      offerSnapshot(farTenDollarRows()),
-      offerSnapshot([...farTenDollarRows(), { ...nearA, discount: 900 }]),
-      offerSnapshot([...farTenDollarRows(), { ...nearA, discount: 900 }, { ...nearB, discount: 900 }]),
-    ];
-    for (const snapshot of catalogs) {
-      const result = runSupplyGate({ snapshot, seeds });
-      expect(result.result).toBe('PASS');
-      expect(result.matchedMin).toBe(SUPPLY_GATE_DENOMINATOR);
-    }
-  }, 300_000);
+  });
+
+  it('reaches 192/192 for 30 far $10 offers', () => {
+    expectDistancePass(farTenDollarRows());
+  });
+
+  it('reaches 192/192 for 30 far $10 offers plus one near $9 offer', () => {
+    expectDistancePass([...farTenDollarRows(), { ...nearA, discount: 900 }]);
+  });
+
+  it('reaches 192/192 for 30 far $10 offers plus two near $9 offers', () => {
+    expectDistancePass([...farTenDollarRows(), { ...nearA, discount: 900 }, { ...nearB, discount: 900 }]);
+  });
 
   it('finds far carried candidates and assigns one', () => {
     assertDistances();

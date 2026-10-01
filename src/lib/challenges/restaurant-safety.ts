@@ -227,28 +227,79 @@ export function subMonthsChicago(now: Date, months: number): Date {
   return naive.getTime() < held.getTime() ? held : naive;
 }
 
+export type CooldownCutoffs = {
+  sixMs: number;
+  twelveMs: number;
+};
+
+/**
+ * Reuses six- and twelve-month cutoff instants for the same timestamp.
+ * One simulation or filter pass should own the cache and drop it when that
+ * pass ends. The map stores instants only. It does not store eligibility,
+ * so a later redemption history is read again.
+ */
+export function createCooldownCutoffCache(limit = 32): {
+  forInstant(now: Date): CooldownCutoffs;
+} {
+  const entries = new Map<number, CooldownCutoffs>();
+  return {
+    forInstant(now: Date): CooldownCutoffs {
+      const key = now.getTime();
+      const hit = entries.get(key);
+      if (hit) return hit;
+      const value = {
+        sixMs: subMonthsChicago(now, 6).getTime(),
+        twelveMs: subMonthsChicago(now, 12).getTime(),
+      };
+      entries.set(key, value);
+      if (entries.size > limit) {
+        const oldest = entries.keys().next().value;
+        if (oldest !== undefined) entries.delete(oldest);
+      }
+      return value;
+    },
+  };
+}
+
+export type CooldownCutoffCache = ReturnType<typeof createCooldownCutoffCache>;
+
+function redemptionCooldownAgainst(
+  restaurantId: string,
+  redemptions: CooldownRedemption[],
+  cutoffs: CooldownCutoffs,
+): CooldownBlockReason | null {
+  const verifiedAts: number[] = [];
+  for (const row of redemptions) {
+    if (row.restaurant_id !== restaurantId || row.status !== 'verified') continue;
+    const raw = row.verified_at ?? row.created_at;
+    if (!raw) continue;
+    const at = new Date(raw).getTime();
+    if (!Number.isNaN(at)) verifiedAts.push(at);
+  }
+  if (verifiedAts.some((at) => at >= cutoffs.sixMs)) return 'recent_visit_6m';
+  if (verifiedAts.filter((at) => at >= cutoffs.twelveMs).length >= 2) return 'two_in_12m';
+  return null;
+}
+
 /**
  * Why a verified history blocks this restaurant, if it does.
  * A visit inside six Chicago months wins over two visits inside twelve.
+ * Pass a cutoff cache to reuse instants for the same timestamp. The
+ * redemption list is always read from the argument.
  */
 export function redemptionCooldownReason(
   restaurantId: string,
   redemptions: CooldownRedemption[],
   now: Date,
+  cutoffCache?: CooldownCutoffCache,
 ): CooldownBlockReason | null {
-  const sixMonthsAgo = subMonthsChicago(now, 6);
-  const twelveMonthsAgo = subMonthsChicago(now, 12);
-  const verifiedAts = redemptions
-    .filter((row) => row.restaurant_id === restaurantId && row.status === 'verified')
-    .flatMap((row) => {
-      const raw = row.verified_at ?? row.created_at;
-      if (!raw) return [];
-      const at = new Date(raw);
-      return Number.isNaN(at.getTime()) ? [] : [at];
-    });
-  if (verifiedAts.some((at) => at >= sixMonthsAgo)) return 'recent_visit_6m';
-  if (verifiedAts.filter((at) => at >= twelveMonthsAgo).length >= 2) return 'two_in_12m';
-  return null;
+  const cutoffs = cutoffCache
+    ? cutoffCache.forInstant(now)
+    : {
+        sixMs: subMonthsChicago(now, 6).getTime(),
+        twelveMs: subMonthsChicago(now, 12).getTime(),
+      };
+  return redemptionCooldownAgainst(restaurantId, redemptions, cutoffs);
 }
 
 /** No verified visit in six months, and fewer than two verified visits in twelve. */
@@ -256,8 +307,9 @@ export function redemptionCooldownOk(
   restaurantId: string,
   redemptions: CooldownRedemption[],
   now: Date,
+  cutoffCache?: CooldownCutoffCache,
 ): boolean {
-  return redemptionCooldownReason(restaurantId, redemptions, now) === null;
+  return redemptionCooldownReason(restaurantId, redemptions, now, cutoffCache) === null;
 }
 
 export function passesRestaurantHardFilters(args: {
@@ -268,6 +320,7 @@ export function passesRestaurantHardFilters(args: {
   restaurantId: string;
   redemptions: CooldownRedemption[];
   now: Date;
+  cutoffCache?: CooldownCutoffCache;
 }): boolean {
   if (getDietaryConflict(args.cuisineTags, args.dietaryFlags)) return false;
   if (hasAllergyConflict(args.cuisineTags, args.allergyFlags)) return false;
@@ -279,5 +332,5 @@ export function passesRestaurantHardFilters(args: {
   ) {
     return false;
   }
-  return redemptionCooldownOk(args.restaurantId, args.redemptions, args.now);
+  return redemptionCooldownOk(args.restaurantId, args.redemptions, args.now, args.cutoffCache);
 }

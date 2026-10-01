@@ -23,8 +23,10 @@ import {
   type SupplyLedger,
 } from '@/lib/challenges/supply-simulation-lifecycle';
 import {
+  createCooldownCutoffCache,
   redemptionCooldownReason,
   varietyCycleMonthLowerBound,
+  type CooldownCutoffCache,
   type CooldownRedemption,
 } from '@/lib/challenges/restaurant-safety';
 import { MEMBER_FLAGS } from '@/lib/challenges/supply-simulation';
@@ -433,25 +435,13 @@ function withinMiles(restaurant: GateRestaurant, originLat: number, originLon: n
   return haversineMiles({ lat: originLat, lon: originLon }, point) <= miles;
 }
 
-function cycleCount(
-  cycles: CycleHit[],
-  restaurantId: string,
-  now: Date,
-  months: number,
-): number {
-  const lower = varietyCycleMonthLowerBound(now, months);
-  const upper = chicagoMonthStart(now);
+function cycleCount(cycles: CycleHit[], restaurantId: string, lower: string, upper: string): number {
   const seen = new Set<string>();
   for (const hit of cycles) {
     if (hit.restaurantId !== restaurantId) continue;
     if (hit.cycleMonth >= lower && hit.cycleMonth < upper) seen.add(hit.cycleMonth);
   }
   return seen.size;
-}
-
-function inLastChicagoMonth(cycles: CycleHit[], restaurantId: string, now: Date): boolean {
-  const previous = shiftMonthStart(chicagoMonthStart(now), -1);
-  return cycles.some((hit) => hit.restaurantId === restaurantId && hit.cycleMonth === previous);
 }
 
 type FilterCtx = {
@@ -464,6 +454,11 @@ type FilterCtx = {
   ledger: SupplyLedger;
   cycles: CycleHit[];
   skipOffer: boolean;
+  cutoffCache: CooldownCutoffCache;
+  varietyUpper: string;
+  varietyLower6: string;
+  varietyLower12: string;
+  previousCycleMonth: string;
 };
 
 function usedCounts(ledger: SupplyLedger): Map<string, Map<string, number>> {
@@ -480,11 +475,19 @@ function usedCounts(ledger: SupplyLedger): Map<string, Map<string, number>> {
   return counts;
 }
 
-function makeCtx(args: Omit<FilterCtx, 'buckets' | 'used'>): FilterCtx {
+function makeCtx(args: Omit<FilterCtx, 'buckets' | 'used' | 'cutoffCache' | 'varietyUpper' | 'varietyLower6' | 'varietyLower12' | 'previousCycleMonth'> & {
+  cutoffCache?: CooldownCutoffCache;
+}): FilterCtx {
+  const varietyUpper = chicagoMonthStart(args.now);
   return {
     ...args,
+    cutoffCache: args.cutoffCache ?? createCooldownCutoffCache(),
     buckets: bucketsIntersectingDeadline(args.now, args.deadline),
     used: usedCounts(args.ledger),
+    varietyUpper,
+    varietyLower6: varietyCycleMonthLowerBound(args.now, 6),
+    varietyLower12: varietyCycleMonthLowerBound(args.now, 12),
+    previousCycleMonth: shiftMonthStart(varietyUpper, -1),
   };
 }
 
@@ -525,11 +528,17 @@ function passesCuisine(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
 }
 
 function passesRecent(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
-  return redemptionCooldownReason(restaurant.id, ctx.ledger.redemptions, ctx.now) !== 'recent_visit_6m';
+  return (
+    redemptionCooldownReason(restaurant.id, ctx.ledger.redemptions, ctx.now, ctx.cutoffCache) !==
+    'recent_visit_6m'
+  );
 }
 
 function passesTwoIn12(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
-  return redemptionCooldownReason(restaurant.id, ctx.ledger.redemptions, ctx.now) !== 'two_in_12m';
+  return (
+    redemptionCooldownReason(restaurant.id, ctx.ledger.redemptions, ctx.now, ctx.cutoffCache) !==
+    'two_in_12m'
+  );
 }
 
 function passesCapacity(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
@@ -539,15 +548,17 @@ function passesCapacity(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
 }
 
 function passesVariety6(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
-  return cycleCount(ctx.cycles, restaurant.id, ctx.now, 6) === 0;
+  return cycleCount(ctx.cycles, restaurant.id, ctx.varietyLower6, ctx.varietyUpper) === 0;
 }
 
 function passesVariety12(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
-  return cycleCount(ctx.cycles, restaurant.id, ctx.now, 12) < 2;
+  return cycleCount(ctx.cycles, restaurant.id, ctx.varietyLower12, ctx.varietyUpper) < 2;
 }
 
 function passesRelaxed(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
-  return !inLastChicagoMonth(ctx.cycles, restaurant.id, ctx.now);
+  return !ctx.cycles.some(
+    (hit) => hit.restaurantId === restaurant.id && hit.cycleMonth === ctx.previousCycleMonth,
+  );
 }
 
 function passesHard(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
@@ -560,8 +571,7 @@ function passesHard(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
     passesDietary(restaurant, ctx) &&
     passesAllergy(restaurant, ctx) &&
     passesCuisine(restaurant, ctx) &&
-    passesRecent(restaurant, ctx) &&
-    passesTwoIn12(restaurant, ctx) &&
+    redemptionCooldownReason(restaurant.id, ctx.ledger.redemptions, ctx.now, ctx.cutoffCache) === null &&
     passesCapacity(restaurant, ctx)
   );
 }
@@ -908,6 +918,7 @@ function runMemberMonth(args: {
   skipOffer: boolean;
   marks: Map<string, FailureMark>;
   score: boolean;
+  cutoffCache: CooldownCutoffCache;
 }): void {
   if (args.state.monthsRun > 0) applyRollover(args.state.ledger, args.monthNow);
   const issued = issueTwoCredits(args.state.ledger, args.monthNow, args.state.monthsRun);
@@ -931,6 +942,7 @@ function runMemberMonth(args: {
       ledger: args.state.ledger,
       cycles: args.state.cycles,
       skipOffer: args.skipOffer,
+      cutoffCache: args.cutoffCache,
     });
     const pool = selectPool({
       restaurants: scopeRestaurants(args.restaurants, 'carried'),
@@ -1011,6 +1023,7 @@ function runMemberMonth(args: {
     ledger: args.state.ledger,
     cycles: args.state.cycles,
     skipOffer: args.skipOffer,
+    cutoffCache: args.cutoffCache,
   });
   const pairPool = selectPool({ restaurants: args.restaurants, ctx: pairCtx, need: 2 });
   const priced = pairPool.candidates
@@ -1101,8 +1114,10 @@ export function runSupplyGateTrial(args: {
   snapshot: SupplySnapshot;
   seed: number;
   restaurants?: GateRestaurant[];
+  cutoffCache?: CooldownCutoffCache;
 }): SupplyGateTrial {
   resetSupplyIds(0);
+  const cutoffCache = args.cutoffCache ?? createCooldownCutoffCache();
   const restaurants = args.restaurants ?? buildRestaurants(args.snapshot);
   const marketId = args.snapshot.launch_market.id;
   const m0 = firstScoredMonth(new Date(args.snapshot.exported_at));
@@ -1135,6 +1150,7 @@ export function runSupplyGateTrial(args: {
         skipOffer: true,
         marks,
         score: false,
+        cutoffCache,
       });
     }
   }
@@ -1163,6 +1179,7 @@ export function runSupplyGateTrial(args: {
         skipOffer: false,
         marks,
         score: true,
+        cutoffCache,
       });
       for (const credit of state.ledger.credits) {
         if (!credit.challengeItemId || before.has(credit.id)) continue;
@@ -1428,7 +1445,10 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
   const m0 = firstScoredMonth(exported);
   const months = scoredMonthList(m0);
   const m5 = months[5] ?? m0;
-  const trials = args.seeds.map((seed) => runSupplyGateTrial({ snapshot: args.snapshot, seed, restaurants }));
+  const cutoffCache = createCooldownCutoffCache();
+  const trials = args.seeds.map((seed) =>
+    runSupplyGateTrial({ snapshot: args.snapshot, seed, restaurants, cutoffCache }),
+  );
   let worst = trials[0];
   if (!worst) throw new Error('E02 supply gate: no trials');
   for (const trial of trials) {
