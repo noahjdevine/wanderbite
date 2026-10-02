@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:db": "tsx scripts/test-database.ts",
+    "catalog:convert": "tsx scripts/e02-catalog-conversion.ts",
     "supply:gate": "tsx scripts/e02-supply-gate.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
