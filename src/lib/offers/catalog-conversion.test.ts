@@ -81,7 +81,7 @@ describe('catalog conversion manifest', () => {
       { threshold_cents: 4000, discount_cents: 1000 },
     ]);
     expect(ten?.proposed_terms?.capacity_max_redemptions).toBe(50);
-    expect(ten?.provenance.capacity).toContain('unapproved');
+    expect(ten?.provenance.capacity).toContain('reviewed:synthetic:decision-11');
     expect(mocked?.status).toBe('ready');
     expect(mocked?.coordinates.status).toBe('mock_proposed');
     expect(twenty?.diagnostics.carried_candidate).toBe(true);

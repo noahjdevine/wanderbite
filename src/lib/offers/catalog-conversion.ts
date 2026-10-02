@@ -818,7 +818,10 @@ function rowForRestaurant(
   } else {
     source = legacyOffers[0]!;
     tierProvenance = `legacy_offer:${source.id}`;
-    capacityProvenance = `legacy_offer:${source.id}:unapproved`;
+    capacityProvenance =
+      decision?.capacity_max_redemptions_approved === true && decision.provenance_ref
+        ? `legacy_offer:${source.id};reviewed:${decision.provenance_ref}`
+        : `legacy_offer:${source.id}:unapproved`;
     if (source.active !== true) unresolved.add('legacy_offer:inactive');
     const tier =
       source.min_spend_cents == null || source.discount_amount_cents == null
