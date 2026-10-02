@@ -11,35 +11,33 @@ alwaysApply: true
 
 ## Project Vision
 Wanderbite is a gamified restaurant discovery app.
-- Users ($15/mo) receive 2 random "Challenges" (restaurants) per month.
-- Users can swap 1 challenge per month.
-- Users get $10 off $40+ spend at assigned restaurants.
-- Logic is "Safety First" (Allergies) then "Discovery" (Random assignment).
+- Users ($15/mo) receive 2 restaurant challenges per month.
+- Logic is "Safety First" (allergies and dietary flags) then "Discovery" (random assignment).
+- Offer terms, the pair floor, cooldowns, and swaps are the business rules below.
 
 ## Database Schema (Key Tables)
 
-> ⚠️ VERIFY AND CORRECT THIS SECTION BEFORE RELYING ON IT, THEN DELETE THIS NOTE.
-> The table list below appears simplified and may not match the live schema.
-> It lists a single `users (id, email, role, preferences_json)` table, but:
->   - Business Rule #4 (below) references `user_profiles.dietary_flags` and
->     `user_preferences.excluded_cuisines`.
->   - The PR plan references `user_profiles.role`.
-> So identity/preferences data likely lives in separate `user_profiles` and
-> `user_preferences` tables, not in `users`. Open your Supabase Table Editor,
-> confirm the real table/column names, and rewrite the list to match. If left
-> stale, the agent will generate queries against the wrong tables/columns.
+Repository expectations from `supabase/migrations`. This is not a hosted snapshot. `src/types/database.types.ts` has been hand-edited; follow migrations when they disagree. Known drift: `offer_versions` relationships are empty in that types file, and `challenge_items` relationships there omit `credit_id` and `offer_version_id`. There is no `users` table and no `challenges` table.
 
 Refer to these table names exactly in SQL generation:
-- `markets` (id, name, status)
-- `users` (id, email, role, preferences_json)
-- `restaurants` (id, market_id, cuisine_tags, lat, lon, price_tier)
-- `restaurant_offers` (id, restaurant_id, discount_cents, min_spend_cents, valid_from)
-- `challenges` (id, user_id, cycle_month, status, swap_count_used)
-- `challenge_items` (id, challenge_id, restaurant_id, status[assigned/swapped/redeemed])
-- `redemptions` (id, token_hash, status[issued/verified])
+- `markets` (id, name, timezone, status in `active`/`paused`, slug, state, country, currency)
+- `user_profiles` (id → auth.users, email, role, dietary_flags, allergy_flags, workflow_version text not null default `legacy`, check `legacy` or `credits`)
+- `user_preferences` (user_id → user_profiles, excluded_cuisines)
+- `restaurants` (id, org_id, market_id, cuisine_tags, lat, lon, status, current_offer_version_id). No `allergy_flag` column. Accommodation booleans: `is_dairy_free`, `is_vegan`, `is_halal`.
+- `restaurant_offers` (id, restaurant_id, discount_amount_cents, min_spend_cents, max_redemptions_per_month, active). No `discount_cents` or `valid_from` on this table.
+- `offer_versions` (id, restaurant_id, timezone, valid_from, valid_until, tiers jsonb, withdrawn_from_selection_at, capacity_timezone, capacity_window_kind, capacity_max_redemptions). Tier `discount_cents` lives in `tiers`.
+- `challenge_cycles` (id, user_id, cycle_month, status, swap_count_used checked 0..1)
+- `challenge_items` (id, cycle_id, restaurant_id, slot_number, status `assigned`/`swapped_out`/`redeemed`/`expired`, offer_version_id, redemption_deadline, credit_id)
+- `redemptions` (id, user_id, restaurant_id, challenge_item_id, token_hash, status `issued`/`verified`/`expired`, verified_at, expires_at)
+- `entitlement_credits` (id, user_id, issue_period, slot_number, status `pending`/`linked`/`expired`/`spent`, challenge_item_id, issued_at, expires_at)
 
 ## Business Rules (Strict Enforcement)
-1. **Assignment:** A user cannot be assigned a restaurant they have redeemed at in the last 6 months.
-2. **Frequency:** Max 2 redemptions per restaurant per rolling 12 months.
-3. **Swaps:** Only 1 swap allowed per `challenge_cycle`.
-4. **Safety:** If `user_profiles.dietary_flags` contains a flag (e.g., 'peanut'), NEVER assign a restaurant with that specific `allergy_flag`. Honor `user_preferences.excluded_cuisines` for cuisine opt-outs.
+1. **Safety first:** If `user_profiles.dietary_flags` conflicts with a restaurant's `cuisine_tags`, do not assign it. If `user_profiles.allergy_flags` substring-match those tags, do not assign it. Honor `user_preferences.excluded_cuisines`. There is no restaurant `allergy_flag` column.
+2. **Discovery:** After those filters, live `generate.ts` still picks two candidates at random (`pickDistinctRestaurants`). It is not floor-aware and can receive `pair_below_floor` from the RPC.
+3. **Sealed offer and pair floor:** Published `offer_versions` tiers. A pair must sum lowest-tier bases to at least 2000 cents. SQL `restaurant_base_cents` is authoritative.
+4. **Assignment deadline:** Version-backed items store `redemption_deadline` as assignment time plus 840 hours. A null offer version stores a null deadline. Carried assignment uses `least(now + 840 hours, credit.expires_at)`.
+5. **Redemption cooldown:** `redemptionCooldownOk` / `redemptionCooldownReason`. One verified visit at or after `subMonthsChicago(now, 6)` blocks. Two verified visits at or after `subMonthsChicago(now, 12)` block. Cutoffs are Chicago wall-clock months: a nonexistent spring-forward wall time resolves to the transition instant; an ambiguous fall-back resolves to the earlier occurrence; while `now` is inside the repeated hour, the cutoff holds at one millisecond before the backward transition.
+6. **Variety:** `varietyCycleMonthLowerBound` uses full Chicago calendar months (D3). It is separate from the rolling redemption cooldown.
+7. **Swaps:** One linked-credit swap per America/Chicago month (`credit_swap_allowances`). That path does not increment `swap_count_used`. Legacy `swap_challenge_item` still allows `swap_count_used` from 0 to 1 on the cycle.
+8. **Credits:** `user_profiles.workflow_version` defaults to `legacy`. Do not treat members as being on `credits`. Cutover is separately authorized.
+9. **Supply gate:** `npm run supply:gate` exists (D2=B). No hosted result is recorded here. A gate PASS does not prove live `generate.ts`.

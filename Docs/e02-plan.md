@@ -1,6 +1,6 @@
 # E02 plan
 
-Base `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
+Doc sync against `46dd871c` (PR #57 on `main`). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
 
 ## 1. Draft criteria and the supply gate
 
@@ -17,7 +17,7 @@ This numbered list is a **draft**, taken only from merged PR bodies #42–#52 an
 7. Carried credits on `/challenges`. Landed. [#50](https://github.com/noahjdevine/wanderbite/pull/50). `src/lib/challenges/carried-credits.test.ts`, `src/lib/challenges/assign-carried-credit.test.ts`.
 8. Cohort fixture printing `match 10/12`. Landed fixture only, not the gate. [#51](https://github.com/noahjdevine/wanderbite/pull/51). `supabase/tests/e02-six-month-cohort.sql`.
 9. Supply simulation on synthetic configs. Landed; gate stays open. [#52](https://github.com/noahjdevine/wanderbite/pull/52). `src/lib/challenges/supply-simulation.test.ts`, `scripts/e02-supply-simulation.ts`.
-10. `subYears(now, 12)` still in swap and variety. **Open.** [#52](https://github.com/noahjdevine/wanderbite/pull/52) follow-up. No test on `main` for those copies.
+10. `subYears(now, 12)` removed from swap and variety. **Landed.** [#55](https://github.com/noahjdevine/wanderbite/pull/55). `src/lib/challenges/restaurant-safety.test.ts`. `swap-challenge.ts` and `generate.ts` do not reference `subYears`. Variety lookbacks use `varietyCycleMonthLowerBound`. Redemption cooldown uses `redemptionCooldownOk` / `redemptionCooldownReason`.
 11. A real profile on `credits`. **Not an automatic E02 prerequisite.** Real-member cutover requires separate authorization. Those PRs forbid the cutover. Hosted count in §2 is 0.
 12. Master E02 acceptance and master E04 acceptance. **Open.** No master file in the repo.
 
@@ -55,11 +55,11 @@ Catalog A (`SUPPLY_RESTAURANTS`, criterion 9) stays the logic regression. It is 
 
 **Offer versions.** A restaurant is selectable only with a current offer version that passes the same window as `version_selection_ok` (`20260925175518`) and that `link_pending_credits` (`20260925215534`) requires. Legacy `restaurant_offers` do not make a restaurant eligible. Pair floor is lowest-tier `discount_cents` summed >= 2000, the same cents `offer_lowest_tier_cents` adds in `link_pending_credits`.
 
-**Floor-aware selector.** No production caller of `link_pending_credits` exists under `src/` (the SQL function receives the pair; it does not choose it). The gate searches for the first seeded `(i < j)` pair with distinct restaurants and base sum >= 2000, after strict variety, relaxed variety, and at most one distance-band expansion. Carried credits drop bases under 2000 cents before that distance selection. A gate PASS measures supply under this policy. It does not prove the legacy generator in `generate.ts`, which still picks two candidates at random and can receive `pair_below_floor` from the RPC. A later production change could reuse the helpers and still follow `restaurant_base_cents`: use the referenced current offer version when `current_offer_version_id` is set, with no legacy fallback when that version is missing or invalid; only when no current version is referenced, use the first active legacy offer ordered by id when `0 < discount <= minimum spend`. The RPC stays authoritative. That generator change is not in this work.
+**Floor-aware selector.** No production caller of `link_pending_credits` exists under `src/` (the SQL function receives the pair; it does not choose it). The gate uses `selectDistancePool` with `poolSatisfies` / `floorPairExists` / `pickFloorPair`: strict variety, then relaxed variety, then at most one larger distance band. Carried credits drop bases under 2000 cents before that distance selection. A gate PASS measures supply under this policy. It does not prove live `generate.ts`, which still picks two candidates at random (`pickDistinctRestaurants`) and can receive `pair_below_floor` from the RPC. Production reuse is a later slice and must preserve `restaurant_base_cents` semantics: use the referenced current offer version when `current_offer_version_id` is set, with no legacy fallback when that version is missing or invalid; only when no current version is referenced, use the first active legacy offer ordered by id when `0 < discount <= minimum spend`. The RPC stays authoritative.
 
 **How Noah runs it.** An agent or CI must not run this SQL against the hosted project. In the Supabase SQL editor, open `scripts/sql/e02-supply-snapshot.sql`, highlight only the `select` statement, and use "Run selected" (the editor shows only the last statement's result). Copy only the single cell value. Do not use "Export as JSON"; that wraps the cell in `[{"snapshot":...}]`. Save the cell to `.supply-gate/hosted-catalog.json` (gitignored). psql alternative: `psql -qAt -f scripts/sql/e02-supply-snapshot.sql > .supply-gate/hosted-catalog.json`. Then `npm run supply:gate`. Paste only these lines: `result`, `unmatched_by_month`, `unmatched_by_rule`, and every `shortfall` line. Never paste or commit the snapshot.
 
-**Checklist.** Six-month supply gate (D2=B): built; not yet run on the hosted snapshot. The hosted-snapshot gate has not been run by the DST and floor-expansion correction either. Criterion 11, a real profile on `credits`, is not an automatic E02 prerequisite. Real-member cutover requires separate authorization. #52’s configurable simulation remains required coverage, including swaps, spending ceilings, delayed completion, rollover, capacity utilization, and required customer spend. The fixed-cohort gate does not replace that simulation. Master E02 is open. Master E04 is open. This doc does not claim the gate passed and does not claim E02 or E04 acceptance.
+**Checklist.** Six-month supply gate (D2=B): built in [#56](https://github.com/noahjdevine/wanderbite/pull/56), corrected in [#57](https://github.com/noahjdevine/wanderbite/pull/57), not yet run on the hosted snapshot. Result unknown. Open. Criterion 11, a real profile on `credits`, is not an automatic E02 prerequisite. Real-member cutover requires separate authorization. #52’s configurable simulation remains required coverage, including swaps, spending ceilings, delayed completion, rollover, capacity utilization, and required customer spend. The fixed-cohort gate does not replace that simulation. Master E02 is open. Master E04 is open. This doc does not claim the gate passed and does not claim E02 or E04 acceptance.
 
 ## 2. Hosted state
 
@@ -92,23 +92,24 @@ With 0 `credits` profiles, `rollover_credits` is never called. `src/lib/challeng
 
 **Follow-up, not this PR.** Applied state is confirmed above. A separate approved PR should run `npm run types:db` and replace the hand-edited `src/types/database.types.ts` touched by [#39](https://github.com/noahjdevine/wanderbite/pull/39), [#41](https://github.com/noahjdevine/wanderbite/pull/41), [#46](https://github.com/noahjdevine/wanderbite/pull/46), and [#47](https://github.com/noahjdevine/wanderbite/pull/47). Do not run it here.
 
-## 3. Next slice (spec only)
+## 3. Cooldown on main, and the next measurement
 
-**In progress in a separate PR ([#55](https://github.com/noahjdevine/wanderbite/pull/55), open, files `swap-challenge.ts`, `generate.ts`, `restaurant-safety.ts`, `restaurant-safety.test.ts`). That PR is reviewed against the criteria below.** This doc does not implement the fix and does not review that diff.
+[#55](https://github.com/noahjdevine/wanderbite/pull/55) is merged. It landed in `swap-challenge.ts`, `generate.ts`, `restaurant-safety.ts`, and `restaurant-safety.test.ts`. This doc does not change that code.
 
-The rule being restored is `.cursor/rules/project-context.mdc` Business Rule 2 (line 43, “Max 2 redemptions per restaurant per rolling 12 months”) and `Docs/build-kit.md` §3 (lines 27–28, the same sentence). `redemptionCooldownOk` already uses `subMonths(now, 12)` (`src/lib/challenges/restaurant-safety.ts` lines 18–19).
+On `main`, redemption eligibility cutoffs are America/Chicago wall-clock months via `subMonthsChicago` in `src/lib/challenges/restaurant-safety.ts`. `redemptionCooldownOk` is true only when `redemptionCooldownReason` is null. A verified visit at or after the six-month cutoff blocks (`recent_visit_6m`). Two verified visits at or after the twelve-month cutoff block (`two_in_12m`) when the six-month rule does not. [#57](https://github.com/noahjdevine/wanderbite/pull/57) (merge `46dd871c`, head `ce7e897e`) sets the DST rules: a nonexistent spring-forward wall time resolves to the transition instant; an ambiguous fall-back wall time resolves to the earlier occurrence; while `now` is inside the later copy of the repeated hour, the cutoff holds at the value it had one millisecond before the backward transition. Month-end and leap-day clamping is unchanged (31 March stays 31 March; 29 February clamps to 28 February). Those rules are in `subMonthsChicago` and asserted under `Chicago DST cooldown cutoff` in `src/lib/challenges/restaurant-safety.test.ts`.
+
+`rollingTwelveMonthStart` still returns process-local `subMonths(now, 12)`. It is not an eligibility caller. On `main` the only references are that function and `restaurant-safety.test.ts`.
 
 ### Copy inventory
 
-| Copy | Lines | Window | Eligibility |
-| --- | --- | --- | --- |
-| `swap-challenge.ts` credit path | `subYears` line 305; inline filters lines 498–519 | twelve years | inline dietary, allergy, cuisine, verified dates |
-| `swap-challenge.ts` legacy path | `subYears` line 558; inline filters lines 765–790 | twelve years | same inline checks |
-| `generate.ts` `cyclesLast12` | `subYears` line 275; query lines 405–409 | twelve years | variety cycle count, not the redemption helper |
-| `generate.ts` `redemptionHardOk` | lines 460–461 | helper | already `redemptionCooldownOk` |
-| `carried-assign-pool.ts` | lines 69–78 | helper | already `passesRestaurantHardFilters` |
-| `supply-simulation.ts` | lines 332 and 439 | helper | already `redemptionCooldownOk` / `passesRestaurantHardFilters` |
-| `assign-carried-gate.ts` | lines 5–10 | none | no eligibility filter. `assign-carried-credit.ts` calls the gate (line 101), the pool (line 156), and `passesRestaurantHardFilters` (line 227) |
+| Copy | Window | Eligibility |
+| --- | --- | --- |
+| `swap-challenge.ts` credit and legacy `passesHard` | `redemptionCooldownOk` | no `subYears`; inline dietary, allergy, and cuisine checks remain |
+| `generate.ts` variety | `varietyCycleMonthLowerBound(now, 6)` and `(now, 12)`, then `cycle_month < chicagoMonthStart(now)` | not the redemption helper |
+| `generate.ts` `redemptionHardOk` | helper | `redemptionCooldownOk` |
+| `carried-assign-pool.ts` | helper | `passesRestaurantHardFilters` |
+| `supply-simulation.ts` / `supply-gate.ts` | helper | `redemptionCooldownOk` / `redemptionCooldownReason` and `varietyCycleMonthLowerBound` |
+| `assign-carried-gate.ts` | none | no eligibility filter. `assign-carried-credit.ts` calls the gate, the carried pool, and `passesRestaurantHardFilters` |
 
 **D8. Move the inline dietary, allergy, and cuisine checks?** A) Both swap paths call `passesRestaurantHardFilters` in [#55](https://github.com/noahjdevine/wanderbite/pull/55). B) That PR only replaces the cooldown math with `redemptionCooldownOk`; the inline checks stay. **Recommended, needs Noah: B.** `passesRestaurantHardFilters` does not emit the dietary `console.warn` those paths have today. Unifying filters is a later slice.
 
@@ -116,38 +117,25 @@ The rule being restored is `.cursor/rules/project-context.mdc` Business Rule 2 (
 
 ### Cooldown cases
 
-`redemptionCooldownOk`: a verified time counts when `at >= subMonths(now, 12)` (and a single time inside six months blocks). One counted visit stays eligible. Two counted visits, both outside six months, are not. `vitest.config.ts` does not set `TZ` (lines 4–10). `subMonths` is local. These rows were checked with `date-fns` under `TZ=UTC` and `TZ=America/Chicago` on 2026-10-01, and the boolean matches in both. The vitest file must pass under both.
+`redemptionCooldownReason` blocks when a verified time is `>= subMonthsChicago(now, 6)`, and otherwise when two verified times are `>= subMonthsChicago(now, 12)`. One verified visit inside twelve months and outside six stays eligible. The process timezone does not move these cutoffs. `rollingTwelveMonthStart` is the separate process-local instant above and is not this rule.
 
-| Case | `now` | `verified_at` | Eligible |
-| --- | --- | --- | --- |
-| UTC 1st, Chicago still September | `2026-10-01T00:30:00.000Z` | `2025-09-01T00:30:00.000Z` | true |
-| Exactly 12 months, one visit (counts, does not block) | `2026-10-01T06:00:00.000Z` | `2025-10-01T06:00:00.000Z` | true |
-| Exactly 12 months plus one later visit (boundary counts) | `2026-10-01T06:00:00.000Z` | `2025-10-01T06:00:00.000Z`, `2025-11-01T06:00:00.000Z` | false |
-| 12 months + 1 day, plus one in-window visit | `2026-10-01T06:00:00.000Z` | `2025-09-30T06:00:00.000Z`, `2025-11-01T06:00:00.000Z` | true |
-| DST spring, at or after both cutoffs | `2026-03-08T08:00:00.000Z` | `2025-03-08T09:00:00.000Z`, `2025-08-08T08:00:00.000Z` | false |
-| DST spring, before both cutoffs, plus one in-window visit | `2026-03-08T08:00:00.000Z` | `2025-03-08T07:59:59.999Z`, `2025-08-08T08:00:00.000Z` | true |
-| DST fall, at or after both cutoffs | `2026-11-01T07:00:00.000Z` | `2025-11-01T07:00:00.000Z`, `2025-12-01T07:00:00.000Z` | false |
-| DST fall, before both cutoffs, plus one in-window visit | `2026-11-01T07:00:00.000Z` | `2025-11-01T05:59:59.999Z`, `2025-12-01T07:00:00.000Z` | true |
-| Month-end, March 31 stays March 31 | `2027-03-31T15:00:00.000Z` | `2026-03-31T15:00:00.000Z`, `2026-08-31T15:00:00.000Z` | false |
-| One day before that March cutoff | `2027-03-31T15:00:00.000Z` | `2026-03-30T15:00:00.000Z`, `2026-08-31T15:00:00.000Z` | true |
-| Leap clamp, Feb 29 → Feb 28 | `2028-02-29T15:00:00.000Z` | `2027-02-28T15:00:00.000Z`, `2027-07-29T15:00:00.000Z` | false |
-| 1 ms before the clamped cutoff | `2028-02-29T15:00:00.000Z` | `2027-02-28T14:59:59.999Z`, `2027-07-29T15:00:00.000Z` | true |
-| One visit 13 months ago | `2026-10-01T06:00:00.000Z` | `2025-09-01T06:00:00.000Z` | true |
-| Two visits inside 12 months, outside 6 | `2026-10-01T06:00:00.000Z` | `2025-11-01T06:00:00.000Z`, `2026-03-01T07:00:00.000Z` | false |
+The earlier process-local `subMonths` case table is not the eligibility cutoff. Those 2026-10-01 `TZ=UTC` / `TZ=America/Chicago` date-fns rows are not restated as `subMonthsChicago` results. Month-end and leap clamping still follow the helper: `subMonthsChicago` of `2027-03-31T15:00:00.000Z` by 12 months is `2026-03-31T15:00:00.000Z`, and of `2028-02-29T15:00:00.000Z` by 12 months is `2027-02-28T15:00:00.000Z` (`restaurant-safety.test.ts`).
 
-A spring visit at `2025-03-08T08:30:00.000Z` is inside the UTC cutoff (`2025-03-08T08:00:00.000Z`) and outside the Chicago cutoff (`2025-03-08T09:00:00.000Z`). Do not use that instant as one shared expected value.
+**Tests.** `src/lib/challenges/restaurant-safety.test.ts` covers `subMonthsChicago`, both swap `passesHard` paths (`redemptionCooldownOk`, no `subYears`), and both variety bounds. `npm run test:db` is regression only. Manual: disposable users only; do not change a real `workflow_version`. **Rollback:** revert the app commit. No new SQL.
 
-**Tests.** Vitest on the helper for the table, under both `TZ` values, plus source guards that both swap paths call `redemptionCooldownOk` and do not import `subYears`. `npm run test:db` is regression only. Manual: disposable users only; do not change a real `workflow_version`. **Rollback:** revert the app commit. No new SQL.
+**Next measurement.** Gate tooling landed in [#56](https://github.com/noahjdevine/wanderbite/pull/56). DST cutoffs and floor-aware distance expansion were corrected in [#57](https://github.com/noahjdevine/wanderbite/pull/57). The hosted D2 gate run is the next outstanding measurement: the hosted snapshot plus `npm run supply:gate`, as specified in §1. Record `result`, `unmatched_by_month`, `unmatched_by_rule`, and every `shortfall` line before deciding subsequent work. That result is unknown. This doc does not predict pass or fail from restaurant count, and a recorded result is not E02 or E04 acceptance.
 
-**Out of scope.** Credits cutover, `db push`, `types:db`, new packages, supply simulation, E04, SQL cooldown inside the RPCs, `stripe.exe`, doc-drift edits, G13-B, SEC-14, checkout, AI ceilings, marking E02 or E04 complete.
+**Out of scope.** Credits cutover, `db push`, `types:db`, new packages, supply simulation, E04, SQL cooldown inside the RPCs, `stripe.exe`, G13-B, SEC-14, checkout, AI ceilings, marking E02 or E04 complete.
 
-## 4. Doc drift (do not apply)
+## 4. Doc drift
 
-`.cursor/rules/project-context.mdc` line 37 says `challenges`; the table is `challenge_cycles` (`Docs/build-kit.md` line 19). Line 38 says `challenge_items.challenge_id`; `swap-challenge.ts` line 310 uses `cycle_id`. Line 36 says `discount_cents` and `valid_from`; `generate.ts` line 331 selects `discount_amount_cents`, `max_redemptions_per_month`, and `active`. Line 39 omits `redemptions.user_id` and `verified_at`. Lines 15–16 say one swap a month and “$10 off $40+”; [#42](https://github.com/noahjdevine/wanderbite/pull/42) seals tiers and the 2000-cent pair floor, and [#48](https://github.com/noahjdevine/wanderbite/pull/48) is one Chicago-month credit swap. No `entitlement_credits`, `offer_versions`, or `workflow_version`. Proposed: rewrite from the live tables and delete the warning at lines 21–30.
+Applied in this docs-only sync. No product behavior change.
 
-`.cursor/rules/conventions.mdc` rule 1 (line 8) requires `fix/<desc>`. Agents also use `cursor/*` ([#55](https://github.com/noahjdevine/wanderbite/pull/55)). Rule 4 (line 11) says `types:db`; [#39](https://github.com/noahjdevine/wanderbite/pull/39), [#41](https://github.com/noahjdevine/wanderbite/pull/41), [#46](https://github.com/noahjdevine/wanderbite/pull/46), and [#47](https://github.com/noahjdevine/wanderbite/pull/47) hand-edited `src/types/database.types.ts`. Rule 6 (line 13) says never `git push`; agents push the feature branch and still must not `db push` or add a package without approval. Proposed: allow both branch prefixes, and point rule 4 at §2.
+`.cursor/rules/project-context.mdc` now follows `supabase/migrations`: `challenge_cycles` (not `challenges`), `challenge_items.cycle_id`, `restaurant_offers` columns as migrated (`discount_amount_cents`, `min_spend_cents`, `max_redemptions_per_month`, `active`; no `discount_cents` or `valid_from`), `redemptions.user_id` and `verified_at`, plus `entitlement_credits`, `offer_versions`, and `user_profiles.workflow_version` (`legacy` default, or `credits`). `user_profiles` and `user_preferences` stay. The verify-and-correct warning is removed. Business rules cite sealed tiers and the 2000-cent pair floor ([#42](https://github.com/noahjdevine/wanderbite/pull/42)), the assignment deadline as implemented ([#42](https://github.com/noahjdevine/wanderbite/pull/42)), one linked-credit swap per Chicago month ([#48](https://github.com/noahjdevine/wanderbite/pull/48)), `redemptionCooldownOk`, and `varietyCycleMonthLowerBound`. The D2 command `npm run supply:gate` is named. No hosted gate result is claimed. Live `generate.ts` is not floor-aware. Members are not described as being on credits.
 
-`Docs/build-kit.md` §3 (lines 27–35) still says $10 off $40 and `swap_count_used`, and §4 line 41 says a 30-minute token, against the 840-hour deadline in [#42](https://github.com/noahjdevine/wanderbite/pull/42). Proposed: replace those rules. Do not edit them here.
+`.cursor/rules/conventions.mdc` rule 1 allows `cursor/*` branch names alongside `fix/<short-description>` (naming only). Rule 4 still waits for confirmation before `db push`, and notes that hand-edited types ([#39](https://github.com/noahjdevine/wanderbite/pull/39), [#41](https://github.com/noahjdevine/wanderbite/pull/41), [#46](https://github.com/noahjdevine/wanderbite/pull/46), [#47](https://github.com/noahjdevine/wanderbite/pull/47)) need a separate approved `types:db` PR. Push, package, and spending rules are unchanged.
+
+`Docs/build-kit.md` §3 and the §4 issuance line now describe the sealed-tier pair floor, the Chicago-month credit swap, `redemptionCooldownOk`, and the traced expiry clocks. Other build-kit sections are unchanged.
 
 ## 5. Risks and the remaining decisions
 
@@ -155,9 +143,9 @@ Review speed, from `gh pr view` `createdAt` / `mergedAt`: [#50](https://github.c
 
 Hand-edited `src/types/database.types.ts` can drift from the hosted schema confirmed in §2 until the `types:db` PR lands.
 
-Legacy `startOfMonth` versus `chicagoMonthStart` is an open cutover item, not this slice. `generate.ts` builds `utcCycleMonthStr` with `startOfMonth` (line 269), looks up both month keys (lines 271–272), and writes `p_cycle_month` as Chicago only when the pair is version-backed (line 542). Legacy swap capacity uses `startOfMonth` (lines 559–560). A legacy-to-credits cutover can split one calendar month across two `cycle_month` values.
+Legacy `startOfMonth` versus `chicagoMonthStart` is an open cutover item, not this slice. `generate.ts` builds `utcCycleMonthStr` with `startOfMonth` (line 272), looks up both month keys (lines 273–275), and writes `p_cycle_month` as Chicago only when the pair is version-backed (line 545). Legacy swap capacity uses `startOfMonth` (lines 550–551). A legacy-to-credits cutover can split one calendar month across two `cycle_month` values.
 
-`Docs/g13-b-hosted-evidence.md` still has the onboarding `permission denied for table user_profiles` note, and G13-B’s checklist there is open. SEC-14 (`Docs/g14-sec-14.md`) still needs the Auth dashboard. `stripe.exe` is the tracked 31,689,728-byte blob from `3cc5256`. This plan did not execute it. `subYears(now, 12)` remains a twelve-year block until [#55](https://github.com/noahjdevine/wanderbite/pull/55) merges. The credit RPCs do not re-check it.
+`Docs/g13-b-hosted-evidence.md` still has the onboarding `permission denied for table user_profiles` note, and G13-B’s checklist there is open. SEC-14 (`Docs/g14-sec-14.md`) still needs the Auth dashboard. `stripe.exe` is the tracked 31,689,728-byte blob from `3cc5256`. This plan did not execute it. [#55](https://github.com/noahjdevine/wanderbite/pull/55) merged: `subYears` is gone from `swap-challenge.ts` and `generate.ts`. The credit RPCs still do not apply `redemptionCooldownOk`.
 
 **D4. Where may `workflow_version` become `credits`?** A) Disposable Docker only. B) One disposable hosted user. C) Not in the cooldown PR or the gate run. **Recommended, needs Noah: C for now, then A.** This plan does not change it.
 
