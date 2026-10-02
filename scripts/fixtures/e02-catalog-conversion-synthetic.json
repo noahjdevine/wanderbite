@@ -1,0 +1,179 @@
+{
+  "schema": "wanderbite.e02.catalog_conversion.synthetic.v1",
+  "exported_at": "2026-10-01T15:00:00.000Z",
+  "evaluation_at": "2026-10-15T18:00:00.000Z",
+  "evaluation_at_provenance": "synthetic_fixture.reviewed_instant",
+  "launch_market": {
+    "id": "e0200000-0000-4000-8000-000000000001",
+    "slug": "mckinney-tx",
+    "status": "active",
+    "timezone": "America/Chicago"
+  },
+  "restaurants": [
+    {
+      "id": "e0200000-0000-4000-8000-000000000011",
+      "slug": "synthetic-ten",
+      "name": "Synthetic Ten",
+      "status": "active",
+      "market_id": "e0200000-0000-4000-8000-000000000001",
+      "address": "10 Fixture Street, McKinney, TX",
+      "lat": 33.1984,
+      "lon": -96.6397,
+      "google_place_id": null,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0200000-0000-4000-8000-000000000012",
+      "slug": "synthetic-ten-mock",
+      "name": "Synthetic Ten Mock",
+      "status": "active",
+      "market_id": "e0200000-0000-4000-8000-000000000001",
+      "address": "20 Fixture Street, McKinney, TX",
+      "lat": null,
+      "lon": null,
+      "google_place_id": "synthetic-place-20",
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0200000-0000-4000-8000-000000000013",
+      "slug": "synthetic-twenty",
+      "name": "Synthetic Twenty",
+      "status": "active",
+      "market_id": "e0200000-0000-4000-8000-000000000001",
+      "address": "30 Fixture Street, McKinney, TX",
+      "lat": 33.2,
+      "lon": -96.64,
+      "google_place_id": null,
+      "current_offer_version_id": null
+    },
+    {
+      "id": "e0200000-0000-4000-8000-000000000014",
+      "slug": "synthetic-ambiguous",
+      "name": "Synthetic Ambiguous",
+      "status": "active",
+      "market_id": "e0200000-0000-4000-8000-000000000001",
+      "address": "40 Fixture Street, McKinney, TX",
+      "lat": 33.201,
+      "lon": -96.641,
+      "google_place_id": null,
+      "current_offer_version_id": null
+    }
+  ],
+  "legacy_offers": [
+    {
+      "id": "e0200000-0000-4000-8000-000000000111",
+      "restaurant_id": "e0200000-0000-4000-8000-000000000011",
+      "discount_amount_cents": 1000,
+      "min_spend_cents": 4000,
+      "max_redemptions_per_month": 50,
+      "active": true,
+      "created_at": "2026-01-01T00:00:00.000Z"
+    },
+    {
+      "id": "e0200000-0000-4000-8000-000000000112",
+      "restaurant_id": "e0200000-0000-4000-8000-000000000012",
+      "discount_amount_cents": 1000,
+      "min_spend_cents": 4000,
+      "max_redemptions_per_month": 40,
+      "active": true,
+      "created_at": "2026-01-02T00:00:00.000Z"
+    },
+    {
+      "id": "e0200000-0000-4000-8000-000000000113",
+      "restaurant_id": "e0200000-0000-4000-8000-000000000013",
+      "discount_amount_cents": 2000,
+      "min_spend_cents": 5000,
+      "max_redemptions_per_month": 30,
+      "active": true,
+      "created_at": "2026-01-03T00:00:00.000Z"
+    },
+    {
+      "id": "e0200000-0000-4000-8000-000000000114",
+      "restaurant_id": "e0200000-0000-4000-8000-000000000014",
+      "discount_amount_cents": 1000,
+      "min_spend_cents": 4000,
+      "max_redemptions_per_month": 20,
+      "active": true,
+      "created_at": "2026-01-04T00:00:00.000Z"
+    },
+    {
+      "id": "e0200000-0000-4000-8000-000000000115",
+      "restaurant_id": "e0200000-0000-4000-8000-000000000014",
+      "discount_amount_cents": 1200,
+      "min_spend_cents": 4500,
+      "max_redemptions_per_month": 20,
+      "active": false,
+      "created_at": "2026-01-05T00:00:00.000Z"
+    }
+  ],
+  "offer_versions": [],
+  "decisions": [
+    {
+      "restaurant_id": "e0200000-0000-4000-8000-000000000011",
+      "timezone": "America/Chicago",
+      "valid_from": "2026-10-01T00:00:00.000Z",
+      "valid_until": "2027-10-01T00:00:00.000Z",
+      "exclusions": {
+        "exclude_tax": true,
+        "exclude_tip": true,
+        "categories": []
+      },
+      "boosts": [],
+      "capacity_timezone": "America/Chicago",
+      "capacity_max_redemptions_approved": true,
+      "boost_session_minutes": null,
+      "publication_approved": true,
+      "provenance_ref": "synthetic:decision-11"
+    },
+    {
+      "restaurant_id": "e0200000-0000-4000-8000-000000000012",
+      "timezone": "America/Chicago",
+      "valid_from": "2026-10-01T00:00:00.000Z",
+      "valid_until": "2027-10-01T00:00:00.000Z",
+      "exclusions": {
+        "exclude_tax": true,
+        "exclude_tip": true,
+        "categories": []
+      },
+      "boosts": [],
+      "capacity_timezone": "America/Chicago",
+      "capacity_max_redemptions_approved": true,
+      "boost_session_minutes": null,
+      "publication_approved": true,
+      "provenance_ref": "synthetic:decision-12"
+    },
+    {
+      "restaurant_id": "e0200000-0000-4000-8000-000000000013",
+      "timezone": "America/Chicago",
+      "valid_from": "2026-10-01T00:00:00.000Z",
+      "valid_until": "2027-10-01T00:00:00.000Z",
+      "exclusions": {
+        "exclude_tax": true,
+        "exclude_tip": true,
+        "categories": []
+      },
+      "boosts": [],
+      "capacity_timezone": "America/Chicago",
+      "capacity_max_redemptions_approved": true,
+      "boost_session_minutes": null,
+      "publication_approved": true,
+      "provenance_ref": "synthetic:decision-13"
+    }
+  ],
+  "coordinate_decisions": [],
+  "mock_coordinate_results": [
+    {
+      "restaurant_id": "e0200000-0000-4000-8000-000000000012",
+      "mode": "place_id",
+      "matches": [
+        {
+          "place_id": "synthetic-place-20",
+          "name": "Synthetic Ten Mock",
+          "address": "20 Fixture Street, McKinney, TX",
+          "lat": 33.199,
+          "lon": -96.638
+        }
+      ]
+    }
+  ]
+}
