@@ -100,7 +100,7 @@ export function OfferDraftCard({ restaurants }: { restaurants: RestaurantOption[
       }
       setQuote(result.quote);
       setPairText(
-        `${result.modelLabel}: pair base ${result.pair.baseCents} cents, qualifying spend ${result.pair.qualifyingSpendCents} cents, $20 target ${result.targetCents} cents, ${result.pair.ok ? 'pass' : result.pair.reason}.`,
+        `${result.modelLabel}: lowest tier ${result.creditFloor.baseCents} cents, qualifying spend ${result.creditFloor.qualifyingSpendCents} cents, $10 minimum ${result.targetCents} cents, ${result.creditFloor.ok ? 'pass' : result.creditFloor.reason}.`,
       );
     } finally {
       setBusy(false);

@@ -13,7 +13,7 @@ alwaysApply: true
 Wanderbite is a gamified restaurant discovery app.
 - Users ($15/mo) receive 2 restaurant challenges per month.
 - Logic is "Safety First" (allergies and dietary flags) then "Discovery" (random assignment).
-- Offer terms, the pair floor, cooldowns, and swaps are the business rules below.
+- Offer terms, the per-credit minimum (1000-cent lowest tier), cooldowns, and swaps are the business rules below. Noah 2026-10-10: each credit is independent; no pair sum.
 
 ## Database Schema (Key Tables)
 
@@ -33,8 +33,8 @@ Refer to these table names exactly in SQL generation:
 
 ## Business Rules (Strict Enforcement)
 1. **Safety first:** If `user_profiles.dietary_flags` conflicts with a restaurant's `cuisine_tags`, do not assign it. If `user_profiles.allergy_flags` substring-match those tags, do not assign it. Honor `user_preferences.excluded_cuisines`. There is no restaurant `allergy_flag` column.
-2. **Discovery:** After those filters, live `generate.ts` still picks two candidates at random (`pickDistinctRestaurants`). It is not floor-aware and can receive `pair_below_floor` from the RPC.
-3. **Sealed offer and pair floor:** Published `offer_versions` tiers. A pair must sum lowest-tier bases to at least 2000 cents. SQL `restaurant_base_cents` is authoritative.
+2. **Discovery:** After those filters, live `generate.ts` picks two distinct restaurants at random (`pickDistinctRestaurants`) only among per-credit floor-eligible candidates; the RPC can still return `below_floor`.
+3. **Sealed offer and credit floor:** Published `offer_versions` tiers. Each credit requires a lowest-tier `discount_cents` of at least 1000 (`public.credit_floor_cents()` / `MINIMUM_CREDIT_BASE_CENTS`). SQL `restaurant_base_cents` and `offer_lowest_tier_cents` remain authoritative for bases.
 4. **Assignment deadline:** Version-backed items store `redemption_deadline` as assignment time plus 840 hours. A null offer version stores a null deadline. Carried assignment uses `least(now + 840 hours, credit.expires_at)`.
 5. **Redemption cooldown:** `redemptionCooldownOk` / `redemptionCooldownReason`. One verified visit at or after `subMonthsChicago(now, 6)` blocks. Two verified visits at or after `subMonthsChicago(now, 12)` block. Cutoffs are Chicago wall-clock months: a nonexistent spring-forward wall time resolves to the transition instant; an ambiguous fall-back resolves to the earlier occurrence; while `now` is inside the repeated hour, the cutoff holds at one millisecond before the backward transition.
 6. **Variety:** `varietyCycleMonthLowerBound` uses full Chicago calendar months (D3). It is separate from the rolling redemption cooldown.

@@ -596,7 +596,7 @@ describe('floor-aware supply gate', () => {
   it('finds far carried candidates and assigns one', () => {
     assertDistances();
     const farRows = Array.from({ length: 30 }, (_, index) => ({ ...farPoint(index + 1), discount: 2000 }));
-    const snapshot = offerSnapshot([...farRows, { ...nearA, discount: 1500 }]);
+    const snapshot = offerSnapshot([...farRows, { ...nearA, discount: 900 }]);
     const member = SUPPLY_GATE_COHORT.find((row) => row.persona === 'open' && row.zip === '75069');
     if (!member) throw new Error('missing member');
     const now = new Date('2026-10-15T18:00:00.000Z');

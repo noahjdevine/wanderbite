@@ -55,7 +55,7 @@ export function filterCarriedAssignCandidates<T extends AssignRestaurant>(args: 
     if (!version || version.restaurant_id !== restaurant.id) continue;
     if (!offerVersionCoversDeadline(version, args.now, args.deadline)) continue;
     const base = lowestSealedBase(version.tiers);
-    if (!meetsMinimumCreditBase(base?.discount_amount_cents ?? null)) continue;
+    if (!base || !meetsMinimumCreditBase(base.discount_amount_cents)) continue;
     prepared.push({
       ...restaurant,
       discount_amount_cents: base.discount_amount_cents,

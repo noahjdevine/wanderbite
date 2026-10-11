@@ -29,7 +29,6 @@ import {
   originFromZip,
 } from '@/lib/launch-market';
 import type { DistanceBand } from '@/lib/onboarding-shared';
-import { type OfferTier } from '@/lib/offers/calculator';
 import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import {
@@ -348,10 +347,6 @@ function remember(
 ): void {
   const id = `${scope}\t${subject}\t${reason}`;
   if (!bag.has(id)) bag.set(id, { scope, subject, reason });
-}
-
-function tiersOf(restaurant: SupplyRestaurant): OfferTier[] {
-  return [{ thresholdCents: restaurant.thresholdCents, discountCents: restaurant.discountCents }];
 }
 
 function catalogFor(config: SupplySimulationConfig, catalog: SupplyRestaurant[]): SupplyRestaurant[] {

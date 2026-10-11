@@ -59,7 +59,7 @@ describe('carried assignment caller', () => {
     expect(shouldInvokeAssignRpc({ status: 'expired', issuePeriod: '2026-08-01' }, month)).toBe(false);
     expect(assignCarriedUserMessage('linked')).toBeNull();
     expect(assignCarriedUserMessage('existing')).toBeNull();
-    expect(assignCarriedUserMessage('below_floor')).toContain('$20');
+    expect(assignCarriedUserMessage('below_floor')).toContain('$10');
     expect(assignCarriedUserMessage('capacity_full')).toBeTruthy();
     expect(assignCarriedUserMessage('duplicate_restaurant')).toBeTruthy();
     expect(assignCarriedUserMessage('carried_due')).toBeTruthy();

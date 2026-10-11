@@ -402,24 +402,6 @@ async function swapLinkedCreditItem(
     if (!linked.ok) return linked;
     for (const restaurantId of linked.ids) excludeRestaurantIds.add(restaurantId);
 
-    let siblingBase: number | null = null;
-    if (!carried) {
-      const sibling = (allCycleItems ?? []).find(
-        (row) =>
-          row.id !== challengeItem.id &&
-          (row.status === 'assigned' || row.status === 'redeemed' || row.status === 'expired'),
-      );
-      if (sibling?.offer_version_id) {
-        const { data: siblingVersion, error: siblingErr } = await supabase
-          .from('offer_versions')
-          .select('tiers')
-          .eq('id', sibling.offer_version_id)
-          .maybeSingle();
-        if (siblingErr) return { ok: false, error: `Failed to load offers: ${siblingErr.message}` };
-        siblingBase = lowestSealedBase(siblingVersion?.tiers)?.discount_amount_cents ?? null;
-      }
-    }
-
     const allergyFlags = profile?.allergy_flags ?? null;
     const dietaryFlags = profile?.dietary_flags ?? null;
     const excludedCuisines = normalizeCuisineIds(prefsRow?.excluded_cuisines ?? []);

@@ -223,7 +223,7 @@ export function creditFloorEligibility(tiers: OfferTier[]): {
 }
 
 /** @deprecated Use creditFloorEligibility for selection minimum diagnostics. */
-export function pairSavingsModel(left: OfferTier[], right: OfferTier[]): ReturnType<typeof creditFloorEligibility> {
+export function pairSavingsModel(left: OfferTier[], _right: OfferTier[]): ReturnType<typeof creditFloorEligibility> {
   return creditFloorEligibility(left);
 }
 

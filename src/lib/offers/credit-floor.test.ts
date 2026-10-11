@@ -21,7 +21,7 @@ describe('credit floor parity', () => {
     expect(migration, 'e02_independent_credit_floor migration').toBeTruthy();
     const sql = readFileSync(path.join(migrationsDir, migration!), 'utf8');
     expect(sql).toMatch(/create or replace function public\.credit_floor_cents\(\)/i);
-    expect(sql).toMatch(/return\s+1000\s*;/i);
+    expect(sql).toMatch(/select\s+1000\s*;/i);
     expect(MINIMUM_CREDIT_BASE_CENTS).toBe(1000);
   });
 });

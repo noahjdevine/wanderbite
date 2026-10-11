@@ -378,7 +378,7 @@ export async function generateMonthlyChallengeForUser(
         return fail('load_failed', `Failed to load offer versions: ${versionErr.message}`);
       }
       for (const version of versions ?? []) {
-        const base = lowestSealedBase((version as { tiers: unknown }).tiers);
+        const base = lowestSealedBase((version as { tiers: import('@/types/database.types').Json }).tiers);
         if (base) lowestBaseByVersion.set((version as { id: string }).id, base.discount_amount_cents);
       }
     }
