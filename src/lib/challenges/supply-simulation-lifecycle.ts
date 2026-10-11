@@ -1,5 +1,6 @@
 import { addMonths, subMonths } from 'date-fns';
 import { chicagoMonthStart } from '@/lib/cron-period';
+import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 
 export const ASSIGNMENT_HOURS = 840;
 const CHICAGO = 'America/Chicago';
@@ -384,7 +385,7 @@ export function assignLinkedRestaurant(args: {
   discountCents: number;
   floor: 'checked' | 'carried';
 }): AssignFailure | SimItem {
-  if (args.floor === 'carried' && args.discountCents < 2000) return 'below_floor';
+  if (!meetsMinimumCreditBase(args.discountCents)) return 'below_floor';
   const duplicate = args.ledger.items.some(
     (item) =>
       item.issuePeriod === args.credit.issuePeriod &&
@@ -434,7 +435,7 @@ export function completeCredit(
   });
 }
 
-export type SwapFailure = 'swap_exhausted' | 'capacity_full' | 'pair_below_floor' | 'not_found';
+export type SwapFailure = 'swap_exhausted' | 'capacity_full' | 'below_floor' | 'not_found';
 
 export function swapLinkedCredit(args: {
   ledger: SupplyLedger;
@@ -451,10 +452,7 @@ export function swapLinkedCredit(args: {
   if (!args.credit.challengeItemId || args.credit.status !== 'linked') return 'not_found';
   const source = args.ledger.items.find((item) => item.id === args.credit.challengeItemId);
   if (!source || source.status !== 'assigned') return 'not_found';
-  if (!args.carried && args.siblingDiscountCents + args.replacementDiscountCents < 2000) {
-    return 'pair_below_floor';
-  }
-  if (args.carried && args.replacementDiscountCents < 2000) return 'pair_below_floor';
+  if (!meetsMinimumCreditBase(args.replacementDiscountCents)) return 'below_floor';
   const deadline = args.carried
     ? carriedAssignDeadline(args.monthNow, args.credit.expiresAt)
     : plusAssignmentHours(args.monthNow);

@@ -12,6 +12,7 @@ import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
+import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import {
   redemptionCooldownOk,
   varietyCycleMonthLowerBound,
@@ -122,7 +123,7 @@ export type GenerateFailureReason =
   | 'load_failed'
   | 'assignment_failed'
   | 'waiting_for_local_month'
-  | 'pair_below_floor'
+  | 'below_floor'
   | 'capacity_full'
   | 'credits_pending';
 
@@ -356,6 +357,42 @@ export async function generateMonthlyChallengeForUser(
       );
     }
 
+    const versionIds = [
+      ...new Set(
+        withOffer
+          .map(
+            (restaurant) =>
+              (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
+                .current_offer_version_id,
+          )
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const lowestBaseByVersion = new Map<string, number>();
+    if (versionIds.length > 0) {
+      const { data: versions, error: versionErr } = await supabase
+        .from('offer_versions')
+        .select('id, tiers')
+        .in('id', versionIds);
+      if (versionErr) {
+        return fail('load_failed', `Failed to load offer versions: ${versionErr.message}`);
+      }
+      for (const version of versions ?? []) {
+        const base = lowestSealedBase((version as { tiers: unknown }).tiers);
+        if (base) lowestBaseByVersion.set((version as { id: string }).id, base.discount_amount_cents);
+      }
+    }
+
+    function restaurantMeetsCreditFloor(restaurant: RestaurantRow): boolean {
+      const versionId = (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
+        .current_offer_version_id;
+      if (versionId) {
+        return meetsMinimumCreditBase(lowestBaseByVersion.get(versionId));
+      }
+      const offer = offerByRestaurant.get(restaurant.id);
+      return meetsMinimumCreditBase(offer?.discount_amount_cents ?? null);
+    }
+
     const { data: userRedemptions, error: redErr } = await supabase
       .from('redemptions')
       .select('id, restaurant_id, status, verified_at, created_at')
@@ -487,6 +524,7 @@ export async function generateMonthlyChallengeForUser(
       const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
       if (monthCount >= offer.max_redemptions_per_month) return false;
       }
+      if (!restaurantMeetsCreditFloor(restaurant)) return false;
       return redemptionHardOk(restaurant);
     }
 
@@ -562,8 +600,8 @@ export async function generateMonthlyChallengeForUser(
     if (generated.outcome === 'local_month_not_open') {
       return fail('waiting_for_local_month', 'This offer pair opens on the Chicago month.');
     }
-    if (generated.outcome === 'pair_below_floor') {
-      return fail('pair_below_floor', 'This pair is below the $20 base savings floor.');
+    if (generated.outcome === 'below_floor') {
+      return fail('below_floor', 'A restaurant is below the $10 minimum savings floor.');
     }
     if (generated.outcome === 'capacity_full') {
       return fail('capacity_full', 'A restaurant in this pair is at capacity.');

@@ -416,7 +416,7 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
     );
 
     const below = sql(
-      `select outcome from public.assign_carried_credit(${q(COVERAGE)}::uuid, ${q(n1a)}::uuid, ${q(SUPPLY_MARKET_ID)}::uuid, ${q(supplyRestaurant('L1999').id)}::uuid)`,
+      `select outcome from public.assign_carried_credit(${q(COVERAGE)}::uuid, ${q(n1a)}::uuid, ${q(SUPPLY_MARKET_ID)}::uuid, ${q(supplyRestaurant('L999').id)}::uuid)`,
     );
     assert.equal(below, 'below_floor');
     const full = sql(
@@ -456,7 +456,7 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
         ${q(COVERAGE)}::uuid, ${q(periods.open)}::date, ${q(SUPPLY_MARKET_ID)}::uuid,
         ${q(supplyRestaurant('U1').id)}::uuid, ${q(supplyRestaurant('U2').id)}::uuid)`,
     );
-    assert.equal(under, 'pair_below_floor');
+    assert.equal(under, 'below_floor');
     assert.equal(
       sql(`select count(*) from public.entitlement_credits
         where user_id = ${q(COVERAGE)} and issue_period = ${q(periods.open)}
@@ -509,7 +509,7 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
         ${q(THIN)}::uuid, ${q(periods.open)}::date, ${q(SUPPLY_MARKET_ID)}::uuid,
         ${q(supplyRestaurant('U1').id)}::uuid, ${q(supplyRestaurant('U2').id)}::uuid)`,
     );
-    assert.equal(thinUnder, 'pair_below_floor');
+    assert.equal(thinUnder, 'below_floor');
     assert.equal(
       sql(`select count(*) from public.challenge_cycles where user_id = ${q(THIN)}`),
       '0',
@@ -609,19 +609,19 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
     const coverageSeeded = seededMatchRate(coverageCredits);
     const historicalSpend = spendFor(coverageCredits, periods.open);
     const rpcRejections: SupplyRejection[] = [
-      { scope: 'rpc:coverage:below_floor', subject: supplyRestaurant('L1999').id, reason: 'below_floor' },
+      { scope: 'rpc:coverage:below_floor', subject: supplyRestaurant('L999').id, reason: 'below_floor' },
       { scope: 'rpc:coverage:capacity_full', subject: cap.id, reason: 'capacity_full' },
       {
         scope: 'rpc:coverage:pair_floor',
         subject: [supplyRestaurant('U1').id, supplyRestaurant('U2').id].sort().join('|'),
-        reason: 'pair_below_floor',
+        reason: 'below_floor',
       },
     ];
     const thinRpc: SupplyRejection[] = [
       {
         scope: 'rpc:thin_catalog:pair_floor',
         subject: [supplyRestaurant('U1').id, supplyRestaurant('U2').id].sort().join('|'),
-        reason: 'pair_below_floor',
+        reason: 'below_floor',
       },
     ];
     const emptySeeded = {
@@ -811,7 +811,7 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
     assert.equal(coverageSeeded.numerator, 10);
     assert.equal(historicalSpend, 32000);
     assert.ok(coverage.pairSavings);
-    assert.equal(coverage.pairSavings.baseCents, 2000);
+    assert.equal(coverage.pairSavings.baseCents, 1000);
     assert.ok(report.includes('seeded_baseline'));
     assert.ok(report.includes('simulated'));
     assert.ok(report.includes('carry_pressure_leave_linked'));
@@ -829,7 +829,7 @@ export async function runE02SupplySimulation(opts: { sql: Sql }): Promise<void> 
     assert.ok(report.includes('fixture_assumption'));
     assert.ok(report.includes('simulated_match=0/12'));
     assert.ok(report.includes('seeded_match=0/2'));
-    assert.ok(report.includes('pair_below_floor'));
+    assert.ok(report.includes('below_floor'));
     assert.equal(report.includes('PASS: E02 supply simulation'), false);
   } finally {
     if (started) {

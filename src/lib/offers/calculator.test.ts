@@ -144,7 +144,7 @@ describe('offer calculator', () => {
     expect(ended).toMatchObject({ discountCents: 0, applied: false, reason: 'past_deadline' });
   });
 
-  it('labels the pair floor as model input', () => {
+  it('labels the per-credit floor as model input', () => {
     const thin = pairSavingsModel(
       [{ thresholdCents: 4000, discountCents: 500 }],
       [{ thresholdCents: 4000, discountCents: 500 }],
@@ -153,7 +153,7 @@ describe('offer calculator', () => {
     expect(thin.label).toBe('model input');
     expect(thin.ok).toBe(false);
     expect(enough.ok).toBe(true);
-    expect(enough.qualifyingSpendCents).toBe(8000);
+    expect(enough.qualifyingSpendCents).toBe(4000);
   });
 
   it('reports ambiguous flat offers and does not map them', () => {

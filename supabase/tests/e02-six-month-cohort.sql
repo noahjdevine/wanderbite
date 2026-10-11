@@ -557,11 +557,9 @@ begin
         and ci.slot_number in (1, 2)
         and ci.status = 'assigned'
         and public.offer_lowest_tier_cents(v.tiers) = 1000) = 2
-    and (select sum(public.offer_lowest_tier_cents(v.tiers))
-      from public.challenge_items ci
-      join public.offer_versions v on v.id = ci.offer_version_id
-      where ci.cycle_id = current_cycle and ci.status = 'assigned') = 2000,
-    'exact combined 2000 cent floor'
+    and (select count(distinct ci.restaurant_id) from public.challenge_items ci
+      where ci.cycle_id = current_cycle and ci.status = 'assigned') = 2,
+    'two distinct 1000-cent credits'
   );
   perform pg_temp.expect(
     (select ci.credit_id from public.challenge_items ci

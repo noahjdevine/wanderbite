@@ -8,7 +8,9 @@ import {
 import type { GeoPoint } from '@/lib/launch-market';
 import type { Json } from '@/types/database.types';
 
-export const CARRIED_ASSIGN_FLOOR_CENTS = 2000;
+import { MINIMUM_CREDIT_BASE_CENTS, meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
+
+export const CARRIED_ASSIGN_FLOOR_CENTS = MINIMUM_CREDIT_BASE_CENTS;
 
 export type AssignVersion = {
   id: string;
@@ -53,7 +55,7 @@ export function filterCarriedAssignCandidates<T extends AssignRestaurant>(args: 
     if (!version || version.restaurant_id !== restaurant.id) continue;
     if (!offerVersionCoversDeadline(version, args.now, args.deadline)) continue;
     const base = lowestSealedBase(version.tiers);
-    if (base == null || base.discount_amount_cents < CARRIED_ASSIGN_FLOOR_CENTS) continue;
+    if (!meetsMinimumCreditBase(base?.discount_amount_cents ?? null)) continue;
     prepared.push({
       ...restaurant,
       discount_amount_cents: base.discount_amount_cents,

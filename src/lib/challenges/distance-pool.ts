@@ -131,77 +131,36 @@ export function isCocktailBar(restaurant: {
   return COCKTAIL_KEYWORDS.some((kw) => tags.some((t) => t.includes(kw)));
 }
 
-/** Lowest sealed bases that sum to a pair. Distinct restaurant ids are required. */
-export const FLOOR_PAIR_CENTS = 2000;
+import {
+  MINIMUM_CREDIT_BASE_CENTS,
+  meetsMinimumCreditBase,
+} from '@/lib/offers/credit-floor';
 
 export type FloorCentsRestaurant = {
   id: string;
   baseCents: number | null;
 };
 
-export function basesMeetPairFloor(
-  left: FloorCentsRestaurant,
-  right: FloorCentsRestaurant,
-  floorCents = FLOOR_PAIR_CENTS,
-): boolean {
-  if (left.id === right.id) return false;
-  if (left.baseCents == null || right.baseCents == null) return false;
-  if (!Number.isFinite(left.baseCents) || !Number.isFinite(right.baseCents)) return false;
-  return left.baseCents + right.baseCents >= floorCents;
-}
-
-/** True when some i < j pair has two ids and valid bases totaling `floorCents`. */
-export function floorPairExists<T extends FloorCentsRestaurant>(
+/** Restaurants whose lowest sealed tier meets the independent per-credit floor. */
+export function creditFloorEligibleRestaurants<T extends FloorCentsRestaurant>(
   candidates: readonly T[],
-  floorCents = FLOOR_PAIR_CENTS,
-): boolean {
-  for (let i = 0; i < candidates.length; i += 1) {
-    const left = candidates[i];
-    if (!left) continue;
-    for (let j = i + 1; j < candidates.length; j += 1) {
-      const right = candidates[j];
-      if (!right) continue;
-      if (basesMeetPairFloor(left, right, floorCents)) return true;
-    }
-  }
-  return false;
+  minimumCents = MINIMUM_CREDIT_BASE_CENTS,
+): T[] {
+  return candidates.filter(
+    (restaurant) =>
+      restaurant.baseCents != null &&
+      Number.isFinite(restaurant.baseCents) &&
+      meetsMinimumCreditBase(restaurant.baseCents, minimumCents),
+  );
 }
 
-/**
- * First qualifying i < j pair in caller shuffle order. With `reserveCocktail`,
- * a pair that contains a cocktail bar wins; otherwise the first qualifying pair.
- */
-export function pickFloorPair<
-  T extends FloorCentsRestaurant & { cuisine_tags: string[] | null },
->(
-  pool: readonly T[],
-  options: {
-    shuffle: (items: T[]) => T[];
-    floorCents?: number;
-    reserveCocktail?: boolean;
-  },
-): [T, T] | null {
-  const floorCents = options.floorCents ?? FLOOR_PAIR_CENTS;
-  const ordered = options.shuffle([...pool]);
-  const find = (cocktailOnly: boolean): [T, T] | null => {
-    for (let i = 0; i < ordered.length; i += 1) {
-      const left = ordered[i];
-      if (!left) continue;
-      for (let j = i + 1; j < ordered.length; j += 1) {
-        const right = ordered[j];
-        if (!right) continue;
-        if (!basesMeetPairFloor(left, right, floorCents)) continue;
-        if (cocktailOnly && !isCocktailBar(left) && !isCocktailBar(right)) continue;
-        return [left, right];
-      }
-    }
-    return null;
-  };
-  if (options.reserveCocktail) {
-    const preferred = find(true);
-    if (preferred) return preferred;
-  }
-  return find(false);
+/** True when at least `requiredCount` distinct restaurants independently meet the credit floor. */
+export function poolHasDistinctCreditFloorEligible<T extends FloorCentsRestaurant>(
+  candidates: readonly T[],
+  requiredCount = 2,
+  minimumCents = MINIMUM_CREDIT_BASE_CENTS,
+): boolean {
+  return creditFloorEligibleRestaurants(candidates, minimumCents).length >= requiredCount;
 }
 
 /** Pick exactly `count` distinct restaurants when the pool is large enough. */
