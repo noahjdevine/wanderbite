@@ -292,7 +292,7 @@ begin
     (r_pair_b, 'E02 Cohort Pair B', 'active', market, array['salad']),
     (r_carried_a, 'E02 Cohort Carried A', 'active', market, array['grill']),
     (r_carried_b, 'E02 Cohort Carried B', 'active', market, array['seafood']),
-    (r_low, 'E02 Cohort Low 1999', 'active', market, array['soup']),
+    (r_low, 'E02 Cohort Low 999', 'active', market, array['soup']),
     (r_cheese, 'E02 Cohort Cheese', 'active', market, array['cheese']),
     (r_peanut, 'E02 Cohort Peanut', 'active', market, array['peanut']),
     (r_pasta, 'E02 Cohort Pasta', 'active', market, array['pasta']),
@@ -312,7 +312,7 @@ begin
   perform pg_temp.make_version(v_pair_b, r_pair_b, 1000, 80, long_until);
   perform pg_temp.make_version(v_carried_a, r_carried_a, 2000, 80, long_until);
   perform pg_temp.make_version(v_carried_b, r_carried_b, 2500, 80, long_until);
-  perform pg_temp.make_version(v_low, r_low, 1999, 80, long_until);
+  perform pg_temp.make_version(v_low, r_low, 999, 80, long_until);
   perform pg_temp.make_version(v_cheese, r_cheese, 2000, 80, long_until);
   perform pg_temp.make_version(v_peanut, r_peanut, 2000, 80, long_until);
   perform pg_temp.make_version(v_pasta, r_pasta, 2000, 80, long_until);
@@ -333,9 +333,11 @@ begin
     and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_pair_b)) = 1000
     and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_carried_a)) >= 2000
     and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_carried_b)) >= 2000
-    and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_low)) = 1999
+    and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_low)) = 999
     and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_floor_a))
-      + public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_floor_b)) < 2000
+      < public.credit_floor_cents()
+    and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_floor_b))
+      < public.credit_floor_cents()
     and public.offer_lowest_tier_cents((select tiers from public.offer_versions where id = v_swap)) >= 1000,
     'sealed floors'
   );
@@ -463,7 +465,7 @@ begin
     'selector left the carried credit pending'
   );
 
-  perform pg_temp.expect(pg_temp.refuse_reason(happy, r_low, market) is null, '1999 restaurant refused');
+  perform pg_temp.expect(pg_temp.refuse_reason(happy, r_low, market) is null, '999 restaurant selector ok');
   select * into assigned from public.assign_carried_credit(happy, c_p1_1, market, r_low);
   perform pg_temp.expect(assigned.outcome = 'below_floor', 'below_floor ' || assigned.outcome);
   insert into pg_temp.rejections (reason) values ('below_floor');
@@ -527,11 +529,11 @@ begin
   perform pg_temp.expect(
     pg_temp.refuse_reason(happy, r_floor_a, market) is null
     and pg_temp.refuse_reason(happy, r_floor_b, market) is null,
-    'under-floor pair refused by selector'
+    'under-floor credits pass selector safety filters'
   );
   select * into linked from public.link_pending_credits(happy, p0, market, r_floor_a, r_floor_b);
-  perform pg_temp.expect(linked.outcome = 'pair_below_floor' and linked.cycle_id is null, 'pair floor ' || linked.outcome);
-  insert into pg_temp.rejections (reason) values ('pair_below_floor');
+  perform pg_temp.expect(linked.outcome = 'below_floor' and linked.cycle_id is null, 'credit floor ' || linked.outcome);
+  insert into pg_temp.rejections (reason) values ('below_floor');
   perform pg_temp.expect(
     (select count(*) from public.entitlement_credits
       where user_id = happy and issue_period = p0 and status = 'pending' and challenge_item_id is null) = 2
@@ -542,7 +544,7 @@ begin
   perform pg_temp.expect(
     pg_temp.refuse_reason(happy, r_pair_a, market) is null
     and pg_temp.refuse_reason(happy, r_pair_b, market) is null,
-    '1000-cent pair refused'
+    '1000-cent pair eligible'
   );
   select * into linked from public.link_pending_credits(happy, p0, market, r_pair_a, r_pair_b);
   perform pg_temp.expect(linked.outcome = 'linked', 'current link ' || linked.outcome);
@@ -659,8 +661,8 @@ begin
     'thin catalog passers'
   );
   select * into linked from public.link_pending_credits(thin, p0, market, r_floor_a, r_floor_b);
-  perform pg_temp.expect(linked.outcome = 'pair_below_floor' and linked.cycle_id is null, 'thin pair ' || linked.outcome);
-  insert into pg_temp.rejections (reason) values ('pair_below_floor');
+  perform pg_temp.expect(linked.outcome = 'below_floor' and linked.cycle_id is null, 'thin pair ' || linked.outcome);
+  insert into pg_temp.rejections (reason) values ('below_floor');
   perform pg_temp.expect(
     (select count(*) from public.entitlement_credits
       where user_id = thin and issue_period = p0 and status = 'pending' and challenge_item_id is null) = 2
@@ -710,7 +712,7 @@ begin
   );
   perform pg_temp.expect(
     n_dietary = 2 and n_allergy = 2 and n_excluded = 2 and n_cooldown = 9
-    and n_market = 8 and n_pair_floor = 2 and n_below = 1 and n_capacity = 1,
+    and n_market = 8 and n_pair_floor = 0 and n_below = 3 and n_capacity = 1,
     format(
       'rejection counts d=%s a=%s e=%s c=%s m=%s p=%s b=%s f=%s',
       n_dietary, n_allergy, n_excluded, n_cooldown, n_market, n_pair_floor, n_below, n_capacity

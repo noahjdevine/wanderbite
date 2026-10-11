@@ -129,8 +129,8 @@ begin
       'e0200000-0000-4000-8000-000000000023'::uuid
     ]
   );
-  if gen.outcome is distinct from 'pair_below_floor' then
-    raise exception 'FAIL: 1999-cent legacy pair was accepted: %', gen.outcome;
+  if gen.outcome is distinct from 'below_floor' then
+    raise exception 'FAIL: 999-cent legacy pair was accepted: %', gen.outcome;
   end if;
 
   select * into gen from public.generate_challenge_cycle(

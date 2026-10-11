@@ -110,7 +110,7 @@ declare
   mal_slot_credit uuid := 'e2ac0000-0000-4000-8000-000000000334';
   mal_cycle_credit uuid := 'e2ac0000-0000-4000-8000-000000000335';
   tier_2000 jsonb := '[{"threshold_cents":4000,"discount_cents":2000}]'::jsonb;
-  tier_1999 jsonb := '[{"threshold_cents":4000,"discount_cents":1999}]'::jsonb;
+  tier_999 jsonb := '[{"threshold_cents":4000,"discount_cents":999}]'::jsonb;
   tier_1000 jsonb := '[{"threshold_cents":4000,"discount_cents":1000}]'::jsonb;
   chicago date;
   prev date;
@@ -128,6 +128,7 @@ declare
   mal_cycles integer;
   mal_items integer;
   current_cycle uuid;
+  pair_carried_cycle uuid;
   origin_cycle uuid;
   happy_item uuid;
   happy_expires timestamptz;
@@ -264,7 +265,7 @@ begin
     (other_rest, 'E02 carried other market', 'active', other_market),
     (no_version, 'E02 carried no version', 'active', market),
     (empty_rest, 'E02 carried empty tier', 'active', market),
-    (low_rest, 'E02 carried 1999', 'active', market),
+    (low_rest, 'E02 carried 999', 'active', market),
     (pair_a, 'E02 carried pair A', 'active', market),
     (pair_b, 'E02 carried pair B', 'active', market),
     (sib_b, 'E02 carried sibling B', 'active', market),
@@ -288,7 +289,7 @@ begin
     (v_paused, paused_rest, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', tier_2000, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 5, admin, null),
     (v_other, other_rest, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', tier_2000, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 5, admin, null),
     (v_empty, empty_rest, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 5, admin, null),
-    (v_low, low_rest, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', tier_1999, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 5, admin, null),
+    (v_low, low_rest, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', tier_999, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 5, admin, null),
     (v_pair_a, pair_a, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', tier_1000, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 30, admin, null),
     (v_pair_b, pair_b, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', tier_1000, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 30, admin, null),
     (v_sib_b, sib_b, 'America/Chicago', now() - interval '1 day', now() + interval '400 days', tier_2000, '[]'::jsonb, '[]'::jsonb, 'America/Chicago', 'calendar_month', 30, admin, null),
@@ -453,26 +454,21 @@ begin
   current_cycle := linked.cycle_id;
 
   select * into linked from public.assign_carried_credit(pair_user, pair_credit_1, market, pair_a);
-  if linked.outcome is distinct from 'below_floor' or linked.cycle_id is not null then
+  if linked.outcome is distinct from 'linked' or linked.cycle_id is null then
     raise exception 'FAIL: carried 1000 A was %', linked.outcome;
   end if;
+  pair_carried_cycle := linked.cycle_id;
   select * into linked from public.assign_carried_credit(pair_user, pair_credit_2, market, pair_b);
-  if linked.outcome is distinct from 'below_floor' or linked.cycle_id is not null
-     or exists (select 1 from public.challenge_cycles where user_id = pair_user)
+  if linked.outcome is distinct from 'linked' or linked.cycle_id is distinct from pair_carried_cycle
+     or (select count(*) from public.challenge_items ci
+         join public.challenge_cycles cc on cc.id = ci.cycle_id
+         where cc.user_id = pair_user and cc.id = pair_carried_cycle) is distinct from 2
      or exists (
        select 1 from public.entitlement_credits
        where id in (pair_credit_1, pair_credit_2)
-         and (status is distinct from 'pending' or challenge_item_id is not null)
-     )
-     or exists (
-       select 1 from public.capacity_reservations
-       where restaurant_id in (pair_a, pair_b) and challenge_item_id in (
-         select ci.id from public.challenge_items ci
-         join public.challenge_cycles cc on cc.id = ci.cycle_id
-         where cc.user_id = pair_user
-       )
+         and (status is distinct from 'linked' or challenge_item_id is null)
      ) then
-    raise exception 'FAIL: carried 1000 pair was not below_floor';
+    raise exception 'FAIL: carried 1000 pair was %', linked.outcome;
   end if;
 
   select * into linked from public.assign_carried_credit(low_user, low_credit, market, low_rest);
@@ -481,7 +477,7 @@ begin
      or (select status from public.entitlement_credits where id = low_credit) is distinct from 'pending'
      or (select challenge_item_id from public.entitlement_credits where id = low_credit) is not null
      or exists (select 1 from public.capacity_reservations where restaurant_id = low_rest) then
-    raise exception 'FAIL: 1999 floor was %', linked.outcome;
+    raise exception 'FAIL: 999 floor was %', linked.outcome;
   end if;
   select * into linked from public.assign_carried_credit(null_user, null_credit, market, empty_rest);
   if linked.outcome is distinct from 'below_floor' or linked.cycle_id is not null
