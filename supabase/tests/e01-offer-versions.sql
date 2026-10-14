@@ -169,4 +169,46 @@ begin
   end if;
 end $$;
 
+do $$
+declare
+  actor uuid := 'e0100000-0000-4000-8000-000000000041';
+  restaurant uuid := 'e0100000-0000-4000-8000-000000000051';
+  draft_id uuid;
+  published jsonb;
+  version_count integer;
+begin
+  insert into auth.users (id) values (actor);
+  insert into public.user_profiles (id, role) values (actor, 'admin');
+  insert into public.restaurants (id, name, status) values (restaurant, 'E01 Floor', 'paused');
+
+  insert into public.offer_drafts (
+    restaurant_id, timezone, valid_from, valid_until, tiers, boosts,
+    capacity_timezone, capacity_window_kind, capacity_max_redemptions
+  ) values (
+    restaurant, 'America/Chicago', now(), now() + interval '40 days',
+    '[{"threshold_cents":4000,"discount_cents":999}]'::jsonb, '[]'::jsonb,
+    'America/Chicago', 'calendar_month', 10
+  ) returning id into draft_id;
+
+  set local role service_role;
+  published := public.publish_offer_version(draft_id, actor);
+  if published ->> 'published' <> 'false'
+     or published ->> 'error' <> 'lowest_tier_below_credit_floor' then
+    raise exception 'FAIL: 999-cent draft publish was not refused: %', published;
+  end if;
+  select count(*) into version_count from public.offer_versions where restaurant_id = restaurant;
+  if version_count <> 0 then
+    raise exception 'FAIL: refused floor draft inserted a version';
+  end if;
+
+  update public.offer_drafts
+  set tiers = '[{"threshold_cents":4000,"discount_cents":1000}]'::jsonb
+  where id = draft_id;
+
+  published := public.publish_offer_version(draft_id, actor);
+  if published ->> 'published' <> 'true' then
+    raise exception 'FAIL: 1000-cent draft publish failed: %', published;
+  end if;
+end $$;
+
 rollback;

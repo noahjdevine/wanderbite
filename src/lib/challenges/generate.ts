@@ -6,6 +6,10 @@ import { cycleMonthForWorkflow } from '@/lib/challenges/challenge-deadline';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
+import {
+  firstActiveLegacyOfferByRestaurant,
+  restaurantBaseCents,
+} from '@/lib/offers/restaurant-base-cents';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
@@ -338,7 +342,7 @@ export async function generateMonthlyChallengeForUser(
       return fail('load_failed', `Failed to load offers: ${offersErr.message}`);
     }
     const offerList = (offers ?? []) as RestaurantOfferRow[];
-    const offerByRestaurant = new Map(offerList.map((o) => [o.restaurant_id, o]));
+    const offerByRestaurant = firstActiveLegacyOfferByRestaurant(offerList);
 
     const withOffer = restaurantList.filter((restaurant) => {
       const versionBound = Boolean(
@@ -368,7 +372,7 @@ export async function generateMonthlyChallengeForUser(
           .filter((id): id is string => Boolean(id)),
       ),
     ];
-    const lowestBaseByVersion = new Map<string, number>();
+    const tiersByVersionId = new Map<string, import('@/types/database.types').Json>();
     if (versionIds.length > 0) {
       const { data: versions, error: versionErr } = await supabase
         .from('offer_versions')
@@ -378,19 +382,22 @@ export async function generateMonthlyChallengeForUser(
         return fail('load_failed', `Failed to load offer versions: ${versionErr.message}`);
       }
       for (const version of versions ?? []) {
-        const base = lowestSealedBase((version as { tiers: import('@/types/database.types').Json }).tiers);
-        if (base) lowestBaseByVersion.set((version as { id: string }).id, base.discount_amount_cents);
+        tiersByVersionId.set(
+          (version as { id: string }).id,
+          (version as { tiers: import('@/types/database.types').Json }).tiers,
+        );
       }
     }
 
     function restaurantMeetsCreditFloor(restaurant: RestaurantRow): boolean {
       const versionId = (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
         .current_offer_version_id;
-      if (versionId) {
-        return meetsMinimumCreditBase(lowestBaseByVersion.get(versionId));
-      }
-      const offer = offerByRestaurant.get(restaurant.id);
-      return meetsMinimumCreditBase(offer?.discount_amount_cents ?? null);
+      const base = restaurantBaseCents({
+        currentOfferVersionId: versionId,
+        versionTiers: versionId ? tiersByVersionId.get(versionId) : null,
+        legacyOffer: offerByRestaurant.get(restaurant.id) ?? null,
+      });
+      return meetsMinimumCreditBase(base);
     }
 
     const { data: userRedemptions, error: redErr } = await supabase
