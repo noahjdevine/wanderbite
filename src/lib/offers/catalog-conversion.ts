@@ -366,6 +366,9 @@ export function offerVersionTermsProblem(terms: OfferVersionTerms): string | nul
     ) {
       return 'tier_order';
     }
+    if (previousThreshold === 0 && discount < MINIMUM_CREDIT_BASE_CENTS) {
+      return 'lowest_tier_below_credit_floor';
+    }
     previousThreshold = threshold;
     previousDiscount = discount;
   }
@@ -508,6 +511,20 @@ export const OFFER_VERSION_TERMS_PARITY_CASES: ReadonlyArray<{
       capacity_max_redemptions: 50,
     },
     expected: 'tier_above_threshold',
+  },
+  {
+    name: 'lowest tier below credit floor',
+    terms: {
+      tiers: [{ threshold_cents: 4000, discount_cents: 999 }],
+      boosts: [],
+      timezone: 'America/Chicago',
+      valid_from: '2026-01-01T00:00:00.000Z',
+      valid_until: '2027-01-01T00:00:00.000Z',
+      capacity_timezone: 'America/Chicago',
+      capacity_window_kind: 'calendar_month',
+      capacity_max_redemptions: 50,
+    },
+    expected: 'lowest_tier_below_credit_floor',
   },
   {
     name: 'tier order',

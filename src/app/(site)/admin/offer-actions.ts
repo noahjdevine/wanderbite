@@ -268,7 +268,11 @@ export async function publishOfferDraft(
     const reason = result?.error ?? 'Publish failed.';
     const auditError = await auditRejection(auth.userId, restaurantId, reason);
     if (auditError) return { ok: false, error: auditError };
-    return { ok: false, error: reason };
+    const message =
+      reason === 'lowest_tier_below_credit_floor'
+        ? 'Lowest tier must be at least $10.'
+        : reason;
+    return { ok: false, error: message };
   }
   return { ok: true, versionId: result.version_id };
 }
