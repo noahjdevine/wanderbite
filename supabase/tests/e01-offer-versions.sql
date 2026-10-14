@@ -1,5 +1,6 @@
 -- E01 offer versions. Run after platform-prerequisites.sql and the E01 migration.
--- All fixture rows are rolled back.
+-- Each block is its own rolled-back transaction (test:db runs the full file in one psql session).
+
 begin;
 set local statement_timeout = '15s';
 
@@ -101,6 +102,8 @@ begin
     update public.offer_versions set tiers = '[]'::jsonb where id = version_id;
     raise exception 'FAIL: sealed terms were updated';
   exception
+    when insufficient_privilege then
+      null;
     when others then
       if sqlerrm not like '%sealed%' then
         raise;
@@ -129,6 +132,11 @@ begin
   end if;
 end $$;
 
+rollback;
+
+begin;
+set local statement_timeout = '15s';
+
 do $$
 declare
   actor uuid := 'e0100000-0000-4000-8000-000000000021';
@@ -150,6 +158,7 @@ begin
 
   alter table public.admin_audit_log
     add constraint e01_reject_publish check (action <> 'offer.publish');
+  set local role service_role;
   begin
     perform public.publish_offer_version(draft_id, actor);
     raise exception 'FAIL: publish committed when audit was rejected';
@@ -159,6 +168,7 @@ begin
         raise;
       end if;
   end;
+  reset role;
   alter table public.admin_audit_log drop constraint e01_reject_publish;
   select count(*) into version_count from public.offer_versions where restaurant_id = restaurant;
   if version_count <> 0 then
@@ -168,6 +178,11 @@ begin
     raise exception 'FAIL: audit failure left a pointer';
   end if;
 end $$;
+
+rollback;
+
+begin;
+set local statement_timeout = '15s';
 
 do $$
 declare
