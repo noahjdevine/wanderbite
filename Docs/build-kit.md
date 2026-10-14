@@ -28,7 +28,7 @@
    - One verified visit at or after the six-month cutoff blocks.
    - Two verified visits at or after the twelve-month cutoff block.
    - Variety is separate: `varietyCycleMonthLowerBound` (full Chicago calendar months).
-4. **Offer and pair floor:** Sealed `offer_versions` tiers. A pair must sum lowest-tier bases to at least 2000 cents. SQL `restaurant_base_cents` is authoritative. Live `generate.ts` still picks two candidates with `pickDistinctRestaurants` and can receive `pair_below_floor`.
+4. **Offer and credit floor (Noah 2026-10-10):** Sealed `offer_versions` tiers. Each credit requires a lowest-tier base of at least 1000 cents (`credit_floor_cents()` / `MINIMUM_CREDIT_BASE_CENTS`); credits are independent (no pair sum). SQL `restaurant_base_cents` is authoritative. Live `generate.ts` filters to eligible restaurants, then picks two with `pickDistinctRestaurants`; the RPC can return `below_floor`.
 5. **Capacity:** Restaurant monthly redemptions < max_redemptions_per_month on the legacy offer path. Version-backed capacity is reserved in SQL from the published offer version.
 
 ### Swap Logic

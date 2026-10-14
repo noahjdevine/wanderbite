@@ -12,7 +12,7 @@ export function shouldInvokeAssignRpc(
 
 export function assignCarriedUserMessage(outcome: string | null | undefined): string | null {
   if (outcome === 'linked' || outcome === 'existing') return null;
-  if (outcome === 'below_floor') return 'This restaurant is below the $20 savings floor.';
+  if (outcome === 'below_floor') return 'This restaurant is below the $10 minimum savings floor.';
   if (outcome === 'capacity_full') return 'This restaurant is at capacity.';
   if (outcome === 'duplicate_restaurant') {
     return 'That restaurant is already on this credit month.';

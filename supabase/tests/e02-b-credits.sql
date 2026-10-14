@@ -275,8 +275,8 @@ begin
     'e2b00000-0000-4000-8000-000000000023',
     'e2b00000-0000-4000-8000-000000000024'
   );
-  if linked.outcome is distinct from 'pair_below_floor' then
-    raise exception 'FAIL: 1000-cent version pair was %', linked.outcome;
+  if linked.outcome is distinct from 'below_floor' then
+    raise exception 'FAIL: 500-cent version pair was %', linked.outcome;
   end if;
 
   select * into linked from public.link_pending_credits(

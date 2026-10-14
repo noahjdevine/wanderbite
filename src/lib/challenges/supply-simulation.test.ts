@@ -331,7 +331,7 @@ describe('supply simulation lifecycle', () => {
     const thin = runSimulatedSupplyMonths({ config: THIN_CATALOG_CONFIG, anchorNow: NOW });
     expect(thin.numerator).toBe(0);
     expect(thin.denominator).toBe(12);
-    expect(thin.rejections.some((row) => row.reason === 'pair_below_floor')).toBe(true);
+    expect(thin.rejections.some((row) => row.reason === 'below_floor')).toBe(true);
 
     const expansion = runSimulatedSupplyMonths({
       config: CEILING_EXPANSION_CONFIG,

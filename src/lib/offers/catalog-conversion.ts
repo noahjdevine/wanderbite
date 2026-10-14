@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MINIMUM_CREDIT_BASE_CENTS, meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 
 export const CATALOG_CONVERSION_SCHEMA = 'wanderbite.e02.catalog_conversion.v1';
 export const SYNTHETIC_CATALOG_CONVERSION_SCHEMA =
@@ -238,8 +239,7 @@ export type CatalogConversionRow = {
     publication: { ok: boolean; reason: string | null };
     validity: { ok: boolean; reason: ValidityReason };
     geography: { ok: boolean; reason: GeographyReason };
-    pair_candidate: boolean;
-    carried_candidate: boolean;
+    credit_eligible: boolean;
   };
   coordinates: {
     status: 'preserved' | 'reviewed' | 'missing' | 'partial' | 'invalid' | 'mock_proposed' | 'mock_ambiguous';
@@ -250,7 +250,7 @@ export type CatalogConversionRow = {
 };
 
 export type CatalogConversionManifest = {
-  schema: 'wanderbite.e02.catalog_conversion_manifest.v1';
+  schema: 'wanderbite.e02.catalog_conversion_manifest.v2';
   source_schema: string;
   exported_at: string;
   evaluation_at: string;
@@ -262,16 +262,10 @@ export type CatalogConversionManifest = {
     publication_failures: number;
     validity_failures: number;
     geography_failures: number;
-    pair: {
+    credit_floor_cents: typeof MINIMUM_CREDIT_BASE_CENTS;
+    two_credit_supply: {
       passes: boolean;
-      distinct_candidates: number;
-      qualifying_pairs: number;
-      floor_cents: 2000;
-    };
-    carried: {
-      passes: boolean;
-      qualifying_restaurants: number;
-      floor_cents: 2000;
+      distinct_eligible_restaurants: number;
     };
   };
 };
@@ -920,8 +914,7 @@ function rowForRestaurant(
       publication: { ok: publicationOk, reason: publicationReason },
       validity,
       geography: coordinates.geography,
-      pair_candidate: selectable,
-      carried_candidate: selectable && baseDiscount != null && baseDiscount >= 2000,
+      credit_eligible: selectable && meetsMinimumCreditBase(baseDiscount),
     },
     coordinates: coordinates.coordinates,
     base_discount_cents: baseDiscount,
@@ -954,23 +947,8 @@ export function buildCatalogConversionManifest(
     )
     .sort((a, b) => a.restaurant_id.localeCompare(b.restaurant_id));
 
-  const pairCandidates = rows.filter(
-    (row) => row.diagnostics.pair_candidate && row.base_discount_cents != null,
-  );
-  let qualifyingPairs = 0;
-  for (let left = 0; left < pairCandidates.length; left += 1) {
-    for (let right = left + 1; right < pairCandidates.length; right += 1) {
-      const a = pairCandidates[left]!;
-      const b = pairCandidates[right]!;
-      if (
-        a.restaurant_id !== b.restaurant_id &&
-        (a.base_discount_cents ?? 0) + (b.base_discount_cents ?? 0) >= 2000
-      ) {
-        qualifyingPairs += 1;
-      }
-    }
-  }
-  const carriedCandidates = rows.filter((row) => row.diagnostics.carried_candidate);
+  const eligibleRows = rows.filter((row) => row.diagnostics.credit_eligible);
+  const distinctEligible = new Set(eligibleRows.map((row) => row.restaurant_id)).size;
   const counts: Record<ConversionStatus, number> = {
     ready: 0,
     blocked: 0,
@@ -980,7 +958,7 @@ export function buildCatalogConversionManifest(
   for (const row of rows) counts[row.status] += 1;
 
   return {
-    schema: 'wanderbite.e02.catalog_conversion_manifest.v1',
+    schema: 'wanderbite.e02.catalog_conversion_manifest.v2',
     source_schema: input.schema,
     exported_at: input.exported_at,
     evaluation_at: input.evaluation_at,
@@ -992,16 +970,10 @@ export function buildCatalogConversionManifest(
       publication_failures: rows.filter((row) => !row.diagnostics.publication.ok).length,
       validity_failures: rows.filter((row) => !row.diagnostics.validity.ok).length,
       geography_failures: rows.filter((row) => !row.diagnostics.geography.ok).length,
-      pair: {
-        passes: qualifyingPairs > 0,
-        distinct_candidates: new Set(pairCandidates.map((row) => row.restaurant_id)).size,
-        qualifying_pairs: qualifyingPairs,
-        floor_cents: 2000,
-      },
-      carried: {
-        passes: carriedCandidates.length > 0,
-        qualifying_restaurants: carriedCandidates.length,
-        floor_cents: 2000,
+      credit_floor_cents: MINIMUM_CREDIT_BASE_CENTS,
+      two_credit_supply: {
+        passes: distinctEligible >= 2,
+        distinct_eligible_restaurants: distinctEligible,
       },
     },
   };
@@ -1019,7 +991,7 @@ export function formatCatalogConversionSummary(manifest: CatalogConversionManife
     `publication_failures=${manifest.diagnostics.publication_failures}`,
     `validity_failures=${manifest.diagnostics.validity_failures}`,
     `geography_failures=${manifest.diagnostics.geography_failures}`,
-    `pair=${manifest.diagnostics.pair.passes ? 'PASS' : 'FAIL'}`,
-    `carried=${manifest.diagnostics.carried.passes ? 'PASS' : 'FAIL'}`,
+    `two_credit_supply=${manifest.diagnostics.two_credit_supply.passes ? 'PASS' : 'FAIL'}`,
+    `distinct_eligible=${manifest.diagnostics.two_credit_supply.distinct_eligible_restaurants}`,
   ].join(' ') + '\n';
 }

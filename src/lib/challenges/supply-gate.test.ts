@@ -339,19 +339,18 @@ describe('single-cause catalogs', () => {
     ).toBe(true);
   });
 
-  it('binds pair_below_floor and carried_below_floor when every base is 900', () => {
+  it('binds below_floor when every base is 900', () => {
     const result = runSupplyGate({
       snapshot: makeSnapshot({ count: 12, discount: 900 }),
       seeds: [1],
     });
-    expect(result.funnel.some((line) => line.includes('attempt=pair') && line.includes('binding=pair_below_floor'))).toBe(
+    expect(result.funnel.some((line) => line.includes('attempt=pair') && line.includes('binding=below_floor'))).toBe(
       true,
     );
     expect(
-      result.funnel.some((line) => line.includes('attempt=carried') && line.includes('binding=carried_below_floor')),
+      result.funnel.some((line) => line.includes('attempt=carried') && line.includes('binding=below_floor')),
     ).toBe(true);
-    expect(result.unmatchedByRule.get('pair_below_floor')).toBeGreaterThan(0);
-    expect(result.unmatchedByRule.get('carried_below_floor')).toBeGreaterThan(0);
+    expect(result.unmatchedByRule.get('below_floor')).toBeGreaterThan(0);
   });
 
   it('binds cooldown_two_in_12m and variety_12m from tenured-style history', () => {
@@ -597,7 +596,7 @@ describe('floor-aware supply gate', () => {
   it('finds far carried candidates and assigns one', () => {
     assertDistances();
     const farRows = Array.from({ length: 30 }, (_, index) => ({ ...farPoint(index + 1), discount: 2000 }));
-    const snapshot = offerSnapshot([...farRows, { ...nearA, discount: 1500 }]);
+    const snapshot = offerSnapshot([...farRows, { ...nearA, discount: 900 }]);
     const member = SUPPLY_GATE_COHORT.find((row) => row.persona === 'open' && row.zip === '75069');
     if (!member) throw new Error('missing member');
     const now = new Date('2026-10-15T18:00:00.000Z');

@@ -12,6 +12,7 @@ import { firstRpcRow } from '@/lib/challenges/rpc';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
+import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import { selectDistancePool } from '@/lib/challenges/distance-pool';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import {
@@ -152,7 +153,7 @@ function creditSwapFailure(outcome: string | null | undefined): string | null {
   }
   if (outcome === 'forbidden') return 'This challenge does not belong to you.';
   if (outcome === 'not_found') return 'Challenge item not found.';
-  if (outcome === 'below_floor' || outcome === 'pair_below_floor' || outcome === 'capacity_full') {
+  if (outcome === 'below_floor' || outcome === 'capacity_full') {
     return 'Swap failed.';
   }
   return 'Swap failed.';
@@ -401,24 +402,6 @@ async function swapLinkedCreditItem(
     if (!linked.ok) return linked;
     for (const restaurantId of linked.ids) excludeRestaurantIds.add(restaurantId);
 
-    let siblingBase: number | null = null;
-    if (!carried) {
-      const sibling = (allCycleItems ?? []).find(
-        (row) =>
-          row.id !== challengeItem.id &&
-          (row.status === 'assigned' || row.status === 'redeemed' || row.status === 'expired'),
-      );
-      if (sibling?.offer_version_id) {
-        const { data: siblingVersion, error: siblingErr } = await supabase
-          .from('offer_versions')
-          .select('tiers')
-          .eq('id', sibling.offer_version_id)
-          .maybeSingle();
-        if (siblingErr) return { ok: false, error: `Failed to load offers: ${siblingErr.message}` };
-        siblingBase = lowestSealedBase(siblingVersion?.tiers)?.discount_amount_cents ?? null;
-      }
-    }
-
     const allergyFlags = profile?.allergy_flags ?? null;
     const dietaryFlags = profile?.dietary_flags ?? null;
     const excludedCuisines = normalizeCuisineIds(prefsRow?.excluded_cuisines ?? []);
@@ -474,8 +457,7 @@ async function swapLinkedCreditItem(
       if (!versionCoversSuccessorDeadline(version, now, deadline)) return false;
       const base = lowestSealedBase(version.tiers)?.discount_amount_cents;
       if (base == null) return false;
-      if (carried) return base >= 2000;
-      return siblingBase != null && base + siblingBase >= 2000;
+      return meetsMinimumCreditBase(base);
     });
     if (withCoveringVersion.length === 0) {
       return { ok: false, error: 'No restaurants with an active offer available to swap into.' };

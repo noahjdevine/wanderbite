@@ -2,10 +2,11 @@ import { z } from 'zod';
 import type { Json } from '@/types/database.types';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import {
-  floorPairExists,
-  pickFloorPair,
+  pickDistinctRestaurants,
+  poolHasDistinctCreditFloorEligible,
   selectDistancePool,
 } from '@/lib/challenges/distance-pool';
+import { MINIMUM_CREDIT_BASE_CENTS, meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import { offerVersionCoversDeadline } from '@/lib/challenges/challenge-deadline';
 import {
   applyRollover,
@@ -46,18 +47,17 @@ import { createSeededShuffle } from '@/lib/simulation/seeded-shuffle';
  * Does not import a Supabase client and does not read the environment.
  *
  * No production caller of `link_pending_credits` exists under `src/`.
- * That SQL function checks a caller-supplied pair (`offer_lowest_tier_cents`
- * sum >= 2000) and does not choose the pair. This gate searches for the first
- * seeded (i < j) pair whose bases sum to >= 2000, expanding one distance band
- * when the requested radius has no qualifying pair. A PASS measures that
- * floor-aware policy. `generate.ts` still picks two candidates at random and
- * can receive `pair_below_floor` from the RPC.
+ * That SQL function validates each restaurant independently against
+ * `credit_floor_cents()` and does not choose the pair. This gate searches for
+ * two distinct credit-floor-eligible restaurants, expanding one distance band
+ * when the requested radius has fewer than two. A PASS measures that policy.
+ * `generate.ts` filters candidates per credit before random selection and can
+ * receive `below_floor` from the RPC.
  */
 
 export const SUPPLY_GATE_SCHEMA = 'wanderbite.e02.supply_snapshot.v1';
 export const SUPPLY_GATE_DENOMINATOR = 192;
-export const PAIR_FLOOR_CENTS = 2000;
-export const CARRIED_FLOOR_CENTS = 2000;
+export const CREDIT_FLOOR_CENTS = MINIMUM_CREDIT_BASE_CENTS;
 
 const FORBIDDEN_KEY = /pin|verification|address|email|phone|token|secret|password/i;
 const TOP_LEVEL_KEYS = [
@@ -136,8 +136,7 @@ export type GateRule =
   | 'variety_12m'
   | 'relaxed_variety_last_month'
   | 'outside_distance'
-  | 'pair_below_floor'
-  | 'carried_below_floor';
+  | 'below_floor';
 
 const tierRecord = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 
@@ -306,7 +305,6 @@ export type SupplyGateShortfall = {
   eligibleStatic15: number;
   neededDistinct6mo: 12;
   baseAtLeast1000: number;
-  baseAtLeast2000: number;
   addAtLeast: number;
   kind: string;
 };
@@ -610,19 +608,10 @@ type FunnelCounts = {
   floor: number;
 };
 
-function countFloor(restaurants: GateRestaurant[], floor: AttemptKind): number {
-  if (floor === 'carried') {
-    return restaurants.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= CARRIED_FLOOR_CENTS).length;
-  }
-  const bases = restaurants.map((restaurant) => baseCents(restaurant.version));
-  let count = 0;
-  for (let i = 0; i < restaurants.length; i += 1) {
-    const left = bases[i];
-    if (left == null) continue;
-    const canPair = bases.some((right, j) => j !== i && right != null && left + right >= PAIR_FLOOR_CENTS);
-    if (canPair) count += 1;
-  }
-  return count;
+function countFloor(restaurants: GateRestaurant[], _floor: AttemptKind): number {
+  return restaurants.filter((restaurant) =>
+    meetsMinimumCreditBase(baseCents(restaurant.version)),
+  ).length;
 }
 
 /**
@@ -717,24 +706,24 @@ function explainFunnel(args: {
 
   counts.floor = countFloor(inRadius, args.floor);
   if (binding == null && counts.floor < args.need) {
-    binding = args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor';
+    binding = 'below_floor';
   }
   return { binding, sub, counts };
 }
 
-function meetsPairFloor(candidates: readonly GateRestaurant[]): boolean {
-  return floorPairExists(
+function meetsCreditFloorPool(candidates: readonly GateRestaurant[], need: 1 | 2): boolean {
+  return poolHasDistinctCreditFloorEligible(
     candidates.map((restaurant) => ({
       id: restaurant.id,
       baseCents: baseCents(restaurant.version),
     })),
-    PAIR_FLOOR_CENTS,
+    need,
   );
 }
 
 function scopeRestaurants(restaurants: GateRestaurant[], floor: AttemptKind): GateRestaurant[] {
   if (floor !== 'carried') return restaurants;
-  return restaurants.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= CARRIED_FLOOR_CENTS);
+  return restaurants.filter((restaurant) => meetsMinimumCreditBase(baseCents(restaurant.version)));
 }
 
 function selectPool(args: {
@@ -754,7 +743,7 @@ function selectPool(args: {
     passesVariety: (restaurant) =>
       passesVariety6(restaurant, args.ctx) && passesVariety12(restaurant, args.ctx),
     passesRelaxedVariety: (restaurant) => passesRelaxed(restaurant, args.ctx),
-    poolSatisfies: args.need === 2 ? meetsPairFloor : undefined,
+    poolSatisfies: (candidates) => meetsCreditFloorPool(candidates, args.need),
   });
   return { candidates: pool.candidates, usedMiles: pool.match.usedMiles };
 }
@@ -792,11 +781,8 @@ function explainAttempt(args: {
     origin,
     floor: args.floor,
   });
-  const floorBinding: GateRule = args.floor === 'pair' ? 'pair_below_floor' : 'carried_below_floor';
-  const meetsFloor =
-    args.floor === 'pair'
-      ? meetsPairFloor(args.candidates)
-      : args.candidates.some((restaurant) => (baseCents(restaurant.version) ?? 0) >= CARRIED_FLOOR_CENTS);
+  const floorBinding: GateRule = 'below_floor';
+  const meetsFloor = meetsCreditFloorPool(args.candidates, args.need);
   if (!meetsFloor && args.candidates.length >= args.need) {
     return { binding: floorBinding, sub: null, counts: walked.counts };
   }
@@ -952,7 +938,7 @@ function runMemberMonth(args: {
     const ordered = args.shuffle(pool.candidates);
     const choice = ordered.find((restaurant) => {
       const base = baseCents(restaurant.version);
-      return base != null && base >= CARRIED_FLOOR_CENTS && passesCapacity(restaurant, ctx);
+      return meetsMinimumCreditBase(base) && passesCapacity(restaurant, ctx);
     });
     if (!choice) {
       if (args.score) {
@@ -996,7 +982,7 @@ function runMemberMonth(args: {
           candidates: pool.candidates,
           usedMiles: pool.usedMiles,
         });
-        const binding: GateRule = assigned === 'below_floor' ? 'carried_below_floor' : 'capacity_full';
+        const binding: GateRule = assigned === 'below_floor' ? 'below_floor' : 'capacity_full';
         mark(args.marks, [credit], {
           month: args.monthKey,
           binding,
@@ -1032,11 +1018,12 @@ function runMemberMonth(args: {
       ...restaurant,
       baseCents: baseCents(restaurant.version),
     }));
-  const pair = pickFloorPair(priced, {
+  const eligible = priced.filter((restaurant) => meetsMinimumCreditBase(restaurant.baseCents));
+  const picked = pickDistinctRestaurants(eligible, 2, {
     shuffle: args.shuffle,
-    floorCents: PAIR_FLOOR_CENTS,
     reserveCocktail: args.state.member.wantsCocktailExperience,
   });
+  const pair = picked.length === 2 ? (picked as [GateRestaurant & { baseCents: number | null }, GateRestaurant & { baseCents: number | null }]) : null;
 
   if (!pair || pending.length < 2) {
     if (args.score && pending.length > 0) {
@@ -1211,7 +1198,7 @@ export function runSupplyGateTrial(args: {
       const issue = ym(credit.issuePeriod);
       unmatchedByMonth.set(issue, (unmatchedByMonth.get(issue) ?? 0) + 1);
       const failure = marks.get(credit.id);
-      const rule = failure?.binding ?? 'pair_below_floor';
+      const rule = failure?.binding ?? 'below_floor';
       unmatchedByRule.set(rule, (unmatchedByRule.get(rule) ?? 0) + 1);
       const persona = personaKey(state.member);
       unmatchedByPersona.set(persona, (unmatchedByPersona.get(persona) ?? 0) + 1);
@@ -1368,7 +1355,6 @@ function shortfallLines(args: {
     const at5 = staticEligible({ ...eligibleArgs, miles: 5 });
     const at15 = staticEligible({ ...eligibleArgs, miles: 15 });
     const base1000 = at15.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= 1000).length;
-    const base2000 = at15.filter((restaurant) => (baseCents(restaurant.version) ?? 0) >= 2000).length;
     lines.push({
       persona: member.persona,
       zip: member.zip,
@@ -1376,7 +1362,6 @@ function shortfallLines(args: {
       eligibleStatic15: at15.length,
       neededDistinct6mo: 12,
       baseAtLeast1000: base1000,
-      baseAtLeast2000: base2000,
       addAtLeast: Math.max(0, 12 - at15.length),
       kind: shortfallKind(member.persona, args.windowEndLabel),
     });
@@ -1429,7 +1414,7 @@ export function formatSupplyGateReport(result: Omit<SupplyGateResult, 'text'> & 
     ...result.funnel,
     ...result.shortfall.map(
       (row) =>
-        `shortfall persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} base>=2000=${row.baseAtLeast2000} add_at_least=${row.addAtLeast} kind="${row.kind}" lower bound`,
+        `shortfall persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} add_at_least=${row.addAtLeast} kind="${row.kind}" lower bound`,
     ),
     result.result === 'PASS'
       ? 'PASS: E02 supply gate'
@@ -1542,7 +1527,7 @@ export function supplyGateJson(result: SupplyGateResult): string {
       matched_via_carry: trial.matchedViaCarry,
     })),
     pair_selector:
-      'Seeded first i<j pair with base sum >= 2000, expanding one distance band when the requested radius has no qualifying pair. A gate PASS measures that floor-aware policy. generate.ts still picks two candidates at random and can receive pair_below_floor from the RPC.',
+      'Seeded two distinct credit-floor-eligible restaurants, expanding one distance band when the requested radius has fewer than two. A gate PASS measures that policy. generate.ts filters per credit before random pick and can receive below_floor from the RPC.',
   };
   return `${JSON.stringify(payload, null, 2)}\n`;
 }

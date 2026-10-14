@@ -66,7 +66,7 @@ afterEach(() => {
 });
 
 describe('catalog conversion manifest', () => {
-  it('maps legacy tiers exactly and keeps pair and carried floors separate', () => {
+  it('maps legacy tiers exactly and reports per-credit floor eligibility', () => {
     const input = syntheticFixture();
     const manifest = buildCatalogConversionManifest(input);
     const byId = new Map(manifest.restaurants.map((row) => [row.restaurant_id, row]));
@@ -84,34 +84,27 @@ describe('catalog conversion manifest', () => {
     expect(ten?.provenance.capacity).toContain('reviewed:synthetic:decision-11');
     expect(mocked?.status).toBe('ready');
     expect(mocked?.coordinates.status).toBe('mock_proposed');
-    expect(twenty?.diagnostics.carried_candidate).toBe(true);
+    expect(twenty?.diagnostics.credit_eligible).toBe(true);
     expect(ambiguous?.status).toBe('ambiguous');
     expect(ambiguous?.unresolved_decisions).toContain('legacy_offer:multiple');
-    expect(manifest.diagnostics.pair.passes).toBe(true);
-    expect(manifest.diagnostics.carried).toEqual({
-      passes: true,
-      qualifying_restaurants: 1,
-      floor_cents: 2000,
-    });
+    expect(manifest.diagnostics.two_credit_supply.passes).toBe(true);
+    expect(manifest.diagnostics.credit_floor_cents).toBe(1000);
   });
 
-  it('requires two distinct $10 restaurants for pair, while neither passes carried', () => {
+  it('requires two distinct credit-eligible restaurants for two-credit supply', () => {
     const input = syntheticFixture();
     onlyRestaurants(input, [
       'e0200000-0000-4000-8000-000000000011',
       'e0200000-0000-4000-8000-000000000012',
     ]);
     const manifest = buildCatalogConversionManifest(input);
-    expect(manifest.diagnostics.pair).toEqual({
+    expect(manifest.diagnostics.two_credit_supply).toEqual({
       passes: true,
-      distinct_candidates: 2,
-      qualifying_pairs: 1,
-      floor_cents: 2000,
+      distinct_eligible_restaurants: 2,
     });
-    expect(manifest.diagnostics.carried.passes).toBe(false);
 
     onlyRestaurants(input, ['e0200000-0000-4000-8000-000000000011']);
-    expect(buildCatalogConversionManifest(input).diagnostics.pair.passes).toBe(false);
+    expect(buildCatalogConversionManifest(input).diagnostics.two_credit_supply.passes).toBe(false);
   });
 
   it('classifies missing, inactive, invalid, and multiple offers without selecting one', () => {
@@ -350,7 +343,7 @@ describe('catalog conversion CLI boundaries', () => {
     }
     expect(readFileSync(inputPath, 'utf8')).toBe(readFileSync(unchangedPath, 'utf8'));
     expect(JSON.parse(readFileSync(outputPath, 'utf8'))).toMatchObject({
-      schema: 'wanderbite.e02.catalog_conversion_manifest.v1',
+      schema: 'wanderbite.e02.catalog_conversion_manifest.v2',
       source_schema: CATALOG_CONVERSION_SCHEMA,
       synthetic: false,
     });

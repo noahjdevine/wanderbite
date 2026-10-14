@@ -1,3 +1,5 @@
+import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
+
 export type OfferTier = {
   thresholdCents: number;
   discountCents: number;
@@ -193,18 +195,15 @@ export function quoteOffer(input: {
   };
 }
 
-export function pairSavingsModel(left: OfferTier[], right: OfferTier[]): {
+export function creditFloorEligibility(tiers: OfferTier[]): {
   label: 'model input';
   ok: boolean;
   baseCents: number;
   qualifyingSpendCents: number;
   reason: string | null;
 } {
-  const base = (tiers: OfferTier[]) =>
-    [...tiers].sort((a, b) => a.thresholdCents - b.thresholdCents)[0];
-  const a = base(left);
-  const b = base(right);
-  if (!a || !b) {
+  const lowest = [...tiers].sort((a, b) => a.thresholdCents - b.thresholdCents)[0];
+  if (!lowest) {
     return {
       label: 'model input',
       ok: false,
@@ -213,15 +212,19 @@ export function pairSavingsModel(left: OfferTier[], right: OfferTier[]): {
       reason: 'missing_base_tier',
     };
   }
-  const baseCents = a.discountCents + b.discountCents;
-  const qualifyingSpendCents = a.thresholdCents + b.thresholdCents;
+  const ok = meetsMinimumCreditBase(lowest.discountCents);
   return {
     label: 'model input',
-    ok: baseCents >= 2000,
-    baseCents,
-    qualifyingSpendCents,
-    reason: baseCents >= 2000 ? null : 'below_pair_floor',
+    ok,
+    baseCents: lowest.discountCents,
+    qualifyingSpendCents: lowest.thresholdCents,
+    reason: ok ? null : 'below_credit_floor',
   };
+}
+
+/** @deprecated Use creditFloorEligibility for selection minimum diagnostics. */
+export function pairSavingsModel(left: OfferTier[], _right: OfferTier[]): ReturnType<typeof creditFloorEligibility> {
+  return creditFloorEligibility(left);
 }
 
 export type FlatOfferRow = {

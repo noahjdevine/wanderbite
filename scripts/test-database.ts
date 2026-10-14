@@ -93,6 +93,8 @@ async function main() {
   ) c;`));
   assertDatabaseTypes(readFileSync(path.join(root, 'src/types/database.types.ts'), 'utf8'), columns, SCHEMA_CONTRACT);
   process.stdout.write(`PASS: ${migrations.length} migrations; ${Object.keys(SCHEMA_CONTRACT).length} table Row/Insert/Update contracts.\n`);
+  assert.equal(sql('select public.credit_floor_cents();'), '1000', 'credit_floor_cents parity');
+  process.stdout.write('PASS: credit_floor_cents() = 1000.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g1-acceptance.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g2-rls.sql'), 'utf8')) + '\n');

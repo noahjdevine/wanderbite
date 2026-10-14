@@ -56,9 +56,8 @@ describe('credit-safe swap action', () => {
     expect(credits).not.toContain('swap_count_used');
     expect(credits).not.toContain("from('restaurant_offers')");
     expect(credits).toContain('lowestSealedBase');
-    expect(credits).toContain('2000');
+    expect(credits).toContain('meetsMinimumCreditBase');
     expect(swap).toContain('below_floor');
-    expect(swap).toContain('pair_below_floor');
     expect(swap).toContain('capacity_full');
     expect(swap).toContain('swap_exhausted');
     expect(legacy).toContain("from('restaurant_offers')");

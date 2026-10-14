@@ -29,7 +29,7 @@ import {
   originFromZip,
 } from '@/lib/launch-market';
 import type { DistanceBand } from '@/lib/onboarding-shared';
-import { pairSavingsModel, type OfferTier } from '@/lib/offers/calculator';
+import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import {
   createCooldownCutoffCache,
@@ -119,7 +119,7 @@ export const SUPPLY_RESTAURANTS: SupplyRestaurant[] = [
   ...success,
   restaurant(13, 'U1', 900, 2000, ['salad'], 'inside', SUPPLY_MARKET_ID),
   restaurant(14, 'U2', 900, 2000, ['salad'], 'inside', SUPPLY_MARKET_ID),
-  restaurant(15, 'L1999', 1999, 4000, ['soup'], 'inside', SUPPLY_MARKET_ID),
+  restaurant(15, 'L999', 999, 4000, ['soup'], 'inside', SUPPLY_MARKET_ID),
   restaurant(16, 'C2000', 2000, 4000, ['grill'], 'inside', SUPPLY_MARKET_ID),
   restaurant(17, 'C2500', 2500, 4000, ['seafood'], 'inside', SUPPLY_MARKET_ID),
   restaurant(18, 'cheese', 2000, 2000, ['cheese'], 'inside', SUPPLY_MARKET_ID),
@@ -152,7 +152,6 @@ export type SupplyRejectionReason =
   | 'outside_market'
   | 'outside_distance'
   | 'spending_ceiling'
-  | 'pair_below_floor'
   | 'below_floor'
   | 'capacity_full';
 
@@ -348,10 +347,6 @@ function remember(
 ): void {
   const id = `${scope}\t${subject}\t${reason}`;
   if (!bag.has(id)) bag.set(id, { scope, subject, reason });
-}
-
-function tiersOf(restaurant: SupplyRestaurant): OfferTier[] {
-  return [{ thresholdCents: restaurant.thresholdCents, discountCents: restaurant.discountCents }];
 }
 
 function catalogFor(config: SupplySimulationConfig, catalog: SupplyRestaurant[]): SupplyRestaurant[] {
@@ -582,7 +577,7 @@ export function runSimulatedSupplyMonths(args: {
         const carriedCredits = ledger.credits.filter((credit) => creditIsCarried(credit, monthNow));
         const sorted = [...carriedPool.candidates].sort(byId);
         for (const credit of carriedCredits) {
-          const legal = sorted.find((restaurant) => restaurant.discountCents >= 2000);
+          const legal = sorted.find((restaurant) => meetsMinimumCreditBase(restaurant.discountCents));
           if (!legal) {
             if (sorted[0]) remember(bag, scope, sorted[0].id, 'below_floor');
             continue;
@@ -613,8 +608,11 @@ export function runSimulatedSupplyMonths(args: {
       if (ranked.length >= 2) {
         const [left, right] = [ranked[0], ranked[1]];
         const subject = `${left.id}|${right.id}`;
-        if (left.discountCents + right.discountCents < 2000) {
-          remember(bag, scope, subject, 'pair_below_floor');
+        if (
+          !meetsMinimumCreditBase(left.discountCents) ||
+          !meetsMinimumCreditBase(right.discountCents)
+        ) {
+          remember(bag, scope, subject, 'below_floor');
         } else {
           const deadline = plusAssignmentHours(monthNow);
           const leftBuckets = bucketsIntersectingDeadline(monthNow, deadline);
@@ -663,11 +661,10 @@ export function runSimulatedSupplyMonths(args: {
               if (typeof first !== 'string' && typeof second !== 'string') {
                 pairKeys = [left.key, right.key];
                 if (k === config.ks[config.ks.length - 1] && config.name === 'coverage') {
-                  const savings = pairSavingsModel(tiersOf(left), tiersOf(right));
                   pairSavings = {
                     label: 'model input',
-                    baseCents: savings.baseCents,
-                    qualifyingSpendCents: savings.qualifyingSpendCents,
+                    baseCents: left.discountCents,
+                    qualifyingSpendCents: left.thresholdCents,
                   };
                 }
               }

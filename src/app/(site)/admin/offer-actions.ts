@@ -6,12 +6,13 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { parseUuid } from '@/lib/uuid';
 import type { Json } from '@/types/database.types';
 import {
-  pairSavingsModel,
+  creditFloorEligibility,
   quoteOffer,
   type OfferBoost,
   type OfferQuote,
   type OfferTier,
 } from '@/lib/offers/calculator';
+import { MINIMUM_CREDIT_BASE_CENTS } from '@/lib/offers/credit-floor';
 
 export type OfferDraftInput = {
   restaurantId: string;
@@ -194,8 +195,8 @@ export async function previewOfferDraft(input: {
       ok: true;
       quote: OfferQuote;
       modelLabel: 'model input';
-      pair: ReturnType<typeof pairSavingsModel>;
-      targetCents: 2000;
+      creditFloor: ReturnType<typeof creditFloorEligibility>;
+      targetCents: number;
     }
   | { ok: false; error: string }
 > {
@@ -225,8 +226,8 @@ export async function previewOfferDraft(input: {
     ok: true,
     quote,
     modelLabel: 'model input',
-    pair: pairSavingsModel(input.tiers, input.comparisonTiers),
-    targetCents: 2000,
+    creditFloor: creditFloorEligibility(input.tiers),
+    targetCents: MINIMUM_CREDIT_BASE_CENTS,
   };
 }
 

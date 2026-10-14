@@ -244,7 +244,7 @@ begin
   perform pg_temp.make_version(v_c, r_c, 2000, 80, long_until);
   perform pg_temp.make_version(v_pair_sib, r_pair_sib, 1000, 20, long_until);
   perform pg_temp.make_version(v_pair_repl, r_pair_repl, 999, 20, long_until);
-  perform pg_temp.make_version(v_low, r_low, 1999, 20, long_until);
+  perform pg_temp.make_version(v_low, r_low, 999, 20, long_until);
   perform pg_temp.make_version(v_t2, r_t2, 2000, 20, t2 + interval '1 hour');
   perform pg_temp.make_version(v_past, r_past, 2000, 20, past_deadline + interval '1 hour');
   perform pg_temp.make_version(v_cap, r_cap, 2000, 1, long_until);
@@ -374,7 +374,7 @@ begin
     u_pair, 'e2c50000-0000-4000-8000-000000000521', r_pair_sib, v_pair_sib, 2, chicago, now() + interval '60 days', now() + interval '20 days'
   );
   select * into swapped from public.swap_linked_credit_item(u_pair, 'e2c50000-0000-4000-8000-000000000421', r_pair_repl);
-  perform pg_temp.expect(swapped.outcome = 'pair_below_floor', 'pair floor ' || swapped.outcome);
+  perform pg_temp.expect(swapped.outcome = 'below_floor', 'replacement floor ' || swapped.outcome);
   perform pg_temp.expect(
     (select status from public.challenge_items where id = 'e2c50000-0000-4000-8000-000000000421') = 'assigned'
     and (select credit_id from public.challenge_items where id = 'e2c50000-0000-4000-8000-000000000421') =
