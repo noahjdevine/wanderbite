@@ -176,6 +176,8 @@ declare
   draft_id uuid;
   published jsonb;
   version_count integer;
+  version_id uuid;
+  pointer uuid;
 begin
   insert into auth.users (id) values (actor);
   insert into public.user_profiles (id, role) values (actor, 'admin');
@@ -233,6 +235,20 @@ begin
   published := public.publish_offer_version(draft_id, actor);
   if published ->> 'published' <> 'true' then
     raise exception 'FAIL: 1000-cent draft publish failed: %', published;
+  end if;
+  version_id := (published ->> 'version_id')::uuid;
+  select count(*) into version_count
+  from public.offer_versions
+  where restaurant_id = restaurant;
+  if version_count <> 1 then
+    raise exception 'FAIL: 1000-cent publish expected one offer_versions row, got %', version_count;
+  end if;
+  if not exists (select 1 from public.offer_versions where id = version_id) then
+    raise exception 'FAIL: published version_id missing from offer_versions';
+  end if;
+  select current_offer_version_id into pointer from public.restaurants where id = restaurant;
+  if pointer is distinct from version_id then
+    raise exception 'FAIL: restaurants.current_offer_version_id does not match published version';
   end if;
 end $$;
 

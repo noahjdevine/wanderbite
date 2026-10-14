@@ -1,8 +1,12 @@
 # E02 plan
 
-Doc sync through PR #60 on `main` (merge `cbecae2`; prior baseline `46dd871c` / PR #57). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
+Synced through **#60** (merge `46818e2e`; prior baseline `46dd871c` / PR #57). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
 
 **Catalog conversion (PR #59).** `npm run catalog:convert` and `scripts/e02-catalog-conversion.ts` are an offline dry-run export/manifest only. They do not publish offer versions or mutate hosted data; any apply/backfill requires separate authorization.
+
+**Hosted schema (pending Noah).** Apply forward migration `20261011210000_e02_independent_credit_floor.sql` on production (`supabase db push` or equivalent) is a separate operator step; not confirmed in this doc.
+
+**CI audit / deps (pending Noah's decision).** `main` includes `fix(ci)` (`cbecae2`): `npm audit --audit-level=high --omit=dev`, overrides for `sharp` and `source-map-js`. Whether that policy stays is Noah's call; this plan does not re-edit CI or lockfiles.
 
 ## 1. Draft criteria and the supply gate
 
