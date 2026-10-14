@@ -5,6 +5,7 @@ import {
   restaurantBaseCents,
   type LegacyOfferRow,
 } from '@/lib/offers/restaurant-base-cents';
+import { meetsMinimumCreditBase, MINIMUM_CREDIT_BASE_CENTS } from '@/lib/offers/credit-floor';
 
 function offer(
   id: string,
@@ -71,5 +72,52 @@ describe('restaurantBaseCents', () => {
         legacyOffer: offer('o1', 'r1', 5000, 4000),
       }),
     ).toBeNull();
+  });
+
+  it('picks legacy offers by restaurant id, not input row order', () => {
+    const restaurantA = 'aaaaaaaa-0000-4000-8000-000000000001';
+    const restaurantB = 'bbbbbbbb-0000-4000-8000-000000000002';
+    const rows = [
+      offer('o-b1', restaurantB, 1200, 4000),
+      offer('o-a2', restaurantA, 1100, 4000),
+      offer('o-a1', restaurantA, 1500, 4000),
+      offer('o-b2', restaurantB, 1000, 4000),
+    ];
+    const forward = firstActiveLegacyOfferByRestaurant(rows);
+    const reversed = firstActiveLegacyOfferByRestaurant([...rows].reverse());
+    expect(forward.get(restaurantA)?.id).toBe('o-a1');
+    expect(forward.get(restaurantB)?.id).toBe('o-b1');
+    expect(reversed.get(restaurantA)?.id).toBe('o-a1');
+    expect(reversed.get(restaurantB)?.id).toBe('o-b1');
+    expect(
+      restaurantBaseCents({
+        currentOfferVersionId: null,
+        versionTiers: null,
+        legacyOffer: forward.get(restaurantB),
+      }),
+    ).toBe(1200);
+  });
+
+  it('matches SQL restaurant_base_cents floor boundaries on sealed tiers', () => {
+    const tiers = [
+      { threshold_cents: 6000, discount_cents: 1500 },
+      { threshold_cents: 4000, discount_cents: 1000 },
+    ];
+    const atFloor = restaurantBaseCents({
+      currentOfferVersionId: 'v1',
+      versionTiers: tiers,
+      legacyOffer: null,
+    });
+    expect(atFloor).toBe(1000);
+    expect(meetsMinimumCreditBase(atFloor)).toBe(true);
+    expect(MINIMUM_CREDIT_BASE_CENTS).toBe(1000);
+
+    const belowFloor = restaurantBaseCents({
+      currentOfferVersionId: 'v2',
+      versionTiers: [{ threshold_cents: 4000, discount_cents: 999 }],
+      legacyOffer: null,
+    });
+    expect(belowFloor).toBe(999);
+    expect(meetsMinimumCreditBase(belowFloor)).toBe(false);
   });
 });

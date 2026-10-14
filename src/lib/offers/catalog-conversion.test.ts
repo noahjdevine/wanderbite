@@ -91,6 +91,23 @@ describe('catalog conversion manifest', () => {
     expect(manifest.diagnostics.credit_floor_cents).toBe(1000);
   });
 
+  it('marks sub-floor legacy tiers blocked for publication and credit eligibility', () => {
+    const input = syntheticFixture();
+    onlyRestaurants(input, ['e0200000-0000-4000-8000-000000000011']);
+    input.legacy_offers[0]!.discount_amount_cents = 999;
+    const [below] = buildCatalogConversionManifest(input).restaurants;
+    expect(below?.diagnostics.publication).toEqual({
+      ok: false,
+      reason: 'lowest_tier_below_credit_floor',
+    });
+    expect(below?.diagnostics.credit_eligible).toBe(false);
+
+    input.legacy_offers[0]!.discount_amount_cents = 1000;
+    const [atFloor] = buildCatalogConversionManifest(input).restaurants;
+    expect(atFloor?.diagnostics.publication.ok).toBe(true);
+    expect(atFloor?.diagnostics.credit_eligible).toBe(true);
+  });
+
   it('requires two distinct credit-eligible restaurants for two-credit supply', () => {
     const input = syntheticFixture();
     onlyRestaurants(input, [

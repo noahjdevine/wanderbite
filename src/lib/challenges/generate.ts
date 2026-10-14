@@ -389,6 +389,9 @@ export async function generateMonthlyChallengeForUser(
       }
     }
 
+    // Floor uses the same rules as SQL `restaurant_base_cents` (see `restaurant-base-cents.ts`).
+    // Monthly max-redemptions still reads the first active legacy offer by id only; capacity
+    // binding in SQL may use a different active row when several exist (unchanged).
     function restaurantMeetsCreditFloor(restaurant: RestaurantRow): boolean {
       const versionId = (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
         .current_offer_version_id;

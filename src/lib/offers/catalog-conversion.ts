@@ -527,6 +527,37 @@ export const OFFER_VERSION_TERMS_PARITY_CASES: ReadonlyArray<{
     expected: 'lowest_tier_below_credit_floor',
   },
   {
+    name: 'lowest tier at credit floor',
+    terms: {
+      tiers: [{ threshold_cents: 4000, discount_cents: 1000 }],
+      boosts: [],
+      timezone: 'America/Chicago',
+      valid_from: '2026-01-01T00:00:00.000Z',
+      valid_until: '2027-01-01T00:00:00.000Z',
+      capacity_timezone: 'America/Chicago',
+      capacity_window_kind: 'calendar_month',
+      capacity_max_redemptions: 50,
+    },
+    expected: null,
+  },
+  {
+    name: 'multi-tier lowest tier at credit floor',
+    terms: {
+      tiers: [
+        { threshold_cents: 4000, discount_cents: 1000 },
+        { threshold_cents: 6000, discount_cents: 1500 },
+      ],
+      boosts: [],
+      timezone: 'America/Chicago',
+      valid_from: '2026-01-01T00:00:00.000Z',
+      valid_until: '2027-01-01T00:00:00.000Z',
+      capacity_timezone: 'America/Chicago',
+      capacity_window_kind: 'calendar_month',
+      capacity_max_redemptions: 50,
+    },
+    expected: null,
+  },
+  {
     name: 'tier order',
     terms: {
       tiers: [

@@ -1,6 +1,8 @@
 # E02 plan
 
-Doc sync against `46dd871c` (PR #57 on `main`). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
+Doc sync through PR #60 on `main` (merge `cbecae2`; prior baseline `46dd871c` / PR #57). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
+
+**Catalog conversion (PR #59).** `npm run catalog:convert` and `scripts/e02-catalog-conversion.ts` are an offline dry-run export/manifest only. They do not publish offer versions or mutate hosted data; any apply/backfill requires separate authorization.
 
 ## 1. Draft criteria and the supply gate
 

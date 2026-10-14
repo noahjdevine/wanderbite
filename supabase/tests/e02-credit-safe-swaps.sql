@@ -489,15 +489,15 @@ begin
     'legacy gate incremented swap_count'
   );
   select * into swapped from public.swap_challenge_item(u_legacy, 'e2c50000-0000-4000-8000-000000000471', r_leg_low);
-  perform pg_temp.expect(swapped.outcome = 'below_floor', 'legacy floor ' || swapped.outcome);
+  perform pg_temp.expect(swapped.outcome = 'below_floor', 'legacy 999 floor ' || swapped.outcome);
   perform pg_temp.expect(
     (select status from public.challenge_items where id = 'e2c50000-0000-4000-8000-000000000471') = 'assigned'
     and (select restaurant_id from public.challenge_items where id = 'e2c50000-0000-4000-8000-000000000471') = r_leg1
     and (select swap_count_used from public.challenge_cycles where id = 'e2c50000-0000-4000-8000-000000000571') = 0,
-    'legacy floor left item and swap_count'
+    'legacy 999 floor left item and swap_count'
   );
   select * into swapped from public.swap_challenge_item(u_legacy, 'e2c50000-0000-4000-8000-000000000471', r_leg3);
-  perform pg_temp.expect(swapped.outcome = 'created', 'legacy swap ' || swapped.outcome);
+  perform pg_temp.expect(swapped.outcome = 'created', 'legacy 1000 floor ok ' || swapped.outcome);
   perform pg_temp.expect(
     (select swap_count_used from public.challenge_cycles where id = 'e2c50000-0000-4000-8000-000000000571') = 1,
     'legacy swap_count'

@@ -181,6 +181,31 @@ begin
   insert into public.user_profiles (id, role) values (actor, 'admin');
   insert into public.restaurants (id, name, status) values (restaurant, 'E01 Floor', 'paused');
 
+  if public.offer_version_terms_ok(
+    '[{"threshold_cents":4000,"discount_cents":999}]'::jsonb,
+    '[]'::jsonb,
+    'America/Chicago',
+    now(),
+    now() + interval '40 days',
+    'America/Chicago',
+    'calendar_month',
+    10
+  ) is distinct from 'lowest_tier_below_credit_floor' then
+    raise exception 'FAIL: offer_version_terms_ok did not refuse 999-cent tier';
+  end if;
+  if public.offer_version_terms_ok(
+    '[{"threshold_cents":4000,"discount_cents":1000}]'::jsonb,
+    '[]'::jsonb,
+    'America/Chicago',
+    now(),
+    now() + interval '40 days',
+    'America/Chicago',
+    'calendar_month',
+    10
+  ) is not null then
+    raise exception 'FAIL: offer_version_terms_ok refused 1000-cent tier';
+  end if;
+
   insert into public.offer_drafts (
     restaurant_id, timezone, valid_from, valid_until, tiers, boosts,
     capacity_timezone, capacity_window_kind, capacity_max_redemptions

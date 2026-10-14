@@ -278,6 +278,14 @@ begin
   if linked.outcome is distinct from 'below_floor' then
     raise exception 'FAIL: 500-cent version pair was %', linked.outcome;
   end if;
+  select * into linked from public.link_pending_credits(
+    low_user, chicago, market,
+    'e2b00000-0000-4000-8000-000000000024',
+    'e2b00000-0000-4000-8000-000000000023'
+  );
+  if linked.outcome is distinct from 'below_floor' then
+    raise exception 'FAIL: reversed low-floor pair was %', linked.outcome;
+  end if;
 
   select * into linked from public.link_pending_credits(
     paused_user, chicago, market,
