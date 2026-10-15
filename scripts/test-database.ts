@@ -108,6 +108,8 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g10-challenge-tx.sql'), 'utf8')) + '\n');
   await runG10Concurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: G10 two-session generate/swap/issue overlap.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e01-offer-versions.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E01 offer versions, publish-time credit floor, grants, and audit.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-capacity-binding.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-b-credits.sql'), 'utf8')) + '\n');
   await runE02BConcurrency({ docker, host, containerId: id, sql });

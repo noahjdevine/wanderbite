@@ -109,6 +109,7 @@ declare
   r_leg1 uuid := 'e2c50000-0000-4000-8000-00000000010b';
   r_leg2 uuid := 'e2c50000-0000-4000-8000-00000000010c';
   r_leg3 uuid := 'e2c50000-0000-4000-8000-00000000010d';
+  r_leg_low uuid := 'e2c50000-0000-4000-8000-000000000110';
   v_a uuid := 'e2c50000-0000-4000-8000-000000000201';
   v_b uuid := 'e2c50000-0000-4000-8000-000000000202';
   v_c uuid := 'e2c50000-0000-4000-8000-000000000203';
@@ -233,12 +234,14 @@ begin
     (r_cap, 'E02S Cap', 'active', market),
     (r_leg1, 'E02S Leg 1', 'active', market),
     (r_leg2, 'E02S Leg 2', 'active', market),
-    (r_leg3, 'E02S Leg 3', 'active', market);
+    (r_leg3, 'E02S Leg 3', 'active', market),
+    (r_leg_low, 'E02S Leg Low', 'active', market);
   insert into public.restaurant_offers (restaurant_id, active, discount_amount_cents, min_spend_cents) values
     (r_flat, true, 2000, 4000),
     (r_leg1, true, 1000, 4000),
     (r_leg2, true, 1000, 4000),
-    (r_leg3, true, 1000, 4000);
+    (r_leg3, true, 1000, 4000),
+    (r_leg_low, true, 999, 4000);
   perform pg_temp.make_version(v_a, r_a, 2000, 80, long_until);
   perform pg_temp.make_version(v_b, r_b, 2000, 80, long_until);
   perform pg_temp.make_version(v_c, r_c, 2000, 80, long_until);
@@ -485,8 +488,16 @@ begin
     (select swap_count_used from public.challenge_cycles where id = 'e2c50000-0000-4000-8000-000000000571') = 0,
     'legacy gate incremented swap_count'
   );
+  select * into swapped from public.swap_challenge_item(u_legacy, 'e2c50000-0000-4000-8000-000000000471', r_leg_low);
+  perform pg_temp.expect(swapped.outcome = 'below_floor', 'legacy 999 floor ' || swapped.outcome);
+  perform pg_temp.expect(
+    (select status from public.challenge_items where id = 'e2c50000-0000-4000-8000-000000000471') = 'assigned'
+    and (select restaurant_id from public.challenge_items where id = 'e2c50000-0000-4000-8000-000000000471') = r_leg1
+    and (select swap_count_used from public.challenge_cycles where id = 'e2c50000-0000-4000-8000-000000000571') = 0,
+    'legacy 999 floor left item and swap_count'
+  );
   select * into swapped from public.swap_challenge_item(u_legacy, 'e2c50000-0000-4000-8000-000000000471', r_leg3);
-  perform pg_temp.expect(swapped.outcome = 'created', 'legacy swap ' || swapped.outcome);
+  perform pg_temp.expect(swapped.outcome = 'created', 'legacy 1000 floor ok ' || swapped.outcome);
   perform pg_temp.expect(
     (select swap_count_used from public.challenge_cycles where id = 'e2c50000-0000-4000-8000-000000000571') = 1,
     'legacy swap_count'
