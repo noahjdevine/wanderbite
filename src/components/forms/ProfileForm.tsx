@@ -77,16 +77,13 @@ export function ProfileForm({
   const zipOk = values.address.zip.trim().length === 0 ? false : validZip(values.address.zip);
   const showZipError = touchedZip && values.address.zip.trim().length > 0 && !zipOk;
 
-  // Debounced availability check
-  useEffect(() => {
-    if (!touchedUsername) return;
-    const u = values.username.trim();
+  function queueUsernameAvailabilityCheck(username: string) {
+    const u = username.trim();
+    if (debounceRef.current) window.clearTimeout(debounceRef.current);
     if (!u) {
       setUsernameState({ status: 'too_short' });
       return;
     }
-
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
     setUsernameState({ status: 'checking' });
     debounceRef.current = window.setTimeout(() => {
       debounceRef.current = null;
@@ -100,11 +97,13 @@ export function ProfileForm({
         })
         .catch(() => setUsernameState({ status: 'error', message: 'Could not check username' }));
     }, 500);
+  }
 
+  useEffect(() => {
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
-  }, [touchedUsername, values.username]);
+  }, []);
 
   const usernameHint = usernameMessage(usernameState);
   const usernameGood = usernameOk(usernameState);
@@ -147,10 +146,15 @@ export function ProfileForm({
           type="text"
           value={values.username}
           onChange={(e) => {
-            setValues((p) => ({ ...p, username: e.target.value }));
+            const next = e.target.value;
+            setValues((p) => ({ ...p, username: next }));
             if (!touchedUsername) setTouchedUsername(true);
+            queueUsernameAvailabilityCheck(next);
           }}
-          onBlur={() => setTouchedUsername(true)}
+          onBlur={() => {
+            setTouchedUsername(true);
+            queueUsernameAvailabilityCheck(values.username);
+          }}
           placeholder="e.g. foodie_jane"
           autoComplete="username"
           disabled={saving}

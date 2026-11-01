@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
@@ -75,25 +75,26 @@ export function CarriedCreditCard({
     storedDeadline: credit.effectiveDeadline,
   });
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
+  async function loadCandidates() {
     setLoading(true);
     setLoadError(null);
-    void listCarriedAssignCandidates(credit.creditId).then((result) => {
-      if (cancelled) return;
-      setLoading(false);
-      if (result.ok) {
-        setCandidates(result.candidates);
-      } else {
-        setCandidates([]);
-        setLoadError(result.error);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, credit.creditId]);
+    setCandidates([]);
+    const result = await listCarriedAssignCandidates(credit.creditId);
+    setLoading(false);
+    if (result.ok) {
+      setCandidates(result.candidates);
+    } else {
+      setCandidates([]);
+      setLoadError(result.error);
+    }
+  }
+
+  function handleAssignDialogOpenChange(next: boolean) {
+    setOpen(next);
+    if (next) {
+      void loadCandidates();
+    }
+  }
 
   async function handleAssign(restaurantId: string) {
     setAssigningId(restaurantId);
@@ -156,7 +157,7 @@ export function CarriedCreditCard({
         <Button type="button" className="w-full" onClick={() => setOpen(true)}>
           Assign
         </Button>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleAssignDialogOpenChange}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Assign a restaurant</DialogTitle>

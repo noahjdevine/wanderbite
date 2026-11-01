@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Mail } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
@@ -12,27 +13,22 @@ import { ATTESTATION_AFTER_SIGN_IN_MESSAGE } from '@/lib/legal-attestation';
 const PENDING_EMAIL_KEY = 'wanderbite_pending_signup_email';
 const RESEND_COOLDOWN_MS = 60_000;
 
-export default function CheckEmailPage() {
-  const [email, setEmail] = useState<string | null>(null);
+function readPendingSignupEmail(): string | null {
+  try {
+    return sessionStorage.getItem(PENDING_EMAIL_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function CheckEmailContent() {
+  const searchParams = useSearchParams();
+  const showAttestationLater = searchParams.get('attestation') === 'after-sign-in';
+  const [email] = useState(readPendingSignupEmail);
   const [cooldownLeft, setCooldownLeft] = useState(0);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
   const [resendErr, setResendErr] = useState<string | null>(null);
-  const [showAttestationLater, setShowAttestationLater] = useState(false);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    setShowAttestationLater(params.get('attestation') === 'after-sign-in');
-  }, []);
-
-  useEffect(() => {
-    try {
-      const v = sessionStorage.getItem(PENDING_EMAIL_KEY);
-      setEmail(v);
-    } catch {
-      setEmail(null);
-    }
-  }, []);
 
   useEffect(() => {
     if (cooldownLeft <= 0) return;
@@ -157,5 +153,19 @@ export default function CheckEmailPage() {
         </CardContent>
       </Card>
     </main>
+  );
+}
+
+export default function CheckEmailPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-background p-6">
+          <Loader2 className="size-8 animate-spin text-muted-foreground" aria-hidden />
+        </main>
+      }
+    >
+      <CheckEmailContent />
+    </Suspense>
   );
 }
