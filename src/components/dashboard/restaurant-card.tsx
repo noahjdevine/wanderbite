@@ -110,12 +110,20 @@ function BiteNotesInline({
   const [publicLocal, setPublicLocal] = useState(Boolean(saved?.is_public));
   const [visibilitySaving, setVisibilitySaving] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedPublicSnapshot, setSavedPublicSnapshot] = useState({
+    id: saved?.id,
+    isPublic: saved?.is_public,
+  });
 
   const hasSaved = Boolean(saved);
 
-  useEffect(() => {
+  if (
+    saved?.id !== savedPublicSnapshot.id ||
+    saved?.is_public !== savedPublicSnapshot.isPublic
+  ) {
+    setSavedPublicSnapshot({ id: saved?.id, isPublic: saved?.is_public });
     setPublicLocal(Boolean(saved?.is_public));
-  }, [saved?.id, saved?.is_public]);
+  }
 
   function openEdit() {
     setRating(saved?.rating ?? 5);

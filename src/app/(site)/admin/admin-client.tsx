@@ -128,6 +128,11 @@ export function AdminClient({
   const router = useRouter();
   const manualFormRef = useRef<HTMLFormElement>(null);
   const [restaurants, setRestaurants] = useState(initialRestaurants);
+  const [prevInitialRestaurants, setPrevInitialRestaurants] = useState(initialRestaurants);
+  if (initialRestaurants !== prevInitialRestaurants) {
+    setPrevInitialRestaurants(initialRestaurants);
+    setRestaurants(initialRestaurants);
+  }
   const [addState, addAction, adding] = useActionState(addRestaurantFromForm, null);
   const [importState, importAction, importAdding] = useActionState(
     importRestaurantFromGoogle,
@@ -146,14 +151,49 @@ export function AdminClient({
   const [deleting, setDeleting] = useState(false);
   const [enrichingBulk, setEnrichingBulk] = useState(false);
   const [enrichingId, setEnrichingId] = useState<string | null>(null);
-  const [partnerSuccessFullUrl, setPartnerSuccessFullUrl] = useState<string | null>(
-    null
-  );
   const [slugGenerating, setSlugGenerating] = useState(false);
+  const [lastHandledImportState, setLastHandledImportState] = useState(importState);
+  if (importState !== lastHandledImportState) {
+    setLastHandledImportState(importState);
+    if (importState && importState.status !== 'error') {
+      setGoogleImported(null);
+      setGoogleResults([]);
+      setGoogleQuery('');
+    }
+  }
 
-  useEffect(() => {
-    setRestaurants(initialRestaurants);
-  }, [initialRestaurants]);
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const [lastPartnerSuccess, setLastPartnerSuccess] = useState<{
+    key: string;
+    url: string;
+  } | null>(null);
+  const [trackedAddState, setTrackedAddState] = useState(addState);
+  const [trackedImportState, setTrackedImportState] = useState(importState);
+  if (addState !== trackedAddState) {
+    setTrackedAddState(addState);
+    if (addState?.ok === true) {
+      setLastPartnerSuccess({
+        key: `add:${addState.partnerUrl}`,
+        url: `${origin}${addState.partnerUrl}`,
+      });
+    }
+  }
+  if (importState !== trackedImportState) {
+    setTrackedImportState(importState);
+    if (importState && importState.status !== 'error') {
+      setLastPartnerSuccess({
+        key: `import:${importState.partnerUrl}`,
+        url: `${origin}${importState.partnerUrl}`,
+      });
+    }
+  }
+  const [dismissedPartnerSuccessKey, setDismissedPartnerSuccessKey] = useState<
+    string | null
+  >(null);
+  const partnerSuccessFullUrl =
+    lastPartnerSuccess && lastPartnerSuccess.key !== dismissedPartnerSuccessKey
+      ? lastPartnerSuccess.url
+      : null;
 
   useEffect(() => {
     if (!addState) return;
@@ -161,8 +201,6 @@ export function AdminClient({
       toast.error(addState.error);
       return;
     }
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    setPartnerSuccessFullUrl(`${origin}${addState.partnerUrl}`);
     toast.success('Restaurant added.');
     manualFormRef.current?.reset();
     router.refresh();
@@ -174,16 +212,11 @@ export function AdminClient({
       toast.error(importState.error);
       return;
     }
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-    setPartnerSuccessFullUrl(`${origin}${importState.partnerUrl}`);
     if (importState.status === 'partial') {
       toast.warning(GOOGLE_IMPORT_PARTIAL_MESSAGE, { description: importState.error });
     } else {
       toast.success('Restaurant added.');
     }
-    setGoogleImported(null);
-    setGoogleResults([]);
-    setGoogleQuery('');
     router.refresh();
   }, [importState, router]);
 
@@ -361,7 +394,7 @@ export function AdminClient({
             variant="ghost"
             size="sm"
             className="mt-2 h-8 text-emerald-900 hover:bg-emerald-100"
-            onClick={() => setPartnerSuccessFullUrl(null)}
+            onClick={() => setDismissedPartnerSuccessKey(lastPartnerSuccess?.key ?? null)}
           >
             Dismiss
           </Button>

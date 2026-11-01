@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,34 @@ const EMPTY_SELECTIONS: RouletteSelections = {
 
 const ALLERGY_NOTE = 'Discovery cannot assess allergies. Ask the restaurant.';
 
+const EXCLUDED_CUISINES_STORAGE_KEY = 'wb_excluded_cuisines';
+
+function readExcludedCuisinesFromStorage(): CuisineId[] {
+  try {
+    const raw = window.localStorage.getItem(EXCLUDED_CUISINES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return normalizeCuisineIds(parsed);
+  } catch {
+    return [];
+  }
+}
+
+function subscribeExcludedCuisines(onStoreChange: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === EXCLUDED_CUISINES_STORAGE_KEY || event.key === null) {
+      onStoreChange();
+    }
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
+
+function excludedCuisinesServerSnapshot(): CuisineId[] {
+  return [];
+}
+
 function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   return (
     <div className="aspect-[16/10] w-full shrink-0 overflow-hidden rounded-xl bg-muted">
@@ -62,22 +90,14 @@ export function RouletteClient() {
 
   const [phase, setPhase] = useState<Phase>('form');
   const [selections, setSelections] = useState<RouletteSelections>(EMPTY_SELECTIONS);
-  const [excludedCuisines, setExcludedCuisines] = useState<CuisineId[]>([]);
+  const excludedCuisines = useSyncExternalStore(
+    subscribeExcludedCuisines,
+    readExcludedCuisinesFromStorage,
+    excludedCuisinesServerSnapshot,
+  );
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem('wb_excluded_cuisines');
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) return;
-      setExcludedCuisines(normalizeCuisineIds(parsed));
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const exclusionsSummary = useMemo(() => {
     if (excludedCuisines.length === 0) return null;
@@ -86,11 +106,10 @@ export function RouletteClient() {
     return more > 0 ? `${first.join(', ')} +${more} more` : first.join(', ');
   }, [excludedCuisines]);
 
-  const mapsHref = useMemo(() => {
-    if (!result?.restaurantName) return '#';
-    const q = encodeURIComponent(`${result.restaurantName} ${LAUNCH_MARKET.cityQuery}`);
-    return `https://www.google.com/maps/search/?api=1&query=${q}`;
-  }, [result?.restaurantName]);
+  const mapsHref =
+    result?.restaurantName != null && result.restaurantName.length > 0
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${result.restaurantName} ${LAUNCH_MARKET.cityQuery}`)}`
+      : '#';
 
   const ask = useCallback(
     async (opts?: { surprise?: boolean }) => {
