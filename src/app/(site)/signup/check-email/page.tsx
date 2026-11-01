@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, useCallback } from 'react';
+import { Suspense, useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Mail } from 'lucide-react';
@@ -21,10 +21,22 @@ function readPendingSignupEmail(): string | null {
   }
 }
 
+function subscribePendingSignupEmail(_onStoreChange: () => void) {
+  return () => {};
+}
+
+function pendingSignupEmailServerSnapshot(): null {
+  return null;
+}
+
 function CheckEmailContent() {
   const searchParams = useSearchParams();
   const showAttestationLater = searchParams.get('attestation') === 'after-sign-in';
-  const [email] = useState(readPendingSignupEmail);
+  const email = useSyncExternalStore(
+    subscribePendingSignupEmail,
+    readPendingSignupEmail,
+    pendingSignupEmailServerSnapshot,
+  );
   const [cooldownLeft, setCooldownLeft] = useState(0);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMsg, setResendMsg] = useState<string | null>(null);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,34 @@ const EMPTY_SELECTIONS: RouletteSelections = {
 
 const ALLERGY_NOTE = 'Discovery cannot assess allergies. Ask the restaurant.';
 
+const EXCLUDED_CUISINES_STORAGE_KEY = 'wb_excluded_cuisines';
+
+function readExcludedCuisinesFromStorage(): CuisineId[] {
+  try {
+    const raw = window.localStorage.getItem(EXCLUDED_CUISINES_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return normalizeCuisineIds(parsed);
+  } catch {
+    return [];
+  }
+}
+
+function subscribeExcludedCuisines(onStoreChange: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === EXCLUDED_CUISINES_STORAGE_KEY || event.key === null) {
+      onStoreChange();
+    }
+  };
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}
+
+function excludedCuisinesServerSnapshot(): CuisineId[] {
+  return [];
+}
+
 function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   return (
     <div className="aspect-[16/10] w-full shrink-0 overflow-hidden rounded-xl bg-muted">
@@ -56,25 +84,17 @@ function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   );
 }
 
-function readExcludedCuisinesFromStorage(): CuisineId[] {
-  try {
-    const raw = window.localStorage.getItem('wb_excluded_cuisines');
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return normalizeCuisineIds(parsed);
-  } catch {
-    return [];
-  }
-}
-
 export function RouletteClient() {
   const askInFlightRef = useRef(false);
   const resultSectionRef = useRef<HTMLDivElement>(null);
 
   const [phase, setPhase] = useState<Phase>('form');
   const [selections, setSelections] = useState<RouletteSelections>(EMPTY_SELECTIONS);
-  const [excludedCuisines] = useState(readExcludedCuisinesFromStorage);
+  const excludedCuisines = useSyncExternalStore(
+    subscribeExcludedCuisines,
+    readExcludedCuisinesFromStorage,
+    excludedCuisinesServerSnapshot,
+  );
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);

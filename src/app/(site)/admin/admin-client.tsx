@@ -163,25 +163,36 @@ export function AdminClient({
   }
 
   const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const computedPartnerSuccessFullUrl =
-    addState?.ok === true
-      ? `${origin}${addState.partnerUrl}`
-      : importState && importState.status !== 'error'
-        ? `${origin}${importState.partnerUrl}`
-        : null;
-  const partnerSuccessBannerKey =
-    addState?.ok === true
-      ? `add:${addState.partnerUrl}`
-      : importState && importState.status !== 'error'
-        ? `import:${importState.partnerUrl}`
-        : null;
+  const [lastPartnerSuccess, setLastPartnerSuccess] = useState<{
+    key: string;
+    url: string;
+  } | null>(null);
+  const [trackedAddState, setTrackedAddState] = useState(addState);
+  const [trackedImportState, setTrackedImportState] = useState(importState);
+  if (addState !== trackedAddState) {
+    setTrackedAddState(addState);
+    if (addState?.ok === true) {
+      setLastPartnerSuccess({
+        key: `add:${addState.partnerUrl}`,
+        url: `${origin}${addState.partnerUrl}`,
+      });
+    }
+  }
+  if (importState !== trackedImportState) {
+    setTrackedImportState(importState);
+    if (importState && importState.status !== 'error') {
+      setLastPartnerSuccess({
+        key: `import:${importState.partnerUrl}`,
+        url: `${origin}${importState.partnerUrl}`,
+      });
+    }
+  }
   const [dismissedPartnerSuccessKey, setDismissedPartnerSuccessKey] = useState<
     string | null
   >(null);
   const partnerSuccessFullUrl =
-    computedPartnerSuccessFullUrl &&
-    partnerSuccessBannerKey !== dismissedPartnerSuccessKey
-      ? computedPartnerSuccessFullUrl
+    lastPartnerSuccess && lastPartnerSuccess.key !== dismissedPartnerSuccessKey
+      ? lastPartnerSuccess.url
       : null;
 
   useEffect(() => {
@@ -383,7 +394,7 @@ export function AdminClient({
             variant="ghost"
             size="sm"
             className="mt-2 h-8 text-emerald-900 hover:bg-emerald-100"
-            onClick={() => setDismissedPartnerSuccessKey(partnerSuccessBannerKey)}
+            onClick={() => setDismissedPartnerSuccessKey(lastPartnerSuccess?.key ?? null)}
           >
             Dismiss
           </Button>

@@ -68,6 +68,7 @@ export function ProfileForm({
   const [touchedZip, setTouchedZip] = useState(false);
   const [usernameState, setUsernameState] = useState<UsernameState>({ status: 'idle' });
   const debounceRef = useRef<number | null>(null);
+  const lastCheckedUsernameRef = useRef<string | null>(null);
 
   const dirty = useMemo(() => {
     if (typeof isDirty === 'boolean') return isDirty;
@@ -77,10 +78,14 @@ export function ProfileForm({
   const zipOk = values.address.zip.trim().length === 0 ? false : validZip(values.address.zip);
   const showZipError = touchedZip && values.address.zip.trim().length > 0 && !zipOk;
 
-  function queueUsernameAvailabilityCheck(username: string) {
+  function queueUsernameAvailabilityCheck(username: string, opts?: { skipIfUnchanged?: boolean }) {
     const u = username.trim();
+    if (opts?.skipIfUnchanged && u === lastCheckedUsernameRef.current) {
+      return;
+    }
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
     if (!u) {
+      lastCheckedUsernameRef.current = null;
       setUsernameState({ status: 'too_short' });
       return;
     }
@@ -93,6 +98,7 @@ export function ProfileForm({
             setUsernameState({ status: 'error', message: res.error });
             return;
           }
+          lastCheckedUsernameRef.current = u;
           setUsernameState({ status: res.status });
         })
         .catch(() => setUsernameState({ status: 'error', message: 'Could not check username' }));
@@ -153,7 +159,7 @@ export function ProfileForm({
           }}
           onBlur={() => {
             setTouchedUsername(true);
-            queueUsernameAvailabilityCheck(values.username);
+            queueUsernameAvailabilityCheck(values.username, { skipIfUnchanged: true });
           }}
           placeholder="e.g. foodie_jane"
           autoComplete="username"
