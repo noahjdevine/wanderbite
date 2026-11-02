@@ -1,0 +1,4 @@
+market_slug,market_name,market_state,market_timezone,name,slug,address,city,zip,lat,lon,google_place_id,cuisine_tags,is_vegan,is_dairy_free,is_halal,price_range,neighborhood,status,base_discount_cents,capacity_max_redemptions,valid_from,valid_until,is_test_offer
+example-tx,Example,TX,America/Chicago,Example Grill,,100 Example Street,Example,75001,33.2,-96.7,example-place-grill,american|bbq,false,false,false,$$,Square,active,1000,50,,,true
+example-tx,Example,TX,America/Chicago,Example Sushi,,200 Example Street,Example,75002,,,,,sushi,,,,,,active,,,,
+example-tx,Example,TX,America/Chicago,Example Cafe,example-cafe,300 Example Street,Example,75001,33.21,-96.69,,cafe,,,,,,paused,,,,

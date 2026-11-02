@@ -219,6 +219,8 @@ async function distanceMatchForUser(
 /** Number of distinct restaurant challenges to generate per month. */
 const CHALLENGE_ITEMS_PER_MONTH = 2;
 const CAPACITY_COUNT_PAGE = 1000;
+/** PostgREST encodes `.in()` ids in the URL. Keep each request small. */
+export const CAPACITY_RESTAURANT_ID_CHUNK = 100;
 const NO_CAPACITY_COUNTS: ReadonlyMap<string, number> = new Map();
 
 type LoadedOfferVersion = VersionCapacityFields & { tiers: Json };
@@ -227,7 +229,19 @@ function offerVersionId(restaurant: RestaurantRow): string | null {
   return restaurant.current_offer_version_id ?? null;
 }
 
-async function loadReservedCapacityCounts(
+export function chunkCapacityRestaurantIds(
+  ids: readonly string[],
+  size = CAPACITY_RESTAURANT_ID_CHUNK,
+): string[][] {
+  if (size < 1) throw new Error('capacity restaurant id chunk size');
+  const chunks: string[][] = [];
+  for (let index = 0; index < ids.length; index += size) {
+    chunks.push(ids.slice(index, index + size));
+  }
+  return chunks;
+}
+
+export async function loadReservedCapacityCounts(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   restaurantIds: string[],
   buckets: string[],
@@ -235,32 +249,38 @@ async function loadReservedCapacityCounts(
   { ok: true; counts: Map<string, Map<string, number>> } | { ok: false; message: string }
 > {
   const counts = new Map<string, Map<string, number>>();
-  let from = 0;
-  for (;;) {
-    const { data, error } = await supabase
-      .from('capacity_reservations')
-      .select('id, restaurant_id, bucket_start')
-      .in('restaurant_id', restaurantIds)
-      .in('bucket_start', buckets)
-      .in('status', ['reserved', 'consumed'])
-      .order('id', { ascending: true })
-      .range(from, from + CAPACITY_COUNT_PAGE - 1);
-    if (error) {
-      return { ok: false, message: `Failed to load capacity reservations: ${error.message}` };
-    }
-    const rows = data ?? [];
-    for (const row of rows) {
-      const bucket = row.bucket_start.slice(0, 10);
-      let byBucket = counts.get(row.restaurant_id);
-      if (!byBucket) {
-        byBucket = new Map();
-        counts.set(row.restaurant_id, byBucket);
+  // An empty id list still issues one request, matching the previous single `.in()`.
+  const chunks =
+    restaurantIds.length === 0 ? [restaurantIds] : chunkCapacityRestaurantIds(restaurantIds);
+  for (const idChunk of chunks) {
+    let from = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from('capacity_reservations')
+        .select('id, restaurant_id, bucket_start')
+        .in('restaurant_id', idChunk)
+        .in('bucket_start', buckets)
+        .in('status', ['reserved', 'consumed'])
+        .order('id', { ascending: true })
+        .range(from, from + CAPACITY_COUNT_PAGE - 1);
+      if (error) {
+        return { ok: false, message: `Failed to load capacity reservations: ${error.message}` };
       }
-      byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + 1);
+      const rows = data ?? [];
+      for (const row of rows) {
+        const bucket = row.bucket_start.slice(0, 10);
+        let byBucket = counts.get(row.restaurant_id);
+        if (!byBucket) {
+          byBucket = new Map();
+          counts.set(row.restaurant_id, byBucket);
+        }
+        byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + 1);
+      }
+      if (rows.length < CAPACITY_COUNT_PAGE) break;
+      from += CAPACITY_COUNT_PAGE;
     }
-    if (rows.length < CAPACITY_COUNT_PAGE) return { ok: true, counts };
-    from += CAPACITY_COUNT_PAGE;
   }
+  return { ok: true, counts };
 }
 
 /**
