@@ -1,6 +1,7 @@
 import { addMonths, subMonths } from 'date-fns';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
+import { versionCapacityBuckets, versionHasCapacity } from '@/lib/offers/version-capacity';
 
 export const ASSIGNMENT_HOURS = 840;
 const CHICAGO = 'America/Chicago';
@@ -170,17 +171,7 @@ export function carriedAssignDeadline(assignedAt: Date, expiresAt: Date): Date {
  * An 840-hour window can cross two month boundaries and touch three buckets.
  */
 export function bucketsIntersectingDeadline(assignedAt: Date, deadline: Date): string[] {
-  let month = chicagoMonthStart(assignedAt);
-  const buckets: string[] = [];
-  for (let step = 0; step < 8; step += 1) {
-    const monthStart = chicagoMidnight(month);
-    if (monthStart.getTime() >= deadline.getTime()) break;
-    const next = shiftMonthStart(month, 1);
-    const nextStart = chicagoMidnight(next);
-    if (nextStart.getTime() > assignedAt.getTime()) buckets.push(month);
-    month = next;
-  }
-  return buckets;
+  return versionCapacityBuckets(assignedAt, deadline, 'America/Chicago');
 }
 
 export function capacityCounts(
@@ -206,9 +197,11 @@ export function bucketsHaveCapacity(
   buckets: string[],
   capacityMax: number,
 ): boolean {
-  return buckets.every(
-    (bucket) => capacityCounts(ledger, restaurantId, bucket).used < capacityMax,
-  );
+  const counts = new Map<string, number>();
+  for (const bucket of buckets) {
+    counts.set(bucket, capacityCounts(ledger, restaurantId, bucket).used);
+  }
+  return versionHasCapacity(buckets, counts, capacityMax);
 }
 
 export function reserveBuckets(

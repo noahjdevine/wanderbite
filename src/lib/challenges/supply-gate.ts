@@ -40,6 +40,7 @@ import {
   toGeoPoint,
 } from '@/lib/launch-market';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
+import { versionHasCapacity } from '@/lib/offers/version-capacity';
 import { createSeededShuffle } from '@/lib/simulation/seeded-shuffle';
 
 /**
@@ -541,8 +542,7 @@ function passesTwoIn12(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
 
 function passesCapacity(restaurant: GateRestaurant, ctx: FilterCtx): boolean {
   const cap = restaurant.version?.capacity_max_redemptions ?? 1000;
-  const buckets = ctx.used.get(restaurant.id);
-  return ctx.buckets.every((bucket) => (buckets?.get(bucket) ?? 0) < cap);
+  return versionHasCapacity(ctx.buckets, ctx.used.get(restaurant.id) ?? new Map(), cap);
 }
 
 function passesVariety6(restaurant: GateRestaurant, ctx: FilterCtx): boolean {

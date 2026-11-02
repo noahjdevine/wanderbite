@@ -18,6 +18,7 @@ import { runE02AssignCarried } from './e02-assign-carried';
 import { runE02CreditSafeSwaps } from './e02-credit-safe-swaps';
 import { runE02SupplySimulation } from './e02-supply-simulation';
 import { runE02CatalogConversionDbTest } from './e02-catalog-conversion-db-test';
+import { runE02VersionCapacityDbTest } from './e02-version-capacity-db-test';
 import { runG13A1Concurrency } from './g13-a1-concurrency';
 import { runG13A2Concurrency } from './g13-a2-concurrency';
 
@@ -132,6 +133,8 @@ async function main() {
   await runE02SupplySimulation({ sql });
   runE02CatalogConversionDbTest({ sql, root });
   process.stdout.write('PASS: E02 catalog conversion export and publication-validator parity.\n');
+  runE02VersionCapacityDbTest({ sql });
+  process.stdout.write('PASS: E02 version capacity buckets match reserve_version_buckets.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });

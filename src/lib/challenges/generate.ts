@@ -18,6 +18,13 @@ import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
 import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import {
+  assignmentDeadline,
+  passesVersionCapacityPrefilter,
+  versionCapacityBuckets,
+  type VersionCapacityFields,
+} from '@/lib/offers/version-capacity';
+import type { Json } from '@/types/database.types';
+import {
   redemptionCooldownOk,
   varietyCycleMonthLowerBound,
 } from '@/lib/challenges/restaurant-safety';
@@ -57,6 +64,7 @@ type RestaurantRow = {
   org_id: string;
   image_url?: string | null;
   google_place_id?: string | null;
+  current_offer_version_id?: string | null;
 };
 
 type RestaurantOfferRow = {
@@ -210,6 +218,50 @@ async function distanceMatchForUser(
 
 /** Number of distinct restaurant challenges to generate per month. */
 const CHALLENGE_ITEMS_PER_MONTH = 2;
+const CAPACITY_COUNT_PAGE = 1000;
+const NO_CAPACITY_COUNTS: ReadonlyMap<string, number> = new Map();
+
+type LoadedOfferVersion = VersionCapacityFields & { tiers: Json };
+
+function offerVersionId(restaurant: RestaurantRow): string | null {
+  return restaurant.current_offer_version_id ?? null;
+}
+
+async function loadReservedCapacityCounts(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  restaurantIds: string[],
+  buckets: string[],
+): Promise<
+  { ok: true; counts: Map<string, Map<string, number>> } | { ok: false; message: string }
+> {
+  const counts = new Map<string, Map<string, number>>();
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from('capacity_reservations')
+      .select('id, restaurant_id, bucket_start')
+      .in('restaurant_id', restaurantIds)
+      .in('bucket_start', buckets)
+      .in('status', ['reserved', 'consumed'])
+      .order('id', { ascending: true })
+      .range(from, from + CAPACITY_COUNT_PAGE - 1);
+    if (error) {
+      return { ok: false, message: `Failed to load capacity reservations: ${error.message}` };
+    }
+    const rows = data ?? [];
+    for (const row of rows) {
+      const bucket = row.bucket_start.slice(0, 10);
+      let byBucket = counts.get(row.restaurant_id);
+      if (!byBucket) {
+        byBucket = new Map();
+        counts.set(row.restaurant_id, byBucket);
+      }
+      byBucket.set(bucket, (byBucket.get(bucket) ?? 0) + 1);
+    }
+    if (rows.length < CAPACITY_COUNT_PAGE) return { ok: true, counts };
+    from += CAPACITY_COUNT_PAGE;
+  }
+}
 
 /**
  * Generates (or returns existing) monthly challenge for a user in the launch market.
@@ -372,32 +424,58 @@ export async function generateMonthlyChallengeForUser(
           .filter((id): id is string => Boolean(id)),
       ),
     ];
-    const tiersByVersionId = new Map<string, import('@/types/database.types').Json>();
+    const versionsById = new Map<string, LoadedOfferVersion>();
     if (versionIds.length > 0) {
       const { data: versions, error: versionErr } = await supabase
         .from('offer_versions')
-        .select('id, tiers')
+        .select(
+          'id, restaurant_id, tiers, capacity_timezone, capacity_max_redemptions, valid_from, valid_until, withdrawn_from_selection_at',
+        )
         .in('id', versionIds);
       if (versionErr) {
         return fail('load_failed', `Failed to load offer versions: ${versionErr.message}`);
       }
-      for (const version of versions ?? []) {
-        tiersByVersionId.set(
-          (version as { id: string }).id,
-          (version as { tiers: import('@/types/database.types').Json }).tiers,
-        );
+      for (const version of (versions ?? []) as LoadedOfferVersion[]) {
+        versionsById.set(version.id, version);
+      }
+    }
+
+    const deadline = assignmentDeadline(now);
+    const capacityRestaurantIds: string[] = [];
+    const capacityBuckets = new Set<string>();
+    for (const restaurant of withOffer) {
+      const versionId = offerVersionId(restaurant);
+      if (!versionId) continue;
+      capacityRestaurantIds.push(restaurant.id);
+      const version = versionsById.get(versionId);
+      if (!version || version.restaurant_id !== restaurant.id) continue;
+      for (const bucket of versionCapacityBuckets(now, deadline, version.capacity_timezone)) {
+        capacityBuckets.add(bucket);
+      }
+    }
+    const countsByRestaurant = new Map<string, Map<string, number>>();
+    if (capacityRestaurantIds.length > 0 && capacityBuckets.size > 0) {
+      const loaded = await loadReservedCapacityCounts(
+        supabase,
+        capacityRestaurantIds,
+        [...capacityBuckets],
+      );
+      if (!loaded.ok) return fail('load_failed', loaded.message);
+      for (const [restaurantId, byBucket] of loaded.counts) {
+        countsByRestaurant.set(restaurantId, byBucket);
       }
     }
 
     // Floor uses the same rules as SQL `restaurant_base_cents` (see `restaurant-base-cents.ts`).
-    // Monthly max-redemptions still reads the first active legacy offer by id only; capacity
-    // binding in SQL may use a different active row when several exist (unchanged).
+    // SQL enforces version-bound selectability (`version_selection_ok`) and bucket capacity
+    // (`reserve_version_buckets`); passesHard mirrors both before the pick. SQL does not
+    // enforce legacy `max_redemptions_per_month` — that cap stays TS-only on the legacy branch,
+    // using the first active legacy offer by id.
     function restaurantMeetsCreditFloor(restaurant: RestaurantRow): boolean {
-      const versionId = (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
-        .current_offer_version_id;
+      const versionId = offerVersionId(restaurant);
       const base = restaurantBaseCents({
         currentOfferVersionId: versionId,
-        versionTiers: versionId ? tiersByVersionId.get(versionId) : null,
+        versionTiers: versionId ? versionsById.get(versionId)?.tiers ?? null : null,
         legacyOffer: offerByRestaurant.get(restaurant.id) ?? null,
       });
       return meetsMinimumCreditBase(base);
@@ -524,15 +602,25 @@ export async function generateMonthlyChallengeForUser(
         return false;
       }
       if (swappedOutRestaurantIds.has(restaurant.id)) return false;
-      const versionBound = Boolean(
-        (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
-          .current_offer_version_id
-      );
+      const versionId = offerVersionId(restaurant);
+      const versionBound = Boolean(versionId);
       const offer = offerByRestaurant.get(restaurant.id);
       if (!versionBound && !offer) return false;
       if (!versionBound && offer) {
       const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
       if (monthCount >= offer.max_redemptions_per_month) return false;
+      }
+      if (
+        versionBound &&
+        !passesVersionCapacityPrefilter({
+          restaurantId: restaurant.id,
+          currentOfferVersionId: versionId,
+          version: versionId ? versionsById.get(versionId) ?? null : null,
+          now,
+          countsByBucket: countsByRestaurant.get(restaurant.id) ?? NO_CAPACITY_COUNTS,
+        })
+      ) {
+        return false;
       }
       if (!restaurantMeetsCreditFloor(restaurant)) return false;
       return redemptionHardOk(restaurant);
