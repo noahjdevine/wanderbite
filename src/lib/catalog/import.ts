@@ -10,6 +10,27 @@ export const CATALOG_IMPORT_PLAN_SCHEMA = 'wanderbite.catalog_import_plan.v1';
 export const TEST_OFFER_SOURCE = 'catalog-import --test-offers';
 /** Append-only marker. `offer.publish` rows are never updated. */
 export const TEST_OFFER_MARK_ACTION = 'offer.test_mark';
+/** Legacy marker. Publish rows are not updated; older ones may already carry `is_test: true`. */
+export const TEST_OFFER_PUBLISH_ACTION = 'offer.publish';
+export const TEST_OFFER_AUDIT_TARGET_TYPE = 'offer_version';
+export const TEST_OFFER_AUDIT_ACTIONS = [TEST_OFFER_MARK_ACTION, TEST_OFFER_PUBLISH_ACTION] as const;
+
+/**
+ * Test-offer audit match used by `--withdraw-test-offers` and the v2 supply snapshot.
+ * A row matches when `target_type` is `offer_version`, `is_test` is boolean true, and
+ * `action` is `offer.test_mark` or legacy `offer.publish`.
+ */
+export function isTestOfferAuditMarker(row: {
+  action: string;
+  targetType: string;
+  isTest: unknown;
+}): boolean {
+  return (
+    row.targetType === TEST_OFFER_AUDIT_TARGET_TYPE &&
+    row.isTest === true &&
+    (row.action === TEST_OFFER_MARK_ACTION || row.action === TEST_OFFER_PUBLISH_ACTION)
+  );
+}
 export const DEFAULT_TEST_OFFER_CAPACITY = 50;
 export const TEST_OFFER_BASE_CENTS = 1000;
 const TEST_OFFER_THRESHOLD_FLOOR_CENTS = 4000;

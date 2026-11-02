@@ -3,8 +3,11 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { offerVersionTermsProblem, type OfferVersionTerms } from '../src/lib/offers/catalog-conversion';
-import { parseSupplySnapshot, runSupplyGate } from '../src/lib/challenges/supply-gate';
+import { SUPPLY_GATE_SCHEMA_V2, parseSupplySnapshot, runSupplyGate, type SupplySnapshot } from '../src/lib/challenges/supply-gate';
 import {
+  TEST_OFFER_AUDIT_TARGET_TYPE,
+  TEST_OFFER_MARK_ACTION,
+  TEST_OFFER_PUBLISH_ACTION,
   applyCatalogPlan,
   buildCatalogPlan,
   parseCatalogImportDocument,
@@ -78,6 +81,68 @@ function geocoder(): Geocoder {
     }
     return { lat: 33.2, lon: -96.61 };
   };
+}
+
+function markedCurrentVersionIds(sql: Sql, action: string): string[] {
+  const raw = sql(`
+    select coalesce(json_agg(marked.id order by marked.id), '[]'::json)::text
+    from (
+      select distinct v.id::text as id
+      from public.offer_versions v
+      join public.restaurants r
+        on r.current_offer_version_id = v.id
+       and r.id = v.restaurant_id
+      where r.status = 'active'
+        and v.withdrawn_from_selection_at is null
+        and exists (
+          select 1
+          from public.admin_audit_log a
+          where a.target_type = ${q(TEST_OFFER_AUDIT_TARGET_TYPE)}
+            and a.target_id = v.id::text
+            and a.metadata->>'is_test' = 'true'
+            and a.action = ${q(action)}
+        )
+    ) marked;
+  `);
+  return JSON.parse(raw) as string[];
+}
+
+function readSupplySnapshot(sql: Sql, root: string): SupplySnapshot {
+  const exportSql = readFileSync(path.join(root, 'scripts/sql/e02-supply-snapshot.sql'), 'utf8');
+  const parsed = parseSupplySnapshot(JSON.parse(sql(exportSql)) as unknown);
+  if (!parsed.ok) throw new Error(parsed.message);
+  return parsed.snapshot;
+}
+
+function assertTestOfferVersionIds(sql: Sql, snapshot: SupplySnapshot): void {
+  assert.equal(snapshot.schema, SUPPLY_GATE_SCHEMA_V2);
+  if (snapshot.schema !== SUPPLY_GATE_SCHEMA_V2) return;
+  const expected = [
+    ...new Set([
+      ...markedCurrentVersionIds(sql, TEST_OFFER_MARK_ACTION),
+      ...markedCurrentVersionIds(sql, TEST_OFFER_PUBLISH_ACTION),
+    ]),
+  ].sort();
+  assert.deepEqual(snapshot.test_offer_version_ids, expected);
+  const blocked = new Set(
+    JSON.parse(
+      sql(`
+        select coalesce(json_agg(v.id::text), '[]'::json)::text
+        from public.offer_versions v
+        where v.withdrawn_from_selection_at is not null
+           or not exists (
+             select 1
+             from public.restaurants r
+             where r.current_offer_version_id = v.id
+               and r.id = v.restaurant_id
+               and r.status = 'active'
+           );
+      `),
+    ) as string[],
+  );
+  for (const id of snapshot.test_offer_version_ids) {
+    assert.equal(blocked.has(id), false);
+  }
 }
 
 function loadSnapshot(sql: Sql): CatalogDbSnapshot {
@@ -705,18 +770,23 @@ export async function runCatalogImportDbTest(args: { sql: Sql; root: string }): 
     assert.equal(again.counts.pause, 0);
     assert.equal(again.counts.unchanged, 23);
 
-    const exportSql = readFileSync(path.join(args.root, 'scripts/sql/e02-supply-snapshot.sql'), 'utf8');
-    const snapshotRaw = args.sql(exportSql);
-    const parsedSnapshot = parseSupplySnapshot(JSON.parse(snapshotRaw) as unknown);
-    assert.equal(parsedSnapshot.ok, true, parsedSnapshot.ok ? '' : parsedSnapshot.message);
-    if (!parsedSnapshot.ok) return;
+    const parsedSnapshot = readSupplySnapshot(args.sql, args.root);
+    assertTestOfferVersionIds(args.sql, parsedSnapshot);
+    if (parsedSnapshot.schema === SUPPLY_GATE_SCHEMA_V2) {
+      const ricks = args.sql(`select current_offer_version_id::text from public.restaurants where slug = 'ricks-chophouse';`);
+      assert.equal(parsedSnapshot.test_offer_version_ids.includes(ricks), false);
+      assert.equal(parsedSnapshot.test_offer_version_ids.length, 22);
+    }
     const gate = runSupplyGate({
-      snapshot: parsedSnapshot.snapshot,
+      snapshot: parsedSnapshot,
       seeds: Array.from({ length: 20 }, (_, index) => index + 1),
     });
     process.stdout.write(gate.text);
     assert.match(gate.catalogLine, /selectable_offer_version=([1-9]\d*)/);
     assert.match(gate.catalogLine, /missing_coordinates=0/);
+    assert.match(gate.text, /test_supply selectable=\d+ of \d+/);
+    assert.match(gate.text, /result=(PASS|FAIL) \(all supply\) /);
+    assert.match(gate.text, /real_supply_result=(PASS|FAIL) matched_min=\d+\/192 trials_failed=\d+\/20 /);
 
     const withdraw = await buildCatalogPlan({
       document: { rows: [], errors: [] },
@@ -777,13 +847,13 @@ export async function runCatalogImportDbTest(args: { sql: Sql; root: string }): 
       `),
       '0',
     );
-    await runMarkFailureAndBothStyles(args.sql);
+    await runMarkFailureAndBothStyles(args.sql, args.root);
   } finally {
     cleanup(args.sql);
   }
 }
 
-async function runMarkFailureAndBothStyles(sql: Sql): Promise<void> {
+async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void> {
   const market = 'c4710900-0000-4000-8000-0000000000d1';
   sql(`
     insert into public.markets (id, name, slug, state, timezone, status, country, currency)
@@ -936,6 +1006,18 @@ async function runMarkFailureAndBothStyles(sql: Sql): Promise<void> {
     `),
     '',
   );
+  const markedSnapshot = readSupplySnapshot(sql, root);
+  assertTestOfferVersionIds(sql, markedSnapshot);
+  if (markedSnapshot.schema === SUPPLY_GATE_SCHEMA_V2) {
+    const legacyId = sql(`select current_offer_version_id::text from public.restaurants where slug = 'legacy-mark-grill';`);
+    const newId = sql(`select current_offer_version_id::text from public.restaurants where slug = 'new-mark-grill';`);
+    const withdrawnId = sql(`
+      select id::text from public.offer_versions
+      where restaurant_id = (select id from public.restaurants where slug = 'fail-mark-grill');
+    `);
+    assert.deepEqual(markedSnapshot.test_offer_version_ids, [legacyId, newId].sort());
+    assert.equal(markedSnapshot.test_offer_version_ids.includes(withdrawnId), false);
+  }
   const withdraw = await buildCatalogPlan({
     document: { rows: [], errors: [] },
     snapshot: loadSnapshot(sql),

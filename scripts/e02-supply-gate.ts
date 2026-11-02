@@ -83,4 +83,8 @@ if (args.jsonPath) {
   mkdirSync(path.dirname(destination), { recursive: true });
   writeFileSync(destination, supplyGateJson(result));
 }
-process.exit(result.result === 'PASS' ? 0 : 1);
+// v2 follows real_supply_result so a PASS that exists only because of test
+// offer versions is not a successful gate run. v1 has no test split, so its
+// exit code stays on the full-catalog result.
+const exitResult = result.realSupplyResult ?? result.result;
+process.exit(exitResult === 'PASS' ? 0 : 1);

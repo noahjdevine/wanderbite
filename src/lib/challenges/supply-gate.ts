@@ -56,12 +56,15 @@ import { createSeededShuffle } from '@/lib/simulation/seeded-shuffle';
  * receive `below_floor` from the RPC.
  */
 
-export const SUPPLY_GATE_SCHEMA = 'wanderbite.e02.supply_snapshot.v1';
+export const SUPPLY_GATE_SCHEMA_V1 = 'wanderbite.e02.supply_snapshot.v1';
+export const SUPPLY_GATE_SCHEMA_V2 = 'wanderbite.e02.supply_snapshot.v2';
+/** Original snapshot schema. v1 files stay valid. */
+export const SUPPLY_GATE_SCHEMA = SUPPLY_GATE_SCHEMA_V1;
 export const SUPPLY_GATE_DENOMINATOR = 192;
 export const CREDIT_FLOOR_CENTS = MINIMUM_CREDIT_BASE_CENTS;
 
 const FORBIDDEN_KEY = /pin|verification|address|email|phone|token|secret|password/i;
-const TOP_LEVEL_KEYS = [
+const TOP_LEVEL_KEYS_V1 = [
   'schema',
   'exported_at',
   'launch_market',
@@ -69,6 +72,7 @@ const TOP_LEVEL_KEYS = [
   'offer_versions',
   'legacy_offers',
 ] as const;
+const TOP_LEVEL_KEYS_V2 = [...TOP_LEVEL_KEYS_V1, 'test_offer_version_ids'] as const;
 
 const LAUNCH_ZIPS = ['75069', '75070', '75071', '75072'] as const;
 export type LaunchZip = (typeof LAUNCH_ZIPS)[number];
@@ -141,62 +145,74 @@ export type GateRule =
 
 const tierRecord = z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()]));
 
-const snapshotSchema = z
-  .object({
-    schema: z.literal(SUPPLY_GATE_SCHEMA),
-    exported_at: z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'exported_at'),
-    launch_market: z
+const snapshotFields = {
+  exported_at: z.string().refine((value) => !Number.isNaN(Date.parse(value)), 'exported_at'),
+  launch_market: z
+    .object({
+      id: z.string(),
+      slug: z.string(),
+      status: z.string().nullable(),
+    })
+    .strict(),
+  restaurants: z.array(
+    z
       .object({
         id: z.string(),
-        slug: z.string(),
+        slug: z.string().nullable(),
+        name: z.string(),
         status: z.string().nullable(),
+        market_id: z.string().nullable(),
+        cuisine_tags: z.array(z.string()).nullable(),
+        lat: z.number().nullable(),
+        lon: z.number().nullable(),
+        current_offer_version_id: z.string().nullable(),
       })
       .strict(),
-    restaurants: z.array(
-      z
-        .object({
-          id: z.string(),
-          slug: z.string().nullable(),
-          name: z.string(),
-          status: z.string().nullable(),
-          market_id: z.string().nullable(),
-          cuisine_tags: z.array(z.string()).nullable(),
-          lat: z.number().nullable(),
-          lon: z.number().nullable(),
-          current_offer_version_id: z.string().nullable(),
-        })
-        .strict(),
-    ),
-    offer_versions: z.array(
-      z
-        .object({
-          id: z.string(),
-          restaurant_id: z.string(),
-          tiers: z.array(tierRecord),
-          valid_from: z.string(),
-          valid_until: z.string(),
-          withdrawn_from_selection_at: z.string().nullable(),
-          capacity_max_redemptions: z.number(),
-          capacity_timezone: z.string(),
-          capacity_window_kind: z.string(),
-        })
-        .strict(),
-    ),
-    legacy_offers: z.array(
-      z
-        .object({
-          restaurant_id: z.string().nullable(),
-          discount_amount_cents: z.number().nullable(),
-          min_spend_cents: z.number().nullable(),
-          max_redemptions_per_month: z.number().nullable(),
-          active: z.boolean().nullable(),
-        })
-        .strict(),
-    ),
+  ),
+  offer_versions: z.array(
+    z
+      .object({
+        id: z.string(),
+        restaurant_id: z.string(),
+        tiers: z.array(tierRecord),
+        valid_from: z.string(),
+        valid_until: z.string(),
+        withdrawn_from_selection_at: z.string().nullable(),
+        capacity_max_redemptions: z.number(),
+        capacity_timezone: z.string(),
+        capacity_window_kind: z.string(),
+      })
+      .strict(),
+  ),
+  legacy_offers: z.array(
+    z
+      .object({
+        restaurant_id: z.string().nullable(),
+        discount_amount_cents: z.number().nullable(),
+        min_spend_cents: z.number().nullable(),
+        max_redemptions_per_month: z.number().nullable(),
+        active: z.boolean().nullable(),
+      })
+      .strict(),
+  ),
+};
+
+const snapshotV1Schema = z
+  .object({
+    schema: z.literal(SUPPLY_GATE_SCHEMA_V1),
+    ...snapshotFields,
   })
   .strict();
 
-export type SupplySnapshot = z.infer<typeof snapshotSchema>;
+const snapshotV2Schema = z
+  .object({
+    schema: z.literal(SUPPLY_GATE_SCHEMA_V2),
+    ...snapshotFields,
+    test_offer_version_ids: z.array(z.string()),
+  })
+  .strict();
+
+export type SupplySnapshot = z.infer<typeof snapshotV1Schema> | z.infer<typeof snapshotV2Schema>;
 
 export type SnapshotParseResult =
   | { ok: true; snapshot: SupplySnapshot }
@@ -239,6 +255,11 @@ function forbiddenKey(value: unknown): boolean {
   return false;
 }
 
+function allowedTopLevelKeys(raw: object): readonly string[] {
+  const schema = 'schema' in raw ? raw.schema : undefined;
+  return schema === SUPPLY_GATE_SCHEMA_V2 ? TOP_LEVEL_KEYS_V2 : TOP_LEVEL_KEYS_V1;
+}
+
 /** Fail closed. Never include values from the rejected document. */
 export function parseSupplySnapshot(raw: unknown): SnapshotParseResult {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -248,15 +269,23 @@ export function parseSupplySnapshot(raw: unknown): SnapshotParseResult {
     return { ok: false, message: 'snapshot rejected: forbidden key' };
   }
   const keys = Object.keys(raw);
-  if (keys.some((key) => !TOP_LEVEL_KEYS.includes(key as (typeof TOP_LEVEL_KEYS)[number]))) {
+  const allowed = allowedTopLevelKeys(raw);
+  if (keys.some((key) => !allowed.includes(key))) {
     return { ok: false, message: 'snapshot rejected: unknown top-level key' };
   }
-  const parsed = snapshotSchema.safeParse(raw);
+  const schema = 'schema' in raw ? raw.schema : undefined;
+  const parsed = (schema === SUPPLY_GATE_SCHEMA_V2 ? snapshotV2Schema : snapshotV1Schema).safeParse(raw);
   if (!parsed.success) {
     return { ok: false, message: `snapshot rejected: ${formatZodPaths(parsed.error.issues)}` };
   }
   if (parsed.data.launch_market.slug !== 'mckinney-tx') {
     return { ok: false, message: 'snapshot rejected: schema mismatch' };
+  }
+  if (parsed.data.schema === SUPPLY_GATE_SCHEMA_V2) {
+    const known = new Set(parsed.data.offer_versions.map((row) => row.id));
+    if (parsed.data.test_offer_version_ids.some((id) => !known.has(id))) {
+      return { ok: false, message: 'snapshot rejected: test_offer_version_ids' };
+    }
   }
   return { ok: true, snapshot: parsed.data };
 }
@@ -316,6 +345,14 @@ export type SupplyGateResult = {
   exportedAtCt: string;
   activeRestaurants: number;
   catalogLine: string;
+  /** Null on a v1 snapshot, where test supply is unknown. */
+  testSupplyLine: string;
+  testSupplyIncluded: boolean;
+  realSupplyLine: string | null;
+  realSupplyResult: 'PASS' | 'FAIL' | null;
+  realMatchedMin: number | null;
+  realTrialsFailed: number | null;
+  excludedTestVersions: number | null;
   windowLabel: string;
   m0: string;
   m5: string;
@@ -1284,12 +1321,19 @@ function duplicateLabel(restaurants: GateRestaurant[]): string {
   return [...pairs].sort().join(',');
 }
 
+function isSelectableVersion(restaurant: GateRestaurant, now: Date): boolean {
+  if (!restaurant.version) return false;
+  return (
+    offerVersionCoversDeadline(restaurant.version, now, plusAssignmentHours(now)) &&
+    baseCents(restaurant.version) != null
+  );
+}
+
 function catalogLine(args: {
   restaurants: GateRestaurant[];
   now: Date;
   marketId: string;
 }): string {
-  const deadline = plusAssignmentHours(args.now);
   let selectable = 0;
   let noVersion = 0;
   let legacyOnly = 0;
@@ -1299,7 +1343,7 @@ function catalogLine(args: {
     if (!restaurant.version) {
       noVersion += 1;
       if (restaurant.legacy) legacyOnly += 1;
-    } else if (offerVersionCoversDeadline(restaurant.version, args.now, deadline) && baseCents(restaurant.version) != null) {
+    } else if (isSelectableVersion(restaurant, args.now)) {
       selectable += 1;
     } else {
       notSelectable += 1;
@@ -1401,13 +1445,30 @@ function formatCountMap(map: Map<string, number>, order: 'month' | 'rule' | 'per
   return entries.map(([key, count]) => `${key}=${count}`).join(' ');
 }
 
+function closingLine(result: 'PASS' | 'FAIL', matchedMin: number, testSupplyIncluded: boolean): string {
+  if (!testSupplyIncluded) {
+    return result === 'PASS'
+      ? 'PASS: E02 supply gate'
+      : `FAIL: E02 supply gate (${SUPPLY_GATE_DENOMINATOR - matchedMin} unmatched credits)`;
+  }
+  if (result === 'PASS') {
+    return 'PASS: E02 supply gate (all supply, including test versions; not a real-supply result)';
+  }
+  return `FAIL: E02 supply gate (${SUPPLY_GATE_DENOMINATOR - matchedMin} unmatched credits, all supply including test versions)`;
+}
+
 export function formatSupplyGateReport(result: Omit<SupplyGateResult, 'text'> & { text?: string }): string {
+  const qualifier = result.testSupplyIncluded ? ' (all supply)' : '';
   const lines = [
     '=== E02 supply gate (D2=B, threshold=100%) ===',
     `snapshot exported_at=${result.exportedAt} (${result.exportedAtCt} CT) market=mckinney-tx active_restaurants=${result.activeRestaurants}`,
     result.catalogLine,
+    result.testSupplyLine,
     `window=${result.windowLabel} cohort=16 (4 zips x open/restricted x new/tenured) trials=${result.seeds.length} seeds=${result.seeds[0]}..${result.seeds[result.seeds.length - 1]}`,
-    `result=${result.result} matched_min=${result.matchedMin}/${SUPPLY_GATE_DENOMINATOR} matched_via_carry=${result.matchedViaCarry} worst_seed=${result.worstSeed} trials_failed=${result.trialsFailed}/${result.seeds.length}`,
+    `result=${result.result}${qualifier} matched_min=${result.matchedMin}/${SUPPLY_GATE_DENOMINATOR} matched_via_carry=${result.matchedViaCarry} worst_seed=${result.worstSeed} trials_failed=${result.trialsFailed}/${result.seeds.length}`,
+  ];
+  if (result.realSupplyLine) lines.push(result.realSupplyLine);
+  lines.push(
     `unmatched_by_month ${formatSplitCounts(result.unmatchedByMonthAll, result.unmatchedByMonth, 'month', result.worstSeed)}`,
     `unmatched_by_rule ${formatSplitCounts(result.unmatchedByRuleAll, result.unmatchedByRule, 'rule', result.worstSeed)}`,
     `unmatched_by_persona ${formatSplitCounts(result.unmatchedByPersonaAll, result.unmatchedByPersona, 'persona', result.worstSeed)}`,
@@ -1416,24 +1477,28 @@ export function formatSupplyGateReport(result: Omit<SupplyGateResult, 'text'> & 
       (row) =>
         `shortfall persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} add_at_least=${row.addAtLeast} kind="${row.kind}" lower bound`,
     ),
-    result.result === 'PASS'
-      ? 'PASS: E02 supply gate'
-      : `FAIL: E02 supply gate (${SUPPLY_GATE_DENOMINATOR - result.matchedMin} unmatched credits)`,
-  ];
+    closingLine(result.result, result.matchedMin, result.testSupplyIncluded),
+  );
   return `${lines.join('\n')}\n`;
 }
 
-export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] }): SupplyGateResult {
-  if (args.seeds.length === 0) throw new Error('E02 supply gate: no seeds');
-  const restaurants = buildRestaurants(args.snapshot);
-  const exported = new Date(args.snapshot.exported_at);
-  const m0 = firstScoredMonth(exported);
-  const months = scoredMonthList(m0);
-  const m5 = months[5] ?? m0;
-  const cutoffCache = createCooldownCutoffCache();
-  const trials = args.seeds.map((seed) =>
-    runSupplyGateTrial({ snapshot: args.snapshot, seed, restaurants, cutoffCache }),
-  );
+type ScoredTrials = {
+  result: 'PASS' | 'FAIL';
+  matchedMin: number;
+  worstSeed: number;
+  trialsFailed: number;
+  matchedViaCarry: number;
+  unmatchedByMonth: Map<string, number>;
+  unmatchedByRule: Map<string, number>;
+  unmatchedByPersona: Map<string, number>;
+  unmatchedByMonthAll: Map<string, number>;
+  unmatchedByRuleAll: Map<string, number>;
+  unmatchedByPersonaAll: Map<string, number>;
+  funnel: string[];
+  trials: SupplyGateTrial[];
+};
+
+function scoreTrials(trials: SupplyGateTrial[]): ScoredTrials {
   let worst = trials[0];
   if (!worst) throw new Error('E02 supply gate: no trials');
   for (const trial of trials) {
@@ -1444,17 +1509,8 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
   const trialsFailed = trials.filter((trial) => trial.numerator !== SUPPLY_GATE_DENOMINATOR).length;
   const result: 'PASS' | 'FAIL' =
     trialsFailed === 0 && worst.numerator === SUPPLY_GATE_DENOMINATOR ? 'PASS' : 'FAIL';
-  const now = monthInstant(m0);
-  const partial = {
+  return {
     result,
-    exportedAt: exported.toISOString(),
-    exportedAtCt: formatCt(exported),
-    activeRestaurants: restaurants.length,
-    catalogLine: catalogLine({ restaurants, now, marketId: args.snapshot.launch_market.id }),
-    windowLabel: `${ym(m0)}..${ym(m5)}`,
-    m0,
-    m5,
-    seeds: args.seeds,
     matchedMin: worst.numerator,
     worstSeed: worst.seed,
     trialsFailed,
@@ -1466,6 +1522,109 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
     unmatchedByRuleAll: sumCountMaps(trials.map((trial) => trial.unmatchedByRule)),
     unmatchedByPersonaAll: sumCountMaps(trials.map((trial) => trial.unmatchedByPersona)),
     funnel: worst.funnel,
+    trials,
+  };
+}
+
+function testVersionIds(snapshot: SupplySnapshot): ReadonlySet<string> {
+  if (snapshot.schema !== SUPPLY_GATE_SCHEMA_V2) return new Set();
+  return new Set(snapshot.test_offer_version_ids);
+}
+
+/** Test versions drop out of the real-supply run as if they had no current offer version. */
+function withoutTestVersions(restaurants: GateRestaurant[], testIds: ReadonlySet<string>): GateRestaurant[] {
+  if (testIds.size === 0) return restaurants;
+  return restaurants.map((restaurant) => {
+    if (!restaurant.version || !testIds.has(restaurant.version.id)) return restaurant;
+    return { ...restaurant, version: null, current_offer_version_id: null };
+  });
+}
+
+function runTrials(args: {
+  snapshot: SupplySnapshot;
+  restaurants: GateRestaurant[];
+  seeds: number[];
+  cutoffCache: CooldownCutoffCache;
+}): SupplyGateTrial[] {
+  return args.seeds.map((seed) =>
+    runSupplyGateTrial({
+      snapshot: args.snapshot,
+      seed,
+      restaurants: args.restaurants,
+      cutoffCache: args.cutoffCache,
+    }),
+  );
+}
+
+function formatRealSupplyLine(scored: ScoredTrials, seedCount: number, excluded: number): string {
+  return `real_supply_result=${scored.result} matched_min=${scored.matchedMin}/${SUPPLY_GATE_DENOMINATOR} trials_failed=${scored.trialsFailed}/${seedCount} unmatched_by_rule=${formatCountMap(scored.unmatchedByRule, 'rule')} (excluding ${excluded} test versions)`;
+}
+
+export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] }): SupplyGateResult {
+  if (args.seeds.length === 0) throw new Error('E02 supply gate: no seeds');
+  const restaurants = buildRestaurants(args.snapshot);
+  const exported = new Date(args.snapshot.exported_at);
+  const m0 = firstScoredMonth(exported);
+  const months = scoredMonthList(m0);
+  const m5 = months[5] ?? m0;
+  const now = monthInstant(m0);
+  const cutoffCache = createCooldownCutoffCache();
+  const full = scoreTrials(
+    runTrials({ snapshot: args.snapshot, restaurants, seeds: args.seeds, cutoffCache }),
+  );
+  const v2 = args.snapshot.schema === SUPPLY_GATE_SCHEMA_V2;
+  const testIds = testVersionIds(args.snapshot);
+  let selectable = 0;
+  let testSelectable = 0;
+  let excluded = 0;
+  for (const restaurant of restaurants) {
+    const linkedTest = restaurant.version != null && testIds.has(restaurant.version.id);
+    if (linkedTest) excluded += 1;
+    if (!isSelectableVersion(restaurant, now)) continue;
+    selectable += 1;
+    if (linkedTest) testSelectable += 1;
+  }
+  const real = v2
+    ? scoreTrials(
+        runTrials({
+          snapshot: args.snapshot,
+          restaurants: withoutTestVersions(restaurants, testIds),
+          seeds: args.seeds,
+          cutoffCache,
+        }),
+      )
+    : null;
+  const testSupplyIncluded = v2 && excluded > 0;
+  const partial = {
+    result: full.result,
+    exportedAt: exported.toISOString(),
+    exportedAtCt: formatCt(exported),
+    activeRestaurants: restaurants.length,
+    catalogLine: catalogLine({ restaurants, now, marketId: args.snapshot.launch_market.id }),
+    testSupplyLine: v2
+      ? `test_supply selectable=${testSelectable} of ${selectable}`
+      : 'test_supply=unknown (v1 snapshot)',
+    testSupplyIncluded,
+    realSupplyLine: real ? formatRealSupplyLine(real, args.seeds.length, excluded) : null,
+    realSupplyResult: real?.result ?? null,
+    realMatchedMin: real?.matchedMin ?? null,
+    realTrialsFailed: real?.trialsFailed ?? null,
+    excludedTestVersions: v2 ? excluded : null,
+    windowLabel: `${ym(m0)}..${ym(m5)}`,
+    m0,
+    m5,
+    seeds: args.seeds,
+    matchedMin: full.matchedMin,
+    worstSeed: full.worstSeed,
+    trialsFailed: full.trialsFailed,
+    matchedViaCarry: full.matchedViaCarry,
+    unmatchedByMonth: full.unmatchedByMonth,
+    unmatchedByRule: full.unmatchedByRule,
+    unmatchedByPersona: full.unmatchedByPersona,
+    unmatchedByMonthAll: full.unmatchedByMonthAll,
+    unmatchedByRuleAll: full.unmatchedByRuleAll,
+    unmatchedByPersonaAll: full.unmatchedByPersonaAll,
+    funnel: full.funnel,
     shortfall: shortfallLines({
       restaurants,
       marketId: args.snapshot.launch_market.id,
@@ -1473,7 +1632,7 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
       windowEndLabel: ym(m5),
     }),
     minSpendDistribution: minSpendDistribution(args.snapshot),
-    trials,
+    trials: full.trials,
   };
   return { ...partial, text: formatSupplyGateReport(partial) };
 }
@@ -1482,6 +1641,11 @@ export function supplyGateJson(result: SupplyGateResult): string {
   const payload = {
     text: result.text,
     result: result.result,
+    test_supply: result.testSupplyLine,
+    real_supply_result: result.realSupplyResult,
+    real_matched_min: result.realMatchedMin,
+    real_trials_failed: result.realTrialsFailed,
+    excluded_test_versions: result.excludedTestVersions,
     exported_at: result.exportedAt,
     exported_at_ct: result.exportedAtCt,
     active_restaurants: result.activeRestaurants,
