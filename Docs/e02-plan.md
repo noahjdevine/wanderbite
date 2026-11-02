@@ -143,6 +143,8 @@ Applied in this docs-only sync. No product behavior change.
 
 `.cursor/rules/conventions.mdc` rule 1 allows `cursor/*` branch names alongside `fix/<short-description>` (naming only). Rule 4 still waits for confirmation before `db push`, and notes that hand-edited types ([#39](https://github.com/noahjdevine/wanderbite/pull/39), [#41](https://github.com/noahjdevine/wanderbite/pull/41), [#46](https://github.com/noahjdevine/wanderbite/pull/46), [#47](https://github.com/noahjdevine/wanderbite/pull/47)) need a separate approved `types:db` PR. Push, package, and spending rules are unchanged.
 
+[#64](https://github.com/noahjdevine/wanderbite/pull/64) (`db1b34e`) moved roulette excluded cuisines onto `useSyncExternalStore` with an uncached snapshot (`return []` and `normalizeCuisineIds`), which looped `/roulette` with “The result of getSnapshot should be cached” and “Maximum update depth exceeded”; `src/lib/excluded-cuisines-store.ts` caches that snapshot by the raw `wb_excluded_cuisines` string and shares one frozen empty array for missing or invalid storage and the server snapshot.
+
 `Docs/build-kit.md` §3 and the §4 issuance line now describe the sealed-tier per-credit floor (1000 cents), the Chicago-month credit swap, `redemptionCooldownOk`, and the traced expiry clocks. Other build-kit sections are unchanged.
 
 ## 5. Risks and the remaining decisions

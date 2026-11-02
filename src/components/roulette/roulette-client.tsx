@@ -6,7 +6,12 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink } from 'lucide-react';
 import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
-import { normalizeCuisineIds, cuisineLabel, type CuisineId } from '@/lib/cuisines';
+import { cuisineLabel } from '@/lib/cuisines';
+import {
+  getExcludedCuisinesServerSnapshot,
+  getExcludedCuisinesSnapshot,
+  subscribeExcludedCuisines,
+} from '@/lib/excluded-cuisines-store';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
 import { postRouletteSpin } from '@/lib/roulette-api-client';
 import { buildRouletteSpinBody } from '@/lib/roulette-options';
@@ -44,34 +49,6 @@ const EMPTY_SELECTIONS: RouletteSelections = {
 
 const ALLERGY_NOTE = 'Discovery cannot assess allergies. Ask the restaurant.';
 
-const EXCLUDED_CUISINES_STORAGE_KEY = 'wb_excluded_cuisines';
-
-function readExcludedCuisinesFromStorage(): CuisineId[] {
-  try {
-    const raw = window.localStorage.getItem(EXCLUDED_CUISINES_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return normalizeCuisineIds(parsed);
-  } catch {
-    return [];
-  }
-}
-
-function subscribeExcludedCuisines(onStoreChange: () => void) {
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === EXCLUDED_CUISINES_STORAGE_KEY || event.key === null) {
-      onStoreChange();
-    }
-  };
-  window.addEventListener('storage', onStorage);
-  return () => window.removeEventListener('storage', onStorage);
-}
-
-function excludedCuisinesServerSnapshot(): CuisineId[] {
-  return [];
-}
-
 function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   return (
     <div className="aspect-[16/10] w-full shrink-0 overflow-hidden rounded-xl bg-muted">
@@ -92,8 +69,8 @@ export function RouletteClient() {
   const [selections, setSelections] = useState<RouletteSelections>(EMPTY_SELECTIONS);
   const excludedCuisines = useSyncExternalStore(
     subscribeExcludedCuisines,
-    readExcludedCuisinesFromStorage,
-    excludedCuisinesServerSnapshot,
+    getExcludedCuisinesSnapshot,
+    getExcludedCuisinesServerSnapshot,
   );
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<RouletteApiResult | null>(null);
