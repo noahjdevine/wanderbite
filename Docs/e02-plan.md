@@ -4,7 +4,7 @@ Synced through **#60** (merge `46818e2e`; prior baseline `46dd871c` / PR #57). E
 
 **Catalog conversion (PR #59).** `npm run catalog:convert` and `scripts/e02-catalog-conversion.ts` are an offline dry-run export/manifest only. They do not publish offer versions or mutate hosted data; any apply/backfill requires separate authorization.
 
-**Hosted schema (pending Noah).** Apply forward migration `20261011210000_e02_independent_credit_floor.sql` on production (`supabase db push` or equivalent) is a separate operator step; not confirmed in this doc.
+**Hosted schema.** Forward migration `20261011210000_e02_independent_credit_floor.sql` is applied on hosted project `yiajoycgiyxjvznndjge`; migration history is reconciled.
 
 **CI audit / deps (pending Noah's decision).** `main` includes `fix(ci)` (`cbecae2`): `npm audit --audit-level=high --omit=dev`, overrides for `sharp` and `source-map-js`. Whether that policy stays is Noah's call; this plan does not re-edit CI or lockfiles.
 
