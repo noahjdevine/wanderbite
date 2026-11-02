@@ -1,0 +1,716 @@
+// Disposable Docker Postgres only. No hosted URL, credentials, project link, or network.
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { offerVersionTermsProblem, type OfferVersionTerms } from '../src/lib/offers/catalog-conversion';
+import { parseSupplySnapshot, runSupplyGate } from '../src/lib/challenges/supply-gate';
+import {
+  applyCatalogPlan,
+  buildCatalogPlan,
+  parseCatalogImportDocument,
+  type CatalogDbSnapshot,
+  type CatalogExecutor,
+  type CatalogPlan,
+  type CatalogRestaurantPatch,
+  type Geocoder,
+} from '../src/lib/catalog/import';
+
+type Sql = (query: string) => string;
+
+const ADMIN = 'c4710900-0000-4000-8000-0000000000aa';
+const NOW = new Date();
+
+const WITH_COORDS = [
+  'hutchins-bbq',
+  'ricks-chophouse',
+  'local-yocal-bbq-grill',
+  'the-yard',
+  'smittys-bbq',
+  'blue-corn-cafe',
+] as const;
+
+const WITHOUT_COORDS = [
+  '1117',
+  'bobs-steak-chop-house',
+  'centro-on-the-square',
+  'harvest-at-the-masonic',
+  'hutchins-bbq-2',
+  'kimiya-japanese-cuisine-mckinney',
+  'kyoto-hibachi-sushi-bar',
+  'lockwood-distilling-company-mckinney',
+  'shun-by-yama-sushi',
+  'sugarbacon-proper-kitchen',
+  'the-common-table',
+  'the-garage',
+  'tupps-brewery',
+  'umai-sushi',
+  'uncorkd-bar-grill',
+  'union-bear-brewing-mckinney',
+  'urban-grill-and-wine-bar-mckinney',
+  'zen-sushi-grill',
+] as const;
+
+function q(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+function jsonb(value: unknown): string {
+  const serialized = JSON.stringify(value);
+  assert.ok(!serialized.includes('$cj$'));
+  return `$cj$${serialized}$cj$::jsonb`;
+}
+
+function textArray(values: string[]): string {
+  if (values.length === 0) return `'{}'::text[]`;
+  return `array[${values.map((value) => q(value)).join(', ')}]::text[]`;
+}
+
+function num(value: number | null): string {
+  return value == null ? 'null' : String(value);
+}
+
+function geocoder(): Geocoder {
+  return async (request) => {
+    if (request.kind === 'place_id') {
+      let hash = 0;
+      for (const char of request.placeId) hash = (hash + char.charCodeAt(0)) % 40;
+      return { lat: 33.19 + hash / 1000, lon: -96.62 };
+    }
+    return { lat: 33.2, lon: -96.61 };
+  };
+}
+
+function loadSnapshot(sql: Sql): CatalogDbSnapshot {
+  const raw = sql(`
+    select json_build_object(
+      'markets', coalesce((
+        select json_agg(json_build_object(
+          'id', id, 'slug', slug, 'name', name, 'state', state,
+          'timezone', timezone, 'status', status
+        )) from public.markets
+      ), '[]'::json),
+      'restaurants', coalesce((
+        select json_agg(json_build_object(
+          'id', r.id,
+          'market_id', r.market_id,
+          'name', r.name,
+          'slug', r.slug,
+          'address', r.address,
+          'lat', r.lat,
+          'lon', r.lon,
+          'google_place_id', r.google_place_id,
+          'cuisine_tags', to_json(r.cuisine_tags),
+          'is_vegan', r.is_vegan,
+          'is_dairy_free', r.is_dairy_free,
+          'is_halal', r.is_halal,
+          'price_range', r.price_range,
+          'neighborhood', r.neighborhood,
+          'status', r.status,
+          'current_offer_version_id', r.current_offer_version_id,
+          'challenge_item_count', (select count(*) from public.challenge_items ci where ci.restaurant_id = r.id),
+          'offer_version_count', (select count(*) from public.offer_versions ov where ov.restaurant_id = r.id)
+        )) from public.restaurants r
+      ), '[]'::json),
+      'test_offers', coalesce((
+        select json_agg(json_build_object(
+          'version_id', a.target_id,
+          'restaurant_id', r.id,
+          'market_slug', m.slug
+        ))
+        from public.admin_audit_log a
+        join public.restaurants r on r.id::text = a.metadata->>'restaurant_id'
+        join public.markets m on m.id = r.market_id
+        where a.action = 'offer.publish'
+          and a.target_type = 'offer_version'
+          and a.metadata->>'is_test' = 'true'
+      ), '[]'::json)
+    )::text;
+  `);
+  return JSON.parse(raw) as CatalogDbSnapshot;
+}
+
+function executor(sql: Sql): CatalogExecutor {
+  return {
+    loadSnapshot: async () => loadSnapshot(sql),
+    async assertAdmin(actorId) {
+      return sql(`select role from public.user_profiles where id = ${q(actorId)}::uuid;`) === 'admin';
+    },
+    async insertMarket(market) {
+      const id = sql(`
+        insert into public.markets (name, slug, state, timezone, country, currency, status)
+        values (
+          ${q(market.name)}, ${q(market.slug)}, ${q(market.state)}, ${q(market.timezone)},
+          ${q(market.country)}, ${q(market.currency)}, ${q(market.status)}
+        )
+        returning id;
+      `);
+      return { id };
+    },
+    async insertOrg(org) {
+      const id = sql(`
+        insert into public.restaurant_orgs (name, market_id)
+        values (${q(org.name)}, ${q(org.market_id)}::uuid)
+        returning id;
+      `);
+      return { id };
+    },
+    async insertRestaurant(row) {
+      const id = sql(`
+        insert into public.restaurants (
+          org_id, market_id, name, slug, address, lat, lon, google_place_id, cuisine_tags,
+          is_vegan, is_dairy_free, is_halal, price_range, neighborhood, status
+        ) values (
+          ${q(row.org_id)}::uuid, ${q(row.market_id)}::uuid, ${q(row.name)}, ${q(row.slug)},
+          ${q(row.address)}, ${num(row.lat)}, ${num(row.lon)},
+          ${row.google_place_id ? q(row.google_place_id) : 'null'},
+          ${row.cuisine_tags ? textArray(row.cuisine_tags) : 'null'},
+          ${row.is_vegan}, ${row.is_dairy_free}, ${row.is_halal},
+          ${row.price_range ? q(row.price_range) : 'null'},
+          ${row.neighborhood ? q(row.neighborhood) : 'null'},
+          ${q(row.status)}
+        )
+        returning id;
+      `);
+      return { id };
+    },
+    async updateRestaurant(id, patch: CatalogRestaurantPatch) {
+      const sets: string[] = [];
+      if (patch.name != null) sets.push(`name = ${q(patch.name)}`);
+      if (patch.slug != null) sets.push(`slug = ${q(patch.slug)}`);
+      if (patch.address != null) sets.push(`address = ${q(patch.address)}`);
+      if (patch.lat != null) sets.push(`lat = ${num(patch.lat)}`);
+      if (patch.lon != null) sets.push(`lon = ${num(patch.lon)}`);
+      if (patch.google_place_id !== undefined) {
+        sets.push(`google_place_id = ${patch.google_place_id ? q(patch.google_place_id) : 'null'}`);
+      }
+      if (patch.cuisine_tags !== undefined) {
+        sets.push(`cuisine_tags = ${patch.cuisine_tags ? textArray(patch.cuisine_tags) : 'null'}`);
+      }
+      if (patch.is_vegan != null) sets.push(`is_vegan = ${patch.is_vegan}`);
+      if (patch.is_dairy_free != null) sets.push(`is_dairy_free = ${patch.is_dairy_free}`);
+      if (patch.is_halal != null) sets.push(`is_halal = ${patch.is_halal}`);
+      if (patch.price_range !== undefined) {
+        sets.push(`price_range = ${patch.price_range ? q(patch.price_range) : 'null'}`);
+      }
+      if (patch.neighborhood !== undefined) {
+        sets.push(`neighborhood = ${patch.neighborhood ? q(patch.neighborhood) : 'null'}`);
+      }
+      if (patch.status != null) sets.push(`status = ${q(patch.status)}`);
+      if (sets.length === 0) return;
+      sql(`update public.restaurants set ${sets.join(', ')} where id = ${q(id)}::uuid;`);
+    },
+    async upsertDraft(draft) {
+      const id = sql(`
+        insert into public.offer_drafts (
+          restaurant_id, timezone, valid_from, valid_until, tiers, boosts, exclusions,
+          capacity_timezone, capacity_window_kind, capacity_max_redemptions, boost_session_minutes
+        ) values (
+          ${q(draft.restaurant_id)}::uuid,
+          ${q(draft.terms.timezone ?? '')},
+          ${q(draft.terms.valid_from ?? '')}::timestamptz,
+          ${q(draft.terms.valid_until ?? '')}::timestamptz,
+          ${jsonb(draft.terms.tiers)},
+          ${jsonb(draft.terms.boosts)},
+          ${jsonb(draft.exclusions)},
+          ${q(draft.terms.capacity_timezone ?? '')},
+          ${q(draft.terms.capacity_window_kind ?? '')},
+          ${draft.terms.capacity_max_redemptions ?? 'null'},
+          null
+        )
+        on conflict (restaurant_id) do update set
+          timezone = excluded.timezone,
+          valid_from = excluded.valid_from,
+          valid_until = excluded.valid_until,
+          tiers = excluded.tiers,
+          boosts = excluded.boosts,
+          exclusions = excluded.exclusions,
+          capacity_timezone = excluded.capacity_timezone,
+          capacity_window_kind = excluded.capacity_window_kind,
+          capacity_max_redemptions = excluded.capacity_max_redemptions,
+          updated_at = now()
+        returning id;
+      `);
+      return { id };
+    },
+    async publishOfferVersion(draftId, actorId) {
+      const raw = sql(
+        `select public.publish_offer_version(${q(draftId)}::uuid, ${q(actorId)}::uuid)::text;`,
+      );
+      const body = JSON.parse(raw) as { published?: boolean; version_id?: string; error?: string };
+      if (body.published !== true || !body.version_id) return { published: false, error: body.error ?? 'publish failed' };
+      return { published: true, versionId: body.version_id };
+    },
+    async stampPublishAudit(versionId, actorId, metadata) {
+      const count = sql(`
+        with updated as (
+          update public.admin_audit_log
+          set metadata = coalesce(metadata, '{}'::jsonb) || ${jsonb(metadata)}
+          where action = 'offer.publish'
+            and target_type = 'offer_version'
+            and target_id = ${q(versionId)}
+            and actor_user_id = ${q(actorId)}::uuid
+          returning 1
+        )
+        select count(*)::text from updated;
+      `);
+      assert.equal(count, '1', 'publish audit row was not marked is_test');
+    },
+    async retireRestaurant(restaurantId, actorId) {
+      const raw = sql(
+        `select public.retire_restaurant(${q(restaurantId)}::uuid, ${q(actorId)}::uuid)::text;`,
+      );
+      const body = JSON.parse(raw) as { ok?: boolean; result?: string; error?: string };
+      return { ok: body.ok === true, result: body.result, error: body.error };
+    },
+    async pauseRestaurant(restaurantId, actorId, metadata) {
+      sql(`update public.restaurants set status = 'paused' where id = ${q(restaurantId)}::uuid;`);
+      sql(`
+        insert into public.admin_audit_log (actor_user_id, action, target_type, target_id, metadata)
+        values (
+          ${q(actorId)}::uuid, 'restaurant.deactivate', 'restaurant', ${q(restaurantId)},
+          ${jsonb({ ...metadata, source: 'catalog-import', result: 'paused' })}
+        );
+      `);
+    },
+    async withdrawOfferVersion(versionId, actorId) {
+      const raw = sql(
+        `select public.withdraw_offer_version(${q(versionId)}::uuid, ${q(actorId)}::uuid)::text;`,
+      );
+      const body = JSON.parse(raw) as { withdrawn?: boolean; error?: string };
+      return { withdrawn: body.withdrawn === true, error: body.error };
+    },
+  };
+}
+
+async function planFile(
+  rows: unknown[],
+  sql: Sql,
+  overrides: Partial<Parameters<typeof buildCatalogPlan>[0]['options']> = {},
+): Promise<CatalogPlan> {
+  const parsed = parseCatalogImportDocument(JSON.stringify(rows), 'json');
+  if (!parsed.ok) throw new Error(parsed.message);
+  return buildCatalogPlan({
+    document: parsed.document,
+    snapshot: loadSnapshot(sql),
+    options: {
+      skipInvalid: false,
+      refreshCoordinates: false,
+      testOffers: false,
+      testOfferCapacity: 50,
+      resolveDuplicates: [],
+      withdrawTestOffers: false,
+      markets: [],
+      now: NOW,
+      sourceLabel: 'db-test',
+      outboundDisabled: false,
+      apiKeyPresent: true,
+      ...overrides,
+    },
+    geocoder: geocoder(),
+  });
+}
+
+function cleanup(sql: Sql): void {
+  sql(`
+    update public.restaurants
+    set current_offer_version_id = null
+    where market_id in (select id from public.markets where slug in ('catalog-import-test', 'mckinney-tx'));
+    delete from public.capacity_reservations
+    where restaurant_id in (
+      select id from public.restaurants
+      where market_id in (select id from public.markets where slug in ('catalog-import-test', 'mckinney-tx'))
+    );
+    delete from public.challenge_items
+    where restaurant_id in (
+      select id from public.restaurants
+      where market_id in (select id from public.markets where slug in ('catalog-import-test', 'mckinney-tx'))
+    );
+    delete from public.challenge_cycles where user_id = ${q(ADMIN)}::uuid;
+    delete from public.offer_versions
+    where restaurant_id in (
+      select id from public.restaurants
+      where market_id in (select id from public.markets where slug in ('catalog-import-test', 'mckinney-tx'))
+    );
+    delete from public.offer_drafts
+    where restaurant_id in (
+      select id from public.restaurants
+      where market_id in (select id from public.markets where slug in ('catalog-import-test', 'mckinney-tx'))
+    );
+    delete from public.restaurants
+    where market_id in (select id from public.markets where slug in ('catalog-import-test', 'mckinney-tx'));
+    delete from public.restaurant_orgs
+    where market_id in (select id from public.markets where slug in ('catalog-import-test', 'mckinney-tx'));
+    delete from public.markets where slug in ('catalog-import-test', 'mckinney-tx');
+    delete from public.admin_audit_log where actor_user_id = ${q(ADMIN)}::uuid;
+    delete from public.user_profiles where id = ${q(ADMIN)}::uuid;
+    delete from auth.users where id = ${q(ADMIN)}::uuid;
+  `);
+}
+
+function ensureAdmin(sql: Sql): void {
+  sql(`
+    insert into auth.users (id) values (${q(ADMIN)}::uuid);
+    insert into public.user_profiles (id, email, role)
+    values (${q(ADMIN)}::uuid, 'catalog-import-test@example.com', 'admin');
+  `);
+}
+
+const NEW_MARKET_ROWS = [
+  {
+    market_slug: 'catalog-import-test',
+    market_name: 'Catalog Import Test',
+    market_state: 'TX',
+    market_timezone: 'America/Chicago',
+    name: 'North Grill',
+    address: '100 North Street',
+    city: 'Catalog',
+    zip: '75001',
+    lat: 33.2,
+    lon: -96.7,
+    cuisine_tags: 'american',
+  },
+  {
+    market_slug: 'catalog-import-test',
+    market_name: 'Catalog Import Test',
+    market_state: 'TX',
+    market_timezone: 'America/Chicago',
+    name: 'South Grill',
+    address: '200 South Street',
+    city: 'Catalog',
+    zip: '75002',
+    lat: 33.21,
+    lon: -96.71,
+    cuisine_tags: 'bbq',
+  },
+  {
+    market_slug: 'catalog-import-test',
+    market_name: 'Catalog Import Test',
+    market_state: 'TX',
+    market_timezone: 'America/Chicago',
+    name: 'Place Grill',
+    address: '300 Place Street',
+    city: 'Catalog',
+    zip: '75001',
+    google_place_id: 'place-catalog-grill',
+    cuisine_tags: 'cafe',
+  },
+];
+
+function shapedRow(slug: string, index: number, withCoords: boolean) {
+  const hutchins = slug === 'hutchins-bbq' || slug === 'hutchins-bbq-2';
+  return {
+    slug,
+    name: hutchins ? 'Hutchins BBQ' : slug.replaceAll('-', ' '),
+    address: hutchins
+      ? '1301 Test Street, McKinney, TX 75069'
+      : `${100 + index} Test Street, McKinney, TX 75069`,
+    placeId: hutchins ? 'place-hutchins' : `place-${slug}`,
+    lat: withCoords ? 33.2 + index / 1000 : null,
+    lon: withCoords ? -96.61 - index / 1000 : null,
+    cuisine: slug.includes('sushi') || slug.includes('japanese') || slug.includes('hibachi') ? 'sushi' : 'american',
+    explicitOffer: slug === 'ricks-chophouse',
+  };
+}
+
+function seedShaped(sql: Sql): void {
+  const marketId = 'c4710900-0000-4000-8000-000000000001';
+  sql(`
+    insert into public.markets (id, name, slug, state, timezone, status, country, currency)
+    values (
+      ${q(marketId)}::uuid, 'McKinney', 'mckinney-tx', 'TX', 'America/Chicago', 'active', 'US', 'USD'
+    );
+  `);
+  const rows = [
+    ...WITH_COORDS.map((slug, index) => shapedRow(slug, index, true)),
+    ...WITHOUT_COORDS.map((slug, index) => shapedRow(slug, index + WITH_COORDS.length, false)),
+  ];
+  assert.equal(rows.length, 24);
+  assert.equal(rows.filter((row) => row.lat == null).length, 18);
+  rows.forEach((row, index) => {
+    const orgId = `c4710900-0000-4000-8000-${(0x100 + index).toString(16).padStart(12, '0')}`;
+    const restaurantId = `c4710900-0000-4000-8000-${(0x200 + index).toString(16).padStart(12, '0')}`;
+    sql(`
+      insert into public.restaurant_orgs (id, name, market_id)
+      values (${q(orgId)}::uuid, ${q(row.name)}, ${q(marketId)}::uuid);
+      insert into public.restaurants (
+        id, org_id, market_id, name, slug, address, lat, lon, google_place_id, cuisine_tags, status
+      ) values (
+        ${q(restaurantId)}::uuid, ${q(orgId)}::uuid, ${q(marketId)}::uuid, ${q(row.name)}, ${q(row.slug)},
+        ${q(row.address)}, ${num(row.lat)}, ${num(row.lon)}, ${q(row.placeId)},
+        ${textArray([row.cuisine])}, 'active'
+      );
+    `);
+  });
+  const keepId = sql(`select id from public.restaurants where slug = 'hutchins-bbq';`);
+  for (let month = 1; month <= 5; month += 1) {
+    const cycleId = `c4710900-0000-4000-8000-${(0x300 + month).toString(16).padStart(12, '0')}`;
+    sql(`
+      insert into public.challenge_cycles (id, user_id, cycle_month, status)
+      values (
+        ${q(cycleId)}::uuid, ${q(ADMIN)}::uuid, ${q(`2026-0${month}-01`)}::date, 'active'
+      );
+      insert into public.challenge_items (cycle_id, restaurant_id, slot_number, status)
+      values (${q(cycleId)}::uuid, ${q(keepId)}::uuid, 1, 'assigned');
+    `);
+  }
+}
+
+function importRowsForShaped(): Record<string, unknown>[] {
+  const coordIndex = new Map<string, number>(WITH_COORDS.map((slug, index) => [slug, index]));
+  return [...WITH_COORDS, ...WITHOUT_COORDS.filter((slug) => slug !== 'hutchins-bbq-2')].map((slug) => {
+    const row = shapedRow(slug, coordIndex.get(slug) ?? 0, coordIndex.has(slug));
+    const record: Record<string, unknown> = {
+      market_slug: 'mckinney-tx',
+      name: row.name,
+      slug: row.slug,
+      address: row.address,
+      city: 'McKinney',
+      zip: '75069',
+      google_place_id: row.placeId,
+      cuisine_tags: row.cuisine,
+    };
+    if (row.lat != null && row.lon != null) {
+      record.lat = row.lat;
+      record.lon = row.lon;
+    }
+    if (row.explicitOffer) {
+      record.base_discount_cents = 1000;
+      record.is_test_offer = false;
+    }
+    return record;
+  });
+}
+
+export async function runCatalogImportDbTest(args: { sql: Sql; root: string }): Promise<void> {
+  cleanup(args.sql);
+  try {
+    ensureAdmin(args.sql);
+    const exec = executor(args.sql);
+    const created = await planFile(NEW_MARKET_ROWS, args.sql);
+    assert.equal(created.counts.market_create, 1, 'new market');
+    assert.equal(created.counts.create, 3, 'three restaurant creates');
+    assert.equal(created.accepted, true);
+    args.sql(`
+      insert into public.markets (name, slug, state, timezone, status, country, currency)
+      values ('Intruder', 'catalog-import-test', 'TX', 'America/Chicago', 'active', 'US', 'USD');
+    `);
+    await assert.rejects(
+      () => applyCatalogPlan({ plan: created, confirm: created.markets, actorId: ADMIN, applyEnv: '1', exec }),
+      /database changed since plan/,
+    );
+    args.sql(`delete from public.markets where slug = 'catalog-import-test';`);
+    await applyCatalogPlan({ plan: created, confirm: created.markets, actorId: ADMIN, applyEnv: '1', exec });
+    assert.equal(
+      args.sql(`
+        select count(*) from public.restaurants r
+        join public.markets m on m.id = r.market_id
+        where m.slug = 'catalog-import-test'
+          and r.lat is not null and r.lon is not null and r.location is not null;
+      `),
+      '3',
+    );
+    const rerun = await planFile(NEW_MARKET_ROWS, args.sql);
+    assert.equal(rerun.counts.unchanged, 3);
+    assert.equal(rerun.counts.create, 0);
+    assert.equal(rerun.counts.update, 0);
+    assert.deepEqual(rerun.actions, []);
+    cleanup(args.sql);
+    ensureAdmin(args.sql);
+
+    seedShaped(args.sql);
+    const fileRows = importRowsForShaped();
+    assert.equal(fileRows.length, 23);
+    const shaped = await planFile(fileRows, args.sql, {
+      testOffers: true,
+      markets: ['mckinney-tx'],
+      resolveDuplicates: [{ keep: 'hutchins-bbq', drop: 'hutchins-bbq-2' }],
+    });
+    assert.equal(shaped.accepted, true, shaped.errors.map((error) => error.message).join('; '));
+    assert.ok(shaped.possible_duplicates.some((pair) => pair.right_slug === 'hutchins-bbq-2' || pair.left_slug === 'hutchins-bbq-2'));
+    const pause = shaped.actions.find((action) => action.kind === 'pause_duplicate');
+    assert.ok(pause && pause.kind === 'pause_duplicate');
+    assert.equal(pause.slug, 'hutchins-bbq-2');
+    assert.equal(pause.method, 'direct_pause');
+    const keepItemsBefore = args.sql(`
+      select count(*) from public.challenge_items ci
+      join public.restaurants r on r.id = ci.restaurant_id
+      where r.slug = 'hutchins-bbq';
+    `);
+    assert.equal(keepItemsBefore, '5');
+    await applyCatalogPlan({
+      plan: shaped,
+      confirm: ['mckinney-tx'],
+      actorId: ADMIN,
+      applyEnv: '1',
+      exec,
+    });
+    assert.equal(args.sql(`select status from public.restaurants where slug = 'hutchins-bbq-2';`), 'paused');
+    assert.equal(args.sql(`select count(*) from public.restaurants where slug = 'hutchins-bbq-2';`), '1');
+    assert.equal(
+      args.sql(`
+        select count(*) from public.challenge_items ci
+        join public.restaurants r on r.id = ci.restaurant_id
+        where r.slug = 'hutchins-bbq';
+      `),
+      '5',
+    );
+    assert.equal(
+      args.sql(`
+        select count(*) from public.restaurants r
+        join public.markets m on m.id = r.market_id
+        where m.slug = 'mckinney-tx';
+      `),
+      '24',
+    );
+    assert.equal(
+      args.sql(`
+        select count(*) from public.restaurants r
+        join public.markets m on m.id = r.market_id
+        where m.slug = 'mckinney-tx' and r.status = 'active'
+          and (r.lat is null or r.lon is null or r.location is null);
+      `),
+      '0',
+    );
+    const published = JSON.parse(
+      args.sql(`
+        select coalesce(json_agg(json_build_object(
+          'slug', r.slug,
+          'terms_problem', coalesce(public.offer_version_terms_ok(
+            v.tiers, v.boosts, v.timezone, v.valid_from, v.valid_until,
+            v.capacity_timezone, v.capacity_window_kind, v.capacity_max_redemptions
+          ), ''),
+          'selectable', public.version_selection_ok(v.id, now()),
+          'tiers', v.tiers,
+          'boosts', v.boosts,
+          'timezone', v.timezone,
+          'valid_from', v.valid_from,
+          'valid_until', v.valid_until,
+          'capacity_timezone', v.capacity_timezone,
+          'capacity_window_kind', v.capacity_window_kind,
+          'capacity_max_redemptions', v.capacity_max_redemptions,
+          'is_test', coalesce(a.metadata->>'is_test', '')
+        )), '[]'::json)::text
+        from public.offer_versions v
+        join public.restaurants r on r.current_offer_version_id = v.id and r.id = v.restaurant_id
+        left join public.admin_audit_log a
+          on a.action = 'offer.publish' and a.target_type = 'offer_version' and a.target_id = v.id::text
+        where r.market_id = (select id from public.markets where slug = 'mckinney-tx');
+      `),
+    ) as Array<{
+      slug: string;
+      terms_problem: string;
+      selectable: boolean;
+      tiers: OfferVersionTerms['tiers'];
+      boosts: OfferVersionTerms['boosts'];
+      timezone: string;
+      valid_from: string;
+      valid_until: string;
+      capacity_timezone: string;
+      capacity_window_kind: string;
+      capacity_max_redemptions: number;
+      is_test: string;
+    }>;
+    assert.equal(published.length, 23);
+    for (const version of published) {
+      assert.equal(version.terms_problem, '', version.slug);
+      assert.equal(version.selectable, true, version.slug);
+      assert.equal(
+        offerVersionTermsProblem({
+          tiers: version.tiers,
+          boosts: version.boosts,
+          timezone: version.timezone,
+          valid_from: version.valid_from,
+          valid_until: version.valid_until,
+          capacity_timezone: version.capacity_timezone,
+          capacity_window_kind: version.capacity_window_kind,
+          capacity_max_redemptions: version.capacity_max_redemptions,
+        }),
+        null,
+        version.slug,
+      );
+    }
+    assert.equal(published.filter((version) => version.is_test === 'true').length, 22);
+    assert.equal(published.filter((version) => version.slug === 'ricks-chophouse' && version.is_test !== 'true').length, 1);
+
+    const again = await planFile(fileRows, args.sql, {
+      testOffers: true,
+      markets: ['mckinney-tx'],
+      resolveDuplicates: [{ keep: 'hutchins-bbq', drop: 'hutchins-bbq-2' }],
+    });
+    assert.equal(again.counts.create, 0);
+    assert.equal(again.counts.update, 0);
+    assert.equal(again.counts.publish, 0);
+    assert.equal(again.counts.pause, 0);
+    assert.equal(again.counts.unchanged, 23);
+
+    const exportSql = readFileSync(path.join(args.root, 'scripts/sql/e02-supply-snapshot.sql'), 'utf8');
+    const snapshotRaw = args.sql(exportSql);
+    const parsedSnapshot = parseSupplySnapshot(JSON.parse(snapshotRaw) as unknown);
+    assert.equal(parsedSnapshot.ok, true, parsedSnapshot.ok ? '' : parsedSnapshot.message);
+    if (!parsedSnapshot.ok) return;
+    const gate = runSupplyGate({
+      snapshot: parsedSnapshot.snapshot,
+      seeds: Array.from({ length: 20 }, (_, index) => index + 1),
+    });
+    process.stdout.write(gate.text);
+    assert.match(gate.catalogLine, /selectable_offer_version=([1-9]\d*)/);
+    assert.match(gate.catalogLine, /missing_coordinates=0/);
+
+    const withdraw = await buildCatalogPlan({
+      document: { rows: [], errors: [] },
+      snapshot: loadSnapshot(args.sql),
+      options: {
+        skipInvalid: false,
+        refreshCoordinates: false,
+        testOffers: false,
+        testOfferCapacity: 50,
+        resolveDuplicates: [],
+        withdrawTestOffers: true,
+        markets: ['mckinney-tx'],
+        now: NOW,
+        sourceLabel: 'db-test',
+        outboundDisabled: true,
+        apiKeyPresent: false,
+      },
+      geocoder: null,
+    });
+    assert.equal(withdraw.counts.withdraw, 22);
+    await applyCatalogPlan({
+      plan: withdraw,
+      confirm: ['mckinney-tx'],
+      actorId: ADMIN,
+      applyEnv: '1',
+      exec,
+    });
+    assert.equal(
+      args.sql(`
+        select count(*) from public.offer_versions v
+        join public.restaurants r on r.id = v.restaurant_id
+        join public.admin_audit_log a
+          on a.action = 'offer.publish' and a.target_id = v.id::text and a.metadata->>'is_test' = 'true'
+        where r.market_id = (select id from public.markets where slug = 'mckinney-tx')
+          and v.withdrawn_from_selection_at is not null;
+      `),
+      '22',
+    );
+    assert.equal(
+      args.sql(`
+        select r.slug || ':' || (public.version_selection_ok(r.current_offer_version_id, now()))::text
+        from public.restaurants r
+        where r.slug = 'ricks-chophouse';
+      `),
+      'ricks-chophouse:true',
+    );
+    assert.equal(
+      args.sql(`
+        select count(*) from public.restaurants
+        where slug <> 'ricks-chophouse'
+          and market_id = (select id from public.markets where slug = 'mckinney-tx')
+          and current_offer_version_id is not null;
+      `),
+      '0',
+    );
+  } finally {
+    cleanup(args.sql);
+  }
+}

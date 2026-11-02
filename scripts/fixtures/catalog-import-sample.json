@@ -1,0 +1,52 @@
+[
+  {
+    "market_slug": "example-tx",
+    "market_name": "Example",
+    "market_state": "TX",
+    "market_timezone": "America/Chicago",
+    "name": "Example Grill",
+    "address": "100 Example Street",
+    "city": "Example",
+    "zip": "75001",
+    "lat": 33.2,
+    "lon": -96.7,
+    "google_place_id": "example-place-grill",
+    "cuisine_tags": "american|bbq",
+    "is_vegan": false,
+    "is_dairy_free": false,
+    "is_halal": false,
+    "price_range": "$$",
+    "neighborhood": "Square",
+    "status": "active",
+    "base_discount_cents": 1000,
+    "capacity_max_redemptions": 50,
+    "is_test_offer": true
+  },
+  {
+    "market_slug": "example-tx",
+    "market_name": "Example",
+    "market_state": "TX",
+    "market_timezone": "America/Chicago",
+    "name": "Example Sushi",
+    "address": "200 Example Street",
+    "city": "Example",
+    "zip": "75002",
+    "cuisine_tags": "sushi",
+    "status": "active"
+  },
+  {
+    "market_slug": "example-tx",
+    "market_name": "Example",
+    "market_state": "TX",
+    "market_timezone": "America/Chicago",
+    "name": "Example Cafe",
+    "slug": "example-cafe",
+    "address": "300 Example Street",
+    "city": "Example",
+    "zip": "75001",
+    "lat": 33.21,
+    "lon": -96.69,
+    "cuisine_tags": "cafe",
+    "status": "paused"
+  }
+]
