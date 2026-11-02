@@ -4,7 +4,7 @@ Synced through **#62** (merge `082b96a`; includes [#65](https://github.com/noahj
 
 **Catalog conversion (PR #59).** `npm run catalog:convert` and `scripts/e02-catalog-conversion.ts` are an offline dry-run export/manifest only. They do not publish offer versions or mutate hosted data; any apply/backfill requires separate authorization.
 
-**Catalog import.** `npm run catalog:import` (`Docs/catalog-import.md`) plans and applies restaurant rows for any market from a CSV or JSON file. `--test-offers` publishes offer versions whose `offer.publish` audit metadata has `is_test: true` and `source: "catalog-import --test-offers"`. That path is test supply only. It is not partner terms, and `--withdraw-test-offers` removes it. No ZIP column was added. **Master E02 is open. Master E04 is open.** This doc does not claim a supply-gate result.
+**Catalog import.** `npm run catalog:import` (`Docs/catalog-import.md`) plans and applies restaurant rows for any market from a CSV or JSON file. `--test-offers` publishes test offer versions and appends an `offer.test_mark` audit row (`is_test: true`). `--withdraw-test-offers` removes versions marked that way, and versions whose older `offer.publish` metadata has `is_test: true`. That path is test supply only. It is not partner terms. No ZIP column was added. **Master E02 is open. Master E04 is open.** This doc does not claim a supply-gate result.
 
 **Hosted schema.** Forward migration `20261011210000_e02_independent_credit_floor.sql` is applied on hosted project `yiajoycgiyxjvznndjge`; migration history is reconciled.
 

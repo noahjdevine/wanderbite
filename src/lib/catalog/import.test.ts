@@ -2,6 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { describe, expect, it, vi } from 'vitest';
 import { offerVersionTermsProblem } from '@/lib/offers/catalog-conversion';
 import {
+  applyCatalogPlan,
   applyGuardProblem,
   buildCatalogPlan,
   buildTestOfferTerms,
@@ -25,6 +26,8 @@ function options(overrides: Partial<CatalogPlanOptions> = {}): CatalogPlanOption
     skipInvalid: false,
     refreshCoordinates: false,
     testOffers: false,
+    testOffersAllInMarket: false,
+    publishRealOffers: false,
     testOfferCapacity: 50,
     resolveDuplicates: [],
     withdrawTestOffers: false,
@@ -470,10 +473,17 @@ describe('catalog import plan', () => {
         },
       ],
     });
-    const planned = await buildCatalogPlan({
+    const fileOnly = await buildCatalogPlan({
       document: { rows: [], errors: [] },
       snapshot: snap,
       options: options({ testOffers: true, markets: ['mckinney-tx'] }),
+      geocoder: null,
+    });
+    expect(fileOnly.actions.filter((action) => action.kind === 'publish_offer')).toHaveLength(0);
+    const planned = await buildCatalogPlan({
+      document: { rows: [], errors: [] },
+      snapshot: snap,
+      options: options({ testOffers: true, testOffersAllInMarket: true, markets: ['mckinney-tx'] }),
       geocoder: null,
     });
     const publishes = planned.actions.filter((action) => action.kind === 'publish_offer');
@@ -486,6 +496,93 @@ describe('catalog import plan', () => {
     if (publishes[0]?.kind === 'publish_offer') {
       expect(offerVersionTermsProblem(publishes[0].terms)).toBeNull();
     }
+  });
+
+  it('targets only import-file restaurants unless --test-offers-all-in-market is set', async () => {
+    const snap = snapshot({
+      markets: [
+        {
+          id: 'market-1',
+          slug: 'mckinney-tx',
+          name: 'McKinney',
+          state: 'TX',
+          timezone: 'America/Chicago',
+          status: 'active',
+        },
+      ],
+      restaurants: [
+        {
+          id: 'open-id',
+          market_id: 'market-1',
+          name: 'Open Grill',
+          slug: 'open-grill',
+          address: '1 Main, McKinney, TX 75069',
+          lat: 33.2,
+          lon: -96.6,
+          google_place_id: null,
+          cuisine_tags: ['american'],
+          is_vegan: false,
+          is_dairy_free: false,
+          is_halal: false,
+          price_range: null,
+          neighborhood: null,
+          status: 'active',
+          current_offer_version_id: null,
+          challenge_item_count: 0,
+          offer_version_count: 0,
+        },
+        {
+          id: 'other-id',
+          market_id: 'market-1',
+          name: 'Other Grill',
+          slug: 'other-grill',
+          address: '9 Main, McKinney, TX 75069',
+          lat: 33.22,
+          lon: -96.62,
+          google_place_id: null,
+          cuisine_tags: ['bbq'],
+          is_vegan: false,
+          is_dairy_free: false,
+          is_halal: false,
+          price_range: null,
+          neighborhood: null,
+          status: 'active',
+          current_offer_version_id: null,
+          challenge_item_count: 0,
+          offer_version_count: 0,
+        },
+      ],
+    });
+    const text = JSON.stringify([
+      {
+        market_slug: 'mckinney-tx',
+        name: 'Open Grill',
+        slug: 'open-grill',
+        address: '1 Main, McKinney, TX 75069',
+        city: 'McKinney',
+        zip: '75069',
+        lat: 33.2,
+        lon: -96.6,
+        cuisine_tags: 'american',
+      },
+    ]);
+    const fileOnly = await planOf(text, snap, { testOffers: true, markets: ['mckinney-tx'] });
+    expect(
+      fileOnly.actions
+        .filter((action) => action.kind === 'publish_offer')
+        .map((action) => action.restaurant_slug),
+    ).toEqual(['open-grill']);
+    const marketWide = await planOf(text, snap, {
+      testOffers: true,
+      testOffersAllInMarket: true,
+      markets: ['mckinney-tx'],
+    });
+    expect(
+      marketWide.actions
+        .filter((action) => action.kind === 'publish_offer')
+        .map((action) => action.restaurant_slug)
+        .sort(),
+    ).toEqual(['open-grill', 'other-grill']);
   });
 
   it('refuses below-floor offer terms', async () => {
@@ -549,6 +646,84 @@ describe('catalog import guards', () => {
     expect(catalogSnapshotHash(snapshot(), planned.markets)).toBe(planned.snapshot_hash);
   });
 
+  it('refuses a non-test offer unless --publish-real-offers is set', async () => {
+    const text = JSON.stringify([
+      {
+        market_slug: 'catalog-test-tx',
+        market_name: 'Catalog Test',
+        market_state: 'TX',
+        market_timezone: 'America/Chicago',
+        name: 'Real Grill',
+        address: '1 Main',
+        city: 'Catalog',
+        zip: '75001',
+        lat: 33.2,
+        lon: -96.7,
+        base_discount_cents: 1000,
+        is_test_offer: false,
+      },
+    ]);
+    const refused = await planOf(text);
+    expect(refused.accepted).toBe(true);
+    expect(refused.actions.some((action) => action.kind === 'publish_offer')).toBe(false);
+    expect(refused.refused_real_offers.map((row) => row.slug)).toEqual(['real-grill']);
+    expect(refused.warnings.map((warning) => warning.message).join(' ')).toMatch(/--publish-real-offers/);
+    const allowed = await planOf(text, snapshot(), { publishRealOffers: true });
+    const publish = allowed.actions.find((action) => action.kind === 'publish_offer');
+    expect(publish).toMatchObject({ is_test: false, restaurant_slug: 'real-grill' });
+  });
+
+  it('withdraws a test offer when the mark insert fails', async () => {
+    const planned = await planOf(
+      JSON.stringify([
+        {
+          market_slug: 'catalog-test-tx',
+          market_name: 'Catalog Test',
+          market_state: 'TX',
+          market_timezone: 'America/Chicago',
+          name: 'Mark Grill',
+          address: '1 Main',
+          city: 'Catalog',
+          zip: '75001',
+          lat: 33.2,
+          lon: -96.7,
+          is_test_offer: true,
+        },
+      ]),
+    );
+    const snap = snapshot();
+    const withdrawn: string[] = [];
+    await expect(
+      applyCatalogPlan({
+        plan: planned,
+        confirm: planned.markets,
+        actorId: '00000000-0000-4000-8000-000000000001',
+        applyEnv: '1',
+        exec: {
+          loadSnapshot: async () => snap,
+          assertAdmin: async () => true,
+          insertMarket: async () => ({ id: 'market-1' }),
+          insertOrg: async () => ({ id: 'org-1' }),
+          insertRestaurant: async () => ({ id: 'rest-1' }),
+          updateRestaurant: async () => undefined,
+          upsertDraft: async () => ({ id: 'draft-1' }),
+          publishOfferVersion: async () => ({ published: true, versionId: 'version-1' }),
+          insertTestMark: async () => {
+            throw new Error('stamp failed');
+          },
+          retireRestaurant: async () => ({ ok: true, result: 'paused' }),
+          pauseRestaurant: async () => undefined,
+          withdrawOfferVersion: async (versionId) => {
+            withdrawn.push(versionId);
+            return { withdrawn: true };
+          },
+        },
+      }),
+    ).rejects.toThrow(/withdrew version version-1/);
+    expect(withdrawn).toEqual(['version-1']);
+    expect(catalogSnapshotHash(snap, planned.markets)).toBe(planned.snapshot_hash);
+  });
+
   it('parses resolve-duplicate and the default plan mode', () => {
     const args = parseCatalogImportArgs([
       '--file',
@@ -563,7 +738,13 @@ describe('catalog import guards', () => {
     expect(args.mode).toBe('plan');
     expect(args.resolveDuplicates).toEqual([{ keep: 'hutchins-bbq', drop: 'hutchins-bbq-2' }]);
     expect(args.testOffers).toBe(true);
+    expect(args.testOffersAllInMarket).toBe(false);
+    expect(args.publishRealOffers).toBe(false);
     expect(args.confirm).toEqual(['mckinney-tx']);
+    const wide = parseCatalogImportArgs(['--test-offers-all-in-market', '--publish-real-offers']);
+    expect(wide.testOffers).toBe(true);
+    expect(wide.testOffersAllInMarket).toBe(true);
+    expect(wide.publishRealOffers).toBe(true);
   });
 });
 

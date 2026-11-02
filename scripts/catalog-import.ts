@@ -184,20 +184,26 @@ async function loadSnapshot(supabase: SupabaseClient<Database>): Promise<Catalog
     ),
   );
   const testOffers: CatalogDbSnapshot['test_offers'] = [];
+  const seenTestVersions = new Set<string>();
   for (let from = 0; ; from += 1000) {
     const result = await supabase
       .from('admin_audit_log')
-      .select('target_id, metadata')
-      .eq('action', 'offer.publish')
+      .select('action, target_id, metadata')
+      .in('action', ['offer.test_mark', 'offer.publish'])
       .eq('target_type', 'offer_version')
       .order('id')
       .range(from, from + 999);
     if (result.error) throw new Error(result.error.message);
     for (const row of result.data ?? []) {
       const metadata = recordMetadata(row.metadata);
-      if (metadata.is_test !== true || typeof metadata.restaurant_id !== 'string' || !row.target_id) continue;
+      const marked =
+        metadata.is_test === true &&
+        (row.action === 'offer.test_mark' || row.action === 'offer.publish');
+      if (!marked || typeof metadata.restaurant_id !== 'string' || !row.target_id) continue;
+      if (seenTestVersions.has(row.target_id)) continue;
       const market = restaurantMarket.get(metadata.restaurant_id);
       if (!market) continue;
+      seenTestVersions.add(row.target_id);
       testOffers.push({
         version_id: row.target_id,
         restaurant_id: metadata.restaurant_id,
@@ -320,24 +326,15 @@ function executor(supabase: SupabaseClient<Database>): CatalogExecutor {
       }
       return { published: true, versionId: body.version_id };
     },
-    async stampPublishAudit(versionId, actorId, metadata) {
-      const existing = await supabase
-        .from('admin_audit_log')
-        .select('id, metadata')
-        .eq('action', 'offer.publish')
-        .eq('target_type', 'offer_version')
-        .eq('target_id', versionId)
-        .eq('actor_user_id', actorId);
-      if (existing.error) throw new Error(existing.error.message);
-      if ((existing.data ?? []).length !== 1 || !existing.data?.[0]) {
-        throw new Error('catalog apply could not find the publish audit row to mark is_test');
-      }
-      const row = existing.data[0];
-      const updated = await supabase
-        .from('admin_audit_log')
-        .update({ metadata: { ...recordMetadata(row.metadata), ...metadata } })
-        .eq('id', row.id);
-      if (updated.error) throw new Error(updated.error.message);
+    async insertTestMark(versionId, actorId, metadata) {
+      const inserted = await supabase.from('admin_audit_log').insert({
+        actor_user_id: actorId,
+        action: 'offer.test_mark',
+        target_type: 'offer_version',
+        target_id: versionId,
+        metadata,
+      });
+      if (inserted.error) throw new Error(inserted.error.message);
     },
     async retireRestaurant(restaurantId, actorId) {
       const result = await supabase.rpc('retire_restaurant', {
@@ -486,6 +483,8 @@ export async function runCatalogImportCli(argv: string[]): Promise<number> {
       skipInvalid: args.skipInvalid,
       refreshCoordinates: args.refreshCoordinates,
       testOffers: args.testOffers,
+      testOffersAllInMarket: args.testOffersAllInMarket,
+      publishRealOffers: args.publishRealOffers,
       testOfferCapacity: args.testOfferCapacity,
       resolveDuplicates: args.resolveDuplicates,
       withdrawTestOffers: args.withdrawTestOffers,

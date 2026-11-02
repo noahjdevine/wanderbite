@@ -8,6 +8,8 @@ import { slugify } from '@/lib/slugify';
 
 export const CATALOG_IMPORT_PLAN_SCHEMA = 'wanderbite.catalog_import_plan.v1';
 export const TEST_OFFER_SOURCE = 'catalog-import --test-offers';
+/** Append-only marker. `offer.publish` rows are never updated. */
+export const TEST_OFFER_MARK_ACTION = 'offer.test_mark';
 export const DEFAULT_TEST_OFFER_CAPACITY = 50;
 export const TEST_OFFER_BASE_CENTS = 1000;
 const TEST_OFFER_THRESHOLD_FLOOR_CENTS = 4000;
@@ -253,13 +255,22 @@ export type CatalogPlan = {
   errors: CatalogMessage[];
   skipped: CatalogMessage[];
   possible_duplicates: CatalogPossibleDuplicate[];
+  refused_real_offers: CatalogRefusedRealOffer[];
   actions: CatalogPlanAction[];
+};
+
+export type CatalogRefusedRealOffer = {
+  line: number | null;
+  market_slug: string;
+  slug: string;
 };
 
 export type CatalogPlanOptions = {
   skipInvalid: boolean;
   refreshCoordinates: boolean;
   testOffers: boolean;
+  testOffersAllInMarket: boolean;
+  publishRealOffers: boolean;
   testOfferCapacity: number;
   resolveDuplicates: ReadonlyArray<{ keep: string; drop: string }>;
   withdrawTestOffers: boolean;
@@ -292,6 +303,8 @@ export type CatalogCliArgs = {
   skipInvalid: boolean;
   refreshCoordinates: boolean;
   testOffers: boolean;
+  testOffersAllInMarket: boolean;
+  publishRealOffers: boolean;
   withdrawTestOffers: boolean;
   testOfferCapacity: number;
   resolveDuplicates: { keep: string; drop: string }[];
@@ -1229,6 +1242,7 @@ function finishPlan(args: {
   errors: CatalogMessage[];
   skipped: CatalogMessage[];
   duplicates: CatalogPossibleDuplicate[];
+  refusedRealOffers?: CatalogRefusedRealOffer[];
   actions: CatalogPlanAction[];
   sourceLabel: string;
   now: Date;
@@ -1249,6 +1263,7 @@ function finishPlan(args: {
     errors: args.errors,
     skipped: args.skipped,
     possible_duplicates: args.duplicates,
+    refused_real_offers: args.refusedRealOffers ?? [],
     actions: args.actions,
   };
 }
@@ -1675,6 +1690,19 @@ export async function buildCatalogPlan(args: {
     }
     const paused = dropSlugs.has(entry.slug) || entry.row.status === 'paused';
     if (paused) return;
+    if (!offer.is_test_offer && !args.options.publishRealOffers) {
+      refusedRealOffers.push({
+        line: entry.row.line,
+        market_slug: entry.row.market_slug,
+        slug: entry.slug,
+      });
+      warnings.push({
+        line: entry.row.line,
+        market_slug: entry.row.market_slug,
+        message: `refused real offer for ${entry.slug}; pass --publish-real-offers to publish a non-test offer`,
+      });
+      return;
+    }
     actions.push({
       kind: 'publish_offer',
       market_slug: entry.row.market_slug,
@@ -1687,6 +1715,7 @@ export async function buildCatalogPlan(args: {
     });
     bump(counts, byMarket, entry.row.market_slug, 'publish');
   };
+  const refusedRealOffers: CatalogRefusedRealOffer[] = [];
   for (const entry of resolved) publishRow(entry);
 
   if (args.options.testOffers) {
@@ -1738,7 +1767,7 @@ export async function buildCatalogPlan(args: {
       bump(counts, byMarket, end.market_slug, 'publish');
       published.add(end.slug);
     }
-    for (const restaurant of args.snapshot.restaurants) {
+    if (args.options.testOffersAllInMarket) for (const restaurant of args.snapshot.restaurants) {
       if (!restaurant.slug || matchedIds.has(restaurant.id) || restaurant.current_offer_version_id) continue;
       if ((restaurant.status ?? 'active') !== 'active') continue;
       if (paused.has(restaurant.slug) || dropSlugs.has(restaurant.slug)) continue;
@@ -1811,6 +1840,7 @@ export async function buildCatalogPlan(args: {
     errors,
     skipped,
     duplicates,
+    refusedRealOffers,
     actions: errors.length > 0 ? [] : actions,
     sourceLabel: args.options.sourceLabel,
     now: args.options.now,
@@ -1844,6 +1874,11 @@ export function formatCatalogImportSummary(plan: CatalogPlan): string {
   }
   for (const warning of plan.warnings) {
     lines.push(`warning line=${warning.line ?? '-'} market=${warning.market_slug ?? '-'} ${warning.message}`);
+  }
+  for (const refused of plan.refused_real_offers) {
+    lines.push(
+      `refused_real_offer line=${refused.line ?? '-'} market=${refused.market_slug} slug=${refused.slug}`,
+    );
   }
   return `${lines.join('\n')}\n`;
 }
@@ -1895,10 +1930,10 @@ export type CatalogExecutor = {
     draftId: string,
     actorId: string,
   ): Promise<{ published: boolean; versionId?: string; error?: string }>;
-  stampPublishAudit(
+  insertTestMark(
     versionId: string,
     actorId: string,
-    metadata: { is_test: true; source: string },
+    metadata: { is_test: true; source: string; restaurant_id: string },
   ): Promise<void>;
   retireRestaurant(
     restaurantId: string,
@@ -1990,10 +2025,33 @@ export async function applyCatalogPlan(args: {
         throw new Error(published.error ?? 'publish_offer_version failed');
       }
       if (action.is_test) {
-        await args.exec.stampPublishAudit(published.versionId, args.actorId, {
-          is_test: true,
-          source: action.source,
-        });
+        try {
+          await args.exec.insertTestMark(published.versionId, args.actorId, {
+            is_test: true,
+            source: action.source,
+            restaurant_id: restaurantId,
+          });
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : 'test mark failed';
+          let withdrawn: { withdrawn: boolean; error?: string };
+          try {
+            withdrawn = await args.exec.withdrawOfferVersion(published.versionId, args.actorId);
+          } catch (withdrawError) {
+            const withdrawReason =
+              withdrawError instanceof Error ? withdrawError.message : 'withdraw failed';
+            throw new Error(
+              `catalog apply failed to mark test offer ${published.versionId} (${reason}); withdraw_offer_version failed: ${withdrawReason}`,
+            );
+          }
+          if (!withdrawn.withdrawn) {
+            throw new Error(
+              `catalog apply failed to mark test offer ${published.versionId} (${reason}); withdraw_offer_version failed: ${withdrawn.error ?? 'unknown'}`,
+            );
+          }
+          throw new Error(
+            `catalog apply failed to mark test offer ${published.versionId} (${reason}); withdrew version ${published.versionId}`,
+          );
+        }
       }
       applied += 1;
       continue;
@@ -2061,6 +2119,8 @@ export function parseCatalogImportArgs(argv: string[]): CatalogCliArgs {
     skipInvalid: false,
     refreshCoordinates: false,
     testOffers: false,
+    testOffersAllInMarket: false,
+    publishRealOffers: false,
     withdrawTestOffers: false,
     testOfferCapacity: DEFAULT_TEST_OFFER_CAPACITY,
     resolveDuplicates: [],
@@ -2085,6 +2145,15 @@ export function parseCatalogImportArgs(argv: string[]): CatalogCliArgs {
     }
     if (arg === '--test-offers') {
       args.testOffers = true;
+      continue;
+    }
+    if (arg === '--test-offers-all-in-market') {
+      args.testOffers = true;
+      args.testOffersAllInMarket = true;
+      continue;
+    }
+    if (arg === '--publish-real-offers') {
+      args.publishRealOffers = true;
       continue;
     }
     if (arg === '--withdraw-test-offers') {

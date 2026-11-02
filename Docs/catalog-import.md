@@ -28,7 +28,7 @@ CSV header or a JSON array of objects. Unknown columns are rejected.
 | `base_discount_cents` | when publishing an offer from the row | Lowest tier. Must be at least 1000. Threshold cents is `max(base, 4000)`. |
 | `capacity_max_redemptions` | no | Default 50. |
 | `valid_from`, `valid_until` | no | ISO timestamps. Default now, and now plus 12 UTC calendar months. The window must still be selectable (`valid_until` more than 840 hours ahead). |
-| `is_test_offer` | no | `true` marks the publish audit row as a test offer. |
+| `is_test_offer` | no | `true` appends an `offer.test_mark` audit row. `false` with other offer columns is a real offer and is not published unless `--publish-real-offers` is set. |
 
 JSON `cuisine_tags` may be a string array instead of a pipe-separated string.
 
@@ -73,7 +73,7 @@ Flags such as `--test-offers` and `--resolve-duplicate` belong on the plan comma
 
 ## Test offer versions
 
-`--test-offers` adds a publish action for every active restaurant in the plan's markets that does not already have `current_offer_version_id` and is not the dropped side of `--resolve-duplicate`.
+`--test-offers` adds a publish action for every active restaurant **in the import file** that does not already have `current_offer_version_id` and is not the dropped side of `--resolve-duplicate`. `--test-offers-all-in-market` also covers the other active restaurants in those markets. A full `--from-db` export plus `--test-offers` covers every current row, because they are all in the file.
 
 Default terms, checked with `offerVersionTermsProblem` and the 1000-cent floor:
 
@@ -84,7 +84,9 @@ Default terms, checked with `offerVersionTermsProblem` and the 1000-cent floor:
 - `valid_from` now, `valid_until` now plus 12 calendar months
 - exclusions `{ exclude_tax: true, exclude_tip: true, categories: [] }`
 
-`publish_offer_version(draft_id, actor)` writes the version and sets `current_offer_version_id`. There is no `is_test` column. After publish, the tool merges `is_test: true` and `source: "catalog-import --test-offers"` into that `offer.publish` audit row. A row with `is_test_offer: false` and offer columns is published the same way without `is_test`.
+`publish_offer_version(draft_id, actor)` writes the version, sets `current_offer_version_id`, and inserts its own `offer.publish` audit row. That row is not updated. There is no `is_test` column. For a test offer, the tool then inserts a new `admin_audit_log` row: action `offer.test_mark`, target type `offer_version`, target the version id, metadata `is_test: true`, `source: "catalog-import --test-offers"`, and `restaurant_id`. If that insert fails, apply immediately calls `withdraw_offer_version` for that version and exits with an error.
+
+A row with offer columns and `is_test_offer: false` is a real offer. The plan lists it under `refused_real_offer` and does not publish it unless `--publish-real-offers` is set. `--withdraw-test-offers` withdraws versions with an `offer.test_mark` row, and still withdraws versions whose older `offer.publish` metadata has `is_test: true`.
 
 ```bash
 npm run catalog:import -- --plan --file .supply-gate/restaurants.json \
@@ -96,7 +98,7 @@ WANDERBITE_CATALOG_APPLY=1 npm run catalog:import -- \
   --actor <admin-uuid> --confirm mckinney-tx
 ```
 
-Withdraw every version in the confirmed markets whose publish audit row has `is_test` true:
+Withdraw every version in the confirmed markets that has an `offer.test_mark` row, or an older `offer.publish` row with `is_test` true:
 
 ```bash
 npm run catalog:import -- --plan --withdraw-test-offers --market mckinney-tx
@@ -110,16 +112,12 @@ That calls `withdraw_offer_version`. It does not withdraw a publish that was not
 
 ## Commands for the current McKinney test catalog
 
-Copy an import file into `.supply-gate/` (or build one with `--from-db mckinney-tx` and fill any ZIP the address parser misses). Then:
+Export the current rows so `--test-offers` sees all 24. Fill any ZIP the address parser misses, then plan and apply. A partial file needs `--test-offers-all-in-market` instead of `--test-offers` if restaurants that are only in the database should get test versions too.
 
 ```bash
-npm run catalog:import -- --plan --file .supply-gate/mckinney.json
+npm run catalog:import -- --from-db mckinney-tx
 
-WANDERBITE_CATALOG_APPLY=1 npm run catalog:import -- \
-  --apply --plan-file .supply-gate/catalog-import-plan.json \
-  --actor <admin-uuid> --confirm mckinney-tx
-
-npm run catalog:import -- --plan --file .supply-gate/mckinney.json \
+npm run catalog:import -- --plan --file .supply-gate/catalog-import-from-mckinney-tx.json \
   --resolve-duplicate keep=hutchins-bbq drop=hutchins-bbq-2 \
   --test-offers
 
