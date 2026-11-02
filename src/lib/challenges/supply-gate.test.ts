@@ -969,6 +969,20 @@ describe('supply gate source guard', () => {
     expect(sql).not.toContain('audit_log.created_at');
     expect(sql).not.toContain("'metadata'");
     expect(sql).not.toContain('pin_hash');
+    const preflight = readFileSync(path.join(ROOT, 'scripts/sql/e02-supply-preflight.sql'), 'utf8');
+    expect(preflight).toContain('wanderbite.e02.supply_preflight.v1');
+    expect(preflight).toContain('e02-supply-snapshot.sql');
+    expect(preflight).toContain("(audit_log.metadata->'is_test') = 'true'::jsonb");
+    expect(preflight).toContain("audit_log.metadata->>'is_test' = 'true'");
+    expect(preflight).toContain("(audit_log.metadata->'is_test') <> 'true'::jsonb");
+    expect(preflight).not.toMatch(/\b(insert|update|delete|create|alter|drop|grant|truncate)\b/i);
+    const statements = preflight
+      .replace(/--.*$/gm, '')
+      .split(';')
+      .map((statement) => statement.trim())
+      .filter((statement) => statement.length > 0)
+      .map((statement) => statement.split(/\s+/)[0]?.toLowerCase());
+    expect(statements).toEqual(['begin', 'select', 'rollback']);
     expect(readFileSync(ALL_TEST_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
     expect(readFileSync(MIXED_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
     expect(readFileSync(LINKED_NOT_SELECTABLE_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
