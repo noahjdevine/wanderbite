@@ -8,6 +8,7 @@ import {
   TEST_OFFER_AUDIT_TARGET_TYPE,
   TEST_OFFER_MARK_ACTION,
   TEST_OFFER_PUBLISH_ACTION,
+  isTestOfferAuditMarker,
   applyCatalogPlan,
   buildCatalogPlan,
   parseCatalogImportDocument,
@@ -99,7 +100,7 @@ function markedCurrentVersionIds(sql: Sql, action: string): string[] {
           from public.admin_audit_log a
           where a.target_type = ${q(TEST_OFFER_AUDIT_TARGET_TYPE)}
             and a.target_id = v.id::text
-            and a.metadata->>'is_test' = 'true'
+            and (a.metadata->'is_test') = 'true'::jsonb
             and a.action = ${q(action)}
         )
     ) marked;
@@ -188,7 +189,7 @@ function loadSnapshot(sql: Sql): CatalogDbSnapshot {
             a.metadata->>'restaurant_id' as restaurant_id
           from public.admin_audit_log a
           where a.target_type = 'offer_version'
-            and a.metadata->>'is_test' = 'true'
+            and (a.metadata->'is_test') = 'true'::jsonb
             and a.action in ('offer.test_mark', 'offer.publish')
           order by a.target_id, case when a.action = 'offer.test_mark' then 0 else 1 end
         ) marked
@@ -823,7 +824,7 @@ export async function runCatalogImportDbTest(args: { sql: Sql; root: string }): 
         join public.admin_audit_log a
           on a.target_type = 'offer_version'
          and a.target_id = v.id::text
-         and a.metadata->>'is_test' = 'true'
+         and (a.metadata->'is_test') = 'true'::jsonb
          and a.action in ('offer.test_mark', 'offer.publish')
         where r.market_id = (select id from public.markets where slug = 'mckinney-tx')
           and v.withdrawn_from_selection_at is not null;
@@ -934,6 +935,7 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
   for (const [slug, name, id, org] of [
     ['legacy-mark-grill', 'Legacy Mark Grill', 'c4710900-0000-4000-8000-0000000000d4', 'c4710900-0000-4000-8000-0000000000d5'],
     ['new-mark-grill', 'New Mark Grill', 'c4710900-0000-4000-8000-0000000000d6', 'c4710900-0000-4000-8000-0000000000d7'],
+    ['string-mark-grill', 'String Mark Grill', 'c4710900-0000-4000-8000-0000000000d8', 'c4710900-0000-4000-8000-0000000000d9'],
   ] as const) {
     sql(`
       insert into public.restaurant_orgs (id, name, market_id)
@@ -970,11 +972,22 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
         lon: -96.62,
         cuisine_tags: 'bbq',
       },
+      {
+        market_slug: 'catalog-import-marks',
+        name: 'String Mark Grill',
+        slug: 'string-mark-grill',
+        address: '2 String Mark Grill Street, Marks, TX 75001',
+        city: 'Marks',
+        zip: '75001',
+        lat: 33.21,
+        lon: -96.62,
+        cuisine_tags: 'bbq',
+      },
     ],
     sql,
     { testOffers: true, markets: ['catalog-import-marks'] },
   );
-  assert.equal(both.actions.filter((action) => action.kind === 'publish_offer').length, 2);
+  assert.equal(both.actions.filter((action) => action.kind === 'publish_offer').length, 3);
   await applyCatalogPlan({
     plan: both,
     confirm: both.markets,
@@ -993,6 +1006,17 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
     where action = 'offer.test_mark'
       and target_id = (
         select current_offer_version_id::text from public.restaurants where slug = 'legacy-mark-grill'
+      );
+    update public.admin_audit_log
+    set metadata = '{"is_test": "true", "restaurant_id": "c4710900-0000-4000-8000-0000000000d8"}'::jsonb
+    where action = 'offer.publish'
+      and target_id = (
+        select current_offer_version_id::text from public.restaurants where slug = 'string-mark-grill'
+      );
+    delete from public.admin_audit_log
+    where action = 'offer.test_mark'
+      and target_id = (
+        select current_offer_version_id::text from public.restaurants where slug = 'string-mark-grill'
       );
   `);
   assert.equal(
@@ -1015,8 +1039,42 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
       select id::text from public.offer_versions
       where restaurant_id = (select id from public.restaurants where slug = 'fail-mark-grill');
     `);
+    const stringId = sql(`select current_offer_version_id::text from public.restaurants where slug = 'string-mark-grill';`);
+    const legacyIsTest = JSON.parse(
+      sql(`
+        select (metadata->'is_test')::text
+        from public.admin_audit_log
+        where action = 'offer.publish' and target_id = ${q(legacyId)};
+      `),
+    ) as unknown;
+    const stringIsTest = JSON.parse(
+      sql(`
+        select (metadata->'is_test')::text
+        from public.admin_audit_log
+        where action = 'offer.publish' and target_id = ${q(stringId)};
+      `),
+    ) as unknown;
+    assert.equal(legacyIsTest, true);
+    assert.equal(stringIsTest, 'true');
+    assert.equal(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_PUBLISH_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: legacyIsTest,
+      }),
+      markedSnapshot.test_offer_version_ids.includes(legacyId),
+    );
+    assert.equal(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_PUBLISH_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: stringIsTest,
+      }),
+      markedSnapshot.test_offer_version_ids.includes(stringId),
+    );
     assert.deepEqual(markedSnapshot.test_offer_version_ids, [legacyId, newId].sort());
     assert.equal(markedSnapshot.test_offer_version_ids.includes(withdrawnId), false);
+    assert.equal(markedSnapshot.test_offer_version_ids.includes(stringId), false);
   }
   const withdraw = await buildCatalogPlan({
     document: { rows: [], errors: [] },
@@ -1062,5 +1120,9 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
         and current_offer_version_id is null;
     `),
     '2',
+  );
+  assert.equal(
+    sql(`select current_offer_version_id is not null from public.restaurants where slug = 'string-mark-grill';`),
+    't',
   );
 }

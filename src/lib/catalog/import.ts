@@ -17,8 +17,9 @@ export const TEST_OFFER_AUDIT_ACTIONS = [TEST_OFFER_MARK_ACTION, TEST_OFFER_PUBL
 
 /**
  * Test-offer audit match used by `--withdraw-test-offers` and the v2 supply snapshot.
- * A row matches when `target_type` is `offer_version`, `is_test` is boolean true, and
- * `action` is `offer.test_mark` or legacy `offer.publish`.
+ * A row matches when `target_type` is `offer_version`, `is_test` is JSON boolean true,
+ * and `action` is `offer.test_mark` or legacy `offer.publish`. A string `"true"` does
+ * not match. The snapshot SQL uses the same rule: `(metadata->'is_test') = 'true'::jsonb`.
  */
 export function isTestOfferAuditMarker(row: {
   action: string;

@@ -347,7 +347,10 @@ export type SupplyGateResult = {
   catalogLine: string;
   /** Null on a v1 snapshot, where test supply is unknown. */
   testSupplyLine: string;
+  /** True when any current version is a test version, including one that is not selectable. Closing line only. */
   testSupplyIncluded: boolean;
+  /** True when `test_supply selectable` is greater than 0. Controls the `(all supply)` qualifier and real diagnostic lines. */
+  selectableTestSupply: boolean;
   realSupplyLine: string | null;
   realSupplyResult: 'PASS' | 'FAIL' | null;
   realMatchedMin: number | null;
@@ -371,6 +374,18 @@ export type SupplyGateResult = {
   shortfall: SupplyGateShortfall[];
   minSpendDistribution: Record<string, number>;
   trials: SupplyGateTrial[];
+  /**
+   * Month, persona, and shortfall from the test-excluded run.
+   * Null on v1 and when no test version is selectable.
+   */
+  realDiagnostics: {
+    worstSeed: number;
+    unmatchedByMonth: Map<string, number>;
+    unmatchedByMonthAll: Map<string, number>;
+    unmatchedByPersona: Map<string, number>;
+    unmatchedByPersonaAll: Map<string, number>;
+    shortfall: SupplyGateShortfall[];
+  } | null;
   text: string;
 };
 
@@ -1445,6 +1460,10 @@ function formatCountMap(map: Map<string, number>, order: 'month' | 'rule' | 'per
   return entries.map(([key, count]) => `${key}=${count}`).join(' ');
 }
 
+function formatShortfallLine(prefix: 'shortfall' | 'real_shortfall', row: SupplyGateShortfall): string {
+  return `${prefix} persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} add_at_least=${row.addAtLeast} kind="${row.kind}" lower bound`;
+}
+
 function closingLine(result: 'PASS' | 'FAIL', matchedMin: number, testSupplyIncluded: boolean): string {
   if (!testSupplyIncluded) {
     return result === 'PASS'
@@ -1458,7 +1477,7 @@ function closingLine(result: 'PASS' | 'FAIL', matchedMin: number, testSupplyIncl
 }
 
 export function formatSupplyGateReport(result: Omit<SupplyGateResult, 'text'> & { text?: string }): string {
-  const qualifier = result.testSupplyIncluded ? ' (all supply)' : '';
+  const qualifier = result.selectableTestSupply ? ' (all supply)' : '';
   const lines = [
     '=== E02 supply gate (D2=B, threshold=100%) ===',
     `snapshot exported_at=${result.exportedAt} (${result.exportedAtCt} CT) market=mckinney-tx active_restaurants=${result.activeRestaurants}`,
@@ -1468,17 +1487,23 @@ export function formatSupplyGateReport(result: Omit<SupplyGateResult, 'text'> & 
     `result=${result.result}${qualifier} matched_min=${result.matchedMin}/${SUPPLY_GATE_DENOMINATOR} matched_via_carry=${result.matchedViaCarry} worst_seed=${result.worstSeed} trials_failed=${result.trialsFailed}/${result.seeds.length}`,
   ];
   if (result.realSupplyLine) lines.push(result.realSupplyLine);
+  if (result.realDiagnostics) lines.push('full_run_diagnostics include test supply');
   lines.push(
     `unmatched_by_month ${formatSplitCounts(result.unmatchedByMonthAll, result.unmatchedByMonth, 'month', result.worstSeed)}`,
     `unmatched_by_rule ${formatSplitCounts(result.unmatchedByRuleAll, result.unmatchedByRule, 'rule', result.worstSeed)}`,
     `unmatched_by_persona ${formatSplitCounts(result.unmatchedByPersonaAll, result.unmatchedByPersona, 'persona', result.worstSeed)}`,
     ...result.funnel,
-    ...result.shortfall.map(
-      (row) =>
-        `shortfall persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} add_at_least=${row.addAtLeast} kind="${row.kind}" lower bound`,
-    ),
-    closingLine(result.result, result.matchedMin, result.testSupplyIncluded),
+    ...result.shortfall.map((row) => formatShortfallLine('shortfall', row)),
   );
+  if (result.realDiagnostics) {
+    const real = result.realDiagnostics;
+    lines.push(
+      `real_unmatched_by_month ${formatSplitCounts(real.unmatchedByMonthAll, real.unmatchedByMonth, 'month', real.worstSeed)}`,
+      `real_unmatched_by_persona ${formatSplitCounts(real.unmatchedByPersonaAll, real.unmatchedByPersona, 'persona', real.worstSeed)}`,
+      ...real.shortfall.map((row) => formatShortfallLine('real_shortfall', row)),
+    );
+  }
+  lines.push(closingLine(result.result, result.matchedMin, result.testSupplyIncluded));
   return `${lines.join('\n')}\n`;
 }
 
@@ -1584,17 +1609,19 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
     selectable += 1;
     if (linkedTest) testSelectable += 1;
   }
-  const real = v2
+  const realRestaurants = v2 ? withoutTestVersions(restaurants, testIds) : null;
+  const real = realRestaurants
     ? scoreTrials(
         runTrials({
           snapshot: args.snapshot,
-          restaurants: withoutTestVersions(restaurants, testIds),
+          restaurants: realRestaurants,
           seeds: args.seeds,
           cutoffCache,
         }),
       )
     : null;
   const testSupplyIncluded = v2 && excluded > 0;
+  const selectableTestSupply = testSelectable > 0;
   const partial = {
     result: full.result,
     exportedAt: exported.toISOString(),
@@ -1605,6 +1632,7 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
       ? `test_supply selectable=${testSelectable} of ${selectable}`
       : 'test_supply=unknown (v1 snapshot)',
     testSupplyIncluded,
+    selectableTestSupply,
     realSupplyLine: real ? formatRealSupplyLine(real, args.seeds.length, excluded) : null,
     realSupplyResult: real?.result ?? null,
     realMatchedMin: real?.matchedMin ?? null,
@@ -1633,11 +1661,31 @@ export function runSupplyGate(args: { snapshot: SupplySnapshot; seeds: number[] 
     }),
     minSpendDistribution: minSpendDistribution(args.snapshot),
     trials: full.trials,
+    realDiagnostics:
+      real && realRestaurants && selectableTestSupply
+        ? {
+            worstSeed: real.worstSeed,
+            unmatchedByMonth: real.unmatchedByMonth,
+            unmatchedByMonthAll: real.unmatchedByMonthAll,
+            unmatchedByPersona: real.unmatchedByPersona,
+            unmatchedByPersonaAll: real.unmatchedByPersonaAll,
+            shortfall: shortfallLines({
+              restaurants: realRestaurants,
+              marketId: args.snapshot.launch_market.id,
+              windowEnd: monthInstant(m5),
+              windowEndLabel: ym(m5),
+            }),
+          }
+        : null,
   };
   return { ...partial, text: formatSupplyGateReport(partial) };
 }
 
 export function supplyGateJson(result: SupplyGateResult): string {
+  const real = result.realDiagnostics;
+  const personaKeys = ['open/new', 'open/tenured', 'restricted/new', 'restricted/tenured'] as const;
+  const personaCounts = (map: Map<string, number>) =>
+    Object.fromEntries(personaKeys.map((key) => [key, map.get(key) ?? 0]));
   const payload = {
     text: result.text,
     result: result.result,
@@ -1669,21 +1717,24 @@ export function supplyGateJson(result: SupplyGateResult): string {
       ),
     },
     unmatched_by_persona: {
-      all_trials: Object.fromEntries(
-        ['open/new', 'open/tenured', 'restricted/new', 'restricted/tenured'].map((key) => [
-          key,
-          result.unmatchedByPersonaAll.get(key) ?? 0,
-        ]),
-      ),
-      worst: Object.fromEntries(
-        ['open/new', 'open/tenured', 'restricted/new', 'restricted/tenured'].map((key) => [
-          key,
-          result.unmatchedByPersona.get(key) ?? 0,
-        ]),
-      ),
+      all_trials: personaCounts(result.unmatchedByPersonaAll),
+      worst: personaCounts(result.unmatchedByPersona),
     },
     funnel: result.funnel,
     shortfall: result.shortfall,
+    real_unmatched_by_month: real
+      ? {
+          all_trials: Object.fromEntries([...real.unmatchedByMonthAll.entries()].sort()),
+          worst: Object.fromEntries([...real.unmatchedByMonth.entries()].sort()),
+        }
+      : null,
+    real_unmatched_by_persona: real
+      ? {
+          all_trials: personaCounts(real.unmatchedByPersonaAll),
+          worst: personaCounts(real.unmatchedByPersona),
+        }
+      : null,
+    real_shortfall: real?.shortfall ?? null,
     min_spend_distribution: result.minSpendDistribution,
     per_trial: result.trials.map((trial) => ({
       seed: trial.seed,

@@ -30,6 +30,11 @@ const ROOT = path.resolve(__dirname, '../../..');
 const FIXTURE = path.join(ROOT, 'scripts/fixtures/e02-supply-gate-synthetic.json');
 const ALL_TEST_FIXTURE = path.join(ROOT, 'scripts/fixtures/e02-supply-gate-all-test.json');
 const MIXED_FIXTURE = path.join(ROOT, 'scripts/fixtures/e02-supply-gate-mixed.json');
+const LINKED_NOT_SELECTABLE_FIXTURE = path.join(
+  ROOT,
+  'scripts/fixtures/e02-supply-gate-linked-not-selectable.json',
+);
+const WITHDRAWN_TEST_VERSION = 'e0255117-0000-4000-8000-000000000002';
 const MARKET = 'e0255200-0000-4000-8000-0000000000aa';
 const EXPORTED = '2026-10-10T15:00:00.000Z';
 
@@ -51,6 +56,27 @@ function gateBody(text: string): string {
     .split('\n')
     .filter((line) => !line.startsWith('test_supply=') && !line.startsWith('test_supply ') && !line.startsWith('real_supply_result='))
     .join('\n');
+}
+
+function lineStarting(text: string, prefix: string): string {
+  const line = text.split('\n').find((entry) => entry.startsWith(prefix));
+  if (!line) throw new Error(`missing line ${prefix}`);
+  return line;
+}
+
+/** Current test versions become restaurants with no offer version. */
+function catalogWithoutTestVersions(snapshot: SupplySnapshot): SupplySnapshot {
+  if (snapshot.schema !== SUPPLY_GATE_SCHEMA_V2) return snapshot;
+  const testIds = new Set(snapshot.test_offer_version_ids);
+  return {
+    ...snapshot,
+    test_offer_version_ids: [],
+    restaurants: snapshot.restaurants.map((restaurant) =>
+      restaurant.current_offer_version_id && testIds.has(restaurant.current_offer_version_id)
+        ? { ...restaurant, current_offer_version_id: null }
+        : restaurant,
+    ),
+  };
 }
 
 function asV2(snapshot: SupplySnapshot, testOfferVersionIds: string[]): SupplySnapshot {
@@ -709,6 +735,11 @@ describe('test supply split', () => {
     expect(failed.text).toContain('test_supply=unknown (v1 snapshot)\n');
     expect(failed.text).not.toContain('real_supply_result=');
     expect(failed.text).not.toContain('(all supply)');
+    expect(failed.text).not.toContain('full_run_diagnostics include test supply');
+    expect(failed.text).not.toContain('real_unmatched_by_month');
+    expect(failed.text).not.toContain('real_shortfall');
+    expect(failed.realDiagnostics).toBeNull();
+    expect(failed.selectableTestSupply).toBe(false);
     expect(failed.text).toContain(
       'result=FAIL matched_min=104/192 matched_via_carry=50 worst_seed=1 trials_failed=1/1\n',
     );
@@ -731,6 +762,11 @@ describe('test supply split', () => {
     expect(v2.text).toContain(`real_supply_result=${v2.result} matched_min=${v2.matchedMin}/${SUPPLY_GATE_DENOMINATOR}`);
     expect(v2.text).toContain('(excluding 0 test versions)');
     expect(v2.text).not.toContain('(all supply)');
+    expect(v2.text).not.toContain('full_run_diagnostics include test supply');
+    expect(v2.text).not.toContain('real_unmatched_by_month');
+    expect(v2.text).not.toContain('real_shortfall');
+    expect(v2.realDiagnostics).toBeNull();
+    expect(v2.selectableTestSupply).toBe(false);
     expect(gateBody(v2.text)).toBe(gateBody(v1.text));
   }, 60_000);
 
@@ -749,6 +785,14 @@ describe('test supply split', () => {
       'real_supply_result=FAIL matched_min=0/192 trials_failed=20/20 unmatched_by_rule=no_offer_version=192 (excluding 41 test versions)',
     );
     expect(result.text).toContain('not a real-supply result');
+    expect(result.text).toContain('full_run_diagnostics include test supply\n');
+    expect(result.text).toContain('real_unmatched_by_month ');
+    expect(result.text).toContain('real_unmatched_by_persona ');
+    expect(result.text).toContain('real_shortfall ');
+    expect(result.selectableTestSupply).toBe(true);
+    expect(result.realDiagnostics).not.toBeNull();
+    const bare = runSupplyGate({ snapshot: catalogWithoutTestVersions(snapshot), seeds: [1] });
+    expect(result.realDiagnostics?.shortfall).toEqual(bare.shortfall);
     expect(result.text).not.toMatch(/^PASS: E02 supply gate\n/m);
 
     const cli = runCli(['--trials', '1'], {
@@ -782,7 +826,75 @@ describe('test supply split', () => {
       'e0255901-0000-4000-8000-000000000023',
       'e0255901-0000-4000-8000-000000000024',
     ]);
+    expect(result.selectableTestSupply).toBe(true);
+    expect(result.text).toContain('full_run_diagnostics include test supply\n');
+    expect(result.text).toContain('real_unmatched_by_month ');
+    expect(result.text).toContain('real_shortfall ');
+    expect(result.realDiagnostics).not.toBeNull();
+    const larger = result.realDiagnostics?.shortfall.some(
+      (row, index) => row.addAtLeast > (result.shortfall[index]?.addAtLeast ?? 0),
+    );
+    expect(larger).toBe(true);
   }, 60_000);
+
+  it('prints real month, persona, and shortfall lines from the test-excluded run', () => {
+    for (const file of [MIXED_FIXTURE, ALL_TEST_FIXTURE]) {
+      const snapshot = loadSnapshotFile(file);
+      const result = runSupplyGate({ snapshot, seeds: [1] });
+      const bare = runSupplyGate({ snapshot: catalogWithoutTestVersions(snapshot), seeds: [1] });
+      expect(result.realDiagnostics?.shortfall).toEqual(bare.shortfall);
+      expect(lineStarting(result.text, 'real_unmatched_by_month ')).toBe(
+        `real_${lineStarting(bare.text, 'unmatched_by_month ')}`,
+      );
+      expect(lineStarting(result.text, 'real_unmatched_by_persona ')).toBe(
+        `real_${lineStarting(bare.text, 'unmatched_by_persona ')}`,
+      );
+      for (const row of result.shortfall) {
+        expect(result.text).toContain(
+          `shortfall persona=${row.persona} zip=${row.zip} eligible_static_5mi=${row.eligibleStatic5} eligible_static_15mi=${row.eligibleStatic15} needed_distinct_6mo=12 base>=1000=${row.baseAtLeast1000} add_at_least=${row.addAtLeast} `,
+        );
+      }
+    }
+  });
+
+  it('keeps a linked non-selectable test version off the qualifier and the real diagnostic lines', () => {
+    const snapshot = loadSnapshotFile(LINKED_NOT_SELECTABLE_FIXTURE);
+    expect(snapshot.schema).toBe(SUPPLY_GATE_SCHEMA_V2);
+    if (snapshot.schema !== SUPPLY_GATE_SCHEMA_V2) return;
+    expect(snapshot.test_offer_version_ids).toEqual([WITHDRAWN_TEST_VERSION]);
+    const version = snapshot.offer_versions.find((row) => row.id === WITHDRAWN_TEST_VERSION);
+    expect(version?.withdrawn_from_selection_at).toBeTruthy();
+    const linked = snapshot.restaurants.find(
+      (row) => row.current_offer_version_id === WITHDRAWN_TEST_VERSION,
+    );
+    expect(linked).toBeTruthy();
+    const v1 = runSupplyGate({ snapshot: loadFixture(), seeds: [1] });
+    const result = runSupplyGate({ snapshot, seeds: [1] });
+    expect(result.testSupplyLine).toBe('test_supply selectable=0 of 15');
+    expect(result.selectableTestSupply).toBe(false);
+    expect(result.testSupplyIncluded).toBe(true);
+    expect(result.realDiagnostics).toBeNull();
+    expect(result.text).not.toContain('(all supply)');
+    expect(result.text).not.toContain('full_run_diagnostics include test supply');
+    expect(result.text).not.toContain('real_unmatched_by_month');
+    expect(result.text).not.toContain('real_unmatched_by_persona');
+    expect(result.text).not.toContain('real_shortfall');
+    expect(lineStarting(result.text, 'result=')).toBe(lineStarting(v1.text, 'result='));
+    expect(result.text).toContain('all supply including test versions');
+    expect(result.text).toContain('(excluding 1 test versions)');
+    const shared = (text: string) =>
+      text
+        .split('\n')
+        .filter(
+          (line) =>
+            !line.startsWith('test_supply') &&
+            !line.startsWith('real_supply_result=') &&
+            !line.startsWith('FAIL:') &&
+            !line.startsWith('PASS:'),
+        )
+        .join('\n');
+    expect(shared(result.text)).toBe(shared(v1.text));
+  });
 });
 
 describe('snapshot loader v2', () => {
@@ -849,7 +961,8 @@ describe('supply gate source guard', () => {
     expect(sql).toContain('rollback;');
     for (const action of TEST_OFFER_AUDIT_ACTIONS) expect(sql).toContain(`'${action}'`);
     expect(sql).toContain(`target_type = '${TEST_OFFER_AUDIT_TARGET_TYPE}'`);
-    expect(sql).toContain("audit_log.metadata->>'is_test' = 'true'");
+    expect(sql).toContain("(audit_log.metadata->'is_test') = 'true'::jsonb");
+    expect(sql).not.toContain("metadata->>'is_test'");
     expect(sql).toContain('target_id = offer_versions.id::text');
     expect(sql).toContain('json_agg(marked.version_id order by marked.version_id)');
     expect(sql).not.toContain('audit_log.actor_user_id');
@@ -858,6 +971,8 @@ describe('supply gate source guard', () => {
     expect(sql).not.toContain('pin_hash');
     expect(readFileSync(ALL_TEST_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
     expect(readFileSync(MIXED_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
+    expect(readFileSync(LINKED_NOT_SELECTABLE_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
+    expect(readFileSync(LINKED_NOT_SELECTABLE_FIXTURE, 'utf8')).toContain(WITHDRAWN_TEST_VERSION);
     expect(readFileSync(FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V1);
   });
 });
