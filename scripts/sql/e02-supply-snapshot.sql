@@ -6,10 +6,11 @@
 -- psql alternative: psql -qAt -f scripts/sql/e02-supply-snapshot.sql > .supply-gate/hosted-catalog.json
 -- Read-only. One JSON object. Does not select pins, verification codes, addresses, photos, or member rows.
 -- Schema v2 adds test_offer_version_ids (ids only, sorted). The predicate matches
--- isTestOfferAuditMarker in src/lib/catalog/import.ts and the #67 withdraw query:
--- target_type offer_version, metadata->>'is_test' = 'true', action offer.test_mark
--- or offer.publish. admin_audit_log (026_admin_audit_log.sql) stores target_id as
--- text and metadata as jsonb. The array projects ids only.
+-- isTestOfferAuditMarker in src/lib/catalog/import.ts: target_type offer_version,
+-- action offer.test_mark or offer.publish, and JSON boolean true only
+-- ((metadata->'is_test') = 'true'::jsonb). A JSON string "true" does not match.
+-- admin_audit_log (026_admin_audit_log.sql) stores target_id as text and metadata
+-- as jsonb. The array projects ids only.
 
 begin transaction read only;
 
@@ -86,7 +87,7 @@ select json_build_object(
           from public.admin_audit_log audit_log
           where audit_log.target_type = 'offer_version'
             and audit_log.target_id = offer_versions.id::text
-            and audit_log.metadata->>'is_test' = 'true'
+            and (audit_log.metadata->'is_test') = 'true'::jsonb
             and audit_log.action in ('offer.test_mark', 'offer.publish')
         )
     ) marked

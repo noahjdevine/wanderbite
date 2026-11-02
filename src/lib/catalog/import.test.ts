@@ -860,6 +860,27 @@ describe('test offer audit marker', () => {
     ).toBe(false);
     expect(
       isTestOfferAuditMarker({
+        action: TEST_OFFER_MARK_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: 'true',
+      }),
+    ).toBe(false);
+    expect(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_PUBLISH_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: undefined,
+      }),
+    ).toBe(false);
+    expect(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_PUBLISH_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: null,
+      }),
+    ).toBe(false);
+    expect(
+      isTestOfferAuditMarker({
         action: 'offer.withdraw',
         targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
         isTest: true,
