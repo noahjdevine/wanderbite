@@ -7,6 +7,9 @@ import {
   applyCatalogPlan,
   buildCatalogPlan,
   CATALOG_IMPORT_PLAN_SCHEMA,
+  isTestOfferAuditMarker,
+  TEST_OFFER_AUDIT_ACTIONS,
+  TEST_OFFER_AUDIT_TARGET_TYPE,
   emptyGeocodeCache,
   fetchGooglePlaceCoordinates,
   formatCatalogImportSummary,
@@ -188,17 +191,19 @@ async function loadSnapshot(supabase: SupabaseClient<Database>): Promise<Catalog
   for (let from = 0; ; from += 1000) {
     const result = await supabase
       .from('admin_audit_log')
-      .select('action, target_id, metadata')
-      .in('action', ['offer.test_mark', 'offer.publish'])
-      .eq('target_type', 'offer_version')
+      .select('action, target_type, target_id, metadata')
+      .in('action', [...TEST_OFFER_AUDIT_ACTIONS])
+      .eq('target_type', TEST_OFFER_AUDIT_TARGET_TYPE)
       .order('id')
       .range(from, from + 999);
     if (result.error) throw new Error(result.error.message);
     for (const row of result.data ?? []) {
       const metadata = recordMetadata(row.metadata);
-      const marked =
-        metadata.is_test === true &&
-        (row.action === 'offer.test_mark' || row.action === 'offer.publish');
+      const marked = isTestOfferAuditMarker({
+        action: row.action,
+        targetType: row.target_type,
+        isTest: metadata.is_test,
+      });
       if (!marked || typeof metadata.restaurant_id !== 'string' || !row.target_id) continue;
       if (seenTestVersions.has(row.target_id)) continue;
       const market = restaurantMarket.get(metadata.restaurant_id);

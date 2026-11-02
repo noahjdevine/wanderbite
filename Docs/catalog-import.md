@@ -126,7 +126,7 @@ WANDERBITE_CATALOG_APPLY=1 npm run catalog:import -- \
   --actor <admin-uuid> --confirm mckinney-tx
 ```
 
-Then rerun `scripts/sql/e02-supply-snapshot.sql` in a read-only session, save the JSON cell to `.supply-gate/hosted-catalog.json`, and run `npm run supply:gate`. Do not treat a disposable-database gate print as a hosted result. E02 and E04 stay open.
+Then rerun `scripts/sql/e02-supply-snapshot.sql` in a read-only session, save the JSON cell to `.supply-gate/hosted-catalog.json`, and run `npm run supply:gate`. Read `real_supply_result` (test versions are excluded there). A PASS on `result=` while `test_supply` shows test versions is not a gate result. Do not treat a disposable-database gate print as a hosted result. E02 and E04 stay open.
 
 ## Rollback
 

@@ -14,6 +14,8 @@ import {
 import {
   SUPPLY_GATE_COHORT,
   SUPPLY_GATE_DENOMINATOR,
+  SUPPLY_GATE_SCHEMA_V1,
+  SUPPLY_GATE_SCHEMA_V2,
   explainSupplyBinding,
   firstScoredMonth,
   parseSupplySnapshot,
@@ -21,20 +23,43 @@ import {
   selectSupplyGateCandidates,
   type SupplySnapshot,
 } from '@/lib/challenges/supply-gate';
+import { TEST_OFFER_AUDIT_ACTIONS, TEST_OFFER_AUDIT_TARGET_TYPE } from '@/lib/catalog/import';
 import { haversineMiles, originFromZip } from '@/lib/launch-market';
 
 const ROOT = path.resolve(__dirname, '../../..');
 const FIXTURE = path.join(ROOT, 'scripts/fixtures/e02-supply-gate-synthetic.json');
+const ALL_TEST_FIXTURE = path.join(ROOT, 'scripts/fixtures/e02-supply-gate-all-test.json');
+const MIXED_FIXTURE = path.join(ROOT, 'scripts/fixtures/e02-supply-gate-mixed.json');
 const MARKET = 'e0255200-0000-4000-8000-0000000000aa';
 const EXPORTED = '2026-10-10T15:00:00.000Z';
 
 /** Restaurants added on top of the thin fixture so every trial can hit 192/192. */
 const PASS_PADDING = 24;
 
-function loadFixture(): SupplySnapshot {
-  const parsed = parseSupplySnapshot(JSON.parse(readFileSync(FIXTURE, 'utf8')));
+function loadSnapshotFile(file: string): SupplySnapshot {
+  const parsed = parseSupplySnapshot(JSON.parse(readFileSync(file, 'utf8')));
   if (!parsed.ok) throw new Error(parsed.message);
   return parsed.snapshot;
+}
+
+function loadFixture(): SupplySnapshot {
+  return loadSnapshotFile(FIXTURE);
+}
+
+function gateBody(text: string): string {
+  return text
+    .split('\n')
+    .filter((line) => !line.startsWith('test_supply=') && !line.startsWith('test_supply ') && !line.startsWith('real_supply_result='))
+    .join('\n');
+}
+
+function asV2(snapshot: SupplySnapshot, testOfferVersionIds: string[]): SupplySnapshot {
+  const { schema: _schema, ...rest } = snapshot;
+  return {
+    ...rest,
+    schema: SUPPLY_GATE_SCHEMA_V2,
+    test_offer_version_ids: testOfferVersionIds,
+  };
 }
 
 function gateId(n: number, tail: '01' | '02'): string {
@@ -674,6 +699,139 @@ describe('floor-aware supply gate', () => {
   });
 });
 
+describe('test supply split', () => {
+  const seeds = Array.from({ length: 20 }, (_, index) => index + 1);
+
+  it('keeps a v1 report byte-identical aside from the unknown test_supply line', () => {
+    const failed = runSupplyGate({ snapshot: loadFixture(), seeds: [1] });
+    expect(failed.result).toBe('FAIL');
+    expect(failed.realSupplyResult).toBeNull();
+    expect(failed.text).toContain('test_supply=unknown (v1 snapshot)\n');
+    expect(failed.text).not.toContain('real_supply_result=');
+    expect(failed.text).not.toContain('(all supply)');
+    expect(failed.text).toContain(
+      'result=FAIL matched_min=104/192 matched_via_carry=50 worst_seed=1 trials_failed=1/1\n',
+    );
+    expect(failed.text).toContain(
+      'catalog selectable_offer_version=15 no_offer_version=7 legacy_offer_only=3 not_selectable=2 missing_coordinates=2 possible_duplicates=synthetic-05+synthetic-05-2\n',
+    );
+    expect(failed.text).toMatch(/FAIL: E02 supply gate \(88 unmatched credits\)\n$/);
+    const lines = failed.text.trimEnd().split('\n');
+    expect(lines.filter((line) => line.startsWith('test_supply'))).toEqual(['test_supply=unknown (v1 snapshot)']);
+  });
+
+  it('reports real_supply_result equal to result when a v2 snapshot has no test ids', () => {
+    const v1 = runSupplyGate({ snapshot: loadFixture(), seeds });
+    const empty = asV2(loadFixture(), []);
+    const v2 = runSupplyGate({ snapshot: empty, seeds });
+    expect(v2.testSupplyLine).toBe('test_supply selectable=0 of 15');
+    expect(v2.realSupplyResult).toBe(v2.result);
+    expect(v2.realMatchedMin).toBe(v2.matchedMin);
+    expect(v2.realTrialsFailed).toBe(v2.trialsFailed);
+    expect(v2.text).toContain(`real_supply_result=${v2.result} matched_min=${v2.matchedMin}/${SUPPLY_GATE_DENOMINATOR}`);
+    expect(v2.text).toContain('(excluding 0 test versions)');
+    expect(v2.text).not.toContain('(all supply)');
+    expect(gateBody(v2.text)).toBe(gateBody(v1.text));
+  }, 60_000);
+
+  it('fails real supply when every selectable version is test', () => {
+    const snapshot = loadSnapshotFile(ALL_TEST_FIXTURE);
+    expect(snapshot.schema).toBe(SUPPLY_GATE_SCHEMA_V2);
+    const result = runSupplyGate({ snapshot, seeds });
+    expect(result.result).toBe('PASS');
+    expect(result.realSupplyResult).toBe('FAIL');
+    expect(result.realMatchedMin).toBe(0);
+    expect(result.text).toContain('test_supply selectable=39 of 39\n');
+    expect(result.text).toContain(
+      `result=PASS (all supply) matched_min=${SUPPLY_GATE_DENOMINATOR}/${SUPPLY_GATE_DENOMINATOR}`,
+    );
+    expect(result.text).toContain(
+      'real_supply_result=FAIL matched_min=0/192 trials_failed=20/20 unmatched_by_rule=no_offer_version=192 (excluding 41 test versions)',
+    );
+    expect(result.text).toContain('not a real-supply result');
+    expect(result.text).not.toMatch(/^PASS: E02 supply gate\n/m);
+
+    const cli = runCli(['--trials', '1'], {
+      name: `e02-all-test-${process.pid}.json`,
+      body: snapshot,
+    });
+    expect(cli.status).toBe(1);
+    expect(cli.output).toContain('result=PASS (all supply) ');
+    expect(cli.output).toContain('real_supply_result=FAIL matched_min=0/192');
+    expect(cli.output).toContain('unmatched_by_rule=no_offer_version');
+  }, 60_000);
+
+  it('splits a mixed catalog into all-supply and real-supply results', () => {
+    const snapshot = loadSnapshotFile(MIXED_FIXTURE);
+    expect(snapshot.schema).toBe(SUPPLY_GATE_SCHEMA_V2);
+    if (snapshot.schema !== SUPPLY_GATE_SCHEMA_V2) return;
+    const result = runSupplyGate({ snapshot, seeds });
+    expect(result.result).toBe('PASS');
+    expect(result.testSupplyIncluded).toBe(true);
+    expect(result.realSupplyResult).toBe('FAIL');
+    expect(result.text).toContain('test_supply selectable=37 of 39\n');
+    expect(result.text).toContain('result=PASS (all supply) ');
+    expect(result.text).toContain('real_supply_result=FAIL ');
+    expect(result.text).toContain('(excluding 39 test versions)');
+    expect(snapshot.test_offer_version_ids).toHaveLength(39);
+    const realIds = snapshot.offer_versions
+      .map((version) => version.id)
+      .filter((id) => !snapshot.test_offer_version_ids.includes(id))
+      .sort();
+    expect(realIds).toEqual([
+      'e0255901-0000-4000-8000-000000000023',
+      'e0255901-0000-4000-8000-000000000024',
+    ]);
+  }, 60_000);
+});
+
+describe('snapshot loader v2', () => {
+  it('rejects an unknown test id, an extra key, and a forbidden key without printing values', () => {
+    const thin = loadFixture();
+    const secret = 'sentinel-pin-value-9f3a';
+    const missingId = 'e0255000-0000-4000-8000-00000000ffff';
+    const missing = asV2(thin, [missingId]);
+    const missingResult = parseSupplySnapshot(missing);
+    expect(missingResult.ok).toBe(false);
+    if (!missingResult.ok) {
+      expect(missingResult.message).toBe('snapshot rejected: test_offer_version_ids');
+      expect(missingResult.message).not.toContain(missingId);
+    }
+    const missingCli = runCli([], { name: `e02-v2-missing-${process.pid}.json`, body: missing });
+    expect(missingCli.status).toBe(2);
+    expect(missingCli.output).not.toContain(missingId);
+    expect(missingCli.output).not.toContain('test_supply');
+
+    const extra = { ...asV2(thin, []), note: secret };
+    const extraResult = parseSupplySnapshot(extra);
+    expect(extraResult.ok).toBe(false);
+    if (!extraResult.ok) {
+      expect(extraResult.message).toBe('snapshot rejected: unknown top-level key');
+      expect(extraResult.message).not.toContain(secret);
+    }
+    const extraCli = runCli([], { name: `e02-v2-extra-${process.pid}.json`, body: extra });
+    expect(extraCli.status).toBe(2);
+    expect(extraCli.output).not.toContain(secret);
+
+    const nested = structuredClone(asV2(thin, [])) as unknown as { restaurants: Array<Record<string, unknown>> };
+    const restaurant = nested.restaurants[0];
+    if (!restaurant) throw new Error('missing restaurant');
+    restaurant.pin_hash = secret;
+    const nestedResult = parseSupplySnapshot(nested);
+    expect(nestedResult.ok).toBe(false);
+    if (!nestedResult.ok) expect(nestedResult.message).not.toContain(secret);
+    const nestedCli = runCli([], { name: `e02-v2-secret-${process.pid}.json`, body: nested });
+    expect(nestedCli.status).toBe(2);
+    expect(nestedCli.output).toContain('forbidden key');
+    expect(nestedCli.output).not.toContain(secret);
+
+    const v1WithIds = { ...thin, test_offer_version_ids: [] };
+    const v1Result = parseSupplySnapshot(v1WithIds);
+    expect(v1Result.ok).toBe(false);
+    if (!v1Result.ok) expect(v1Result.message).toBe('snapshot rejected: unknown top-level key');
+  }, 60_000);
+});
+
 describe('supply gate source guard', () => {
   it('stays offline and gitignores the hosted snapshot directory', () => {
     for (const rel of ['src/lib/challenges/supply-gate.ts', 'scripts/e02-supply-gate.ts']) {
@@ -685,5 +843,21 @@ describe('supply gate source guard', () => {
     }
     expect(readFileSync(path.join(ROOT, '.gitignore'), 'utf8')).toContain('/.supply-gate/');
     expect(readFileSync(FIXTURE, 'utf8')).not.toContain('pin_hash');
+    const sql = readFileSync(path.join(ROOT, 'scripts/sql/e02-supply-snapshot.sql'), 'utf8');
+    expect(sql).toContain(SUPPLY_GATE_SCHEMA_V2);
+    expect(sql).toContain('begin transaction read only;');
+    expect(sql).toContain('rollback;');
+    for (const action of TEST_OFFER_AUDIT_ACTIONS) expect(sql).toContain(`'${action}'`);
+    expect(sql).toContain(`target_type = '${TEST_OFFER_AUDIT_TARGET_TYPE}'`);
+    expect(sql).toContain("audit_log.metadata->>'is_test' = 'true'");
+    expect(sql).toContain('target_id = offer_versions.id::text');
+    expect(sql).toContain('json_agg(marked.version_id order by marked.version_id)');
+    expect(sql).not.toContain('audit_log.actor_user_id');
+    expect(sql).not.toContain('audit_log.created_at');
+    expect(sql).not.toContain("'metadata'");
+    expect(sql).not.toContain('pin_hash');
+    expect(readFileSync(ALL_TEST_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
+    expect(readFileSync(MIXED_FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V2);
+    expect(readFileSync(FIXTURE, 'utf8')).toContain(SUPPLY_GATE_SCHEMA_V1);
   });
 });

@@ -5,11 +5,16 @@
 -- Save that cell to .supply-gate/hosted-catalog.json.
 -- psql alternative: psql -qAt -f scripts/sql/e02-supply-snapshot.sql > .supply-gate/hosted-catalog.json
 -- Read-only. One JSON object. Does not select pins, verification codes, addresses, photos, or member rows.
+-- Schema v2 adds test_offer_version_ids (ids only, sorted). The predicate matches
+-- isTestOfferAuditMarker in src/lib/catalog/import.ts and the #67 withdraw query:
+-- target_type offer_version, metadata->>'is_test' = 'true', action offer.test_mark
+-- or offer.publish. admin_audit_log (026_admin_audit_log.sql) stores target_id as
+-- text and metadata as jsonb. The array projects ids only.
 
 begin transaction read only;
 
 select json_build_object(
-  'schema', 'wanderbite.e02.supply_snapshot.v1',
+  'schema', 'wanderbite.e02.supply_snapshot.v2',
   'exported_at', now(),
   'launch_market', (
     select json_build_object(
@@ -65,6 +70,26 @@ select json_build_object(
     join public.restaurants on restaurants.id = restaurant_offers.restaurant_id
     where restaurants.status = 'active'
       and restaurant_offers.active is true
+  ),
+  'test_offer_version_ids', (
+    select coalesce(json_agg(marked.version_id order by marked.version_id), '[]'::json)
+    from (
+      select distinct offer_versions.id::text as version_id
+      from public.offer_versions
+      join public.restaurants
+        on restaurants.current_offer_version_id = offer_versions.id
+       and restaurants.id = offer_versions.restaurant_id
+      where restaurants.status = 'active'
+        and offer_versions.withdrawn_from_selection_at is null
+        and exists (
+          select 1
+          from public.admin_audit_log audit_log
+          where audit_log.target_type = 'offer_version'
+            and audit_log.target_id = offer_versions.id::text
+            and audit_log.metadata->>'is_test' = 'true'
+            and audit_log.action in ('offer.test_mark', 'offer.publish')
+        )
+    ) marked
   )
 ) as snapshot;
 

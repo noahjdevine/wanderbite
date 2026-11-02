@@ -10,8 +10,12 @@ import {
   fetchGooglePlaceCoordinates,
   geocodeWithCache,
   emptyGeocodeCache,
+  isTestOfferAuditMarker,
   parseCatalogImportArgs,
   parseCatalogImportDocument,
+  TEST_OFFER_AUDIT_TARGET_TYPE,
+  TEST_OFFER_MARK_ACTION,
+  TEST_OFFER_PUBLISH_ACTION,
   TEST_OFFER_SOURCE,
   type CatalogDbSnapshot,
   type CatalogPlan,
@@ -821,5 +825,52 @@ describe('catalog import test offer terms', () => {
     const until = Date.parse(terms.valid_until ?? '');
     const from = Date.parse(terms.valid_from ?? '');
     expect(until).toBeGreaterThan(from + 840 * 60 * 60 * 1000);
+  });
+});
+
+describe('test offer audit marker', () => {
+  it('matches offer.test_mark and a legacy offer.publish row with boolean is_test', () => {
+    expect(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_MARK_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: true,
+      }),
+    ).toBe(true);
+    expect(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_PUBLISH_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: true,
+      }),
+    ).toBe(true);
+    expect(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_PUBLISH_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: false,
+      }),
+    ).toBe(false);
+    expect(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_PUBLISH_ACTION,
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: 'true',
+      }),
+    ).toBe(false);
+    expect(
+      isTestOfferAuditMarker({
+        action: 'offer.withdraw',
+        targetType: TEST_OFFER_AUDIT_TARGET_TYPE,
+        isTest: true,
+      }),
+    ).toBe(false);
+    expect(
+      isTestOfferAuditMarker({
+        action: TEST_OFFER_MARK_ACTION,
+        targetType: 'restaurant',
+        isTest: true,
+      }),
+    ).toBe(false);
   });
 });
