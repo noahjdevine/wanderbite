@@ -20,6 +20,8 @@ const eslintConfig = defineConfig([
       'no-console': ['warn', { allow: ['warn', 'error'] }],
       // Hook deps regressions cause silent staleness; treat as error.
       'react-hooks/exhaustive-deps': 'error',
+      'react-hooks/set-state-in-effect': 'error',
+      'react-hooks/preserve-manual-memoization': 'error',
       // Catch await-on-non-promise (silent no-op bugs).
       '@typescript-eslint/await-thenable': 'error',
       // Flag unused vars (the prefix-with-_ escape is fine).

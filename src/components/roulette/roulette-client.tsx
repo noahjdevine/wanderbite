@@ -1,12 +1,17 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ExternalLink } from 'lucide-react';
 import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
-import { normalizeCuisineIds, cuisineLabel, type CuisineId } from '@/lib/cuisines';
+import { cuisineLabel } from '@/lib/cuisines';
+import {
+  getExcludedCuisinesServerSnapshot,
+  getExcludedCuisinesSnapshot,
+  subscribeExcludedCuisines,
+} from '@/lib/excluded-cuisines-store';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
 import { postRouletteSpin } from '@/lib/roulette-api-client';
 import { buildRouletteSpinBody } from '@/lib/roulette-options';
@@ -62,22 +67,14 @@ export function RouletteClient() {
 
   const [phase, setPhase] = useState<Phase>('form');
   const [selections, setSelections] = useState<RouletteSelections>(EMPTY_SELECTIONS);
-  const [excludedCuisines, setExcludedCuisines] = useState<CuisineId[]>([]);
+  const excludedCuisines = useSyncExternalStore(
+    subscribeExcludedCuisines,
+    getExcludedCuisinesSnapshot,
+    getExcludedCuisinesServerSnapshot,
+  );
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem('wb_excluded_cuisines');
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as unknown;
-      if (!Array.isArray(parsed)) return;
-      setExcludedCuisines(normalizeCuisineIds(parsed));
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const exclusionsSummary = useMemo(() => {
     if (excludedCuisines.length === 0) return null;
@@ -86,11 +83,10 @@ export function RouletteClient() {
     return more > 0 ? `${first.join(', ')} +${more} more` : first.join(', ');
   }, [excludedCuisines]);
 
-  const mapsHref = useMemo(() => {
-    if (!result?.restaurantName) return '#';
-    const q = encodeURIComponent(`${result.restaurantName} ${LAUNCH_MARKET.cityQuery}`);
-    return `https://www.google.com/maps/search/?api=1&query=${q}`;
-  }, [result?.restaurantName]);
+  const mapsHref =
+    result?.restaurantName != null && result.restaurantName.length > 0
+      ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${result.restaurantName} ${LAUNCH_MARKET.cityQuery}`)}`
+      : '#';
 
   const ask = useCallback(
     async (opts?: { surprise?: boolean }) => {

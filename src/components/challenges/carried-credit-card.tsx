@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { Loader2 } from 'lucide-react';
@@ -67,6 +67,7 @@ export function CarriedCreditCard({
   const [assigningId, setAssigningId] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<CarriedAssignCandidate[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const loadRequestIdRef = useRef(0);
   const deadlineLabel = formatChicagoDeadline(credit.effectiveDeadline);
   const expired = challengeCardExpired({
     now: new Date(nowMs),
@@ -75,25 +76,31 @@ export function CarriedCreditCard({
     storedDeadline: credit.effectiveDeadline,
   });
 
-  useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
+  async function loadCandidates() {
+    const requestId = ++loadRequestIdRef.current;
     setLoading(true);
     setLoadError(null);
-    void listCarriedAssignCandidates(credit.creditId).then((result) => {
-      if (cancelled) return;
-      setLoading(false);
-      if (result.ok) {
-        setCandidates(result.candidates);
-      } else {
-        setCandidates([]);
-        setLoadError(result.error);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [open, credit.creditId]);
+    setCandidates([]);
+    const result = await listCarriedAssignCandidates(credit.creditId);
+    if (requestId !== loadRequestIdRef.current) return;
+    setLoading(false);
+    if (result.ok) {
+      setCandidates(result.candidates);
+    } else {
+      setCandidates([]);
+      setLoadError(result.error);
+    }
+  }
+
+  function handleAssignDialogOpenChange(next: boolean) {
+    if (!next) {
+      loadRequestIdRef.current += 1;
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    void loadCandidates();
+  }
 
   async function handleAssign(restaurantId: string) {
     setAssigningId(restaurantId);
@@ -101,7 +108,7 @@ export function CarriedCreditCard({
       const result = await assignCarriedCredit(credit.creditId, restaurantId);
       if (result.ok) {
         toast.success('Restaurant assigned');
-        setOpen(false);
+        handleAssignDialogOpenChange(false);
         router.refresh();
       } else {
         toast.error(result.error);
@@ -153,10 +160,10 @@ export function CarriedCreditCard({
         </p>
       </CardContent>
       <CardFooter>
-        <Button type="button" className="w-full" onClick={() => setOpen(true)}>
+        <Button type="button" className="w-full" onClick={() => handleAssignDialogOpenChange(true)}>
           Assign
         </Button>
-        <Dialog open={open} onOpenChange={setOpen}>
+        <Dialog open={open} onOpenChange={handleAssignDialogOpenChange}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Assign a restaurant</DialogTitle>
