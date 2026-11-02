@@ -115,6 +115,32 @@ function readSupplySnapshot(sql: Sql, root: string): SupplySnapshot {
   return parsed.snapshot;
 }
 
+type SupplyPreflight = {
+  schema: string;
+  exported_at: string;
+  string_true_test_markers: { count: number; target_ids: string[] };
+  test_versions: number;
+  active_restaurants: number;
+  active_with_current_version: number;
+  active_without_current_version: number;
+  catalog_import_duplicate_candidates: number;
+};
+
+function readSupplyPreflight(sql: Sql, root: string): SupplyPreflight {
+  const text = readFileSync(path.join(root, 'scripts/sql/e02-supply-preflight.sql'), 'utf8');
+  return JSON.parse(sql(text)) as SupplyPreflight;
+}
+
+function activeRestaurantCount(sql: Sql, current: 'any' | 'with' | 'without'): number {
+  const version =
+    current === 'with'
+      ? ' and current_offer_version_id is not null'
+      : current === 'without'
+        ? ' and current_offer_version_id is null'
+        : '';
+  return Number(sql(`select count(*)::int from public.restaurants where status = 'active'${version};`));
+}
+
 function assertTestOfferVersionIds(sql: Sql, snapshot: SupplySnapshot): void {
   assert.equal(snapshot.schema, SUPPLY_GATE_SCHEMA_V2);
   if (snapshot.schema !== SUPPLY_GATE_SCHEMA_V2) return;
@@ -1075,6 +1101,21 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
     assert.deepEqual(markedSnapshot.test_offer_version_ids, [legacyId, newId].sort());
     assert.equal(markedSnapshot.test_offer_version_ids.includes(withdrawnId), false);
     assert.equal(markedSnapshot.test_offer_version_ids.includes(stringId), false);
+    const preflight = readSupplyPreflight(sql, root);
+    assert.equal(preflight.schema, 'wanderbite.e02.supply_preflight.v1');
+    assert.equal(typeof preflight.exported_at, 'string');
+    assert.equal(preflight.string_true_test_markers.count, 1);
+    assert.deepEqual(preflight.string_true_test_markers.target_ids, [stringId]);
+    assert.equal(preflight.test_versions, markedSnapshot.test_offer_version_ids.length);
+    assert.equal(preflight.active_restaurants, activeRestaurantCount(sql, 'any'));
+    assert.equal(preflight.active_with_current_version, activeRestaurantCount(sql, 'with'));
+    assert.equal(preflight.active_without_current_version, activeRestaurantCount(sql, 'without'));
+    assert.equal(
+      preflight.active_with_current_version + preflight.active_without_current_version,
+      preflight.active_restaurants,
+    );
+    assert.ok(preflight.active_with_current_version > 0);
+    assert.ok(preflight.active_without_current_version > 0);
   }
   const withdraw = await buildCatalogPlan({
     document: { rows: [], errors: [] },
@@ -1124,5 +1165,28 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
   assert.equal(
     sql(`select current_offer_version_id is not null from public.restaurants where slug = 'string-mark-grill';`),
     't',
+  );
+  const duplicatesBefore = readSupplyPreflight(sql, root).catalog_import_duplicate_candidates;
+  sql(`
+    insert into public.restaurants (market_id, name, slug, address, status)
+    values
+      (
+        ${q(market)}::uuid,
+        'Preflight & Grill',
+        'preflight-amp-grill',
+        '1 Same Street, Marks, TX 75001',
+        'active'
+      ),
+      (
+        ${q(market)}::uuid,
+        'Preflight and Grill',
+        'preflight-and-grill',
+        '1 Same Street, Marks, TX 75001',
+        'active'
+      );
+  `);
+  assert.equal(
+    readSupplyPreflight(sql, root).catalog_import_duplicate_candidates,
+    duplicatesBefore + 2,
   );
 }
