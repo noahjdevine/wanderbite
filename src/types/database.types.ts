@@ -476,6 +476,60 @@ export type Database = {
           },
         ]
       }
+      challenge_reveals: {
+        Row: {
+          brief: Json
+          created_at: string
+          cycle_id: string
+          eligibility_facts: Json
+          id: string
+          item_reasons: Json
+          period_key: string
+          selection_source: string
+          source_version: string
+          user_id: string
+        }
+        Insert: {
+          brief: Json
+          created_at?: string
+          cycle_id: string
+          eligibility_facts: Json
+          id?: string
+          item_reasons: Json
+          period_key: string
+          selection_source: string
+          source_version: string
+          user_id: string
+        }
+        Update: {
+          brief?: Json
+          created_at?: string
+          cycle_id?: string
+          eligibility_facts?: Json
+          id?: string
+          item_reasons?: Json
+          period_key?: string
+          selection_source?: string
+          source_version?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "challenge_reveals_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_reveals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       challenge_items: {
         Row: {
           cycle_id: string | null
@@ -2479,6 +2533,29 @@ export type Database = {
         Returns: {
           cycle_id: string
           outcome: string
+        }[]
+      }
+      reveal_monthly_challenge: {
+        Args: {
+          p_brief: Json
+          p_cycle_month: string
+          p_eligibility_facts: Json
+          p_item_reasons: Json
+          p_market_id: string
+          p_restaurant_ids: string[]
+          p_selection_source: string
+          p_source_version: string
+          p_user_id: string
+        }
+        Returns: {
+          brief: Json | null
+          cycle_id: string | null
+          item_reasons: Json | null
+          outcome: string
+          period_key: string | null
+          restaurant_ids: string[] | null
+          reveal_id: string | null
+          selection_source: string | null
         }[]
       }
       issue_period_credits: {
