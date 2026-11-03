@@ -231,7 +231,10 @@ describe('G11 wiring (source)', () => {
     const action = source('src/app/actions/generate-challenge.ts');
     expect(generate).toMatch(/export async function generateMonthlyChallengeForUser\(\s*userId: string/);
     expect(generate).toMatch(/requireLaunchMarketId/);
-    expect(generate).toMatch(/selectDistancePool/);
+    expect(generate).toMatch(/listEligibleChallengeCandidates/);
+    expect(generate).not.toMatch(/selectDistancePool/);
+    expect(generate).not.toMatch(/function passesHard/);
+    expect(source('src/lib/challenges/eligible-candidates.ts')).toMatch(/selectDistancePool/);
     expect(generate).toMatch(/pickDistinctRestaurants/);
     expect(generate).toMatch(/deriveDistanceMatch/);
     expect(generate.indexOf('isLaunchEligibleAddress')).toBeLessThan(

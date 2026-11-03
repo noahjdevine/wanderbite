@@ -20,7 +20,13 @@ import type { Json } from '@/types/database.types';
 
 /**
  * Shared hard-filter list for monthly generate, swap, and carried assign.
- * Callers still commit through the existing RPCs. This module never reserves capacity.
+ * Callers commit through the existing RPCs. This module never reserves capacity.
+ *
+ * One restaurant lands in exactly one bucket. Precedence is duplicate, then
+ * no_offer_version, credit_floor, capacity, exclusion, cooldown. A restaurant
+ * that passes those and sits outside the ZIP band actually used is distance.
+ * One that sits inside that band but loses the variety tier (including a
+ * last-month repeat) is variety. Everyone else is a candidate.
  */
 export const ELIGIBILITY_REJECTION_REASONS = [
   'no_offer_version',
@@ -30,6 +36,7 @@ export const ELIGIBILITY_REJECTION_REASONS = [
   'distance',
   'credit_floor',
   'duplicate',
+  'variety',
 ] as const;
 
 export type EligibilityRejectionReason = (typeof ELIGIBILITY_REJECTION_REASONS)[number];
@@ -108,6 +115,7 @@ export function emptyEligibilityRejections(): EligibilityRejections {
     distance: 0,
     credit_floor: 0,
     duplicate: 0,
+    variety: 0,
   };
 }
 
@@ -159,7 +167,15 @@ function memberRejection(
   if (ctx.mode === 'monthly' && ctx.swappedOutRestaurantIds?.has(restaurant.id)) {
     return 'exclusion';
   }
-  if (getDietaryConflict(restaurant.cuisine_tags, ctx.dietaryFlags)) return 'exclusion';
+  const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, ctx.dietaryFlags);
+  if (dietaryConflict) {
+    if (ctx.mode === 'credit_swap' || ctx.mode === 'legacy_swap') {
+      console.warn(
+        `[Swap] Filtered out ${restaurant.name ?? restaurant.id} due to ${dietaryConflict.flag} conflict (overlapping tags: ${dietaryConflict.conflictingTags.join(', ')})`,
+      );
+    }
+    return 'exclusion';
+  }
   if (hasAllergyConflict(restaurant.cuisine_tags, ctx.allergyFlags)) return 'exclusion';
   if (
     restaurantHasExcludedCuisine({
@@ -298,6 +314,7 @@ export function listEligibleChallengeCandidates<T extends EligibilityRestaurant>
     const point = toGeoPoint(restaurant.lat, restaurant.lon);
     const miles = point ? haversineMiles(args.origin, point) : Number.POSITIVE_INFINITY;
     if (miles > pool.match.usedMiles) rejections.distance += 1;
+    else rejections.variety += 1;
   }
 
   const candidates = pool.candidates.map((restaurant) => {
@@ -320,19 +337,4 @@ export function listEligibleChallengeCandidates<T extends EligibilityRestaurant>
   });
 
   return { candidates, rejections, distance: pool.match };
-}
-
-/**
- * Use the shared list when it is the same ordered pick the caller already
- * computed. Otherwise keep that caller's rows so a classifier mismatch
- * cannot change the restaurant that reaches the RPC.
- */
-export function candidateRowsForPick<T extends { id: string }>(
-  serviceRows: readonly T[],
-  legacyRows: readonly T[],
-): T[] {
-  const same =
-    serviceRows.length === legacyRows.length &&
-    serviceRows.every((row, index) => row.id === legacyRows[index]?.id);
-  return same ? [...serviceRows] : [...legacyRows];
 }

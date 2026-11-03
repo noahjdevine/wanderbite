@@ -41,12 +41,15 @@ describe('credit-safe swap action', () => {
 
   it('calls the RPC with a null replacement before pool selection on a swapped_out retry', () => {
     expect(credits.indexOf("status === 'swapped_out'")).toBeGreaterThan(-1);
-    expect(credits.indexOf('retryLinkedCreditSwap')).toBeLessThan(credits.indexOf('selectDistancePool'));
+    expect(credits.indexOf('retryLinkedCreditSwap')).toBeLessThan(
+      credits.indexOf('listEligibleChallengeCandidates'),
+    );
     expect(credits.indexOf('linkedRedeemableRestaurantIds')).toBeLessThan(
-      credits.indexOf('selectDistancePool'),
+      credits.indexOf('listEligibleChallengeCandidates'),
     );
     expect(retry).toContain('null');
     expect(retry).not.toContain('selectDistancePool');
+    expect(retry).not.toContain('listEligibleChallengeCandidates');
     expect(retry).not.toContain('loadRestaurantOffer');
     expect(retry).not.toContain('credit_swap_allowances');
   });
@@ -55,8 +58,13 @@ describe('credit-safe swap action', () => {
     expect(credits).not.toContain('credit_swap_allowances');
     expect(credits).not.toContain('swap_count_used');
     expect(credits).not.toContain("from('restaurant_offers')");
-    expect(credits).toContain('lowestSealedBase');
-    expect(credits).toContain('meetsMinimumCreditBase');
+    expect(credits).toContain("mode: 'credit_swap'");
+    expect(credits).not.toContain('lowestSealedBase');
+    expect(credits).not.toContain('meetsMinimumCreditBase');
+    expect(credits).not.toContain('passesHard');
+    const eligibility = source('src/lib/challenges/eligible-candidates.ts');
+    expect(eligibility).toContain('lowestSealedBase');
+    expect(eligibility).toContain('meetsMinimumCreditBase');
     expect(swap).toContain('below_floor');
     expect(swap).toContain('capacity_full');
     expect(swap).toContain('swap_exhausted');

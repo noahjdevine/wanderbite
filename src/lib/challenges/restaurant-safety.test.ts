@@ -412,14 +412,17 @@ describe('cooldown call sites', () => {
   const generate = source('src/lib/challenges/generate.ts');
 
   it('routes both swap passesHard filters through redemptionCooldownOk', () => {
+    const eligibility = source('src/lib/challenges/eligible-candidates.ts');
     expect(swap).not.toContain('subYears');
-    for (const body of [credits, legacy]) {
-      const hard = between(body, 'passesHard:', 'passesVariety:');
-      expect(hard).toContain('redemptionCooldownOk(restaurant.id, redemptions, now)');
-      expect(hard).not.toContain('subYears');
-      expect(hard).not.toContain('subMonths');
-      expect(hard).not.toContain('twelveMonthsAgo');
-    }
+    expect(swap).not.toContain('passesHard');
+    expect(swap).not.toContain('redemptionCooldownOk');
+    expect(eligibility).toContain('redemptionCooldownOk');
+    expect(credits).toContain("mode: 'credit_swap'");
+    expect(legacy).toContain("mode: 'legacy_swap'");
+    expect(credits).not.toContain('subYears');
+    expect(credits).not.toContain('subMonths');
+    expect(legacy).not.toContain('subYears');
+    expect(legacy).not.toContain('twelveMonthsAgo');
     expect(legacy).toContain('startOfMonth(now)');
     expect(legacy).not.toContain('chicagoMonthStart');
   });

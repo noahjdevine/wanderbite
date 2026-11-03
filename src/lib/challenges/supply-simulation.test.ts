@@ -227,14 +227,18 @@ describe('supply simulation helpers', () => {
   });
 
   it('delegates redemptionHardOk to redemptionCooldownOk', () => {
-    const source = readFileSync(path.join(ROOT, 'src/lib/challenges/generate.ts'), 'utf8');
-    const start = source.indexOf('function redemptionHardOk');
-    const end = source.indexOf('function passesHard');
-    const body = source.slice(start, end);
+    const generate = readFileSync(path.join(ROOT, 'src/lib/challenges/generate.ts'), 'utf8');
+    const eligibility = readFileSync(path.join(ROOT, 'src/lib/challenges/eligible-candidates.ts'), 'utf8');
+    const start = eligibility.indexOf('function memberRejection');
+    const end = eligibility.indexOf('export function challengeCandidateRejection');
+    const body = eligibility.slice(start, end);
     expect(body).toContain('redemptionCooldownOk');
     expect(body).not.toContain('subYears');
     expect(body).not.toContain('subMonths');
     expect(body).not.toContain('twelveMonthsAgo');
+    expect(generate).not.toContain('function redemptionHardOk');
+    expect(generate).not.toContain('function passesHard');
+    expect(generate).toContain('listEligibleChallengeCandidates');
   });
 });
 
