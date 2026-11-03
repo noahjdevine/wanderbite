@@ -799,6 +799,68 @@ export type Database = {
           },
         ]
       }
+      reveal_pick_reminders: {
+        Row: {
+          claim_expires_at: string | null
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          email_payload: Json | null
+          idempotency_key: string | null
+          idempotency_key_used_at: string | null
+          last_error: string | null
+          period_key: string
+          recipient_email: string | null
+          reconciliation_reason: string | null
+          resend_message_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          email_payload?: Json | null
+          idempotency_key?: string | null
+          idempotency_key_used_at?: string | null
+          last_error?: string | null
+          period_key: string
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          email_payload?: Json | null
+          idempotency_key?: string | null
+          idempotency_key_used_at?: string | null
+          last_error?: string | null
+          period_key?: string
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reveal_pick_reminders_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_suppressions: {
         Row: {
           created_at: string
@@ -2343,6 +2405,62 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      claim_reveal_pick_reminder: {
+        Args: { p_period_key: string; p_token: string; p_user_id: string }
+        Returns: {
+          claim_expires_at: string | null
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          email_payload: Json | null
+          idempotency_key: string | null
+          idempotency_key_used_at: string | null
+          last_error: string | null
+          period_key: string
+          previous_status: string
+          recipient_email: string | null
+          reconciliation_reason: string | null
+          resend_message_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }[]
+      }
+      complete_reveal_pick_reminder: {
+        Args: { p_message_id: string; p_period_key: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      ensure_reveal_pick_reminder: {
+        Args: { p_period_key: string; p_user_id: string }
+        Returns: undefined
+      }
+      fail_reveal_pick_reminder: {
+        Args: { p_error: string; p_period_key: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      reconcile_reveal_pick_reminder: {
+        Args: { p_period_key: string; p_reason: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      release_reveal_pick_reminder: {
+        Args: { p_error: string; p_period_key: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      skip_reveal_pick_reminder: {
+        Args: { p_period_key: string; p_status: string; p_token: string; p_user_id: string }
+        Returns: boolean
+      }
+      store_reveal_pick_reminder_payload: {
+        Args: {
+          p_idempotency_key: string
+          p_payload: Json
+          p_period_key: string
+          p_recipient: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
       }
       claim_email_reminder_delivery: {
         Args: { p_cycle_month: string; p_token: string; p_user_id: string }

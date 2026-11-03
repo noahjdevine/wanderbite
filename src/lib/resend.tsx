@@ -6,6 +6,7 @@
 import { render, toPlainText } from '@react-email/components';
 import { Resend } from 'resend';
 import { RedemptionReminderEmail } from '@/emails/redemption-reminder';
+import { RevealPickReminderEmail } from '@/emails/reveal-pick-reminder';
 import { SubscriptionConfirmationEmail } from '@/emails/subscription-confirmation';
 import {
   EMAIL_FROM,
@@ -42,6 +43,36 @@ export async function buildSubscriptionConfirmationEmail(
     html,
     text,
     headers: {},
+  };
+}
+
+export const REVEAL_PICK_SUBJECT = 'Your challenges for this month are ready to pick';
+
+export async function buildRevealPickReminderEmail(input: {
+  to: string;
+  unsubscribeUrl: string;
+}): Promise<StoredEmailPayload> {
+  const html = await render(
+    <RevealPickReminderEmail baseUrl={emailBaseUrl()} unsubscribeUrl={input.unsubscribeUrl} />,
+  );
+  let text = toPlainText(html);
+  const challengesUrl = `${emailBaseUrl().replace(/\/+$/, '')}/challenges`;
+  if (!text.includes(challengesUrl)) {
+    text = `${text}\n\n${challengesUrl}`;
+  }
+  if (!text.includes(input.unsubscribeUrl)) {
+    text = `${text}\n\nUnsubscribe from adventure reminders: ${input.unsubscribeUrl}`;
+  }
+  return {
+    from: EMAIL_FROM,
+    to: input.to,
+    subject: REVEAL_PICK_SUBJECT,
+    html,
+    text,
+    headers: {
+      'List-Unsubscribe': `<${input.unsubscribeUrl}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
   };
 }
 
