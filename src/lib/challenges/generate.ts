@@ -16,6 +16,10 @@ import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
 import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
 import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
+import {
+  candidateRowsForPick,
+  listEligibleChallengeCandidates,
+} from '@/lib/challenges/eligible-candidates';
 import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import {
   assignmentDeadline,
@@ -651,12 +655,35 @@ export async function generateMonthlyChallengeForUser(
       return !lastMonthRestaurantIds.has(restaurant.id);
     }
 
+    const requestedMiles = milesForDistanceBand(distanceBand);
     const pool = selectDistancePool({
       restaurants: withOffer,
       origin: zipOrigin,
-      requestedMiles: milesForDistanceBand(distanceBand),
+      requestedMiles,
       requiredCount: CHALLENGE_ITEMS_PER_MONTH,
       passesHard,
+      passesVariety,
+      passesRelaxedVariety,
+    });
+    const eligibility = listEligibleChallengeCandidates({
+      context: {
+        mode: 'monthly',
+        versionsById,
+        legacyOffersByRestaurant: offerByRestaurant,
+        now,
+        deadline: assignmentDeadline(now),
+        allergyFlags,
+        dietaryFlags,
+        excludedCuisineIds: excludedCuisines,
+        redemptions,
+        swappedOutRestaurantIds,
+        legacyMonthCounts: countByRestaurant,
+        capacityCountsByRestaurant: countsByRestaurant,
+      },
+      restaurants: withOffer,
+      origin: zipOrigin,
+      requestedMiles,
+      requiredCount: CHALLENGE_ITEMS_PER_MONTH,
       passesVariety,
       passesRelaxedVariety,
     });
@@ -676,7 +703,10 @@ export async function generateMonthlyChallengeForUser(
     }
 
     const chosen = pickDistinctRestaurants(
-      pool.candidates,
+      candidateRowsForPick(
+        eligibility.candidates.map((candidate) => candidate.restaurant),
+        pool.candidates,
+      ),
       CHALLENGE_ITEMS_PER_MONTH,
       { reserveCocktail: wantsCocktailExperience, shuffle }
     );

@@ -1,14 +1,9 @@
-import { lowestSealedBase } from '@/lib/offers/sealed-base';
-import { selectDistancePool } from '@/lib/challenges/distance-pool';
-import { offerVersionCoversDeadline } from '@/lib/challenges/challenge-deadline';
-import {
-  passesRestaurantHardFilters,
-  type CooldownRedemption,
-} from '@/lib/challenges/restaurant-safety';
+import { listEligibleChallengeCandidates } from '@/lib/challenges/eligible-candidates';
+import type { CooldownRedemption } from '@/lib/challenges/restaurant-safety';
 import type { GeoPoint } from '@/lib/launch-market';
 import type { Json } from '@/types/database.types';
 
-import { MINIMUM_CREDIT_BASE_CENTS, meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
+import { MINIMUM_CREDIT_BASE_CENTS } from '@/lib/offers/credit-floor';
 
 export const CARRIED_ASSIGN_FLOOR_CENTS = MINIMUM_CREDIT_BASE_CENTS;
 
@@ -47,38 +42,25 @@ export function filterCarriedAssignCandidates<T extends AssignRestaurant>(args: 
   now: Date;
   deadline: Date;
 }): PricedAssignRestaurant<T>[] {
-  const prepared: PricedAssignRestaurant<T>[] = [];
-  for (const restaurant of args.restaurants) {
-    const versionId = restaurant.current_offer_version_id;
-    if (!versionId) continue;
-    const version = args.versionsById.get(versionId);
-    if (!version || version.restaurant_id !== restaurant.id) continue;
-    if (!offerVersionCoversDeadline(version, args.now, args.deadline)) continue;
-    const base = lowestSealedBase(version.tiers);
-    if (!base || !meetsMinimumCreditBase(base.discount_amount_cents)) continue;
-    prepared.push({
-      ...restaurant,
-      discount_amount_cents: base.discount_amount_cents,
-      min_spend_cents: base.min_spend_cents,
-    });
-  }
-
-  return selectDistancePool({
-    restaurants: prepared,
+  const listed = listEligibleChallengeCandidates({
+    context: {
+      mode: 'carried',
+      versionsById: args.versionsById,
+      now: args.now,
+      deadline: args.deadline,
+      allergyFlags: args.allergyFlags,
+      dietaryFlags: args.dietaryFlags,
+      excludedCuisineIds: args.excludedCuisineIds,
+      redemptions: args.redemptions,
+    },
+    restaurants: args.restaurants,
     origin: args.origin,
     requestedMiles: args.requestedMiles,
     requiredCount: 1,
-    passesHard: (restaurant) =>
-      passesRestaurantHardFilters({
-        cuisineTags: restaurant.cuisine_tags,
-        allergyFlags: args.allergyFlags,
-        dietaryFlags: args.dietaryFlags,
-        excludedCuisineIds: args.excludedCuisineIds,
-        restaurantId: restaurant.id,
-        redemptions: args.redemptions,
-        now: args.now,
-      }),
-    passesVariety: () => true,
-    passesRelaxedVariety: () => true,
-  }).candidates;
+  });
+  return listed.candidates.map((candidate) => ({
+    ...candidate.restaurant,
+    discount_amount_cents: candidate.baseSavingsCents,
+    min_spend_cents: candidate.minSpendCents,
+  }));
 }

@@ -14,6 +14,10 @@ import { chicagoMonthStart } from '@/lib/cron-period';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
 import { selectDistancePool } from '@/lib/challenges/distance-pool';
+import {
+  candidateRowsForPick,
+  listEligibleChallengeCandidates,
+} from '@/lib/challenges/eligible-candidates';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import {
   isLaunchEligibleAddress,
@@ -467,10 +471,11 @@ async function swapLinkedCreditItem(
     if (redErr) return { ok: false, error: `Failed to load redemptions: ${redErr.message}` };
     const redemptions = (userRedemptions ?? []) as RedemptionRow[];
 
+    const creditRequestedMiles = milesForDistanceBand(distanceBand);
     const pool = selectDistancePool({
       restaurants: withCoveringVersion,
       origin: zipOrigin,
-      requestedMiles: milesForDistanceBand(distanceBand),
+      requestedMiles: creditRequestedMiles,
       requiredCount: 1,
       passesHard: (restaurant) => {
         const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
@@ -494,6 +499,22 @@ async function swapLinkedCreditItem(
       passesVariety: () => true,
       passesRelaxedVariety: () => true,
     });
+    const creditEligibility = listEligibleChallengeCandidates({
+      context: {
+        mode: 'credit_swap',
+        versionsById: versionById,
+        now,
+        deadline,
+        allergyFlags,
+        dietaryFlags,
+        excludedCuisineIds: excludedCuisines,
+        redemptions,
+      },
+      restaurants: withCoveringVersion,
+      origin: zipOrigin,
+      requestedMiles: creditRequestedMiles,
+      requiredCount: 1,
+    });
     if (pool.candidates.length === 0) {
       return {
         ok: false,
@@ -501,7 +522,12 @@ async function swapLinkedCreditItem(
           'No eligible replacement restaurant found. Check dietary preferences, allergies, and cooldowns.',
       };
     }
-    const replacement = pickOne(pool.candidates);
+    const replacement = pickOne(
+      candidateRowsForPick(
+        creditEligibility.candidates.map((candidate) => candidate.restaurant),
+        pool.candidates,
+      ),
+    );
     if (!replacement) return { ok: false, error: 'Could not pick a replacement restaurant.' };
     return finishCreditSwap(supabase, userId, challengeItemId, replacement.id);
   } catch (e) {
@@ -720,10 +746,11 @@ export async function swapChallengeItem(
       countByRestaurant.set(id, (countByRestaurant.get(id) ?? 0) + 1);
     }
 
+    const legacyRequestedMiles = milesForDistanceBand(distanceBand);
     const pool = selectDistancePool({
       restaurants: withOffer,
       origin: zipOrigin,
-      requestedMiles: milesForDistanceBand(distanceBand),
+      requestedMiles: legacyRequestedMiles,
       requiredCount: 1,
       passesHard: (restaurant) => {
         const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
@@ -760,6 +787,24 @@ export async function swapChallengeItem(
       passesVariety: () => true,
       passesRelaxedVariety: () => true,
     });
+    const legacyEligibility = listEligibleChallengeCandidates({
+      context: {
+        mode: 'legacy_swap',
+        versionsById: new Map<string, never>(),
+        legacyOffersByRestaurant: offerByRestaurant,
+        now,
+        deadline: addHours(now, SUCCESSOR_WINDOW_HOURS),
+        allergyFlags,
+        dietaryFlags,
+        excludedCuisineIds: excludedCuisines,
+        redemptions,
+        legacyMonthCounts: countByRestaurant,
+      },
+      restaurants: withOffer,
+      origin: zipOrigin,
+      requestedMiles: legacyRequestedMiles,
+      requiredCount: 1,
+    });
 
     if (pool.candidates.length === 0) {
       return {
@@ -768,7 +813,12 @@ export async function swapChallengeItem(
       };
     }
 
-    const replacement = pickOne(pool.candidates);
+    const replacement = pickOne(
+      candidateRowsForPick(
+        legacyEligibility.candidates.map((candidate) => candidate.restaurant),
+        pool.candidates,
+      ),
+    );
     if (!replacement) {
       return { ok: false, error: 'Could not pick a replacement restaurant.' };
     }
