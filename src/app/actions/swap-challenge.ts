@@ -5,19 +5,12 @@ import { revalidatePath } from 'next/cache';
 import { addHours, isAfter, min as earliest, startOfMonth, subMonths } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
-import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
-import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
-import { redemptionCooldownOk } from '@/lib/challenges/restaurant-safety';
+import { normalizeCuisineIds } from '@/lib/cuisines';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
-import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
-import { selectDistancePool } from '@/lib/challenges/distance-pool';
-import {
-  candidateRowsForPick,
-  listEligibleChallengeCandidates,
-} from '@/lib/challenges/eligible-candidates';
+import { listEligibleChallengeCandidates } from '@/lib/challenges/eligible-candidates';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import {
   isLaunchEligibleAddress,
@@ -180,21 +173,6 @@ function carriedSuccessorDeadline(
   return earliest([sourceDeadline, plus840]);
 }
 
-function versionCoversSuccessorDeadline(
-  version: {
-    valid_from: string;
-    valid_until: string;
-    withdrawn_from_selection_at: string | null;
-  },
-  now: Date,
-  deadline: Date,
-): boolean {
-  if (version.withdrawn_from_selection_at) return false;
-  const validFrom = new Date(version.valid_from);
-  const validUntil = new Date(version.valid_until);
-  return !isAfter(validFrom, now) && isAfter(validUntil, now) && isAfter(validUntil, deadline);
-}
-
 async function loadSealedSuccessorOffer(
   supabase: SupabaseClient<Database>,
   itemId: string,
@@ -285,6 +263,12 @@ async function finishCreditSwap(
   if (rpcError) return { ok: false, error: `Swap failed: ${rpcError.message}` };
   const swapped = firstRpcRow(rpcData);
   if (!swapped) return { ok: false, error: 'Swap failed.' };
+  if (swapped.outcome === 'below_floor' || swapped.outcome === 'capacity_full') {
+    console.warn('[challenges] swap rpc rejected a service candidate', {
+      userId,
+      outcome: swapped.outcome,
+    });
+  }
   const failure = creditSwapFailure(swapped.outcome);
   if (failure) return { ok: false, error: failure };
   if (!swapped.replacement_item_id) return { ok: false, error: 'Swap failed.' };
@@ -450,20 +434,6 @@ async function swapLinkedCreditItem(
       for (const version of versions ?? []) versionById.set(version.id, version);
     }
 
-    const withCoveringVersion = restaurantList.filter((restaurant) => {
-      const versionId = restaurant.current_offer_version_id;
-      if (!versionId) return false;
-      const version = versionById.get(versionId);
-      if (!version || version.restaurant_id !== restaurant.id) return false;
-      if (!versionCoversSuccessorDeadline(version, now, deadline)) return false;
-      const base = lowestSealedBase(version.tiers)?.discount_amount_cents;
-      if (base == null) return false;
-      return meetsMinimumCreditBase(base);
-    });
-    if (withCoveringVersion.length === 0) {
-      return { ok: false, error: 'No restaurants with an active offer available to swap into.' };
-    }
-
     const { data: userRedemptions, error: redErr } = await supabase
       .from('redemptions')
       .select('id, restaurant_id, status, verified_at, created_at')
@@ -472,33 +442,6 @@ async function swapLinkedCreditItem(
     const redemptions = (userRedemptions ?? []) as RedemptionRow[];
 
     const creditRequestedMiles = milesForDistanceBand(distanceBand);
-    const pool = selectDistancePool({
-      restaurants: withCoveringVersion,
-      origin: zipOrigin,
-      requestedMiles: creditRequestedMiles,
-      requiredCount: 1,
-      passesHard: (restaurant) => {
-        const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
-        if (dietaryConflict) {
-          console.warn(
-            `[Swap] Filtered out ${restaurant.name} due to ${dietaryConflict.flag} conflict (overlapping tags: ${dietaryConflict.conflictingTags.join(', ')})`,
-          );
-          return false;
-        }
-        if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
-        if (
-          restaurantHasExcludedCuisine({
-            restaurantCuisineTags: restaurant.cuisine_tags,
-            excludedCuisineIds: excludedCuisines,
-          })
-        ) {
-          return false;
-        }
-        return redemptionCooldownOk(restaurant.id, redemptions, now);
-      },
-      passesVariety: () => true,
-      passesRelaxedVariety: () => true,
-    });
     const creditEligibility = listEligibleChallengeCandidates({
       context: {
         mode: 'credit_swap',
@@ -510,24 +453,26 @@ async function swapLinkedCreditItem(
         excludedCuisineIds: excludedCuisines,
         redemptions,
       },
-      restaurants: withCoveringVersion,
+      restaurants: restaurantList,
       origin: zipOrigin,
       requestedMiles: creditRequestedMiles,
       requiredCount: 1,
     });
-    if (pool.candidates.length === 0) {
+    const creditOfferReady =
+      restaurantList.length -
+      creditEligibility.rejections.no_offer_version -
+      creditEligibility.rejections.credit_floor;
+    if (creditOfferReady === 0) {
+      return { ok: false, error: 'No restaurants with an active offer available to swap into.' };
+    }
+    if (creditEligibility.candidates.length === 0) {
       return {
         ok: false,
         error:
           'No eligible replacement restaurant found. Check dietary preferences, allergies, and cooldowns.',
       };
     }
-    const replacement = pickOne(
-      candidateRowsForPick(
-        creditEligibility.candidates.map((candidate) => candidate.restaurant),
-        pool.candidates,
-      ),
-    );
+    const replacement = pickOne(creditEligibility.candidates.map((candidate) => candidate.restaurant));
     if (!replacement) return { ok: false, error: 'Could not pick a replacement restaurant.' };
     return finishCreditSwap(supabase, userId, challengeItemId, replacement.id);
   } catch (e) {
@@ -713,15 +658,6 @@ export async function swapChallengeItem(
     const offerList = (offers ?? []) as RestaurantOfferRow[];
     const offerByRestaurant = new Map(offerList.map((o) => [o.restaurant_id, o]));
 
-    const withOffer = restaurantList.filter(
-      (r) =>
-        offerByRestaurant.has(r.id) ||
-        Boolean((r as RestaurantRow & { current_offer_version_id?: string | null }).current_offer_version_id)
-    );
-    if (withOffer.length === 0) {
-      return { ok: false, error: 'No restaurants with an active offer available to swap into.' };
-    }
-
     // 8. User redemptions (cooldown + 2x/year)
     const { data: userRedemptions, error: redErr } = await supabase
       .from('redemptions')
@@ -747,50 +683,10 @@ export async function swapChallengeItem(
     }
 
     const legacyRequestedMiles = milesForDistanceBand(distanceBand);
-    const pool = selectDistancePool({
-      restaurants: withOffer,
-      origin: zipOrigin,
-      requestedMiles: legacyRequestedMiles,
-      requiredCount: 1,
-      passesHard: (restaurant) => {
-        const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
-        if (dietaryConflict) {
-          console.warn(
-            `[Swap] Filtered out ${restaurant.name} due to ${dietaryConflict.flag} conflict (overlapping tags: ${dietaryConflict.conflictingTags.join(', ')})`
-          );
-          return false;
-        }
-        if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
-        if (
-          restaurantHasExcludedCuisine({
-            restaurantCuisineTags: restaurant.cuisine_tags,
-            excludedCuisineIds: excludedCuisines,
-          })
-        ) {
-          return false;
-        }
-
-        if (!redemptionCooldownOk(restaurant.id, redemptions, now)) return false;
-
-        const offer = offerByRestaurant.get(restaurant.id);
-        const versionBound = Boolean(
-          (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
-            .current_offer_version_id
-        );
-        if (!offer && !versionBound) return false;
-        if (offer && !versionBound) {
-          const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
-          if (monthCount >= offer.max_redemptions_per_month) return false;
-        }
-        return true;
-      },
-      passesVariety: () => true,
-      passesRelaxedVariety: () => true,
-    });
     const legacyEligibility = listEligibleChallengeCandidates({
       context: {
         mode: 'legacy_swap',
-        versionsById: new Map<string, never>(),
+        versionsById: new Map(),
         legacyOffersByRestaurant: offerByRestaurant,
         now,
         deadline: addHours(now, SUCCESSOR_WINDOW_HOURS),
@@ -800,13 +696,16 @@ export async function swapChallengeItem(
         redemptions,
         legacyMonthCounts: countByRestaurant,
       },
-      restaurants: withOffer,
+      restaurants: restaurantList,
       origin: zipOrigin,
       requestedMiles: legacyRequestedMiles,
       requiredCount: 1,
     });
-
-    if (pool.candidates.length === 0) {
+    const legacyOfferReady = restaurantList.length - legacyEligibility.rejections.no_offer_version;
+    if (legacyOfferReady === 0) {
+      return { ok: false, error: 'No restaurants with an active offer available to swap into.' };
+    }
+    if (legacyEligibility.candidates.length === 0) {
       return {
         ok: false,
         error: 'No eligible replacement restaurant found. Check dietary preferences, allergies, and cooldowns.',
@@ -814,10 +713,7 @@ export async function swapChallengeItem(
     }
 
     const replacement = pickOne(
-      candidateRowsForPick(
-        legacyEligibility.candidates.map((candidate) => candidate.restaurant),
-        pool.candidates,
-      ),
+      legacyEligibility.candidates.map((candidate) => candidate.restaurant),
     );
     if (!replacement) {
       return { ok: false, error: 'Could not pick a replacement restaurant.' };
@@ -836,6 +732,12 @@ export async function swapChallengeItem(
     const swapped = firstRpcRow(rpcData);
     if (!swapped) {
       return { ok: false, error: 'Swap failed.' };
+    }
+    if (swapped.outcome === 'below_floor' || swapped.outcome === 'capacity_full') {
+      console.warn('[challenges] swap rpc rejected a service candidate', {
+        userId: auth.userId,
+        outcome: swapped.outcome,
+      });
     }
     if (swapped.outcome === 'swap_exhausted') {
       return { ok: false, error: 'You have already used your one swap for this month.' };

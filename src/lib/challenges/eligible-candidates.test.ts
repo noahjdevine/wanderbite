@@ -3,10 +3,11 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { selectDistancePool } from '@/lib/challenges/distance-pool';
 import {
-  candidateRowsForPick,
+  ELIGIBILITY_REJECTION_REASONS,
   listEligibleChallengeCandidates,
   type ChallengeEligibilityContext,
   type EligibilityLegacyOffer,
+  type EligibilityRejections,
   type EligibilityRestaurant,
   type EligibilityVersion,
 } from '@/lib/challenges/eligible-candidates';
@@ -36,6 +37,11 @@ const NOW = new Date('2026-10-15T15:00:00.000Z');
 const COVER_UNTIL = '2030-01-01T00:00:00.000Z';
 
 const rpcCalls = vi.hoisted(() => ({ args: [] as unknown[] }));
+const generateCalls = {
+  scenario: 'thin' as 'thin' | 'floor' | 'variety',
+  cycleLists: 0,
+  cycleSingles: 0,
+};
 
 vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () => ({
@@ -215,6 +221,10 @@ function legacyMonthlyIds(args: {
   return pool;
 }
 
+function rejectionTotal(rejections: EligibilityRejections): number {
+  return ELIGIBILITY_REJECTION_REASONS.reduce((sum, reason) => sum + rejections[reason], 0);
+}
+
 function serviceIds(
   restaurants: readonly EligibilityRestaurant[],
   context: ChallengeEligibilityContext,
@@ -302,6 +312,7 @@ describe('eligible challenge candidates', () => {
     expect(listed.rejections.credit_floor).toBe(1);
     expect(listed.rejections.duplicate).toBe(1);
     expect(listed.candidates.map((row) => row.restaurantId)).toEqual(['keep-a', 'keep-b']);
+    expect(listed.candidates.length + rejectionTotal(listed.rejections)).toBe(restaurants.length);
     expect(new Set(listed.candidates.map((row) => row.restaurantId)).size).toBe(2);
     expect(listed.candidates.every((row) => row.baseSavingsCents >= 1000)).toBe(true);
     expect(listed.candidates.every((row) => row.zipDistanceExpanded === false)).toBe(true);
@@ -357,6 +368,9 @@ describe('eligible challenge candidates', () => {
       legacyMonthly.candidates.map((row) => row.id),
     );
     expect(serviceMonthly.distance.expanded).toBe(legacyMonthly.match.expanded);
+    expect(serviceMonthly.candidates.length + rejectionTotal(serviceMonthly.rejections)).toBe(
+      restaurants.length,
+    );
     expect(serviceMonthly.candidates.every((row) => row.zipDistanceExpanded === legacyMonthly.match.expanded)).toBe(true);
     expect(haversineMiles(ORIGIN, north(10))).toBeGreaterThan(5);
     expect(haversineMiles(ORIGIN, north(10))).toBeLessThan(15);
@@ -510,6 +524,26 @@ describe('eligible challenge candidates', () => {
     expect(listed.candidates.map((row) => row.restaurantId)).toEqual(['kept']);
     expect(oracle.candidates.map((row) => row.id)).toEqual(['kept']);
     expect(listed.distance.expanded).toBe(oracle.match.expanded);
+    expect(listed.candidates.length + rejectionTotal(listed.rejections)).toBe(2);
+  });
+
+  it('counts a last-month repeat under variety and partitions every restaurant', () => {
+    const freshA = place('fresh-a', 0);
+    const freshB = place('fresh-b', 0, ['mexican']);
+    const lastMonth = place('last-month', 0, ['indian']);
+    const restaurants = [freshA, freshB, lastMonth];
+    const offers = new Map<string, EligibilityLegacyOffer>(
+      restaurants.map((restaurant) => [restaurant.id, legacyOffer(restaurant.id)]),
+    );
+    const listed = serviceIds(restaurants, monthlyContext({ legacyOffersByRestaurant: offers }), {
+      passesVariety: (restaurant) => restaurant.id !== 'last-month',
+      passesRelaxedVariety: (restaurant) => restaurant.id !== 'last-month',
+    });
+    expect(listed.candidates.map((row) => row.restaurantId)).toEqual(['fresh-a', 'fresh-b']);
+    expect(listed.rejections.variety).toBe(1);
+    expect(listed.candidates.length + rejectionTotal(listed.rejections)).toBe(restaurants.length);
+    expect(listed.distance.expanded).toBe(false);
+    expect(listed.candidates.every((row) => row.zipDistanceExpanded === false)).toBe(true);
   });
 
   it('returns fewer than two candidates without treating that list as a reservation', () => {
@@ -522,20 +556,38 @@ describe('eligible challenge candidates', () => {
     expect(moduleSource).not.toMatch(/rpc\(|generate_challenge_cycle|reserve_version_buckets/);
     const generate = source('src/lib/challenges/generate.ts');
     const rpcAt = generate.indexOf("rpc(");
-    expect(generate.indexOf('pool.candidates.length < CHALLENGE_ITEMS_PER_MONTH')).toBeLessThan(rpcAt);
+    expect(generate.indexOf('eligibility.candidates.length < CHALLENGE_ITEMS_PER_MONTH')).toBeLessThan(
+      rpcAt,
+    );
     expect(generate.indexOf('listEligibleChallengeCandidates(')).toBeLessThan(rpcAt);
-    expect(generate).toContain('candidateRowsForPick(');
+    expect(generate).not.toContain('candidateRowsForPick');
+    expect(generate).not.toContain('function passesHard');
+    expect(generate).not.toContain('selectDistancePool');
+    expect(moduleSource).not.toContain('candidateRowsForPick');
+    expect(source('src/app/actions/swap-challenge.ts')).not.toContain('candidateRowsForPick');
+    expect(source('src/app/actions/swap-challenge.ts')).not.toContain('passesHard');
     expect(source('src/app/actions/swap-challenge.ts')).toContain("mode: 'credit_swap'");
     expect(source('src/app/actions/swap-challenge.ts')).toContain("mode: 'legacy_swap'");
     expect(source('src/lib/challenges/carried-assign-pool.ts')).toContain("mode: 'carried'");
   });
 
-  it('falls back to the caller rows when the shared order disagrees', () => {
-    const service = [{ id: 'a' }, { id: 'b' }];
-    const legacy = [{ id: 'a' }, { id: 'b' }];
-    expect(candidateRowsForPick(service, legacy).map((row) => row.id)).toEqual(['a', 'b']);
-    expect(candidateRowsForPick([{ id: 'b' }, { id: 'a' }], legacy)).toEqual(legacy);
-    expect(candidateRowsForPick([{ id: 'a' }], legacy)).toEqual(legacy);
+  it('keeps the service order when a removed fallback would have restored the old rows', () => {
+    const fresh = place('fresh', 0, ['thai'], 'v-fresh');
+    const other = place('other', 0, ['mexican'], 'v-other');
+    const versions = new Map<string, EligibilityVersion>([
+      ['v-fresh', versionRow('fresh', { id: 'v-fresh' })],
+      ['v-other', versionRow('other', { id: 'v-other', capacity_max_redemptions: 0 })],
+    ]);
+    const shadowHard = [fresh, other];
+    const listed = serviceIds([fresh, other], monthlyContext({ versionsById: versions }), {
+      requiredCount: 1,
+    });
+    expect(shadowHard.map((row) => row.id)).toEqual(['fresh', 'other']);
+    expect(listed.candidates.map((row) => row.restaurantId)).toEqual(['fresh']);
+    expect(listed.rejections.capacity).toBe(1);
+    expect(source('src/lib/challenges/generate.ts')).toContain(
+      'eligibility.candidates.map((candidate) => candidate.restaurant)',
+    );
   });
 });
 
@@ -577,6 +629,33 @@ function queryBuilder(table: string) {
   return self;
 }
 
+function restaurantRow(id: string, cuisine: string) {
+  return {
+    id,
+    name: id,
+    cuisine_tags: [cuisine],
+    address: '1 Main',
+    lat: ORIGIN.lat,
+    lon: ORIGIN.lon,
+    status: 'active',
+    market_id: 'market-1',
+    org_id: 'org-1',
+    google_place_id: null,
+    current_offer_version_id: null,
+  };
+}
+
+function offerRow(restaurantId: string, discount: number) {
+  return {
+    id: `offer-${restaurantId}`,
+    restaurant_id: restaurantId,
+    discount_amount_cents: discount,
+    min_spend_cents: 5000,
+    max_redemptions_per_month: 10,
+    active: true,
+  };
+}
+
 function queryPayload(table: string, single: boolean): { data: unknown; error: null } {
   if (table === 'markets') return { data: [{ id: 'market-1' }], error: null };
   if (table === 'user_profiles') {
@@ -598,41 +677,50 @@ function queryPayload(table: string, single: boolean): { data: unknown; error: n
   }
   if (table === 'user_preferences') return { data: { excluded_cuisines: [] }, error: null };
   if (table === 'restaurants') {
-    return {
-      data: [
-        {
-          id: 'only-restaurant',
-          name: 'Only',
-          cuisine_tags: ['thai'],
-          address: '1 Main',
-          lat: ORIGIN.lat,
-          lon: ORIGIN.lon,
-          status: 'active',
-          market_id: 'market-1',
-          org_id: 'org-1',
-          google_place_id: null,
-          current_offer_version_id: null,
-        },
-      ],
-      error: null,
-    };
+    if (generateCalls.scenario === 'floor') {
+      return { data: [restaurantRow('good', 'thai'), restaurantRow('cheap', 'mexican')], error: null };
+    }
+    if (generateCalls.scenario === 'variety') {
+      return {
+        data: [
+          restaurantRow('good-a', 'thai'),
+          restaurantRow('good-b', 'mexican'),
+          restaurantRow('repeat', 'indian'),
+        ],
+        error: null,
+      };
+    }
+    return { data: [restaurantRow('only-restaurant', 'thai')], error: null };
   }
   if (table === 'restaurant_offers') {
-    return {
-      data: [
-        {
-          id: 'offer-only',
-          restaurant_id: 'only-restaurant',
-          discount_amount_cents: 2000,
-          min_spend_cents: 5000,
-          max_redemptions_per_month: 10,
-          active: true,
-        },
-      ],
-      error: null,
-    };
+    if (generateCalls.scenario === 'floor') {
+      return { data: [offerRow('good', 2000), offerRow('cheap', 500)], error: null };
+    }
+    if (generateCalls.scenario === 'variety') {
+      return {
+        data: [offerRow('good-a', 2000), offerRow('good-b', 2000), offerRow('repeat', 2000)],
+        error: null,
+      };
+    }
+    return { data: [offerRow('only-restaurant', 2000)], error: null };
   }
-  if (table === 'challenge_cycles') return { data: single ? null : [], error: null };
+  if (table === 'challenge_cycles') {
+    if (single) {
+      generateCalls.cycleSingles += 1;
+      if (generateCalls.scenario === 'variety' && generateCalls.cycleSingles === 3) {
+        return { data: { id: 'cycle-last' }, error: null };
+      }
+      return { data: null, error: null };
+    }
+    generateCalls.cycleLists += 1;
+    if (generateCalls.scenario === 'variety' && generateCalls.cycleLists > 1) {
+      return { data: [{ id: 'cycle-last' }], error: null };
+    }
+    return { data: [], error: null };
+  }
+  if (table === 'challenge_items' && generateCalls.scenario === 'variety') {
+    return { data: [{ restaurant_id: 'repeat', cycle_id: 'cycle-last' }], error: null };
+  }
   if (table === 'redemptions' || table === 'challenge_items' || table === 'offer_versions') {
     return { data: single ? null : [], error: null };
   }
@@ -642,6 +730,9 @@ function queryPayload(table: string, single: boolean): { data: unknown; error: n
 describe('generate thin pool', () => {
   beforeEach(() => {
     rpcCalls.args.length = 0;
+    generateCalls.scenario = 'thin';
+    generateCalls.cycleLists = 0;
+    generateCalls.cycleSingles = 0;
   });
 
   it('fails with today\'s thin-pool reason and does not call the assignment RPC', async () => {
@@ -654,5 +745,30 @@ describe('generate thin pool', () => {
         'No eligible restaurants found within your travel distance. Try a wider distance or check dietary preferences.',
     });
     expect(rpcCalls.args).toEqual([]);
+  });
+
+  it('uses the service when a floor-blind pool would have reserved the $5 offer', async () => {
+    generateCalls.scenario = 'floor';
+    const { generateMonthlyChallengeForUser } = await import('@/lib/challenges/generate');
+    const result = await generateMonthlyChallengeForUser('user-1');
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'thin_pool',
+      error:
+        'No eligible restaurants found within your travel distance. Try a wider distance or check dietary preferences.',
+    });
+    expect(rpcCalls.args).toEqual([]);
+  });
+
+  it('does not assign a last-month repeat when two other restaurants are eligible', async () => {
+    generateCalls.scenario = 'variety';
+    const { generateMonthlyChallengeForUser } = await import('@/lib/challenges/generate');
+    await generateMonthlyChallengeForUser('user-1');
+    expect(rpcCalls.args).toHaveLength(1);
+    const args = rpcCalls.args[0] as [string, { p_restaurant_ids: string[] }];
+    expect(args[0]).toBe('generate_challenge_cycle');
+    expect(args[1].p_restaurant_ids).toHaveLength(2);
+    expect(args[1].p_restaurant_ids).not.toContain('repeat');
+    expect(args[1].p_restaurant_ids).toEqual(expect.arrayContaining(['good-a', 'good-b']));
   });
 });

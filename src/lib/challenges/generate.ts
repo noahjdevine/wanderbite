@@ -6,32 +6,20 @@ import { cycleMonthForWorkflow } from '@/lib/challenges/challenge-deadline';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
-import {
-  firstActiveLegacyOfferByRestaurant,
-  restaurantBaseCents,
-} from '@/lib/offers/restaurant-base-cents';
+import { firstActiveLegacyOfferByRestaurant } from '@/lib/offers/restaurant-base-cents';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
-import { getDietaryConflict, hasAllergyConflict } from '@/lib/dietary-utils';
-import { normalizeCuisineIds, restaurantHasExcludedCuisine } from '@/lib/cuisines';
+import { normalizeCuisineIds } from '@/lib/cuisines';
 import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
-import { pickDistinctRestaurants, selectDistancePool } from '@/lib/challenges/distance-pool';
-import {
-  candidateRowsForPick,
-  listEligibleChallengeCandidates,
-} from '@/lib/challenges/eligible-candidates';
-import { meetsMinimumCreditBase } from '@/lib/offers/credit-floor';
+import { pickDistinctRestaurants } from '@/lib/challenges/distance-pool';
+import { listEligibleChallengeCandidates } from '@/lib/challenges/eligible-candidates';
 import {
   assignmentDeadline,
-  passesVersionCapacityPrefilter,
   versionCapacityBuckets,
   type VersionCapacityFields,
 } from '@/lib/offers/version-capacity';
 import type { Json } from '@/types/database.types';
-import {
-  redemptionCooldownOk,
-  varietyCycleMonthLowerBound,
-} from '@/lib/challenges/restaurant-safety';
+import { varietyCycleMonthLowerBound } from '@/lib/challenges/restaurant-safety';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
@@ -226,7 +214,6 @@ const CHALLENGE_ITEMS_PER_MONTH = 2;
 const CAPACITY_COUNT_PAGE = 1000;
 /** PostgREST encodes `.in()` ids in the URL. Keep each request small. */
 export const CAPACITY_RESTAURANT_ID_CHUNK = 100;
-const NO_CAPACITY_COUNTS: ReadonlyMap<string, number> = new Map();
 
 type LoadedOfferVersion = VersionCapacityFields & { tiers: Json };
 
@@ -485,20 +472,9 @@ export async function generateMonthlyChallengeForUser(
       }
     }
 
-    // Floor uses the same rules as SQL `restaurant_base_cents` (see `restaurant-base-cents.ts`).
-    // SQL enforces version-bound selectability (`version_selection_ok`) and bucket capacity
-    // (`reserve_version_buckets`); passesHard mirrors both before the pick. SQL does not
-    // enforce legacy `max_redemptions_per_month` — that cap stays TS-only on the legacy branch,
-    // using the first active legacy offer by id.
-    function restaurantMeetsCreditFloor(restaurant: RestaurantRow): boolean {
-      const versionId = offerVersionId(restaurant);
-      const base = restaurantBaseCents({
-        currentOfferVersionId: versionId,
-        versionTiers: versionId ? versionsById.get(versionId)?.tiers ?? null : null,
-        legacyOffer: offerByRestaurant.get(restaurant.id) ?? null,
-      });
-      return meetsMinimumCreditBase(base);
-    }
+    // Offer floor, version selectability, and bucket capacity are applied by
+    // listEligibleChallengeCandidates. SQL remains authoritative at commit.
+    // Legacy max_redemptions_per_month stays a TS pre-filter inside that service.
 
     const { data: userRedemptions, error: redErr } = await supabase
       .from('redemptions')
@@ -604,47 +580,6 @@ export async function generateMonthlyChallengeForUser(
       countByRestaurant.set(id, (countByRestaurant.get(id) ?? 0) + 1);
     }
 
-    function redemptionHardOk(restaurant: RestaurantRow): boolean {
-      return redemptionCooldownOk(restaurant.id, redemptions, now);
-    }
-
-    function passesHard(restaurant: RestaurantRow): boolean {
-      const dietaryConflict = getDietaryConflict(restaurant.cuisine_tags, dietaryFlags);
-      if (dietaryConflict) return false;
-      if (hasAllergyConflict(restaurant.cuisine_tags, allergyFlags)) return false;
-      if (
-        restaurantHasExcludedCuisine({
-          restaurantCuisineTags: restaurant.cuisine_tags,
-          excludedCuisineIds: excludedCuisines,
-        })
-      ) {
-        return false;
-      }
-      if (swappedOutRestaurantIds.has(restaurant.id)) return false;
-      const versionId = offerVersionId(restaurant);
-      const versionBound = Boolean(versionId);
-      const offer = offerByRestaurant.get(restaurant.id);
-      if (!versionBound && !offer) return false;
-      if (!versionBound && offer) {
-      const monthCount = countByRestaurant.get(restaurant.id) ?? 0;
-      if (monthCount >= offer.max_redemptions_per_month) return false;
-      }
-      if (
-        versionBound &&
-        !passesVersionCapacityPrefilter({
-          restaurantId: restaurant.id,
-          currentOfferVersionId: versionId,
-          version: versionId ? versionsById.get(versionId) ?? null : null,
-          now,
-          countsByBucket: countsByRestaurant.get(restaurant.id) ?? NO_CAPACITY_COUNTS,
-        })
-      ) {
-        return false;
-      }
-      if (!restaurantMeetsCreditFloor(restaurant)) return false;
-      return redemptionHardOk(restaurant);
-    }
-
     function passesVariety(restaurant: RestaurantRow): boolean {
       if (receivedInLast6Months.has(restaurant.id)) return false;
       if ((restaurantCycleCount.get(restaurant.id) ?? 0) >= 2) return false;
@@ -656,15 +591,6 @@ export async function generateMonthlyChallengeForUser(
     }
 
     const requestedMiles = milesForDistanceBand(distanceBand);
-    const pool = selectDistancePool({
-      restaurants: withOffer,
-      origin: zipOrigin,
-      requestedMiles,
-      requiredCount: CHALLENGE_ITEMS_PER_MONTH,
-      passesHard,
-      passesVariety,
-      passesRelaxedVariety,
-    });
     const eligibility = listEligibleChallengeCandidates({
       context: {
         mode: 'monthly',
@@ -688,25 +614,22 @@ export async function generateMonthlyChallengeForUser(
       passesRelaxedVariety,
     });
 
-    if (excludedCuisines?.length && pool.candidates.length < 3) {
+    if (excludedCuisines?.length && eligibility.candidates.length < 3) {
       console.warn('[challenges] low candidate pool after cuisine exclusions', {
         userId,
         marketId,
         excludedCuisines,
-        eligibleCount: pool.candidates.length,
+        eligibleCount: eligibility.candidates.length,
         withOfferCount: withOffer.length,
       });
     }
 
-    if (pool.candidates.length < CHALLENGE_ITEMS_PER_MONTH) {
+    if (eligibility.candidates.length < CHALLENGE_ITEMS_PER_MONTH) {
       return fail('thin_pool', THIN_POOL_ERROR);
     }
 
     const chosen = pickDistinctRestaurants(
-      candidateRowsForPick(
-        eligibility.candidates.map((candidate) => candidate.restaurant),
-        pool.candidates,
-      ),
+      eligibility.candidates.map((candidate) => candidate.restaurant),
       CHALLENGE_ITEMS_PER_MONTH,
       { reserveCocktail: wantsCocktailExperience, shuffle }
     );
@@ -736,6 +659,16 @@ export async function generateMonthlyChallengeForUser(
     const generated = firstRpcRow(rpcData);
     if (!generated) {
       return fail('assignment_failed', 'Failed to create challenge cycle.');
+    }
+    if (
+      generated.outcome === 'below_floor' ||
+      generated.outcome === 'capacity_full' ||
+      generated.outcome === 'invalid_restaurants'
+    ) {
+      console.warn('[challenges] assignment rpc rejected a service candidate', {
+        userId,
+        outcome: generated.outcome,
+      });
     }
     if (generated.outcome === 'inactive_subscription') {
       return fail('inactive_subscription', INACTIVE_SUBSCRIPTION_ERROR);

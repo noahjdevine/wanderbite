@@ -281,17 +281,19 @@ describe('passesVersionCapacityPrefilter', () => {
 
 describe('generate.ts version capacity wiring', () => {
   const source = readFileSync(path.join(ROOT, 'src/lib/challenges/generate.ts'), 'utf8');
+  const eligibility = readFileSync(path.join(ROOT, 'src/lib/challenges/eligible-candidates.ts'), 'utf8');
 
-  it('pre-filters inside passesHard and leaves the capacity_full race path in place', () => {
-    const hardAt = source.indexOf('function passesHard');
-    const varietyAt = source.indexOf('function passesVariety');
-    const poolAt = source.indexOf('selectDistancePool({');
-    const hard = source.slice(hardAt, varietyAt);
+  it('pre-filters in the shared service and leaves the capacity_full race path in place', () => {
+    const hardAt = eligibility.indexOf('export function challengeCandidateRejection');
+    const poolAt = eligibility.indexOf('selectDistancePool({');
+    const hard = eligibility.slice(hardAt, poolAt);
     expect(hardAt).toBeGreaterThan(-1);
     expect(hardAt).toBeLessThan(poolAt);
     expect(hard).toContain('passesVersionCapacityPrefilter');
-    expect(hard).toContain('if (!versionBound && offer)');
-    expect(hard).toContain('offer.max_redemptions_per_month');
+    expect(hard).toContain('max_redemptions_per_month');
+    expect(source).not.toContain('function passesHard');
+    expect(source).not.toContain('passesVersionCapacityPrefilter');
+    expect(source).toContain('listEligibleChallengeCandidates');
     expect(source).toContain(".from('capacity_reservations')");
     expect(source).toContain("in('status', ['reserved', 'consumed'])");
     expect(source).toContain('getSupabaseAdmin()');
