@@ -1,6 +1,6 @@
 # E02 plan
 
-Synced through **#72** (merge `a1c651c53f510c8eef293a35b276313ce194e8e0`). Prior sync was **#62** (merge `082b96a`; that range also includes [#65](https://github.com/noahjdevine/wanderbite/pull/65) merge `be56b94`; prior baseline `46818e2e` / PR #60). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
+Synced through **#75** (merge `390fac6e977ca07144c445cc5c542df91882f9af`). That range includes [#73](https://github.com/noahjdevine/wanderbite/pull/73) merge `63b978cc113c422bf33574c250ef423e32d4f8fe`, [#74](https://github.com/noahjdevine/wanderbite/pull/74) merge `976b62466eade4234420e84e836c2526a6d2eef1`, and [#75](https://github.com/noahjdevine/wanderbite/pull/75) merge `390fac6e977ca07144c445cc5c542df91882f9af`. Prior sync was **#72** (merge `a1c651c53f510c8eef293a35b276313ce194e8e0`). Earlier baseline remains **#62** (merge `082b96a`; that range also includes [#65](https://github.com/noahjdevine/wanderbite/pull/65) merge `be56b94`; prior baseline `46818e2e` / PR #60). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
 
 **[#63](https://github.com/noahjdevine/wanderbite/pull/63)** (merge `3666c1682513f8f7a628f9345c67842fa123307e`): `fix(deps): patch critical next/sentry/dompurify/zod advisories` — bumps `next` and `eslint-config-next` to 16.4.3, `@sentry/nextjs` to 10.78.0, and `zod` to ^4.6.7, adds a `dompurify` 3.4.17 override, and sets `react-hooks/set-state-in-effect` and `react-hooks/preserve-manual-memoization` to `warn` in `eslint.config.mjs` only.
 
@@ -21,6 +21,14 @@ Synced through **#72** (merge `a1c651c53f510c8eef293a35b276313ce194e8e0`). Prior
 **[#71](https://github.com/noahjdevine/wanderbite/pull/71)** (merge `d6c29cebbbb4731acc9b2dc35fc96c007f0b29a3`): `fix(catalog-import): keep stored cuisine tags on a from-db round trip` — an unknown cuisine tag already stored on the matched restaurant is a warning and is kept; the same tag on a new row, or a new unknown tag on a matched row, is still an error.
 
 **[#72](https://github.com/noahjdevine/wanderbite/pull/72)** (merge `a1c651c53f510c8eef293a35b276313ce194e8e0`): Keep active members out of paused onboarding checkout — `subscription_status = 'active'` goes to `/challenges` from sign-in and from `/onboarding`; structured street, city, state, and ZIP win when all four are set; the strict legacy line `street, city, ST ZIP` is used only when all four structured fields are blank.
+
+**[#73](https://github.com/noahjdevine/wanderbite/pull/73)** (merge `63b978cc113c422bf33574c250ef423e32d4f8fe`): docs sync through #72.
+
+**[#74](https://github.com/noahjdevine/wanderbite/pull/74)** (merge `976b62466eade4234420e84e836c2526a6d2eef1`): Passport stops selecting ungranted lat/lon.
+
+**[#75](https://github.com/noahjdevine/wanderbite/pull/75)** (merge `390fac6e977ca07144c445cc5c542df91882f9af`): E03 push-to-talk, migration `20261103200516` not applied to hosted, `OPENAI_API_KEY` not yet set in Vercel.
+
+E04-A shared eligibility service landed; E04 still open.
 
 **Catalog conversion (PR #59).** `npm run catalog:convert` and `scripts/e02-catalog-conversion.ts` are an offline dry-run export/manifest only. They do not publish offer versions or mutate hosted data; any apply/backfill requires separate authorization.
 
@@ -124,7 +132,7 @@ With 0 `credits` profiles, `rollover_credits` is never called. `src/lib/challeng
 
 **Follow-up, not this PR.** Applied state is confirmed above. A separate approved PR should run `npm run types:db` and replace the hand-edited `src/types/database.types.ts` touched by [#39](https://github.com/noahjdevine/wanderbite/pull/39), [#41](https://github.com/noahjdevine/wanderbite/pull/41), [#46](https://github.com/noahjdevine/wanderbite/pull/46), and [#47](https://github.com/noahjdevine/wanderbite/pull/47). Do not run it here.
 
-**Catalog after the 2026-11-02 hosted run, as reported by Noah** (about 7:49 PM America/Chicago). Not re-queried for this doc. Market `mckinney-tx`. `catalog:import --apply` made 40 actions: 17 coordinate fills and 23 test offer versions (`--test-offers`). `hutchins-bbq-2` was paused as the duplicate of `hutchins-bbq` (`--resolve-duplicate keep=hutchins-bbq drop=hutchins-bbq-2`). Data is test-only by Noah’s decision. Real restaurants and real partner offers are added only when the site is launch-ready. Test offers must be withdrawn (`--withdraw-test-offers`) before a real launch. The 2026-10-01 status counts above were not re-run; the hosted active-restaurant count after that pause is **unknown**. The same run’s supply-gate print is in §1 and §3: `result=PASS (all supply) 192/192` includes test supply and is not a gate result; `real_supply_result=FAIL 0/192`. Whether the step-2b `--plan` rejection described in §5 still happens is **unknown**.
+**Catalog after the 2026-11-02 hosted run, as reported by Noah** (about 7:49 PM America/Chicago). Not re-queried for this doc. Market `mckinney-tx`. `catalog:import --apply` made 40 actions: 17 coordinate fills and 23 test offer versions (`--test-offers`). `hutchins-bbq-2` was paused as the duplicate of `hutchins-bbq` (`--resolve-duplicate keep=hutchins-bbq drop=hutchins-bbq-2`). Data is test-only by Noah’s decision. Real restaurants and real partner offers are added only when the site is launch-ready. Test offers must be withdrawn (`--withdraw-test-offers`) before a real launch. The 2026-10-01 status counts above were not re-run; the hosted active-restaurant count after that pause is **unknown**. The same run’s supply-gate print is in §1 and §3: `result=PASS (all supply) 192/192` includes test supply and is not a gate result; `real_supply_result=FAIL 0/192`. The step-2b `--plan` duplicate described in §5 is closed.
 
 ## 3. Cooldown on main, and the next measurement
 
@@ -187,7 +195,7 @@ Legacy `startOfMonth` versus `chicagoMonthStart` is an open cutover item, not th
 
 `Docs/g13-b-hosted-evidence.md` still has the onboarding `permission denied for table user_profiles` note, and G13-B’s checklist there is open. SEC-14 (`Docs/g14-sec-14.md`) still needs the Auth dashboard. `stripe.exe` is the tracked 31,689,728-byte blob from `3cc5256`. This plan did not execute it. [#55](https://github.com/noahjdevine/wanderbite/pull/55) merged: `subYears` is gone from `swap-challenge.ts` and `generate.ts`. The credit RPCs still do not apply `redemptionCooldownOk`.
 
-On 2026-11-02 the step-2b `catalog:import --plan` run was rejected on the `hutchins-bbq` / `hutchins-bbq-2` duplicate pair (shared `google_place_id`) before `--resolve-duplicate` took effect. `hutchins-bbq-2` was later paused (`keep=hutchins-bbq`, `drop=hutchins-bbq-2`). Whether a re-plan now that `hutchins-bbq-2` is paused still rejects is **unknown**. Open. This doc does not fix it.
+On 2026-11-02 the step-2b `catalog:import --plan` run was rejected on the `hutchins-bbq` / `hutchins-bbq-2` duplicate pair (shared `google_place_id`) before `--resolve-duplicate` took effect. `hutchins-bbq-2` was later paused (`keep=hutchins-bbq`, `drop=hutchins-bbq-2`). Closed 2026-11-03: Noah deleted `hutchins-bbq-2` and its one `restaurant_offers` row. Reported, not re-queried.
 
 Test offers must be withdrawn (`catalog:import --withdraw-test-offers`) before a real launch. Noah’s decision for this hosted data: it stays test-only, and real restaurants and real partner offers are added only when the site is launch-ready. The 2026-11-02 `result=PASS (all supply) 192/192` includes those test versions and is not a D2=B pass.
 
