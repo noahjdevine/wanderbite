@@ -6,6 +6,7 @@ import { generateMonthlyChallengeForUser } from '@/lib/challenges/generate';
 import { probeRevealSchema } from '@/lib/challenges/load-monthly-reveal';
 import { cronRevealGate, monthlyCronSkip } from '@/lib/challenges/monthly-cron-gate';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
+import { deliverRevealPickReminder } from '@/lib/reveal-pick-reminder';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
@@ -113,8 +114,14 @@ async function issuePending(ctx: CronLeaseContext): Promise<void> {
         }
         const decision = await monthlyCronSkip(item.itemKey, gate);
         if (decision.action === 'skip') {
-          if (decision.bucket === 'curation') skippedCuration += 1;
-          else skippedUnknown += 1;
+          if (decision.bucket === 'curation') {
+            skippedCuration += 1;
+            try {
+              await deliverRevealPickReminder({ userId: item.itemKey });
+            } catch {
+              // A reminder failure must not assign a pair.
+            }
+          } else skippedUnknown += 1;
           const recorded = await ctx.record(
             item.itemKey,
             'skipped',

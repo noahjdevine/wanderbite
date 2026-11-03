@@ -4,9 +4,11 @@ export const MONTHLY_REVEAL_FLAG = 'E04_MONTHLY_REVEAL_ENABLED';
 const UNAVAILABLE_LOG =
   '[challenges] monthly reveal unavailable; using the current challenges page';
 const RETRY_LOG = '[challenges] monthly reveal read failed; ask the member to try again';
+const PICK_READ_LOG = '[challenges] reveal pick reminder not sent; reveal read failed';
 
 let unavailableLogged = false;
 let retryLogged = false;
+let pickReadLogged = false;
 
 export function monthlyRevealEnabled(
   value: string | undefined = process.env.E04_MONTHLY_REVEAL_ENABLED,
@@ -47,7 +49,14 @@ export function logRevealRetryOnce(): void {
   console.warn(RETRY_LOG);
 }
 
+export function logRevealPickReadFailedOnce(): void {
+  if (pickReadLogged) return;
+  pickReadLogged = true;
+  console.warn(PICK_READ_LOG);
+}
+
 export function resetMonthlyRevealUnavailableLog(): void {
   unavailableLogged = false;
   retryLogged = false;
+  pickReadLogged = false;
 }
