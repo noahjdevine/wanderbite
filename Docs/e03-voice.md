@@ -20,6 +20,8 @@ $0.0045 per minute is 75 microdollars per second. The new price version stores `
 
 Raw audio is not written to storage, the ledger payload, or logs. A successful transcript may be stored on the existing `ai_requests.result_payload` so the same idempotency key can replay without a second provider call. Read-aloud is not in this change.
 
+Chrome 148 MediaRecorder (`start` with a 1 second timeslice) writes webm with no Duration element, and `audio/mp4` as a fragmented file whose `mvhd` duration is 0. Those clips are accepted. Cluster timecodes and `moof`/`trun` sample durations still reject a clip that runs past 30 seconds. The client `durationMs` field is not a bill: a successful transcription always settles the reserved 30 `audio_seconds`, which `ai_settle` allows because it is equal to the quote. A file larger than 20,000 bytes per claimed second is rejected before the provider is called. That ceiling is above the 128 kbps MediaRecorder default measured in Chrome 148. `ai_quote_max_cost` and `ai_settle` did not need a migration change.
+
 ## Env
 
 `OPENAI_API_KEY` (server only).

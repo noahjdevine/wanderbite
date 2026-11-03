@@ -4,9 +4,15 @@
  * Raw audio is not stored.
  */
 
-export const VOICE_MAX_BYTES = 1_500_000;
+/**
+ * Chrome 148 MediaRecorder reports audioBitsPerSecond 128000 (16_000 bytes/s).
+ * A captured timesliced clip was about 13.6 KB/s. 20_000 leaves headroom for that
+ * default and still rejects a file too large to be 30 seconds at this ceiling.
+ */
+export const VOICE_MAX_BYTES_PER_SECOND = 20_000;
 /** Matches seeded guest_voice_seconds_limit. One clip, guests and signed-in users. */
 export const VOICE_MAX_DURATION_MS = 30_000;
+export const VOICE_MAX_BYTES = VOICE_MAX_BYTES_PER_SECOND * (VOICE_MAX_DURATION_MS / 1000);
 /** Client stops early so container timestamps stay inside the server cap. */
 export const VOICE_CLIENT_STOP_MS = 29_500;
 export const VOICE_MAX_TRANSCRIPT_CHARS = 2_000;
@@ -48,7 +54,7 @@ const DURATION_ID = 0x4489;
 export type VoiceContainer = 'webm' | 'mp4';
 
 export type VoiceInspection =
-  | { ok: true; container: VoiceContainer; durationMs: number; settleSeconds: number }
+  | { ok: true; container: VoiceContainer; durationMs: number | null; settleSeconds: number }
   | { ok: false; status: 400 | 413; error: string };
 
 type EbmlElement = { id: number; start: number; end: number };
@@ -146,6 +152,135 @@ function mp4DurationMs(bytes: Uint8Array): number | null {
   return readBoxes(0, bytes.length, false);
 }
 
+type Mp4Box = { type: string; payload: number; end: number };
+
+function nextMp4Box(bytes: Uint8Array, offset: number, end: number): Mp4Box | null {
+  if (offset + 8 > end) return null;
+  const size32 = readU32(bytes, offset);
+  if (size32 === null || (size32 !== 0 && size32 !== 1 && size32 < 8)) return null;
+  const type = String.fromCharCode(
+    bytes[offset + 4]!,
+    bytes[offset + 5]!,
+    bytes[offset + 6]!,
+    bytes[offset + 7]!,
+  );
+  if ([...type].some((char) => char < ' ' || char > '~')) return null;
+  let header = 8;
+  let size = size32;
+  if (size32 === 1) {
+    const large = readU64(bytes, offset + 8);
+    if (large === null || large < 16) return null;
+    size = large;
+    header = 16;
+  }
+  const boxEnd = size32 === 0 ? end : offset + size;
+  if (boxEnd < offset + header || boxEnd > end) return null;
+  return { type, payload: offset + header, end: boxEnd };
+}
+
+function mdhdTimescale(bytes: Uint8Array): number | null {
+  const visit = (start: number, end: number): number | null => {
+    let offset = start;
+    while (offset + 8 <= end) {
+      const box = nextMp4Box(bytes, offset, end);
+      if (!box) return null;
+      if (box.type === 'mdhd') {
+        const version = bytes[box.payload];
+        const timescale = version === 0 ? readU32(bytes, box.payload + 12) : readU32(bytes, box.payload + 20);
+        return timescale && timescale > 0 ? timescale : null;
+      }
+      if (box.type === 'moov' || box.type === 'trak' || box.type === 'mdia') {
+        const nested = visit(box.payload, box.end);
+        if (nested) return nested;
+      }
+      offset = box.end;
+    }
+    return null;
+  };
+  return visit(0, bytes.length);
+}
+
+function trafEndTicks(bytes: Uint8Array, start: number, end: number): number | null {
+  let defaultDuration: number | null = null;
+  let base: number | null = null;
+  let sum = 0;
+  let sawRun = false;
+  let offset = start;
+  while (offset + 8 <= end) {
+    const box = nextMp4Box(bytes, offset, end);
+    if (!box) return null;
+    if (box.type === 'tfhd') {
+      const flags = readU32(bytes, box.payload) ?? 0;
+      let cursor = box.payload + 8;
+      if (flags & 0x000001) cursor += 8;
+      if (flags & 0x000002) cursor += 4;
+      if (flags & 0x000008) {
+        defaultDuration = readU32(bytes, cursor);
+        cursor += 4;
+      }
+      if (cursor > box.end) return null;
+    } else if (box.type === 'tfdt') {
+      const version = bytes[box.payload];
+      base = version === 1 ? readU64(bytes, box.payload + 4) : readU32(bytes, box.payload + 4);
+      if (base === null) return null;
+    } else if (box.type === 'trun') {
+      const flags = (readU32(bytes, box.payload) ?? 0) & 0xffffff;
+      const sampleCount = readU32(bytes, box.payload + 4);
+      if (sampleCount === null) return null;
+      let cursor = box.payload + 8;
+      if (flags & 0x000001) cursor += 4;
+      if (flags & 0x000004) cursor += 4;
+      for (let i = 0; i < sampleCount; i += 1) {
+        let duration = defaultDuration;
+        if (flags & 0x000100) {
+          duration = readU32(bytes, cursor);
+          cursor += 4;
+        }
+        if (flags & 0x000200) cursor += 4;
+        if (flags & 0x000400) cursor += 4;
+        if (flags & 0x000800) cursor += 4;
+        if (duration === null || cursor > box.end) return null;
+        sum += duration;
+      }
+      sawRun = true;
+    }
+    offset = box.end;
+  }
+  if (!sawRun || base === null) return null;
+  return base + sum;
+}
+
+/** Safari and Chrome MediaRecorder leave mvhd duration at 0 and store samples in moof/trun. */
+function mp4FragmentDurationMs(bytes: Uint8Array): number | null {
+  const timescale = mdhdTimescale(bytes);
+  if (!timescale) return null;
+  let maxEnd: number | null = null;
+  let offset = 0;
+  while (offset + 8 <= bytes.length) {
+    const box = nextMp4Box(bytes, offset, bytes.length);
+    if (!box) break;
+    if (box.type === 'moof') {
+      let fragment: number | null = null;
+      let inner = box.payload;
+      while (inner + 8 <= box.end) {
+        const child = nextMp4Box(bytes, inner, box.end);
+        if (!child) return null;
+        if (child.type === 'traf') {
+          const ticks = trafEndTicks(bytes, child.payload, child.end);
+          if (ticks === null) return null;
+          if (fragment === null || ticks > fragment) fragment = ticks;
+        }
+        inner = child.end;
+      }
+      if (fragment === null) return null;
+      if (maxEnd === null || fragment > maxEnd) maxEnd = fragment;
+    }
+    offset = box.end;
+  }
+  if (maxEnd === null || maxEnd <= 0) return null;
+  return Math.round((maxEnd / timescale) * 1000);
+}
+
 function vintWidth(first: number): number | null {
   if (first === 0) return null;
   let width = 1;
@@ -175,6 +310,7 @@ function readVint(
     value = value * 256 + byte;
     if (!keepMarker && byte !== 0xff) unknown = false;
   }
+  if (unknown) return { length: width, value: 0, unknown: true };
   if (!Number.isSafeInteger(value)) return null;
   return { length: width, value, unknown };
 }
@@ -232,20 +368,96 @@ function webmDurationMs(bytes: Uint8Array): number | null {
   return Math.round((duration * scale) / 1_000_000);
 }
 
-export function readVoiceDurationMs(bytes: Uint8Array, container: VoiceContainer): number | null {
-  return container === 'webm' ? webmDurationMs(bytes) : mp4DurationMs(bytes);
+function webmTimecodeScale(bytes: Uint8Array): number {
+  const segment = readElements(bytes, 0, bytes.length).find((el) => el.id === SEGMENT_ID);
+  if (!segment) return 1_000_000;
+  const info = readElements(bytes, segment.start, segment.end).find((el) => el.id === INFO_ID);
+  if (!info) return 1_000_000;
+  for (const child of readElements(bytes, info.start, info.end)) {
+    if (child.id !== TIMECODE_SCALE_ID) continue;
+    const scale = readUnsigned(bytes, child.start, child.end);
+    if (scale) return scale;
+  }
+  return 1_000_000;
 }
 
-export function settleSecondsForDuration(durationMs: number): number {
-  return Math.min(TRANSCRIPTION_RESERVE_SECONDS, Math.max(1, Math.ceil(durationMs / 1000)));
+function readI16(bytes: Uint8Array, offset: number): number | null {
+  if (offset < 0 || offset + 2 > bytes.length) return null;
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getInt16(offset);
+}
+
+/**
+ * Chrome timesliced webm omits Duration and writes unknown-size Clusters.
+ * The cluster timecode is a lower bound on how long the clip is.
+ */
+function webmClusterCeilingMs(bytes: Uint8Array): number | null {
+  const clusters: number[] = [];
+  for (let i = 0; i <= bytes.length - 4; i += 1) {
+    if (bytes[i] === 0x1f && bytes[i + 1] === 0x43 && bytes[i + 2] === 0xb6 && bytes[i + 3] === 0x75) {
+      clusters.push(i);
+    }
+  }
+  if (clusters.length === 0) return null;
+  const scale = webmTimecodeScale(bytes);
+  let maxMs: number | null = null;
+  for (let index = 0; index < clusters.length; index += 1) {
+    const size = readVint(bytes, clusters[index]! + 4, false);
+    if (!size) continue;
+    const regionEnd = clusters[index + 1] ?? bytes.length;
+    let offset = clusters[index]! + 4 + size.length;
+    let timecode = 0;
+    while (offset + 2 <= regionEnd) {
+      const id = readVint(bytes, offset, true);
+      if (!id) break;
+      const elSize = readVint(bytes, offset + id.length, false);
+      if (!elSize) break;
+      const dataStart = offset + id.length + elSize.length;
+      const dataEnd = elSize.unknown ? regionEnd : dataStart + elSize.value;
+      if (dataEnd < dataStart || dataEnd > regionEnd) break;
+      if (id.value === 0xe7) {
+        const next = readUnsigned(bytes, dataStart, dataEnd);
+        if (next !== null) {
+          timecode = next;
+          const ms = Math.round((timecode * scale) / 1_000_000);
+          if (ms > 0 && (maxMs === null || ms > maxMs)) maxMs = ms;
+        }
+      } else if (id.value === 0xa3 || id.value === 0xa1) {
+        const track = readVint(bytes, dataStart, false);
+        const relative = track ? readI16(bytes, dataStart + track.length) : null;
+        const tick = timecode + (relative !== null && relative > 0 ? relative : 0);
+        const ms = Math.round((tick * scale) / 1_000_000);
+        if (maxMs === null || ms > maxMs) maxMs = ms;
+      }
+      if (elSize.unknown) break;
+      offset = dataEnd;
+    }
+  }
+  return maxMs !== null && maxMs > 0 ? maxMs : null;
+}
+
+function longestDurationMs(values: Array<number | null>): number | null {
+  let max: number | null = null;
+  for (const value of values) {
+    if (value === null || !Number.isFinite(value) || value <= 0) continue;
+    if (max === null || value > max) max = value;
+  }
+  return max === null ? null : Math.round(max);
+}
+
+export function readVoiceDurationMs(bytes: Uint8Array, container: VoiceContainer): number | null {
+  if (container === 'webm') {
+    return longestDurationMs([webmDurationMs(bytes), webmClusterCeilingMs(bytes)]);
+  }
+  return longestDurationMs([mp4DurationMs(bytes), mp4FragmentDurationMs(bytes)]);
 }
 
 export function transcriptionReserveUnits(): Record<string, number> {
   return { [TRANSCRIPTION_USAGE_KIND]: TRANSCRIPTION_RESERVE_SECONDS };
 }
 
-export function transcriptionSettleUnits(durationMs: number): Record<string, number> {
-  return { [TRANSCRIPTION_USAGE_KIND]: settleSecondsForDuration(durationMs) };
+/** Client duration is not a bill. The provider can charge the whole reserved clip. */
+export function transcriptionSettleUnits(): Record<string, number> {
+  return transcriptionReserveUnits();
 }
 
 export function inspectVoiceUpload(args: {
@@ -274,17 +486,25 @@ export function inspectVoiceUpload(args: {
   }
 
   const durationMs = readVoiceDurationMs(args.bytes, fromMagic);
-  if (durationMs === null || durationMs <= 0) {
-    return { ok: false, status: 400, error: VOICE_UNREADABLE_ERROR };
-  }
-  if (durationMs > VOICE_MAX_DURATION_MS) {
+  if (durationMs !== null && durationMs > VOICE_MAX_DURATION_MS) {
     return { ok: false, status: 400, error: VOICE_TOO_LONG_ERROR };
   }
+
+  const claims = [VOICE_MAX_DURATION_MS];
+  if (durationMs !== null && durationMs > 0) claims.push(durationMs);
+  if (typeof declared === 'number' && Number.isFinite(declared) && declared > 0) {
+    claims.push(declared);
+  }
+  const allowanceSeconds = Math.max(1, Math.ceil(Math.min(...claims) / 1000));
+  if (args.bytes.byteLength > allowanceSeconds * VOICE_MAX_BYTES_PER_SECOND) {
+    return { ok: false, status: 400, error: VOICE_TOO_LONG_ERROR };
+  }
+
   return {
     ok: true,
     container: fromMagic,
     durationMs,
-    settleSeconds: settleSecondsForDuration(durationMs),
+    settleSeconds: TRANSCRIPTION_RESERVE_SECONDS,
   };
 }
 

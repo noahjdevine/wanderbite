@@ -336,7 +336,7 @@ export async function POST(request: NextRequest) {
       httpOk,
       body: providerBody,
     });
-    const usage = outcome.transcript ? transcriptionSettleUnits(inspection.durationMs) : null;
+    const usage = outcome.transcript ? transcriptionSettleUnits() : null;
     await accountTranscription({
       requestId: reserved.request_id,
       dispatched: true,

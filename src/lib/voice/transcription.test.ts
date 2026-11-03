@@ -14,13 +14,14 @@ import {
   transcriptionFromProvider,
   transcriptionProviderAllowed,
   transcriptionReserveUnits,
+  transcriptionSettleUnits,
   VOICE_BUDGET_ERROR,
   VOICE_MAX_BYTES,
+  VOICE_MAX_BYTES_PER_SECOND,
   VOICE_TIMEOUT_ERROR,
   VOICE_TOO_LARGE_ERROR,
   VOICE_TOO_LONG_ERROR,
   VOICE_UNAVAILABLE_ERROR,
-  VOICE_UNREADABLE_ERROR,
   VOICE_UNSUPPORTED_ERROR,
 } from '@/lib/voice/transcription';
 
@@ -100,21 +101,66 @@ describe('voice upload limits', () => {
     if (!tooLong.ok) expect(tooLong.error).toBe(VOICE_TOO_LONG_ERROR);
 
     const mp4Ok = inspectVoiceUpload({ bytes: mp4(1000, 10_000), mime: 'audio/mp4' });
-    expect(mp4Ok).toMatchObject({ ok: true, container: 'mp4', durationMs: 10_000, settleSeconds: 10 });
+    expect(mp4Ok).toMatchObject({ ok: true, container: 'mp4', durationMs: 10_000, settleSeconds: 30 });
 
     const webmOk = inspectVoiceUpload({
       bytes: webm(10_000),
       mime: 'audio/webm;codecs=opus',
     });
-    expect(webmOk).toMatchObject({ ok: true, container: 'webm', durationMs: 10_000, settleSeconds: 10 });
+    expect(webmOk).toMatchObject({ ok: true, container: 'webm', durationMs: 10_000, settleSeconds: 30 });
+  });
 
-    const unread = inspectVoiceUpload({ bytes: webm(null), mime: 'audio/webm' });
-    expect(unread.ok).toBe(false);
-    if (!unread.ok) expect(unread.error).toBe(VOICE_UNREADABLE_ERROR);
+  it('accepts a webm with no Duration and an mp4 whose mvhd duration is 0', () => {
+    const noDuration = inspectVoiceUpload({ bytes: webm(null), mime: 'audio/webm' });
+    expect(noDuration).toMatchObject({ ok: true, container: 'webm', durationMs: null, settleSeconds: 30 });
+
+    const zeroMovie = inspectVoiceUpload({ bytes: mp4(1000, 0), mime: 'audio/mp4' });
+    expect(zeroMovie).toMatchObject({ ok: true, container: 'mp4', durationMs: null, settleSeconds: 30 });
+
+    const timecode = Buffer.alloc(2);
+    timecode.writeUInt16BE(31_000);
+    const cluster = element(Buffer.from([0x1f, 0x43, 0xb6, 0x75]), element(Buffer.from([0xe7]), timecode));
+    const tooLong = inspectVoiceUpload({
+      bytes: new Uint8Array(Buffer.concat([Buffer.from(webm(null)), cluster])),
+      mime: 'audio/webm',
+    });
+    expect(tooLong.ok).toBe(false);
+    if (!tooLong.ok) expect(tooLong.error).toBe(VOICE_TOO_LONG_ERROR);
+  });
+
+  it('rejects a clip that is too large for the length it claims', () => {
+    const header = webm(1_000);
+    const padded = new Uint8Array(VOICE_MAX_BYTES_PER_SECOND + 1);
+    padded.set(header);
+    const result = inspectVoiceUpload({
+      bytes: padded,
+      mime: 'audio/webm',
+      declaredDurationMs: 1_000,
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe(VOICE_TOO_LONG_ERROR);
+  });
+
+  it('accepts Chrome MediaRecorder output that omits a header duration', () => {
+    const webmClip = new Uint8Array(
+      readFileSync(path.join(__dirname, 'fixtures/chrome-148-timeslice.webm')),
+    );
+    const mp4Clip = new Uint8Array(
+      readFileSync(path.join(__dirname, 'fixtures/chrome-148-fragmented.mp4')),
+    );
+    const webmResult = inspectVoiceUpload({ bytes: webmClip, mime: 'audio/webm;codecs=opus' });
+    const mp4Result = inspectVoiceUpload({ bytes: mp4Clip, mime: 'audio/mp4' });
+    expect(webmResult).toMatchObject({ ok: true, container: 'webm', settleSeconds: 30 });
+    expect(mp4Result).toMatchObject({ ok: true, container: 'mp4', settleSeconds: 30 });
+    if (webmResult.ok) expect(webmResult.durationMs).toBeGreaterThan(1_000);
+    if (mp4Result.ok) expect(mp4Result.durationMs).toBeGreaterThan(1_000);
+    if (webmResult.ok) expect(webmResult.durationMs).toBeLessThanOrEqual(30_000);
+    if (mp4Result.ok) expect(mp4Result.durationMs).toBeLessThanOrEqual(30_000);
   });
 
   it('reserves the 30 second maximum and does not keep audio in the replay payload', () => {
     expect(transcriptionReserveUnits()).toEqual({ audio_seconds: 30 });
+    expect(transcriptionSettleUnits()).toEqual({ audio_seconds: 30 });
     const stored = buildStoredTranscriptPayload('a quiet room');
     expect(stored).toEqual({ kind: 'transcript', text: 'a quiet room' });
     expect(readStoredTranscript(stored)).toBe('a quiet room');
