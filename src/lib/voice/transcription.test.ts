@@ -11,6 +11,7 @@ import {
   inspectVoiceUpload,
   OPENAI_TRANSCRIBE_MODEL,
   readStoredTranscript,
+  readVoiceDurationMs,
   transcriptionFromProvider,
   transcriptionProviderAllowed,
   transcriptionReserveUnits,
@@ -67,6 +68,21 @@ function webm(durationMs: number | null): Uint8Array {
   const segment = element(Buffer.from([0x18, 0x53, 0x80, 0x67]), info);
   const ebml = element(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]), Buffer.alloc(0));
   return new Uint8Array(Buffer.concat([ebml, segment]));
+}
+
+/** mvhd duration in timescale units. iOS MediaRecorder leaves this at 0. */
+function movieHeaderDuration(bytes: Uint8Array): number | null {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let i = 4; i + 24 <= bytes.length; i += 1) {
+    if (bytes[i] !== 0x6d || bytes[i + 1] !== 0x76 || bytes[i + 2] !== 0x68 || bytes[i + 3] !== 0x64) {
+      continue;
+    }
+    const version = bytes[i + 4];
+    if (version === 0) return view.getUint32(i + 20);
+    if (i + 36 > bytes.length) return null;
+    return view.getUint32(i + 28) * 2 ** 32 + view.getUint32(i + 32);
+  }
+  return null;
 }
 
 describe('voice upload limits', () => {
@@ -138,7 +154,88 @@ describe('voice upload limits', () => {
       declaredDurationMs: 1_000,
     });
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toBe(VOICE_TOO_LONG_ERROR);
+    if (!result.ok) {
+      expect(result.status).toBe(413);
+      expect(result.error).toBe(VOICE_TOO_LARGE_ERROR);
+    }
+  });
+
+  it('accepts short fragmented iOS Safari AAC clips and rejects one past 30 seconds', () => {
+    const four = new Uint8Array(readFileSync(path.join(__dirname, 'fixtures/ios-safari-4s-aac.mp4')));
+    const five = new Uint8Array(readFileSync(path.join(__dirname, 'fixtures/ios-safari-5s-aac.mp4')));
+    const tooLong = new Uint8Array(readFileSync(path.join(__dirname, 'fixtures/ios-safari-31s-aac.mp4')));
+
+    for (const bytes of [four, five, tooLong]) {
+      expect(Buffer.from(bytes).includes(Buffer.from('moof'))).toBe(true);
+      expect(Buffer.from(bytes).includes(Buffer.from('trun'))).toBe(true);
+      expect(movieHeaderDuration(bytes)).toBe(0);
+    }
+
+    const fourDuration = readVoiceDurationMs(four, 'mp4');
+    const fiveDuration = readVoiceDurationMs(five, 'mp4');
+    expect(fourDuration).toBeGreaterThan(3_000);
+    expect(fourDuration).toBeLessThan(6_000);
+    expect(fiveDuration).toBeGreaterThan(3_000);
+    expect(fiveDuration).toBeLessThan(6_000);
+    // The old 20 KB/s ceiling rejected these. The 4s case uses the client
+    // duration, which is a little under the fragment timeline.
+    expect(four.byteLength).toBeGreaterThan(4 * 20_000);
+    expect(five.byteLength).toBeGreaterThan(Math.ceil((fiveDuration ?? 0) / 1000) * 20_000);
+
+    const fourResult = inspectVoiceUpload({
+      bytes: four,
+      mime: 'audio/mp4',
+      declaredDurationMs: 4_000,
+    });
+    const fiveResult = inspectVoiceUpload({ bytes: five, mime: 'audio/mp4' });
+    expect(fourResult).toMatchObject({
+      ok: true,
+      container: 'mp4',
+      durationMs: fourDuration,
+      settleSeconds: 30,
+    });
+    expect(fiveResult).toMatchObject({
+      ok: true,
+      container: 'mp4',
+      durationMs: fiveDuration,
+      settleSeconds: 30,
+    });
+
+    const longDuration = readVoiceDurationMs(tooLong, 'mp4');
+    expect(longDuration).toBeGreaterThan(30_000);
+    const longResult = inspectVoiceUpload({ bytes: tooLong, mime: 'audio/mp4' });
+    expect(longResult.ok).toBe(false);
+    if (!longResult.ok) {
+      expect(longResult.status).toBe(400);
+      expect(longResult.error).toBe(VOICE_TOO_LONG_ERROR);
+    }
+  });
+
+  it('accepts short Android Chrome opus clips at 128 and 192 kbps', () => {
+    const low = new Uint8Array(
+      readFileSync(path.join(__dirname, 'fixtures/android-chrome-4s-opus.webm')),
+    );
+    const high = new Uint8Array(
+      readFileSync(path.join(__dirname, 'fixtures/android-chrome-6s-opus.webm')),
+    );
+    const lowDuration = readVoiceDurationMs(low, 'webm');
+    const highDuration = readVoiceDurationMs(high, 'webm');
+    expect(lowDuration).toBeGreaterThan(3_000);
+    expect(lowDuration).toBeLessThan(6_000);
+    expect(highDuration).toBeGreaterThan(3_000);
+    expect(highDuration).toBeLessThan(6_500);
+    expect(high.byteLength).toBeGreaterThan(Math.ceil((highDuration ?? 0) / 1000) * 20_000);
+
+    expect(
+      inspectVoiceUpload({
+        bytes: low,
+        mime: 'audio/webm;codecs=opus',
+        declaredDurationMs: 4_000,
+      }),
+    ).toMatchObject({ ok: true, container: 'webm', settleSeconds: 30 });
+    expect(
+      inspectVoiceUpload({ bytes: high, mime: 'audio/webm;codecs=opus', declaredDurationMs: 6_000 }),
+    ).toMatchObject({ ok: true, container: 'webm', settleSeconds: 30 });
   });
 
   it('accepts Chrome MediaRecorder output that omits a header duration', () => {
@@ -256,6 +353,8 @@ describe('transcription route contract', () => {
     expect(client).toMatch(/Stop/);
     expect(client).toMatch(/Cancel/);
     expect(client).toMatch(/getUserMedia\(\{ audio: true \}\)/);
+    expect(client).toMatch(/const durationMs = Date\.now\(\) - startedAtRef\.current/);
+    expect(client).toMatch(/body\.set\('durationMs', String\(Math\.max\(0, Math\.round\(durationMs\)\)\)\)/);
     expect(client).not.toMatch(/SpeechRecognition|webkitSpeechRecognition/);
     expect(migration).toMatch(/gpt-transcribe/);
     expect(migration).toMatch(/75000000/);
