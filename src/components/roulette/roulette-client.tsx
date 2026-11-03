@@ -22,6 +22,7 @@ import {
   type RouletteSelections,
 } from '@/components/roulette/roulette-options-fields';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
+import { DiscoveryVoiceControls } from '@/components/roulette/discovery-voice-controls';
 import { celebrate } from '@/lib/confetti';
 
 export type RouletteApiResult = {
@@ -187,6 +188,7 @@ export function RouletteClient() {
               className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-[#E85D26]"
               placeholder="Date night, something casual, a quiet room"
             />
+            <DiscoveryVoiceControls disabled={false} onTranscript={setMessage} />
           </div>
 
           <div className="w-full rounded-2xl border border-border/70 bg-card/60 p-5 shadow-sm sm:p-6">

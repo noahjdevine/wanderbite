@@ -142,6 +142,24 @@ export function mergeDietaryFlags(
   return [...new Set(merged)];
 }
 
+/**
+ * Server filters come from validated chips and saved preferences.
+ * The message, including a voice transcript, is not a filter input.
+ */
+export function discoveryFiltersIgnoringMessage(args: {
+  bodyDietary: readonly string[];
+  bodyExcluded: readonly string[];
+  savedDietary: unknown;
+  savedExcluded: unknown;
+  message: string;
+}): { dietary: RouletteDietaryFlag[]; excluded: CuisineId[] } {
+  void args.message;
+  return {
+    dietary: mergeDietaryFlags(args.bodyDietary, args.savedDietary),
+    excluded: mergeExcludedCuisines(args.bodyExcluded, args.savedExcluded),
+  };
+}
+
 export function mergeExcludedCuisines(body: readonly string[], saved: unknown): CuisineId[] {
   const fromSaved = Array.isArray(saved)
     ? saved.filter((item): item is string => typeof item === 'string')
