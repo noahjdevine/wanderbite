@@ -47,7 +47,8 @@ export type SlotReason = {
 export type MonthlyRevealPanel =
   | { mode: 'off' }
   | { mode: 'curation'; constraintLines: string[] }
-  | { mode: 'revealed'; reasons: SlotReason[] };
+  | { mode: 'revealed'; reasons: SlotReason[] }
+  | { mode: 'retry' };
 
 /** Saved reason only when this slot still has that restaurant. */
 export function reasonForSlot(

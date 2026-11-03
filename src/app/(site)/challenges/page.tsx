@@ -16,6 +16,7 @@ import {
   loadCreditsSwapRemaining,
   type CarriedCreditView,
 } from '@/lib/challenges/carried-credits';
+import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-reveal';
 
 export const dynamic = 'force-dynamic';
@@ -159,7 +160,11 @@ export default async function ChallengesPage() {
   const monthlyReveal = await loadMonthlyRevealForChallenges({
     userId: typedProfile.id,
     cycleMonth: currentChallenge?.cycle.cycle_month ?? null,
-    showCuration: area === 'eligible' && !currentChallenge && !creditHold,
+    showCuration: showsMonthlyCuration({
+      launchEligible: area === 'eligible',
+      creditsWorkflow,
+      hasCurrentPair: Boolean(currentChallenge),
+    }),
   });
 
   return (

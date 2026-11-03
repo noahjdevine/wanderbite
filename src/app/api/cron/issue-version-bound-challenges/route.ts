@@ -3,6 +3,8 @@ import { verifyCronAuth } from '@/lib/cron-auth';
 import { runLeasedCron, type CronLeaseContext } from '@/lib/cron-runs';
 import { chicagoMonthStart, issueItemStatus } from '@/lib/cron-period';
 import { generateMonthlyChallengeForUser } from '@/lib/challenges/generate';
+import { probeRevealSchema } from '@/lib/challenges/load-monthly-reveal';
+import { cronRevealGate, monthlyCronSkip } from '@/lib/challenges/monthly-cron-gate';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
@@ -63,12 +65,19 @@ async function snapshotSubscribers(ctx: CronLeaseContext): Promise<boolean> {
 }
 
 async function issuePending(ctx: CronLeaseContext): Promise<void> {
+  const gate = cronRevealGate(await probeRevealSchema());
+  let skippedCuration = 0;
+  let skippedUnknown = 0;
   while (true) {
     if (!(await ctx.guardPeriod())) return;
     if (!(await ctx.renew())) return;
     const pending = await ctx.listPending(BATCH);
     if (pending.length === 0) {
-      await ctx.finishClear();
+      await ctx.finishClear(
+        gate === 'off'
+          ? undefined
+          : { skipped_curation: skippedCuration, skipped_unknown: skippedUnknown },
+      );
       return;
     }
     for (const item of pending) {
@@ -98,6 +107,18 @@ async function issuePending(ctx: CronLeaseContext): Promise<void> {
             item.itemKey,
             status,
             status === 'succeeded' ? null : outcome,
+          );
+          if (!recorded) return;
+          continue;
+        }
+        const decision = await monthlyCronSkip(item.itemKey, gate);
+        if (decision.action === 'skip') {
+          if (decision.bucket === 'curation') skippedCuration += 1;
+          else skippedUnknown += 1;
+          const recorded = await ctx.record(
+            item.itemKey,
+            'skipped',
+            decision.bucket === 'curation' ? 'monthly curation' : 'reveal unavailable',
           );
           if (!recorded) return;
           continue;

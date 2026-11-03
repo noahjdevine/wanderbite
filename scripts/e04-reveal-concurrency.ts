@@ -95,6 +95,23 @@ export async function runE04RevealConcurrency(opts: {
     assert.equal(sql(`select count(*) from public.challenge_cycles where user_id = '${USER}'`), '1');
     assert.equal(sql(`select count(*) from public.challenge_reveals where user_id = '${USER}'`), '1');
     assert.equal(sql(`select count(*) from public.entitlement_credits where user_id = '${USER}'`), '0');
+
+    sql(`
+      delete from public.challenge_reveals where user_id = '${USER}';
+      delete from public.challenge_items where cycle_id in (
+        select id from public.challenge_cycles where user_id = '${USER}');
+      delete from public.challenge_cycles where user_id = '${USER}';
+    `);
+    const generated = a.send(`select outcome from public.generate_challenge_cycle(
+      '${USER}'::uuid,
+      '${MONTH}'::date,
+      '${MARKET}'::uuid,
+      array['${R1}'::uuid, '${R2}'::uuid]
+    );`);
+    const revealed = b.send(revealCall(R3));
+    await Promise.all([generated, revealed]);
+    assert.equal(sql(`select count(*) from public.challenge_cycles where user_id = '${USER}'`), '1');
+    assert.equal(sql(`select count(*) from public.entitlement_credits where user_id = '${USER}'`), '0');
   } finally {
     a.close();
     b.close();

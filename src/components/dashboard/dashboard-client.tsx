@@ -35,6 +35,7 @@ import { MonthlyCuration } from '@/components/challenges/monthly-curation';
 import type { CarriedCreditView } from '@/lib/challenges/carried-credits';
 import {
   MONTHLY_REVEAL_FOCUS_KEY,
+  REVEAL_TRY_AGAIN,
   reasonForSlot,
   type MonthlyRevealPanel,
 } from '@/lib/challenges/monthly-reveal-copy';
@@ -234,6 +235,12 @@ export function DashboardClient({
 
       {launchEligible ? null : <AreaHoldNotice />}
 
+      {monthlyReveal.mode === 'retry' ? (
+        <p role="alert" className="text-sm text-destructive">
+          {REVEAL_TRY_AGAIN}
+        </p>
+      ) : null}
+
       {currentChallenge ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -297,7 +304,7 @@ export function DashboardClient({
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : monthlyReveal.mode === 'curation' && launchEligible ? (
+      ) : monthlyReveal.mode === 'retry' ? null : monthlyReveal.mode === 'curation' && launchEligible ? (
         <MonthlyCuration constraintLines={monthlyReveal.constraintLines} />
       ) : blockMemberGenerate && launchEligible ? (
         <Card>

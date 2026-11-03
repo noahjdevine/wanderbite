@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-reveal';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadMonthlyRevealForChallenges, memberGenerateBlocked } from '@/lib/challenges/load-monthly-reveal';
 import { resetMonthlyRevealUnavailableLog } from '@/lib/challenges/monthly-reveal-flag';
 
 const tables: string[] = [];
@@ -54,6 +54,7 @@ const MISSING_FUNCTION = {
 
 describe('loadMonthlyRevealForChallenges', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
     tables.length = 0;
     delete process.env.E04_MONTHLY_REVEAL_ENABLED;
     resetMonthlyRevealUnavailableLog();
@@ -72,6 +73,10 @@ describe('loadMonthlyRevealForChallenges', () => {
       probe: { data: null, error: null },
       row: { data: { excluded_cuisines: ['mexican'] }, error: null },
     };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('does not read the reveal table when the flag is off', async () => {
@@ -125,6 +130,7 @@ describe('loadMonthlyRevealForChallenges', () => {
       cycleMonth: null,
       showCuration: true,
     });
+    expect(await memberGenerateBlocked()).toBe(true);
     expect(panel.mode).toBe('curation');
     if (panel.mode !== 'curation') return;
     expect(panel.constraintLines.join(' ')).toContain('15 miles');
@@ -156,5 +162,32 @@ describe('loadMonthlyRevealForChallenges', () => {
       ],
     });
     expect(tables).not.toContain('user_profiles');
+  });
+
+  it('asks the member to try again on a non-schema read error and keeps generate blocked', async () => {
+    process.env.E04_MONTHLY_REVEAL_ENABLED = 'true';
+    responses.challenge_reveals = {
+      probe: { data: null, error: { code: '500', message: 'upstream connect error' } },
+      row: { data: null, error: { code: '500', message: 'upstream connect error' } },
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const panel = await loadMonthlyRevealForChallenges({
+      userId: 'user-secret',
+      cycleMonth: null,
+      showCuration: true,
+    });
+    expect(panel).toEqual({ mode: 'retry' });
+    expect(await memberGenerateBlocked()).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('try again');
+    expect(String(warn.mock.calls[0]?.[0])).not.toContain('user-secret');
+    expect(tables).not.toContain('user_profiles');
+  });
+
+  it('does not block generate when the reveal relation is missing', async () => {
+    process.env.E04_MONTHLY_REVEAL_ENABLED = 'true';
+    responses.challenge_reveals = { probe: THIN_RELATION, row: THIN_RELATION };
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(await memberGenerateBlocked()).toBe(false);
   });
 });

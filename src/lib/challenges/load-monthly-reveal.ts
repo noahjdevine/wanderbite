@@ -1,6 +1,13 @@
 import { curationConstraintLines, reasonsFromRevealJson, type MonthlyRevealPanel } from '@/lib/challenges/monthly-reveal-copy';
-import { logRevealUnavailableOnce, monthlyRevealEnabled, revealSchemaMissing } from '@/lib/challenges/monthly-reveal-flag';
+import {
+  logRevealRetryOnce,
+  logRevealUnavailableOnce,
+  monthlyRevealEnabled,
+  revealSchemaMissing,
+} from '@/lib/challenges/monthly-reveal-flag';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+
+export type RevealSchemaState = 'off' | 'available' | 'missing' | 'unknown';
 
 const REVEAL_INSTEAD_ERROR = 'Open Challenges and choose Reveal my challenges for this month.';
 
@@ -9,26 +16,36 @@ export function revealInsteadError(): string {
 }
 
 /**
- * True only when the flag is on and challenge_reveals can be read.
- * A missing table or function logs once and leaves today’s generator in place.
+ * Flag off stays off. A missing table or function is the only fallback to today's generator.
+ * Any other read failure stays closed and asks the member to try again.
  */
-export async function revealSchemaAvailable(): Promise<boolean> {
-  if (!monthlyRevealEnabled()) return false;
+export async function probeRevealSchema(): Promise<RevealSchemaState> {
+  if (!monthlyRevealEnabled()) return 'off';
   try {
     const admin = getSupabaseAdmin();
     const { error } = await admin.from('challenge_reveals').select('id').limit(1);
-    if (!error) return true;
-    logRevealUnavailableOnce();
-    return false;
+    if (!error) return 'available';
+    if (revealSchemaMissing(error)) {
+      logRevealUnavailableOnce();
+      return 'missing';
+    }
+    logRevealRetryOnce();
+    return 'unknown';
   } catch {
-    logRevealUnavailableOnce();
-    return false;
+    logRevealRetryOnce();
+    return 'unknown';
   }
 }
 
-/** Member Generate Challenge is closed only while the reveal schema is actually available. */
+/** True only when the flag is on and challenge_reveals can be read. */
+export async function revealSchemaAvailable(): Promise<boolean> {
+  return (await probeRevealSchema()) === 'available';
+}
+
+/** Blocks member Generate for a readable schema and for a non-schema read failure. */
 export async function memberGenerateBlocked(): Promise<boolean> {
-  return revealSchemaAvailable();
+  const state = await probeRevealSchema();
+  return state === 'available' || state === 'unknown';
 }
 
 export async function loadMonthlyRevealForChallenges(args: {
@@ -40,8 +57,8 @@ export async function loadMonthlyRevealForChallenges(args: {
   try {
     return await loadMonthlyRevealPanel(args);
   } catch {
-    logRevealUnavailableOnce();
-    return { mode: 'off' };
+    logRevealRetryOnce();
+    return { mode: 'retry' };
   }
 }
 
@@ -50,7 +67,9 @@ async function loadMonthlyRevealPanel(args: {
   cycleMonth: string | null;
   showCuration: boolean;
 }): Promise<MonthlyRevealPanel> {
-  if (!(await revealSchemaAvailable())) return { mode: 'off' };
+  const state = await probeRevealSchema();
+  if (state === 'off' || state === 'missing') return { mode: 'off' };
+  if (state === 'unknown') return { mode: 'retry' };
 
   const admin = getSupabaseAdmin();
   if (args.cycleMonth) {
@@ -61,8 +80,12 @@ async function loadMonthlyRevealPanel(args: {
       .eq('period_key', args.cycleMonth)
       .maybeSingle();
     if (error) {
-      if (revealSchemaMissing(error)) logRevealUnavailableOnce();
-      return { mode: 'revealed', reasons: [] };
+      if (revealSchemaMissing(error)) {
+        logRevealUnavailableOnce();
+        return { mode: 'off' };
+      }
+      logRevealRetryOnce();
+      return { mode: 'retry' };
     }
     const reasons = reasonsFromRevealJson(data?.item_reasons ?? null) ?? [];
     return { mode: 'revealed', reasons };
