@@ -8,8 +8,9 @@ import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
 import { chicagoMonthStart } from '@/lib/cron-period';
-import { launchAreaState } from '@/lib/launch-market';
+import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
+import { IncompleteProfileNotice } from '@/components/account/incomplete-profile-notice';
 import {
   loadCarriedCreditsForUser,
   loadCreditsSwapRemaining,
@@ -35,7 +36,7 @@ export default async function ChallengesPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, role, subscription_status, username, address_street, address_city, address_state, address_zip, workflow_version')
+    .select('id, role, subscription_status, username, address, address_street, address_city, address_state, address_zip, workflow_version')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -56,6 +57,7 @@ export default async function ChallengesPage() {
     role: string | null;
     subscription_status: string | null;
     username: string | null;
+    address: string | null;
     address_street: string | null;
     address_city: string | null;
     address_state: string | null;
@@ -63,26 +65,21 @@ export default async function ChallengesPage() {
     workflow_version: string;
   };
 
-  const next = nextMemberRedirect(
-    '/challenges',
-    profileGate({
-      role: typedProfile.role,
-      subscription_status: typedProfile.subscription_status,
-      username: typedProfile.username,
-      address_street: typedProfile.address_street,
-      address_city: typedProfile.address_city,
-      address_state: typedProfile.address_state,
-      address_zip: typedProfile.address_zip,
-    }),
-  );
+  const gate = profileGate({
+    role: typedProfile.role,
+    subscription_status: typedProfile.subscription_status,
+    username: typedProfile.username,
+    address: typedProfile.address,
+    address_street: typedProfile.address_street,
+    address_city: typedProfile.address_city,
+    address_state: typedProfile.address_state,
+    address_zip: typedProfile.address_zip,
+  });
+  const next = nextMemberRedirect('/challenges', gate);
   if (next) redirect(next);
 
-  const area = launchAreaState({
-    street: typedProfile.address_street,
-    city: typedProfile.address_city,
-    state: typedProfile.address_state,
-    zip: typedProfile.address_zip,
-  });
+  const resolvedAddress = resolveProfileAddress(typedProfile);
+  const area = launchAreaState(resolvedAddress);
 
   const streak = await calculateStreak(typedProfile.id);
 
@@ -167,6 +164,7 @@ export default async function ChallengesPage() {
         <h1 className="mb-8 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
           Culinary Adventure Awaits
         </h1>
+        {gate.profileComplete ? null : <IncompleteProfileNotice />}
         <DashboardClient
           launchEligible={area === 'eligible'}
           currentChallenge={currentChallenge}

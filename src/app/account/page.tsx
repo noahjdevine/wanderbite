@@ -4,6 +4,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { AccountClient } from '@/components/account/AccountClient';
 import { normalizeCuisineIds } from '@/lib/cuisines';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
+import { resolveProfileAddress } from '@/lib/launch-market';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 import { hasCurrentLegalAttestation } from '@/lib/legal-attestation-status';
 
@@ -24,7 +25,7 @@ export default async function AccountPage() {
     admin
       .from('user_profiles')
       .select(
-        'id, email, role, full_name, username, dietary_flags, distance_band, wants_cocktail_experience, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
+        'id, email, role, full_name, username, dietary_flags, distance_band, wants_cocktail_experience, address, address_street, address_city, address_state, address_zip, subscription_status, current_period_end'
       )
       .eq('id', user.id)
       .maybeSingle(),
@@ -53,6 +54,7 @@ export default async function AccountPage() {
       role: string | null;
       subscription_status: string | null;
       username: string | null;
+      address: string | null;
       address_street: string | null;
       address_city: string | null;
       address_state: string | null;
@@ -70,6 +72,7 @@ export default async function AccountPage() {
     dietary_flags: string[] | null;
     distance_band: string | null;
     wants_cocktail_experience: boolean | null;
+    address: string | null;
     address_street: string | null;
     address_city: string | null;
     address_state: string | null;
@@ -78,6 +81,7 @@ export default async function AccountPage() {
     subscription_status: string | null;
     current_period_end: string | null;
   };
+  const resolvedAddress = resolveProfileAddress(p);
 
   return (
     <main className="min-h-screen bg-background pb-20 pt-24 md:pt-28">
@@ -105,10 +109,10 @@ export default async function AccountPage() {
             profile: {
               username: p.username ?? '',
               address: {
-                street: p.address_street ?? '',
-                city: p.address_city ?? '',
-                state: p.address_state ?? '',
-                zip: p.address_zip ?? '',
+                street: resolvedAddress.street ?? '',
+                city: resolvedAddress.city ?? '',
+                state: resolvedAddress.state ?? '',
+                zip: resolvedAddress.zip ?? '',
               },
             },
             adventureRemindersOptedOut: reminderPrefResult.data?.opted_out === true,

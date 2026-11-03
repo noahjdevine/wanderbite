@@ -104,20 +104,40 @@ describe('member destination redirects', () => {
     expect(settleMemberPath('/profile', active)).toBe('/account');
   });
 
-  it('keeps an active incomplete member on onboarding from every entry path', () => {
+  it('sends an active incomplete member to challenges instead of onboarding', () => {
     const member = profileGate({
       role: 'subscriber',
       subscription_status: 'active',
       ...incomplete,
     });
-    const starts = ['/signin', '/profile', '/account', '/challenges', '/dashboard', '/onboarding'];
-    for (const start of starts) {
+    expect(ordinarySignInPath(member)).toBe('/challenges');
+    for (const start of ['/signin', '/challenges', '/dashboard', '/onboarding']) {
       const path = start === '/signin' ? ordinarySignInPath(member) : start;
-      expect(settleMemberPath(path, member)).toBe('/onboarding');
+      expect(settleMemberPath(path, member)).toBe('/challenges');
     }
+    // /account stays so the challenges notice can link here without a loop.
+    expect(settleMemberPath('/account', member)).toBe('/account');
+    expect(settleMemberPath('/profile', member)).toBe('/account');
+    expect(nextMemberRedirect('/onboarding', member)).toBe('/challenges');
+    expect(nextMemberRedirect('/challenges', member)).toBeNull();
   });
 
-  it('keeps an active member on onboarding until both username and address exist', () => {
+  it('treats a strict legacy address as complete when structured columns are blank', () => {
+    const gate = profileGate({
+      role: 'subscriber',
+      subscription_status: 'active',
+      username: 'member',
+      address_street: null,
+      address_city: null,
+      address_state: null,
+      address_zip: null,
+      address: '111 Awesome St, Mckinney, TX 75071',
+    });
+    expect(gate.profileComplete).toBe(true);
+    expect(ordinarySignInPath(gate)).toBe('/challenges');
+  });
+
+  it('sends an active member to challenges when username or address is missing', () => {
     const missingAddress = profileGate({
       role: 'subscriber',
       subscription_status: 'active',
@@ -133,11 +153,12 @@ describe('member destination redirects', () => {
       ...complete,
       username: '   ',
     });
-    expect(ordinarySignInPath(missingAddress)).toBe('/onboarding');
-    expect(settleMemberPath('/challenges', missingAddress)).toBe('/onboarding');
-    expect(settleMemberPath('/onboarding', missingAddress)).toBe('/onboarding');
-    expect(ordinarySignInPath(missingUsername)).toBe('/onboarding');
-    expect(settleMemberPath('/dashboard', missingUsername)).toBe('/onboarding');
-    expect(settleMemberPath('/onboarding', missingUsername)).toBe('/onboarding');
+    expect(ordinarySignInPath(missingAddress)).toBe('/challenges');
+    expect(settleMemberPath('/challenges', missingAddress)).toBe('/challenges');
+    expect(settleMemberPath('/onboarding', missingAddress)).toBe('/challenges');
+    expect(settleMemberPath('/account', missingAddress)).toBe('/account');
+    expect(ordinarySignInPath(missingUsername)).toBe('/challenges');
+    expect(settleMemberPath('/dashboard', missingUsername)).toBe('/challenges');
+    expect(settleMemberPath('/onboarding', missingUsername)).toBe('/challenges');
   });
 });

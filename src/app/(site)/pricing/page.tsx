@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { PricingClient } from '@/components/pricing/pricing-client';
-import { launchAreaState } from '@/lib/launch-market';
+import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +20,7 @@ export default async function PricingPage() {
     const { data: profile } = await admin
       .from('user_profiles')
       .select(
-        'id, email, full_name, subscription_status, address_street, address_city, address_state, address_zip'
+        'id, email, full_name, subscription_status, address, address_street, address_city, address_state, address_zip'
       )
       .eq('id', user.id)
       .maybeSingle();
@@ -30,6 +30,7 @@ export default async function PricingPage() {
         email: string | null;
         full_name: string | null;
         subscription_status: string | null;
+        address: string | null;
         address_street: string | null;
         address_city: string | null;
         address_state: string | null;
@@ -39,12 +40,7 @@ export default async function PricingPage() {
       email = p.email;
       fullName = p.full_name;
       subscriptionStatus = p.subscription_status;
-      areaState = launchAreaState({
-        street: p.address_street,
-        city: p.address_city,
-        state: p.address_state,
-        zip: p.address_zip,
-      });
+      areaState = launchAreaState(resolveProfileAddress(p));
     }
   }
 

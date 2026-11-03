@@ -61,7 +61,7 @@ export async function signInFromForm(
   const { data: profile, error: profileError } = await supabase
     .from('user_profiles')
     .select(
-      'id, role, subscription_status, username, address_street, address_city, address_state, address_zip',
+      'id, role, subscription_status, username, address, address_street, address_city, address_state, address_zip',
     )
     .eq('id', data.user.id)
     .maybeSingle();
