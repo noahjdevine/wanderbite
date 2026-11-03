@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import {
   chicagoRevealPeriod,
@@ -8,8 +8,24 @@ import {
   normalizeRevealBrief,
   REVEAL_SUMMARY_CAP,
   revealCycleMonth,
+  revealMonthlyChallengeForUser,
   selectRevealPair,
 } from '@/lib/challenges/reveal';
+
+const { loadPool, rpc } = vi.hoisted(() => ({
+  loadPool: vi.fn(),
+  rpc: vi.fn(),
+}));
+
+vi.mock('@/lib/challenges/generate', () => ({
+  loadMonthlyChallengePool: (...args: unknown[]) => loadPool(...args),
+}));
+
+vi.mock('@/lib/supabase-admin', () => ({
+  getSupabaseAdmin: () => ({
+    rpc: (...args: unknown[]) => rpc(...args),
+  }),
+}));
 
 const ROOT = path.resolve(__dirname, '../../..');
 
@@ -92,5 +108,84 @@ describe('monthly reveal brief and selection', () => {
     expect(action).not.toContain('restaurantId');
     expect(action).not.toContain('p_restaurant_ids');
     expect(page).not.toContain('revealMonthlyChallenge');
+  });
+});
+
+describe('revealMonthlyChallengeForUser returns the saved row', () => {
+  beforeEach(() => {
+    loadPool.mockReset();
+    rpc.mockReset();
+  });
+
+  it('passes the RPC brief, reasons, source, and period through on a retry', async () => {
+    loadPool.mockResolvedValue({
+      ok: true,
+      kind: 'existing',
+      periodKey: '2026-12-01',
+      marketId: 'market-1',
+      data: {
+        distanceMatch: { expanded: true, requestedMiles: 5, usedMiles: 12 },
+        cycle: { cycle_month: '2026-12-01' },
+        items: [
+          {
+            challengeItem: { restaurant_id: 'local-a', offer_version_id: null },
+            restaurant: { name: 'Local A' },
+          },
+          {
+            challengeItem: { restaurant_id: 'local-b', offer_version_id: null },
+            restaurant: { name: 'Local B' },
+          },
+        ],
+      },
+    });
+    rpc.mockResolvedValue({
+      data: [{
+        outcome: 'existing',
+        cycle_id: 'cycle-saved',
+        reveal_id: 'reveal-saved',
+        period_key: '2026-11-01',
+        restaurant_ids: ['saved-a', 'saved-b'],
+        selection_source: 'deterministic_fallback',
+        brief: {
+          occasion: 'date night',
+          discovery_level: 'new',
+          summary: 'saved summary',
+          surprise_me: false,
+        },
+        item_reasons: [
+          { restaurant_id: 'saved-a', template_id: 'deterministic_pair_v1', text: 'Saved A' },
+          { restaurant_id: 'saved-b', template_id: 'deterministic_pair_v1', text: 'Saved B' },
+        ],
+      }],
+      error: null,
+    });
+
+    const result = await revealMonthlyChallengeForUser('user-1', {
+      summary: 'new brief that must not win',
+      surpriseMe: true,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      cycleId: 'cycle-saved',
+      revealId: 'reveal-saved',
+      periodKey: '2026-11-01',
+      restaurantIds: ['saved-a', 'saved-b'],
+      selectionSource: 'deterministic_fallback',
+      brief: {
+        occasion: 'date night',
+        discovery_level: 'new',
+        summary: 'saved summary',
+        surprise_me: false,
+      },
+      reasons: [
+        { restaurantId: 'saved-a', templateId: 'deterministic_pair_v1', text: 'Saved A' },
+        { restaurantId: 'saved-b', templateId: 'deterministic_pair_v1', text: 'Saved B' },
+      ],
+    });
+    if (result.ok) {
+      expect(result.reasons.some((reason) => reason.text.includes('already your challenge'))).toBe(false);
+      expect(result.brief.summary).not.toBe('new brief that must not win');
+    }
   });
 });

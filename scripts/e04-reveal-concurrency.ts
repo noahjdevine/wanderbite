@@ -44,7 +44,7 @@ class PsqlSession {
 }
 
 function revealCall(second: string): string {
-  return `select outcome || '|' || cycle_id::text || '|' || array_to_string(restaurant_ids, ',')
+  return `select selection_source || E'\\n' || item_reasons::text || E'\\n' || array_to_string(restaurant_ids, ',')
     from public.reveal_monthly_challenge(
       '${USER}'::uuid,
       '${MONTH}'::date,
@@ -52,7 +52,10 @@ function revealCall(second: string): string {
       array['${R1}'::uuid, '${second}'::uuid],
       '{"summary":"race","surprise_me":false}'::jsonb,
       'deterministic_fallback',
-      '[]'::jsonb,
+      jsonb_build_array(
+        jsonb_build_object('restaurant_id', '${R1}', 'template_id', 'deterministic_pair_v1', 'text', 'one'),
+        jsonb_build_object('restaurant_id', '${second}', 'template_id', 'deterministic_pair_v1', 'text', 'two')
+      ),
       '{}'::jsonb,
       'e04b.deterministic.v1'
     );`;
@@ -87,9 +90,8 @@ export async function runE04RevealConcurrency(opts: {
     const first = a.send(revealCall(R2));
     const second = b.send(revealCall(R3));
     const [left, right] = await Promise.all([first, second]);
-    const leftIds = left.split('|')[2]?.split(',').sort().join(',');
-    const rightIds = right.split('|')[2]?.split(',').sort().join(',');
-    assert.equal(leftIds, rightIds, `concurrent reveals diverged: ${left} vs ${right}`);
+    assert.equal(left, right, `concurrent reveals diverged: ${left} vs ${right}`);
+    assert.match(left, /deterministic_fallback/);
     assert.equal(sql(`select count(*) from public.challenge_cycles where user_id = '${USER}'`), '1');
     assert.equal(sql(`select count(*) from public.challenge_reveals where user_id = '${USER}'`), '1');
     assert.equal(sql(`select count(*) from public.entitlement_credits where user_id = '${USER}'`), '0');

@@ -55,7 +55,16 @@ create or replace function public.reveal_monthly_challenge(
   p_eligibility_facts jsonb,
   p_source_version text
 )
-returns table (outcome text, cycle_id uuid, reveal_id uuid, restaurant_ids uuid[])
+returns table (
+  outcome text,
+  cycle_id uuid,
+  reveal_id uuid,
+  period_key date,
+  restaurant_ids uuid[],
+  selection_source text,
+  brief jsonb,
+  item_reasons jsonb
+)
 language plpgsql
 security definer
 set search_path to pg_catalog, public
@@ -66,13 +75,16 @@ declare
   existing_cycle_id uuid;
   generated_outcome text;
   generated_cycle uuid;
-  saved_ids uuid[];
+  reason_ids uuid[];
   stored_brief jsonb;
   stored_source text;
+  stored_reasons jsonb;
   new_reveal_id uuid;
+  cycle_complete boolean;
 begin
   if p_user_id is null or p_cycle_month is null or p_market_id is null then
-    return query select 'invalid_restaurants'::text, null::uuid, null::uuid, null::uuid[];
+    return query select 'invalid_restaurants'::text, null::uuid, null::uuid, null::date,
+      null::uuid[], null::text, null::jsonb, null::jsonb;
     return;
   end if;
 
@@ -81,7 +93,8 @@ begin
   where up.id = p_user_id
   for update;
   if not found or profile_status is distinct from 'active' then
-    return query select 'inactive_subscription'::text, null::uuid, null::uuid, null::uuid[];
+    return query select 'inactive_subscription'::text, null::uuid, null::uuid, null::date,
+      null::uuid[], null::text, null::jsonb, null::jsonb;
     return;
   end if;
 
@@ -100,11 +113,21 @@ begin
   where cr.user_id = p_user_id and cr.period_key = p_cycle_month
   for update;
   if found then
-    select array_agg(ci.restaurant_id order by ci.slot_number) into saved_ids
-    from public.challenge_items ci
-    where ci.cycle_id = existing_reveal.cycle_id
-      and ci.status in ('assigned', 'redeemed', 'expired');
-    return query select 'existing'::text, existing_reveal.cycle_id, existing_reveal.id, saved_ids;
+    return query
+    select
+      'existing'::text,
+      existing_reveal.cycle_id,
+      existing_reveal.id,
+      existing_reveal.period_key,
+      (
+        select array_agg(ci.restaurant_id order by ci.slot_number)
+        from public.challenge_items ci
+        where ci.cycle_id = existing_reveal.cycle_id
+          and ci.status in ('assigned', 'redeemed', 'expired')
+      ),
+      existing_reveal.selection_source,
+      existing_reveal.brief,
+      existing_reveal.item_reasons;
     return;
   end if;
 
@@ -114,12 +137,24 @@ begin
   for update;
 
   if existing_cycle_id is null then
+    select coalesce(array_agg((elem ->> 'restaurant_id')::uuid order by ord), '{}'::uuid[])
+      into reason_ids
+    from jsonb_array_elements(
+      case when jsonb_typeof(p_item_reasons) = 'array' then p_item_reasons else '[]'::jsonb end
+    ) with ordinality as t(elem, ord);
+    if reason_ids is distinct from p_restaurant_ids then
+      return query select 'invalid_restaurants'::text, null::uuid, null::uuid, null::date,
+        null::uuid[], null::text, null::jsonb, null::jsonb;
+      return;
+    end if;
+
     select g.outcome, g.cycle_id into generated_outcome, generated_cycle
     from public.generate_challenge_cycle(
       p_user_id, p_cycle_month, p_market_id, p_restaurant_ids
     ) as g;
     if generated_outcome is distinct from 'created' and generated_outcome is distinct from 'existing' then
-      return query select generated_outcome, generated_cycle, null::uuid, null::uuid[];
+      return query select generated_outcome, generated_cycle, null::uuid, null::date,
+        null::uuid[], null::text, null::jsonb, null::jsonb;
       return;
     end if;
     existing_cycle_id := generated_cycle;
@@ -127,14 +162,38 @@ begin
       when p_selection_source = 'ai_ranked' then 'ai_ranked'
       else 'deterministic_fallback'
     end;
+    stored_reasons := coalesce(p_item_reasons, '[]'::jsonb);
   else
+    select
+      count(*) = 2
+      and count(*) filter (where ci.slot_number = 1) = 1
+      and count(*) filter (where ci.slot_number = 2) = 1
+      and count(distinct ci.restaurant_id) = 2
+    into cycle_complete
+    from public.challenge_items ci
+    where ci.cycle_id = existing_cycle_id
+      and ci.status in ('assigned', 'redeemed', 'expired');
+    if not coalesce(cycle_complete, false) then
+      return query select 'incomplete_cycle'::text, existing_cycle_id, null::uuid, null::date,
+        null::uuid[], null::text, null::jsonb, null::jsonb;
+      return;
+    end if;
     stored_source := 'legacy_generate';
+    select coalesce(jsonb_agg(
+      jsonb_build_object(
+        'restaurant_id', ci.restaurant_id,
+        'template_id', 'legacy_pair_v1',
+        'text', r.name || ' was already your challenge for this month.'
+      )
+      order by ci.slot_number
+    ), '[]'::jsonb)
+    into stored_reasons
+    from public.challenge_items ci
+    join public.restaurants r on r.id = ci.restaurant_id
+    where ci.cycle_id = existing_cycle_id
+      and ci.status in ('assigned', 'redeemed', 'expired');
+    generated_outcome := 'existing';
   end if;
-
-  select array_agg(ci.restaurant_id order by ci.slot_number) into saved_ids
-  from public.challenge_items ci
-  where ci.cycle_id = existing_cycle_id
-    and ci.status in ('assigned', 'redeemed', 'expired');
 
   begin
     insert into public.challenge_reveals (
@@ -146,7 +205,7 @@ begin
       existing_cycle_id,
       stored_brief,
       stored_source,
-      coalesce(p_item_reasons, '[]'::jsonb),
+      stored_reasons,
       coalesce(p_eligibility_facts, '{}'::jsonb),
       coalesce(nullif(p_source_version, ''), 'e04b.deterministic.v1')
     )
@@ -156,13 +215,26 @@ begin
       select cr.id into new_reveal_id
       from public.challenge_reveals cr
       where cr.user_id = p_user_id and cr.period_key = p_cycle_month;
+      generated_outcome := 'existing';
   end;
 
-  return query select
-    case when stored_source = 'legacy_generate' then 'existing' else coalesce(generated_outcome, 'existing') end,
-    existing_cycle_id,
-    new_reveal_id,
-    saved_ids;
+  return query
+  select
+    coalesce(generated_outcome, 'existing'),
+    cr.cycle_id,
+    cr.id,
+    cr.period_key,
+    (
+      select array_agg(ci.restaurant_id order by ci.slot_number)
+      from public.challenge_items ci
+      where ci.cycle_id = cr.cycle_id
+        and ci.status in ('assigned', 'redeemed', 'expired')
+    ),
+    cr.selection_source,
+    cr.brief,
+    cr.item_reasons
+  from public.challenge_reveals cr
+  where cr.id = new_reveal_id;
 end;
 $$;
 

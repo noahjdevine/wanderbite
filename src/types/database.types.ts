@@ -2548,10 +2548,14 @@ export type Database = {
           p_user_id: string
         }
         Returns: {
-          cycle_id: string
+          brief: Json | null
+          cycle_id: string | null
+          item_reasons: Json | null
           outcome: string
-          restaurant_ids: string[]
-          reveal_id: string
+          period_key: string | null
+          restaurant_ids: string[] | null
+          reveal_id: string | null
+          selection_source: string | null
         }[]
       }
       issue_period_credits: {

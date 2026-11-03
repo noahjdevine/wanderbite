@@ -131,8 +131,45 @@ type RevealRpcRow = {
   outcome: string | null;
   cycle_id: string | null;
   reveal_id: string | null;
+  period_key: string | null;
   restaurant_ids: string[] | null;
+  selection_source: string | null;
+  brief: Json | null;
+  item_reasons: Json | null;
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function briefFromSaved(value: Json | null): StoredRevealBrief | null {
+  if (!isRecord(value)) return null;
+  if (typeof value.summary !== 'string' || typeof value.surprise_me !== 'boolean') return null;
+  return {
+    occasion: typeof value.occasion === 'string' ? value.occasion : '',
+    discovery_level: typeof value.discovery_level === 'string' ? value.discovery_level : '',
+    summary: value.summary,
+    surprise_me: value.surprise_me,
+  };
+}
+
+function reasonsFromSaved(value: Json | null): RevealReason[] | null {
+  if (!Array.isArray(value)) return null;
+  const reasons: RevealReason[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.restaurant_id !== 'string' || typeof entry.text !== 'string') {
+      return null;
+    }
+    const templateId = entry.template_id === 'legacy_pair_v1' ? 'legacy_pair_v1' : 'deterministic_pair_v1';
+    reasons.push({ restaurantId: entry.restaurant_id, templateId, text: entry.text });
+  }
+  return reasons;
+}
+
+function sourceFromSaved(value: string | null): RevealSelectionSource | null {
+  if (value === 'deterministic_fallback' || value === 'ai_ranked' || value === 'legacy_generate') return value;
+  return null;
+}
 
 function retryable(outcome: string): RevealChallengeResult {
   if (outcome === 'capacity_full') {
@@ -154,6 +191,9 @@ function retryable(outcome: string): RevealChallengeResult {
   }
   if (outcome === 'local_month_not_open') {
     return { ok: false, error: 'This offer pair opens on the Chicago month.', reason: 'waiting_for_local_month' };
+  }
+  if (outcome === 'incomplete_cycle') {
+    return { ok: false, error: 'Failed to create challenge items.', reason: 'incomplete_cycle' };
   }
   return { ok: false, error: THIN_POOL_ERROR, reason: 'retryable' };
 }
@@ -242,7 +282,19 @@ export async function revealMonthlyChallengeForUser(
       return { ok: false, error: 'Could not save your challenges. Please try again.', reason: 'retryable' };
     }
     const row = firstRpcRow(data as RevealRpcRow[] | RevealRpcRow | null);
-    if (!row?.cycle_id || !row.reveal_id || !row.restaurant_ids || row.restaurant_ids.length < 2) {
+    const savedBrief = briefFromSaved(row?.brief ?? null);
+    const savedReasons = reasonsFromSaved(row?.item_reasons ?? null);
+    const savedSource = sourceFromSaved(row?.selection_source ?? null);
+    if (
+      !row?.cycle_id ||
+      !row.reveal_id ||
+      !row.period_key ||
+      !row.restaurant_ids ||
+      row.restaurant_ids.length < 2 ||
+      !savedBrief ||
+      !savedReasons ||
+      !savedSource
+    ) {
       if (row?.outcome === 'capacity_full' || row?.outcome === 'below_floor' || row?.outcome === 'invalid_restaurants') {
         console.warn('[challenges] reveal rpc rejected a service candidate', {
           userId,
@@ -251,17 +303,15 @@ export async function revealMonthlyChallengeForUser(
       }
       return retryable(row?.outcome ?? 'invalid_restaurants');
     }
-    const savedSource: RevealSelectionSource =
-      pool.kind === 'existing' ? 'legacy_generate' : 'deterministic_fallback';
     return {
       ok: true,
       cycleId: row.cycle_id,
       revealId: row.reveal_id,
-      periodKey,
+      periodKey: row.period_key,
       restaurantIds: row.restaurant_ids,
       selectionSource: savedSource,
-      brief,
-      reasons,
+      brief: savedBrief,
+      reasons: savedReasons,
     };
   } catch {
     return { ok: false, error: 'Could not save your challenges. Please try again.', reason: 'retryable' };
