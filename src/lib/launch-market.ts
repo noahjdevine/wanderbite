@@ -142,9 +142,89 @@ export function hasStructuredAddress(address: StructuredAddress): boolean {
   );
 }
 
-export function launchAreaState(address: StructuredAddress): LaunchAreaState {
-  if (!hasStructuredAddress(address)) return 'missing_address';
-  return isLaunchEligibleAddress(address) ? 'eligible' : 'ineligible';
+/** Strict "street, city, ST ZIP" line. Anything else is left unparsed. */
+const LEGACY_ADDRESS_RE =
+  /^(.+),\s*([^,]+),\s*([A-Za-z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/;
+
+function blankAddressPart(value: string | null | undefined): boolean {
+  return value == null || value.trim() === '';
+}
+
+export function parseLegacyAddress(
+  raw: string | null | undefined,
+): StructuredAddress | null {
+  if (raw == null) return null;
+  const match = LEGACY_ADDRESS_RE.exec(raw);
+  if (!match) return null;
+  const street = match[1].trim();
+  const city = match[2].trim();
+  const state = match[3].toUpperCase();
+  const zip = match[4];
+  if (!street || !city || state.length !== 2 || !zip) return null;
+  return { street, city, state, zip };
+}
+
+export type AddressResolutionInput = StructuredAddress & {
+  legacy?: string | null;
+};
+
+/**
+ * Structured street/city/state/zip win when all four are set.
+ * Legacy `address` is parsed only when all four are blank.
+ * A partial structured row is returned unchanged.
+ */
+export function resolveStructuredAddress(
+  input: AddressResolutionInput,
+): StructuredAddress {
+  const structured: StructuredAddress = {
+    street: input.street ?? null,
+    city: input.city ?? null,
+    state: input.state ?? null,
+    zip: input.zip ?? null,
+  };
+  if (hasStructuredAddress(structured)) {
+    return {
+      street: structured.street?.trim() ?? null,
+      city: structured.city?.trim() ?? null,
+      state: structured.state?.trim() ?? null,
+      zip: structured.zip?.trim() ?? null,
+    };
+  }
+  const allBlank =
+    blankAddressPart(structured.street) &&
+    blankAddressPart(structured.city) &&
+    blankAddressPart(structured.state) &&
+    blankAddressPart(structured.zip);
+  if (!allBlank) return structured;
+  return parseLegacyAddress(input.legacy) ?? structured;
+}
+
+export type ProfileAddressFields = {
+  address?: string | null;
+  address_street?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_zip?: string | null;
+};
+
+export function resolveProfileAddress(
+  row: ProfileAddressFields | null | undefined,
+): StructuredAddress {
+  return resolveStructuredAddress({
+    street: row?.address_street ?? null,
+    city: row?.address_city ?? null,
+    state: row?.address_state ?? null,
+    zip: row?.address_zip ?? null,
+    legacy: row?.address ?? null,
+  });
+}
+
+export function launchAreaState(
+  address: AddressResolutionInput,
+): LaunchAreaState {
+  const resolved = resolveStructuredAddress(address);
+  if (!hasStructuredAddress(resolved)) return 'missing_address';
+  return isLaunchEligibleAddress(resolved) ? 'eligible' : 'ineligible';
 }
 
 export function haversineMiles(a: GeoPoint, b: GeoPoint): number {

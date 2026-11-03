@@ -7,7 +7,7 @@ import { calculateStreak } from '@/lib/streaks';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
-import { launchAreaState } from '@/lib/launch-market';
+import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import { loadCreditsSwapRemaining } from '@/lib/challenges/carried-credits';
 
@@ -26,7 +26,7 @@ export default async function DashboardPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, role, subscription_status, username, address_street, address_city, address_state, address_zip, workflow_version')
+    .select('id, role, subscription_status, username, address, address_street, address_city, address_state, address_zip, workflow_version')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -47,6 +47,7 @@ export default async function DashboardPage() {
     role: string | null;
     subscription_status: string | null;
     username: string | null;
+    address: string | null;
     address_street: string | null;
     address_city: string | null;
     address_state: string | null;
@@ -54,26 +55,20 @@ export default async function DashboardPage() {
     workflow_version: string;
   };
 
-  const next = nextMemberRedirect(
-    '/dashboard',
-    profileGate({
-      role: typedProfile.role,
-      subscription_status: typedProfile.subscription_status,
-      username: typedProfile.username,
-      address_street: typedProfile.address_street,
-      address_city: typedProfile.address_city,
-      address_state: typedProfile.address_state,
-      address_zip: typedProfile.address_zip,
-    }),
-  );
+  const gate = profileGate({
+    role: typedProfile.role,
+    subscription_status: typedProfile.subscription_status,
+    username: typedProfile.username,
+    address: typedProfile.address,
+    address_street: typedProfile.address_street,
+    address_city: typedProfile.address_city,
+    address_state: typedProfile.address_state,
+    address_zip: typedProfile.address_zip,
+  });
+  const next = nextMemberRedirect('/dashboard', gate);
   if (next) redirect(next);
 
-  const area = launchAreaState({
-    street: typedProfile.address_street,
-    city: typedProfile.address_city,
-    state: typedProfile.address_state,
-    zip: typedProfile.address_zip,
-  });
+  const area = launchAreaState(resolveProfileAddress(typedProfile));
 
   let creditsSwapRemaining: number | null = null;
   if (typedProfile.workflow_version === 'credits') {

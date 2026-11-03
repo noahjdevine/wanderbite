@@ -1,4 +1,4 @@
-import { hasStructuredAddress } from '@/lib/launch-market';
+import { hasStructuredAddress, resolveProfileAddress } from '@/lib/launch-market';
 
 export type MemberProfileGate = {
   role: string | null;
@@ -13,6 +13,8 @@ export type MemberAddress = {
   address_city: string | null;
   address_state: string | null;
   address_zip: string | null;
+  /** Legacy freeform line. Used only when every structured column is blank. */
+  address?: string | null;
 };
 
 export function isAdminRole(role: string | null | undefined): boolean {
@@ -33,12 +35,7 @@ export function profileGate(row: ({
   }
   const profileComplete =
     Boolean(row.username?.trim()) &&
-    hasStructuredAddress({
-      street: row.address_street,
-      city: row.address_city,
-      state: row.address_state,
-      zip: row.address_zip,
-    });
+    hasStructuredAddress(resolveProfileAddress(row));
   return {
     role: row.role ?? null,
     subscriptionStatus: row.subscription_status ?? null,
@@ -51,7 +48,6 @@ export function profileGate(row: ({
 export function ordinarySignInPath(profile: MemberProfileGate): string {
   if (!profile.hasProfile) return '/onboarding';
   if (isAdminRole(profile.role) && !profile.profileComplete) return '/account';
-  if (profile.subscriptionStatus === 'active' && !profile.profileComplete) return '/onboarding';
   if (profile.subscriptionStatus === 'active') return '/challenges';
   return '/pricing';
 }
@@ -65,11 +61,7 @@ export function nextMemberRedirect(
 
   if (path === '/onboarding') {
     if (profile.hasProfile && isAdminRole(profile.role)) return '/account';
-    if (
-      profile.hasProfile &&
-      profile.profileComplete &&
-      profile.subscriptionStatus === 'active'
-    ) {
+    if (profile.hasProfile && profile.subscriptionStatus === 'active') {
       return '/challenges';
     }
     return null;
@@ -78,15 +70,25 @@ export function nextMemberRedirect(
   if (path === '/account') {
     if (!profile.hasProfile) return '/onboarding';
     if (isAdminRole(profile.role)) return null;
+    // Active members stay, including when username or address is unfinished,
+    // so the challenges notice can link here without bouncing back.
+    if (profile.subscriptionStatus === 'active') return null;
     if (!profile.profileComplete) return '/onboarding';
     return null;
   }
 
-  if (path === '/challenges' || path === '/dashboard') {
+  if (path === '/dashboard') {
     if (!profile.hasProfile) return '/onboarding';
     if (isAdminRole(profile.role) && !profile.profileComplete) return '/account';
     if (profile.subscriptionStatus !== 'active') return '/pricing';
-    if (!profile.profileComplete) return '/onboarding';
+    if (!profile.profileComplete) return '/challenges';
+    return null;
+  }
+
+  if (path === '/challenges') {
+    if (!profile.hasProfile) return '/onboarding';
+    if (isAdminRole(profile.role) && !profile.profileComplete) return '/account';
+    if (profile.subscriptionStatus !== 'active') return '/pricing';
     return null;
   }
 

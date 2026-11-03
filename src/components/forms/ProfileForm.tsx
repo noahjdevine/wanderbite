@@ -1,10 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { checkUsername } from '@/app/actions/check-username';
 import { cn } from '@/lib/utils';
-import { AddressFields, type AddressValues } from '@/components/forms/AddressFields';
+import {
+  AddressFields,
+  isAutofillAnimation,
+  readAddressFields,
+  type AddressValues,
+} from '@/components/forms/AddressFields';
 
 export type ProfileValues = {
   username: string;
@@ -69,6 +74,7 @@ export function ProfileForm({
   const [usernameState, setUsernameState] = useState<UsernameState>({ status: 'idle' });
   const debounceRef = useRef<number | null>(null);
   const lastCheckedUsernameRef = useRef<string | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const dirty = useMemo(() => {
     if (typeof isDirty === 'boolean') return isDirty;
@@ -78,38 +84,74 @@ export function ProfileForm({
   const zipOk = values.address.zip.trim().length === 0 ? false : validZip(values.address.zip);
   const showZipError = touchedZip && values.address.zip.trim().length > 0 && !zipOk;
 
-  function queueUsernameAvailabilityCheck(username: string, opts?: { skipIfUnchanged?: boolean }) {
-    const u = username.trim();
-    if (opts?.skipIfUnchanged && u === lastCheckedUsernameRef.current) {
-      return;
-    }
-    if (debounceRef.current) window.clearTimeout(debounceRef.current);
-    if (!u) {
-      lastCheckedUsernameRef.current = null;
-      setUsernameState({ status: 'too_short' });
-      return;
-    }
-    setUsernameState({ status: 'checking' });
-    debounceRef.current = window.setTimeout(() => {
-      debounceRef.current = null;
-      checkUsername(u)
-        .then((res) => {
-          if (!res.ok) {
-            setUsernameState({ status: 'error', message: res.error });
-            return;
-          }
-          lastCheckedUsernameRef.current = u;
-          setUsernameState({ status: res.status });
-        })
-        .catch(() => setUsernameState({ status: 'error', message: 'Could not check username' }));
-    }, 500);
-  }
+  const queueUsernameAvailabilityCheck = useCallback(
+    (username: string, opts?: { skipIfUnchanged?: boolean }) => {
+      const u = username.trim();
+      if (opts?.skipIfUnchanged && u === lastCheckedUsernameRef.current) {
+        return;
+      }
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      if (!u) {
+        lastCheckedUsernameRef.current = null;
+        setUsernameState({ status: 'too_short' });
+        return;
+      }
+      setUsernameState({ status: 'checking' });
+      debounceRef.current = window.setTimeout(() => {
+        debounceRef.current = null;
+        checkUsername(u)
+          .then((res) => {
+            if (!res.ok) {
+              setUsernameState({ status: 'error', message: res.error });
+              return;
+            }
+            lastCheckedUsernameRef.current = u;
+            setUsernameState({ status: res.status });
+          })
+          .catch(() => setUsernameState({ status: 'error', message: 'Could not check username' }));
+      }, 500);
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const u = values.username.trim();
+    if (!u || u === lastCheckedUsernameRef.current) return;
+    const timer = window.setTimeout(() => {
+      queueUsernameAvailabilityCheck(u, { skipIfUnchanged: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [queueUsernameAvailabilityCheck, values.username]);
 
   useEffect(() => {
     return () => {
       if (debounceRef.current) window.clearTimeout(debounceRef.current);
     };
   }, []);
+
+  const applyAutofill = useCallback(() => {
+    const form = formRef.current;
+    if (!form) return;
+    const domAddress = readAddressFields(form);
+    const username = form.querySelector<HTMLInputElement>('#profile-username')?.value ?? '';
+    setValues((prev) => {
+      const next = {
+        username: username.trim() ? username : prev.username,
+        address: {
+          street: domAddress.street.trim() ? domAddress.street : prev.address.street,
+          city: domAddress.city.trim() ? domAddress.city : prev.address.city,
+          state: domAddress.state.trim() ? domAddress.state : prev.address.state,
+          zip: domAddress.zip.trim() ? domAddress.zip : prev.address.zip,
+        },
+      };
+      if (JSON.stringify(next) === JSON.stringify(prev)) return prev;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    applyAutofill();
+  }, [applyAutofill]);
 
   const usernameHint = usernameMessage(usernameState);
   const usernameGood = usernameOk(usernameState);
@@ -142,7 +184,15 @@ export function ProfileForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      ref={formRef}
+      onSubmit={handleSubmit}
+      onAnimationStart={(event) => {
+        if (!isAutofillAnimation(event)) return;
+        applyAutofill();
+      }}
+      className="space-y-6"
+    >
       <div className="space-y-2">
         <label htmlFor="profile-username" className="text-sm font-medium">
           Username
@@ -155,7 +205,6 @@ export function ProfileForm({
             const next = e.target.value;
             setValues((p) => ({ ...p, username: next }));
             if (!touchedUsername) setTouchedUsername(true);
-            queueUsernameAvailabilityCheck(next);
           }}
           onBlur={() => {
             setTouchedUsername(true);

@@ -10,6 +10,7 @@ import {
 import {
   CHECKOUT_INELIGIBLE_MESSAGE,
   isLaunchEligibleAddress,
+  resolveProfileAddress,
 } from '@/lib/launch-market';
 import {
   LEGAL_ATTESTATION_REQUIRED_MESSAGE,
@@ -55,18 +56,13 @@ export async function createCheckoutSession(
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('address_state, address_zip')
+    .select('address, address_street, address_city, address_state, address_zip')
     .eq('id', auth.userId)
     .maybeSingle();
   if (profileError || !profile) {
     return { ok: false, error: CHECKOUT_INELIGIBLE_MESSAGE };
   }
-  if (
-    !isLaunchEligibleAddress({
-      state: (profile as { address_state: string | null }).address_state,
-      zip: (profile as { address_zip: string | null }).address_zip,
-    })
-  ) {
+  if (!isLaunchEligibleAddress(resolveProfileAddress(profile))) {
     return { ok: false, error: CHECKOUT_INELIGIBLE_MESSAGE };
   }
 

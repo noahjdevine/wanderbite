@@ -28,6 +28,7 @@ import {
   milesForDistanceBand,
   originFromZip,
   parseDistanceBand,
+  resolveProfileAddress,
 } from '@/lib/launch-market';
 import type { Database } from '@/types/database.types';
 
@@ -75,7 +76,7 @@ async function loadCarriedAssignPool(
       supabase
         .from('user_profiles')
         .select(
-          'workflow_version, subscription_status, allergy_flags, dietary_flags, address_state, address_zip, distance_band',
+          'workflow_version, subscription_status, allergy_flags, dietary_flags, address, address_street, address_city, address_state, address_zip, distance_band',
         )
         .eq('id', userId)
         .maybeSingle(),
@@ -101,16 +102,12 @@ async function loadCarriedAssignPool(
   if (!shouldInvokeAssignRpc({ status: credit.status, issuePeriod: credit.issue_period }, chicagoMonthStart(now))) {
     return { ok: false, error: assignCarriedUserMessage('not_carried') ?? 'This credit is not available to assign.' };
   }
-  if (
-    !isLaunchEligibleAddress({
-      state: profile.address_state,
-      zip: profile.address_zip,
-    })
-  ) {
+  const memberAddress = resolveProfileAddress(profile);
+  if (!isLaunchEligibleAddress(memberAddress)) {
     return { ok: false, error: 'Wanderbite is not available at this address yet.' };
   }
   const distanceBand = parseDistanceBand(profile.distance_band);
-  const origin = originFromZip(profile.address_zip);
+  const origin = originFromZip(memberAddress.zip);
   if (!distanceBand || !origin) {
     return { ok: false, error: 'Choose a valid travel distance preference.' };
   }

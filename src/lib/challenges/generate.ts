@@ -37,6 +37,7 @@ import {
   milesForDistanceBand,
   originFromZip,
   parseDistanceBand,
+  resolveProfileAddress,
   type DistanceMatch,
 } from '@/lib/launch-market';
 import type { UserPreferencesRow } from '@/types/user-preferences';
@@ -200,7 +201,7 @@ async function distanceMatchForUser(
 ): Promise<DistanceMatch | null> {
   const { data: profile } = await supabase
     .from('user_profiles')
-    .select('address_zip, distance_band')
+    .select('address, address_street, address_city, address_state, address_zip, distance_band')
     .eq('id', userId)
     .maybeSingle();
   const active = items.filter(
@@ -209,7 +210,7 @@ async function distanceMatchForUser(
       item.challengeItem.status === 'redeemed'
   );
   return deriveDistanceMatch({
-    zip: (profile as { address_zip: string | null } | null)?.address_zip ?? null,
+    zip: resolveProfileAddress(profile).zip,
     distanceBand:
       (profile as { distance_band: string | null } | null)?.distance_band ?? null,
     restaurants: active.map((item) => item.restaurant),
@@ -304,7 +305,7 @@ export async function generateMonthlyChallengeForUser(
         supabase
           .from('user_profiles')
           .select(
-            'subscription_status, allergy_flags, dietary_flags, wants_cocktail_experience, address_state, address_zip, distance_band'
+            'subscription_status, allergy_flags, dietary_flags, wants_cocktail_experience, address, address_street, address_city, address_state, address_zip, distance_band'
           )
           .eq('id', userId)
           .maybeSingle(),
@@ -324,12 +325,8 @@ export async function generateMonthlyChallengeForUser(
     if (profile?.subscription_status !== 'active') {
       return fail('inactive_subscription', INACTIVE_SUBSCRIPTION_ERROR);
     }
-    if (
-      !isLaunchEligibleAddress({
-        state: (profile as { address_state: string | null }).address_state,
-        zip: (profile as { address_zip: string | null }).address_zip,
-      })
-    ) {
+    const memberAddress = resolveProfileAddress(profile);
+    if (!isLaunchEligibleAddress(memberAddress)) {
       return fail('ineligible_address', INELIGIBLE_ADDRESS_ERROR);
     }
     const distanceBand = parseDistanceBand(
@@ -338,9 +335,7 @@ export async function generateMonthlyChallengeForUser(
     if (!distanceBand) {
       return fail('invalid_distance_preference', INVALID_DISTANCE_ERROR);
     }
-    const zipOrigin = originFromZip(
-      (profile as { address_zip: string | null }).address_zip
-    );
+    const zipOrigin = originFromZip(memberAddress.zip);
     if (!zipOrigin) {
       return fail('ineligible_address', INELIGIBLE_ADDRESS_ERROR);
     }

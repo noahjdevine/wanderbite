@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Check } from 'lucide-react';
 import { ProgressIndicator, type WizardStep } from '@/components/onboarding/ProgressIndicator';
 import { PreferencesForm, type PreferencesValues } from '@/components/forms/PreferencesForm';
@@ -38,6 +39,7 @@ export type OnboardingInitial = {
 };
 
 export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
+  const router = useRouter();
   const [step, setStep] = useState<WizardStep>(initial.step);
   const [prefs, setPrefs] = useState<PreferencesValues>(initial.preferences);
   const [profile, setProfile] = useState<ProfileValues>(initial.profile);
@@ -64,6 +66,10 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
     const res = await updateProfileStructured(values, initial.userId);
     if (!res.ok) throw new Error(res.error);
     setProfile(values);
+    if (initial.subscriptionStatus === 'active') {
+      router.push('/challenges');
+      return;
+    }
     setStep(3);
   }
 
@@ -134,7 +140,20 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
               </>
             ) : null}
 
-            {step === 3 ? (
+            {step === 3 && initial.subscriptionStatus === 'active' ? (
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight">Your membership is active</h1>
+                <p className="mt-2 text-muted-foreground">
+                  Your profile is saved. Continue to your challenges.
+                </p>
+                <Link
+                  href="/challenges"
+                  className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-base font-semibold text-primary-foreground"
+                >
+                  Continue to your challenges
+                </Link>
+              </div>
+            ) : step === 3 ? (
               <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
                 <h1 className="text-2xl font-bold tracking-tight">Your profile is saved</h1>
                 <p className="mt-2 text-muted-foreground">

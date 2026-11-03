@@ -20,6 +20,7 @@ import {
   milesForDistanceBand,
   originFromZip,
   parseDistanceBand,
+  resolveProfileAddress,
 } from '@/lib/launch-market';
 import type { UserPreferencesRow } from '@/types/user-preferences';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -362,23 +363,19 @@ async function swapLinkedCreditItem(
       await Promise.all([
         supabase
           .from('user_profiles')
-          .select('allergy_flags, dietary_flags, address_state, address_zip, distance_band')
+          .select('allergy_flags, dietary_flags, address, address_street, address_city, address_state, address_zip, distance_band')
           .eq('id', userId)
           .maybeSingle(),
         supabase.from('user_preferences').select('excluded_cuisines').eq('user_id', userId).maybeSingle(),
       ]);
     if (profileErr) return { ok: false, error: `Failed to load profile: ${profileErr.message}` };
     if (prefsErr) return { ok: false, error: `Failed to load preferences: ${prefsErr.message}` };
-    if (
-      !isLaunchEligibleAddress({
-        state: profile?.address_state,
-        zip: profile?.address_zip,
-      })
-    ) {
+    const carriedAddress = resolveProfileAddress(profile);
+    if (!isLaunchEligibleAddress(carriedAddress)) {
       return { ok: false, error: 'Wanderbite is not available at this address yet.' };
     }
     const distanceBand = parseDistanceBand(profile?.distance_band);
-    const zipOrigin = originFromZip(profile?.address_zip);
+    const zipOrigin = originFromZip(carriedAddress.zip);
     if (!distanceBand || !zipOrigin) {
       return { ok: false, error: 'Choose a valid travel distance preference.' };
     }
@@ -604,7 +601,7 @@ export async function swapChallengeItem(
       await Promise.all([
         supabase
           .from('user_profiles')
-          .select('allergy_flags, dietary_flags, address_state, address_zip, distance_band')
+          .select('allergy_flags, dietary_flags, address, address_street, address_city, address_state, address_zip, distance_band')
           .eq('id', auth.userId)
           .maybeSingle(),
         supabase
@@ -620,20 +617,14 @@ export async function swapChallengeItem(
     if (prefsErr) {
       return { ok: false, error: `Failed to load preferences: ${prefsErr.message}` };
     }
-    if (
-      !isLaunchEligibleAddress({
-        state: (profile as { address_state: string | null } | null)?.address_state,
-        zip: (profile as { address_zip: string | null } | null)?.address_zip,
-      })
-    ) {
+    const memberAddress = resolveProfileAddress(profile);
+    if (!isLaunchEligibleAddress(memberAddress)) {
       return { ok: false, error: 'Wanderbite is not available at this address yet.' };
     }
     const distanceBand = parseDistanceBand(
       (profile as { distance_band: string | null } | null)?.distance_band
     );
-    const zipOrigin = originFromZip(
-      (profile as { address_zip: string | null } | null)?.address_zip
-    );
+    const zipOrigin = originFromZip(memberAddress.zip);
     if (!distanceBand || !zipOrigin) {
       return { ok: false, error: 'Choose a valid travel distance preference.' };
     }

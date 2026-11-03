@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import { US_STATES } from '@/lib/us-states';
 
 export type AddressValues = {
@@ -8,6 +9,48 @@ export type AddressValues = {
   state: string;
   zip: string;
 };
+
+/** Matches the autofill keyframes in globals.css. */
+export const AUTOFILL_ANIMATION_NAME = 'wb-onAutoFillStart';
+
+export function isAutofillAnimation(event: { animationName: string }): boolean {
+  return event.animationName === AUTOFILL_ANIMATION_NAME;
+}
+
+/** Map a browser autofill of "TX", "tx", or "Texas" onto the select's code. */
+export function normalizeAutofillState(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  const codePrefix = /^([A-Za-z]{2})\b/.exec(trimmed);
+  if (codePrefix) {
+    const code = codePrefix[1].toUpperCase();
+    if (US_STATES.some((state) => state.code === code)) return code;
+  }
+  const byName = US_STATES.find((state) => state.name.toLowerCase() === trimmed.toLowerCase());
+  return byName ? byName.code : trimmed;
+}
+
+export function readAddressFields(root: ParentNode): AddressValues {
+  const street = root.querySelector<HTMLInputElement>('#address-street')?.value ?? '';
+  const city = root.querySelector<HTMLInputElement>('#address-city')?.value ?? '';
+  const stateRaw = root.querySelector<HTMLSelectElement>('#address-state')?.value ?? '';
+  const zip = root.querySelector<HTMLInputElement>('#address-zip')?.value ?? '';
+  return {
+    street,
+    city,
+    state: normalizeAutofillState(stateRaw),
+    zip,
+  };
+}
+
+function filledAddress(current: AddressValues, dom: AddressValues): AddressValues {
+  return {
+    street: dom.street.trim() ? dom.street : current.street,
+    city: dom.city.trim() ? dom.city : current.city,
+    state: dom.state.trim() ? dom.state : current.state,
+    zip: dom.zip.trim() ? dom.zip : current.zip,
+  };
+}
 
 export function AddressFields({
   value,
@@ -20,8 +63,42 @@ export function AddressFields({
   disabled?: boolean;
   onZipBlur?: () => void;
 }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const dom = readAddressFields(root);
+    const next = filledAddress(value, dom);
+    if (
+      next.street === value.street &&
+      next.city === value.city &&
+      next.state === value.state &&
+      next.zip === value.zip
+    ) {
+      return;
+    }
+    onChange(next);
+    // Mount-only: browser autofill can land before the first effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function syncFromAnimation(event: React.AnimationEvent<HTMLDivElement>) {
+    if (!isAutofillAnimation(event)) return;
+    const next = filledAddress(value, readAddressFields(event.currentTarget));
+    if (
+      next.street === value.street &&
+      next.city === value.city &&
+      next.state === value.state &&
+      next.zip === value.zip
+    ) {
+      return;
+    }
+    onChange(next);
+  }
+
   return (
-    <div className="space-y-3">
+    <div ref={rootRef} className="space-y-3" onAnimationStart={syncFromAnimation}>
       <div className="space-y-2">
         <label htmlFor="address-street" className="text-sm font-medium">
           Street
