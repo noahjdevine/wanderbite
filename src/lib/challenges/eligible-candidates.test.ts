@@ -556,7 +556,7 @@ describe('eligible challenge candidates', () => {
     expect(moduleSource).not.toMatch(/rpc\(|generate_challenge_cycle|reserve_version_buckets/);
     const generate = source('src/lib/challenges/generate.ts');
     const rpcAt = generate.indexOf("rpc(");
-    expect(generate.indexOf('eligibility.candidates.length < CHALLENGE_ITEMS_PER_MONTH')).toBeLessThan(
+    expect(generate.indexOf('pool.candidates.length < CHALLENGE_ITEMS_PER_MONTH')).toBeLessThan(
       rpcAt,
     );
     expect(generate.indexOf('listEligibleChallengeCandidates(')).toBeLessThan(rpcAt);
@@ -586,7 +586,7 @@ describe('eligible challenge candidates', () => {
     expect(listed.candidates.map((row) => row.restaurantId)).toEqual(['fresh']);
     expect(listed.rejections.capacity).toBe(1);
     expect(source('src/lib/challenges/generate.ts')).toContain(
-      'eligibility.candidates.map((candidate) => candidate.restaurant)',
+      'pool.candidates.map((candidate) => candidate.restaurant)',
     );
   });
 });

@@ -12,7 +12,10 @@ import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { normalizeCuisineIds } from '@/lib/cuisines';
 import { isCompleteCurrentLayout } from '@/lib/challenges/current-layout';
 import { pickDistinctRestaurants } from '@/lib/challenges/distance-pool';
-import { listEligibleChallengeCandidates } from '@/lib/challenges/eligible-candidates';
+import {
+  listEligibleChallengeCandidates,
+  type EligibleChallengeCandidate,
+} from '@/lib/challenges/eligible-candidates';
 import {
   assignmentDeadline,
   versionCapacityBuckets,
@@ -139,7 +142,7 @@ export type GenerateChallengeResult =
 function fail(
   reason: GenerateFailureReason,
   error: string
-): GenerateChallengeResult {
+): { ok: false; error: string; reason: GenerateFailureReason } {
   return { ok: false, reason, error };
 }
 
@@ -275,14 +278,28 @@ export async function loadReservedCapacityCounts(
   return { ok: true, counts };
 }
 
+export type MonthlyChallengePool =
+  | { ok: false; error: string; reason: GenerateFailureReason }
+  | { ok: true; kind: 'existing'; data: GeneratedChallenge; periodKey: string; marketId: string }
+  | {
+      ok: true;
+      kind: 'pool';
+      candidates: EligibleChallengeCandidate<RestaurantRow>[];
+      wantsCocktailExperience: boolean;
+      marketId: string;
+      chicagoPeriod: string;
+      utcPeriod: string;
+      zipDistanceExpanded: boolean;
+    };
+
 /**
- * Generates (or returns existing) monthly challenge for a user in the launch market.
+ * Loads the current cycle or the eligible pool. Does not insert a cycle.
  * Eligibility and distance-band validation run before returning an existing cycle.
  */
-export async function generateMonthlyChallengeForUser(
+export async function loadMonthlyChallengePool(
   userId: string,
   options?: { excludeVersionBound?: boolean }
-): Promise<GenerateChallengeResult> {
+): Promise<MonthlyChallengePool> {
   try {
     const supabase = getSupabaseAdmin();
     const market = await requireLaunchMarketId(supabase);
@@ -358,7 +375,13 @@ export async function generateMonthlyChallengeForUser(
           return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
         }
         const distanceMatch = await distanceMatchForUser(supabase, userId, items);
-        return { ok: true, data: { cycle, items, distanceMatch } };
+        return {
+          ok: true,
+          kind: 'existing',
+          data: { cycle, items, distanceMatch },
+          periodKey: cycle.cycle_month,
+          marketId,
+        };
       }
     }
 
@@ -624,30 +647,57 @@ export async function generateMonthlyChallengeForUser(
       });
     }
 
-    if (eligibility.candidates.length < CHALLENGE_ITEMS_PER_MONTH) {
+    return {
+      ok: true,
+      kind: 'pool',
+      candidates: eligibility.candidates,
+      wantsCocktailExperience,
+      marketId,
+      chicagoPeriod: chicagoMonthStart(now),
+      utcPeriod: utcCycleMonthStr,
+      zipDistanceExpanded: eligibility.distance.expanded,
+    };
+  } catch (e) {
+    Sentry.captureException(e);
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    return fail('assignment_failed', `Assignment failed: ${message}`);
+  }
+}
+
+/**
+ * Generates (or returns existing) monthly challenge for a user in the launch market.
+ * The reveal path uses the same pool and does not call this RPC.
+ */
+export async function generateMonthlyChallengeForUser(
+  userId: string,
+  options?: { excludeVersionBound?: boolean }
+): Promise<GenerateChallengeResult> {
+  try {
+    const pool = await loadMonthlyChallengePool(userId, options);
+    if (!pool.ok) return pool;
+    if (pool.kind === 'existing') return { ok: true, data: pool.data };
+    if (pool.candidates.length < CHALLENGE_ITEMS_PER_MONTH) {
       return fail('thin_pool', THIN_POOL_ERROR);
     }
-
     const chosen = pickDistinctRestaurants(
-      eligibility.candidates.map((candidate) => candidate.restaurant),
+      pool.candidates.map((candidate) => candidate.restaurant),
       CHALLENGE_ITEMS_PER_MONTH,
-      { reserveCocktail: wantsCocktailExperience, shuffle }
+      { reserveCocktail: pool.wantsCocktailExperience, shuffle }
     );
     if (chosen.length < CHALLENGE_ITEMS_PER_MONTH) {
       return fail('thin_pool', THIN_POOL_ERROR);
     }
 
     const versionBacked = chosen.some(
-      (restaurant) =>
-        (restaurant as RestaurantRow & { current_offer_version_id?: string | null })
-          .current_offer_version_id
+      (restaurant) => restaurant.current_offer_version_id
     );
+    const supabase = getSupabaseAdmin();
     const { data: rpcData, error: rpcError } = await supabase.rpc(
       'generate_challenge_cycle',
       {
         p_user_id: userId,
-        p_cycle_month: versionBacked ? chicagoMonthStart(now) : utcCycleMonthStr,
-        p_market_id: marketId,
+        p_cycle_month: versionBacked ? pool.chicagoPeriod : pool.utcPeriod,
+        p_market_id: pool.marketId,
         p_restaurant_ids: chosen.map((restaurant) => restaurant.id),
       }
     );

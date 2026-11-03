@@ -1,6 +1,6 @@
 # E02 plan
 
-Synced through **#76** (merge `1d4f94fcfb83ea950840cdead1b13bd9566f6d9e`). That range includes [#73](https://github.com/noahjdevine/wanderbite/pull/73) merge `63b978cc113c422bf33574c250ef423e32d4f8fe`, [#74](https://github.com/noahjdevine/wanderbite/pull/74) merge `976b62466eade4234420e84e836c2526a6d2eef1`, [#75](https://github.com/noahjdevine/wanderbite/pull/75) merge `390fac6e977ca07144c445cc5c542df91882f9af`, and [#76](https://github.com/noahjdevine/wanderbite/pull/76) merge `1d4f94fcfb83ea950840cdead1b13bd9566f6d9e`. Prior sync was **#72** (merge `a1c651c53f510c8eef293a35b276313ce194e8e0`). Earlier baseline remains **#62** (merge `082b96a`; that range also includes [#65](https://github.com/noahjdevine/wanderbite/pull/65) merge `be56b94`; prior baseline `46818e2e` / PR #60). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
+Synced through **#77** (merge `fb26fd6ee37220fd01d87b8aad666da89014fcc5`). That range includes [#73](https://github.com/noahjdevine/wanderbite/pull/73) merge `63b978cc113c422bf33574c250ef423e32d4f8fe`, [#74](https://github.com/noahjdevine/wanderbite/pull/74) merge `976b62466eade4234420e84e836c2526a6d2eef1`, [#75](https://github.com/noahjdevine/wanderbite/pull/75) merge `390fac6e977ca07144c445cc5c542df91882f9af`, [#76](https://github.com/noahjdevine/wanderbite/pull/76) merge `1d4f94fcfb83ea950840cdead1b13bd9566f6d9e`, and [#77](https://github.com/noahjdevine/wanderbite/pull/77) merge `fb26fd6ee37220fd01d87b8aad666da89014fcc5`. Prior sync was **#72** (merge `a1c651c53f510c8eef293a35b276313ce194e8e0`). Earlier baseline remains **#62** (merge `082b96a`; that range also includes [#65](https://github.com/noahjdevine/wanderbite/pull/65) merge `be56b94`; prior baseline `46818e2e` / PR #60). Earlier draft base was `a47b90a`. **Master E02 is open. Master E04 is open.** Nothing below is a sign-off. “Landed” means the cited PR merged. Recommendations are marked **recommended, needs Noah**.
 
 **[#63](https://github.com/noahjdevine/wanderbite/pull/63)** (merge `3666c1682513f8f7a628f9345c67842fa123307e`): `fix(deps): patch critical next/sentry/dompurify/zod advisories` — bumps `next` and `eslint-config-next` to 16.4.3, `@sentry/nextjs` to 10.78.0, and `zod` to ^4.6.7, adds a `dompurify` 3.4.17 override, and sets `react-hooks/set-state-in-effect` and `react-hooks/preserve-manual-memoization` to `warn` in `eslint.config.mjs` only.
 
@@ -30,7 +30,9 @@ Synced through **#76** (merge `1d4f94fcfb83ea950840cdead1b13bd9566f6d9e`). That 
 
 **[#76](https://github.com/noahjdevine/wanderbite/pull/76)** (merge `1d4f94fcfb83ea950840cdead1b13bd9566f6d9e`): shared candidates service; carried assign routed; generate/swaps were shadow mode.
 
-E04-A2: service authoritative for generate and swaps. E04-A shared eligibility service landed; E04 still open.
+**[#77](https://github.com/noahjdevine/wanderbite/pull/77)** (merge `fb26fd6ee37220fd01d87b8aad666da89014fcc5`): E04-A2: service authoritative for generate and swaps. Landed.
+
+E04-B: persistent reveal + brief, migration `20261103220000` not applied to hosted. E04-A shared eligibility service landed; E04 still open.
 
 **Catalog conversion (PR #59).** `npm run catalog:convert` and `scripts/e02-catalog-conversion.ts` are an offline dry-run export/manifest only. They do not publish offer versions or mutate hosted data; any apply/backfill requires separate authorization.
 

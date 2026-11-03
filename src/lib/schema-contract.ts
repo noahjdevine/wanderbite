@@ -127,6 +127,18 @@ export const SCHEMA_CONTRACT = {
     'redemption_deadline',
     'credit_id',
   ],
+  challenge_reveals: [
+    'id',
+    'user_id',
+    'period_key',
+    'cycle_id',
+    'brief',
+    'selection_source',
+    'item_reasons',
+    'eligibility_facts',
+    'source_version',
+    'created_at',
+  ],
   entitlement_credits: [
     'id',
     'user_id',

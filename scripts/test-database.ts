@@ -22,6 +22,7 @@ import { runCatalogImportDbTest } from './catalog-import-db-test';
 import { runE02VersionCapacityDbTest } from './e02-version-capacity-db-test';
 import { runG13A1Concurrency } from './g13-a1-concurrency';
 import { runG13A2Concurrency } from './g13-a2-concurrency';
+import { runE04RevealConcurrency } from './e04-reveal-concurrency';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = localDockerHost(process.env.G1_DOCKER_HOST ??
@@ -127,6 +128,9 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-assign-carried-credit.sql'), 'utf8')) + '\n');
   await runE02AssignCarried({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 carried assignment overlap and last seat.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e04-reveal.sql'), 'utf8')) + '\n');
+  await runE04RevealConcurrency({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: E04 reveal RLS, atomic commit, retry, and generator race.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-credit-safe-swaps.sql'), 'utf8')) + '\n');
   await runE02CreditSafeSwaps({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 credit-safe swap issuance overlap.\n');
