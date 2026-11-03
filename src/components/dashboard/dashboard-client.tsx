@@ -1,7 +1,8 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import { Flame } from 'lucide-react';
 import {
@@ -30,7 +31,13 @@ import { AreaHoldNotice } from '@/components/area-hold-notice';
 import { distanceMatchCopy } from '@/lib/launch-market';
 import { RestaurantCard } from '@/components/dashboard/restaurant-card';
 import { CarriedCreditsSection } from '@/components/challenges/carried-credits-section';
+import { MonthlyCuration } from '@/components/challenges/monthly-curation';
 import type { CarriedCreditView } from '@/lib/challenges/carried-credits';
+import {
+  MONTHLY_REVEAL_FOCUS_KEY,
+  reasonForSlot,
+  type MonthlyRevealPanel,
+} from '@/lib/challenges/monthly-reveal-copy';
 
 export type DashboardStreakStats = {
   currentStreak: number;
@@ -48,6 +55,10 @@ type DashboardClientProps = {
   /** Credits workflow only. Null keeps the legacy per-cycle swap count. */
   creditsSwapRemaining?: number | null;
   carriedCredits?: CarriedCreditView[];
+  /** Default off. Challenges passes curation or the saved reveal. */
+  monthlyReveal?: MonthlyRevealPanel;
+  /** Dashboard hides Generate Challenge while monthly reveal is available. */
+  blockMemberGenerate?: boolean;
 };
 
 export function DashboardClient({
@@ -58,8 +69,11 @@ export function DashboardClient({
   creditHold = null,
   creditsSwapRemaining = null,
   carriedCredits = [],
+  monthlyReveal = { mode: 'off' },
+  blockMemberGenerate = false,
 }: DashboardClientProps) {
   const router = useRouter();
+  const pairHeadingRef = useRef<HTMLHeadingElement>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [swappingItemId, setSwappingItemId] = useState<string | null>(null);
   const [redeemingItemId, setRedeemingItemId] = useState<string | null>(null);
@@ -141,6 +155,19 @@ export function DashboardClient({
     streak.currentStreak === 1
       ? '1 month streak'
       : `${streak.currentStreak} month streak`;
+  const revealDetails = monthlyReveal.mode === 'revealed';
+  const revealReasons = monthlyReveal.mode === 'revealed' ? monthlyReveal.reasons : null;
+
+  useEffect(() => {
+    if (!revealDetails) return;
+    try {
+      if (sessionStorage.getItem(MONTHLY_REVEAL_FOCUS_KEY) !== '1') return;
+      sessionStorage.removeItem(MONTHLY_REVEAL_FOCUS_KEY);
+    } catch {
+      return;
+    }
+    pairHeadingRef.current?.focus();
+  }, [revealDetails, currentChallenge?.cycle.id]);
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 p-6">
@@ -210,7 +237,13 @@ export function DashboardClient({
       {currentChallenge ? (
         <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-lg font-semibold">This month&apos;s challenges</h2>
+            <h2
+              ref={pairHeadingRef}
+              tabIndex={revealDetails ? -1 : undefined}
+              className="text-lg font-semibold outline-none"
+            >
+              This month&apos;s challenges
+            </h2>
             <p className="text-sm text-muted-foreground">
               Swaps remaining: <span className="font-medium text-foreground">{swapsRemaining}/1</span>
             </p>
@@ -238,9 +271,20 @@ export function DashboardClient({
                 }
                 useStoredDeadline={useStoredDeadline}
                 storedDeadline={item.challengeItem.redemption_deadline ?? null}
+                showRevealDetails={revealDetails}
+                revealReason={
+                  revealReasons
+                    ? reasonForSlot(revealReasons, item.challengeItem.restaurant_id)
+                    : null
+                }
               />
             ))}
           </div>
+          {revealDetails ? (
+            <p className="sr-only" role="status">
+              Your challenges for this month are ready.
+            </p>
+          ) : null}
         </div>
       ) : creditHold ? (
         <Card>
@@ -252,6 +296,22 @@ export function DashboardClient({
                 : 'Restaurant selection is not open yet.'}
             </CardDescription>
           </CardHeader>
+        </Card>
+      ) : monthlyReveal.mode === 'curation' && launchEligible ? (
+        <MonthlyCuration constraintLines={monthlyReveal.constraintLines} />
+      ) : blockMemberGenerate && launchEligible ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Reveal your challenges</CardTitle>
+            <CardDescription>
+              This month’s pair is chosen on the Challenges page.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/challenges">Go to Challenges</Link>
+            </Button>
+          </CardContent>
         </Card>
       ) : launchEligible ? (
         <Card>

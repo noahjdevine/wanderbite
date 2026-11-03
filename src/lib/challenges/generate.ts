@@ -133,7 +133,8 @@ export type GenerateFailureReason =
   | 'waiting_for_local_month'
   | 'below_floor'
   | 'capacity_full'
-  | 'credits_pending';
+  | 'credits_pending'
+  | 'monthly_reveal';
 
 export type GenerateChallengeResult =
   | { ok: true; data: GeneratedChallenge }

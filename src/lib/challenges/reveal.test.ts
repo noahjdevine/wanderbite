@@ -100,14 +100,19 @@ describe('monthly reveal brief and selection', () => {
     expect(reason.text.toLowerCase()).not.toContain('chef');
   });
 
-  it('is not referenced by the member challenges page and does not take restaurant ids', () => {
+  it('keeps restaurant ids off the reveal action and the challenges page', () => {
     const action = source('src/app/actions/reveal-challenge.ts');
     const page = source('src/app/(site)/challenges/page.tsx');
+    const curation = source('src/components/challenges/monthly-curation.tsx');
     expect(action).toContain('requireUser()');
     expect(action).toContain('brief: RevealBriefInput');
     expect(action).not.toContain('restaurantId');
     expect(action).not.toContain('p_restaurant_ids');
     expect(page).not.toContain('revealMonthlyChallenge');
+    expect(page).not.toContain('generateMonthlyChallenge(');
+    expect(curation).toContain('revealMonthlyChallenge({');
+    expect(curation).not.toContain('restaurantId');
+    expect(curation).not.toContain('restaurant_id');
   });
 });
 

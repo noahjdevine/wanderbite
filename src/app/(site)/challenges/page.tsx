@@ -16,6 +16,7 @@ import {
   loadCreditsSwapRemaining,
   type CarriedCreditView,
 } from '@/lib/challenges/carried-credits';
+import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-reveal';
 
 export const dynamic = 'force-dynamic';
 
@@ -155,6 +156,12 @@ export default async function ChallengesPage() {
     carriedCredits = carried.credits;
   }
 
+  const monthlyReveal = await loadMonthlyRevealForChallenges({
+    userId: typedProfile.id,
+    cycleMonth: currentChallenge?.cycle.cycle_month ?? null,
+    showCuration: area === 'eligible' && !currentChallenge && !creditHold,
+  });
+
   return (
     <main className="min-h-screen bg-background">
       <Suspense fallback={null}>
@@ -173,6 +180,7 @@ export default async function ChallengesPage() {
           creditHold={creditHold}
           creditsSwapRemaining={creditsSwapRemaining}
           carriedCredits={carriedCredits}
+          monthlyReveal={monthlyReveal}
         />
       </div>
     </main>

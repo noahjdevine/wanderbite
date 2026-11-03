@@ -28,12 +28,30 @@ function voiceInputSupported(): boolean {
   );
 }
 
+const VOICE_COPY = {
+  discover: {
+    addedLong: 'Transcript added. Shorten it to 500 characters, then choose Find a spot.',
+    added: 'Transcript added. Edit it, then choose Find a spot.',
+    idle: 'Record a short request, edit the transcript, then choose Find a spot.',
+  },
+  monthly: {
+    addedLong: 'Transcript added. Shorten it so it fits in the box.',
+    added: 'Transcript added. Edit it in the box before you reveal.',
+    idle: 'Record a short note. It is saved with your reveal and does not pick the restaurants.',
+  },
+} as const;
+
 export function DiscoveryVoiceControls({
   disabled,
   onTranscript,
+  context = 'discover',
+  transcriptFieldId = 'discovery-message',
 }: {
   disabled: boolean;
   onTranscript: (transcript: string) => void;
+  /** Discover keeps the default copy. Monthly curation passes `monthly`. */
+  context?: keyof typeof VOICE_COPY;
+  transcriptFieldId?: string;
 }) {
   const [phase, setPhase] = useState<VoicePhase>('idle');
   const [notice, setNotice] = useState<string | null>(null);
@@ -97,13 +115,10 @@ export function DiscoveryVoiceControls({
       if (!mountedRef.current) return;
       if (typeof data.transcript === 'string' && data.transcript.trim()) {
         onTranscript(data.transcript);
-        const box = document.getElementById('discovery-message');
+        const box = document.getElementById(transcriptFieldId);
         if (box instanceof HTMLTextAreaElement) box.focus();
-        setNotice(
-          data.transcript.length > 500
-            ? 'Transcript added. Shorten it to 500 characters, then choose Find a spot.'
-            : 'Transcript added. Edit it, then choose Find a spot.',
-        );
+        const copy = VOICE_COPY[context];
+        setNotice(data.transcript.length > 500 ? copy.addedLong : copy.added);
       } else {
         setNotice(typeof data.error === 'string' ? data.error : VOICE_UNAVAILABLE_ERROR);
       }
@@ -239,7 +254,7 @@ export function DiscoveryVoiceControls({
       <p className="text-xs text-muted-foreground" aria-live="polite">
         {phase === 'recording'
           ? 'Recording. Stop to fill the box, or Cancel to discard. Up to 30 seconds.'
-          : (notice ?? 'Record a short request, edit the transcript, then choose Find a spot.')}
+          : (notice ?? VOICE_COPY[context].idle)}
       </p>
     </div>
   );

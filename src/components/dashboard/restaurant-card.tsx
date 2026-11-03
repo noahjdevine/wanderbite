@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { addDays } from 'date-fns';
 import { toast } from 'sonner';
 import { Loader2, MapPin, RefreshCw, Star, Ticket } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -291,6 +292,9 @@ export type RestaurantCardProps = {
   /** Credits cards use the stored deadline. Legacy cards keep cycle + 30 days. */
   useStoredDeadline?: boolean;
   storedDeadline?: string | null;
+  /** Monthly reveal only. Flag-off cards omit these. */
+  showRevealDetails?: boolean;
+  revealReason?: string | null;
 };
 
 export function RestaurantCard({
@@ -304,6 +308,8 @@ export function RestaurantCard({
   biteNote,
   useStoredDeadline = false,
   storedDeadline = null,
+  showRevealDetails = false,
+  revealReason = null,
 }: RestaurantCardProps) {
   const [nowMs] = useState(() => Date.now());
   const isExpired = challengeCardExpired({
@@ -312,8 +318,15 @@ export function RestaurantCard({
     useStoredDeadline,
     storedDeadline,
   });
-  const deadlineLabel =
-    useStoredDeadline && storedDeadline ? formatChicagoDeadline(storedDeadline) : '';
+  const createdAt = new Date(cycleCreatedAt);
+  const legacyDeadline = Number.isNaN(createdAt.getTime())
+    ? ''
+    : addDays(createdAt, 30).toISOString();
+  const deadlineLabel = showRevealDetails
+    ? formatChicagoDeadline(storedDeadline || legacyDeadline)
+    : useStoredDeadline && storedDeadline
+      ? formatChicagoDeadline(storedDeadline)
+      : '';
   const tags = item.restaurant.cuisine_tags ?? [];
   const offerText = item.offer.available
     ? formatOffer(item.offer.discount_amount_cents, item.offer.min_spend_cents)
@@ -388,6 +401,12 @@ export function RestaurantCard({
         {deadlineLabel ? (
           <p className="text-sm text-muted-foreground">Redeem by {deadlineLabel}</p>
         ) : null}
+        {showRevealDetails ? (
+          <p className="text-sm text-muted-foreground">
+            {isRedeemed ? 'Completed' : 'Not completed yet'}
+          </p>
+        ) : null}
+        {revealReason ? <p className="text-sm text-foreground">{revealReason}</p> : null}
         {item.socialProof &&
           item.socialProof.totalRatings >= 3 &&
           item.socialProof.avgRating != null && (
