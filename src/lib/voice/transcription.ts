@@ -5,11 +5,18 @@
  */
 
 /**
- * Chrome 148 MediaRecorder reports audioBitsPerSecond 128000 (16_000 bytes/s).
- * A captured timesliced clip was about 13.6 KB/s. 20_000 leaves headroom for that
- * default and still rejects a file too large to be 30 seconds at this ceiling.
+ * Per-second size ceiling. A clip over VOICE_MAX_DURATION_MS is too long.
+ * A clip over this rate, or over VOICE_MAX_BYTES, is too large.
+ *
+ * Chrome opus defaults to 128 kbps. iOS Safari does not set audioBitsPerSecond,
+ * and WebKit's MediaRecorderPrivate defaults AAC to LargeAudioBitRate (192 kbps,
+ * 24_000 bytes/s). A fragmented 5s iPhone-style AAC clip is about 24.5 KB/s
+ * once moof overhead is included, so a 20_000 byte ceiling rejected real
+ * 3–6s iPhone recordings as longer than 30 seconds. 64_000 bytes/s (512 kbps) covers
+ * that 192 kbps default, WebKit's older 256 kbps AAC clamp, and short-clip
+ * container headers, and still rejects a payload that cannot be 30 seconds.
  */
-export const VOICE_MAX_BYTES_PER_SECOND = 20_000;
+export const VOICE_MAX_BYTES_PER_SECOND = 64_000;
 /** Matches seeded guest_voice_seconds_limit. One clip, guests and signed-in users. */
 export const VOICE_MAX_DURATION_MS = 30_000;
 export const VOICE_MAX_BYTES = VOICE_MAX_BYTES_PER_SECOND * (VOICE_MAX_DURATION_MS / 1000);
@@ -497,7 +504,7 @@ export function inspectVoiceUpload(args: {
   }
   const allowanceSeconds = Math.max(1, Math.ceil(Math.min(...claims) / 1000));
   if (args.bytes.byteLength > allowanceSeconds * VOICE_MAX_BYTES_PER_SECOND) {
-    return { ok: false, status: 400, error: VOICE_TOO_LONG_ERROR };
+    return { ok: false, status: 413, error: VOICE_TOO_LARGE_ERROR };
   }
 
   return {
