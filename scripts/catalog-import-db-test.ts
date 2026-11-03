@@ -11,6 +11,7 @@ import {
   isTestOfferAuditMarker,
   applyCatalogPlan,
   buildCatalogPlan,
+  importRowsFromSnapshot,
   parseCatalogImportDocument,
   type CatalogDbSnapshot,
   type CatalogExecutor,
@@ -1188,5 +1189,68 @@ async function runMarkFailureAndBothStyles(sql: Sql, root: string): Promise<void
   assert.equal(
     readSupplyPreflight(sql, root).catalog_import_duplicate_candidates,
     duplicatesBefore + 2,
+  );
+  sql(`
+    insert into public.restaurant_orgs (id, name, market_id)
+    values ('c4710900-0000-4000-8000-0000000000da'::uuid, 'Legacy Tags', ${q(market)}::uuid);
+    insert into public.restaurants (
+      id, org_id, market_id, name, slug, address, lat, lon, google_place_id, cuisine_tags, status
+    ) values (
+      'c4710900-0000-4000-8000-0000000000db'::uuid,
+      'c4710900-0000-4000-8000-0000000000da'::uuid,
+      ${q(market)}::uuid,
+      'Legacy Tag Grill',
+      'legacy-tag-grill',
+      '9 Legacy Tag Street, Marks, TX 75001',
+      33.22,
+      -96.63,
+      'place-legacy-tag',
+      array['bar', 'Live-Music', 'meat', 'worth-trip', 'fine-dining', 'breakfast', 'patio', 'bbq']::text[],
+      'active'
+    );
+  `);
+  const legacySnapshot = loadSnapshot(sql);
+  const exported = importRowsFromSnapshot(legacySnapshot, 'catalog-import-marks');
+  const legacyRow = exported.rows.find((row) => row.slug === 'legacy-tag-grill');
+  assert.ok(legacyRow);
+  assert.equal(legacyRow.cuisine_tags, 'bar|Live-Music|meat|worth-trip|fine-dining|breakfast|patio|bbq');
+  const legacyPlan = await planFile([legacyRow], sql, {
+    testOffers: true,
+    markets: ['catalog-import-marks'],
+  });
+  assert.equal(legacyPlan.accepted, true, legacyPlan.errors.map((error) => error.message).join('; '));
+  assert.equal(legacyPlan.counts.errors, 0);
+  assert.equal(legacyPlan.counts.update, 0);
+  assert.equal(legacyPlan.counts.unchanged, 1);
+  assert.equal(
+    legacyPlan.actions.some((action) => action.kind === 'update_restaurant'),
+    false,
+  );
+  const addedPlan = await planFile(
+    [{ ...legacyRow, cuisine_tags: `${String(legacyRow.cuisine_tags)}|not-a-cuisine` }],
+    sql,
+  );
+  assert.equal(addedPlan.accepted, false);
+  assert.equal(
+    addedPlan.errors.some((error) => error.message === 'cuisine tag not-a-cuisine is not in the cuisine list'),
+    true,
+  );
+  const newPlan = await planFile(
+    [
+      {
+        ...legacyRow,
+        name: 'Brand New Grill',
+        slug: 'brand-new-grill',
+        address: '99 New Street, Marks, TX 75001',
+        google_place_id: 'place-brand-new',
+        cuisine_tags: 'not-a-cuisine',
+      },
+    ],
+    sql,
+  );
+  assert.equal(newPlan.accepted, false);
+  assert.equal(
+    newPlan.errors.some((error) => error.message === 'cuisine tag not-a-cuisine is not in the cuisine list'),
+    true,
   );
 }

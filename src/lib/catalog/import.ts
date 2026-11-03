@@ -514,18 +514,39 @@ function cell(record: Record<string, string>, key: ColumnName): string {
   return record[key] ?? '';
 }
 
-function cuisineTagsFromText(raw: string): { ok: true; tags: string[] } | { ok: false; tag: string } {
+function cuisineTagError(tag: string): string {
+  return `cuisine tag ${tag} is not in the cuisine list`;
+}
+
+function cuisineTagFromError(message: string): string | null {
+  const prefix = 'cuisine tag ';
+  const suffix = ' is not in the cuisine list';
+  if (!message.startsWith(prefix) || !message.endsWith(suffix)) return null;
+  const tag = message.slice(prefix.length, message.length - suffix.length);
+  return tag.length > 0 ? tag : null;
+}
+
+function cuisineTagsFromText(raw: string): { tags: string[]; unknown: string[] } {
   const parts = raw
     .split('|')
-    .map((part) => part.trim().toLowerCase())
+    .map((part) => part.trim())
     .filter(Boolean);
   const tags: string[] = [];
+  const unknown: string[] = [];
+  const seen = new Set<string>();
   for (const part of parts) {
-    const canonical = CUISINE_TAGS.get(part);
-    if (!canonical) return { ok: false, tag: part };
-    if (!tags.includes(canonical)) tags.push(canonical);
+    const key = part.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const canonical = CUISINE_TAGS.get(key);
+    if (canonical) {
+      if (!tags.includes(canonical)) tags.push(canonical);
+      continue;
+    }
+    tags.push(part);
+    unknown.push(part);
   }
-  return { ok: true, tags };
+  return { tags, unknown };
 }
 
 function rowFromRecord(
@@ -578,7 +599,7 @@ function rowFromRecord(
   if (place && !/^[A-Za-z0-9_-]+$/.test(place)) rowErrors.push('google_place_id has unexpected characters');
 
   const tags = cuisineTagsFromText(cell(record, 'cuisine_tags'));
-  if (!tags.ok) rowErrors.push(`cuisine tag ${tags.tag} is not in the cuisine list`);
+  const unknownTagErrors = tags.unknown.map((tag) => cuisineTagError(tag));
 
   const vegan = parseBool(cell(record, 'is_vegan'));
   const dairy = parseBool(cell(record, 'is_dairy_free'));
@@ -607,10 +628,13 @@ function rowFromRecord(
   );
 
   if (rowErrors.length > 0) {
-    for (const message of rowErrors) {
+    for (const message of [...rowErrors, ...unknownTagErrors]) {
       errors.push({ line, market_slug: marketSlug || null, message });
     }
     return null;
+  }
+  for (const message of unknownTagErrors) {
+    errors.push({ line, market_slug: marketSlug || null, message });
   }
 
   return {
@@ -627,7 +651,7 @@ function rowFromRecord(
     lat,
     lon,
     google_place_id: place || null,
-    cuisine_tags: tags.ok ? tags.tags : [],
+    cuisine_tags: tags.tags,
     is_vegan: vegan.ok ? (vegan.value ?? false) : false,
     is_dairy_free: dairy.ok ? (dairy.value ?? false) : false,
     is_halal: halal.ok ? (halal.value ?? false) : false,
@@ -914,34 +938,34 @@ function dbZip(restaurant: CatalogDbRestaurant): string {
   return zipFromAddress(restaurant.address) ?? '';
 }
 
-function findMatch(
+type RestaurantMatch =
+  | { status: 'matched'; restaurant: CatalogDbRestaurant }
+  | { status: 'none' }
+  | { status: 'ambiguous'; message: string };
+
+function matchRestaurant(
   row: CatalogImportRow,
   snapshot: CatalogDbSnapshot,
   marketId: string | null,
-  errors: CatalogMessage[],
-): CatalogDbRestaurant | null | 'ambiguous' {
+): RestaurantMatch {
   if (row.google_place_id) {
     const hits = snapshot.restaurants.filter((restaurant) => restaurant.google_place_id === row.google_place_id);
     if (hits.length > 1) {
       const bySlug = row.slug ? hits.filter((restaurant) => restaurant.slug === row.slug) : [];
-      if (bySlug.length === 1 && bySlug[0]) return bySlug[0];
-      errors.push({
-        line: row.line,
-        market_slug: row.market_slug,
+      if (bySlug.length === 1 && bySlug[0]) return { status: 'matched', restaurant: bySlug[0] };
+      return {
+        status: 'ambiguous',
         message: `google_place_id ${row.google_place_id} matches multiple database rows`,
-      });
-      return 'ambiguous';
+      };
     }
     if (hits.length === 1 && hits[0]) {
       if (marketId && hits[0].market_id && hits[0].market_id !== marketId) {
-        errors.push({
-          line: row.line,
-          market_slug: row.market_slug,
+        return {
+          status: 'ambiguous',
           message: `google_place_id ${row.google_place_id} already belongs to another market`,
-        });
-        return 'ambiguous';
+        };
       }
-      return hits[0];
+      return { status: 'matched', restaurant: hits[0] };
     }
   }
   if (marketId && row.slug) {
@@ -949,16 +973,11 @@ function findMatch(
       (restaurant) => restaurant.market_id === marketId && restaurant.slug === row.slug,
     );
     if (hits.length > 1) {
-      errors.push({
-        line: row.line,
-        market_slug: row.market_slug,
-        message: `slug ${row.slug} matches multiple database rows`,
-      });
-      return 'ambiguous';
+      return { status: 'ambiguous', message: `slug ${row.slug} matches multiple database rows` };
     }
-    if (hits.length === 1 && hits[0]) return hits[0];
+    if (hits.length === 1 && hits[0]) return { status: 'matched', restaurant: hits[0] };
   }
-  if (!marketId) return null;
+  if (!marketId) return { status: 'none' };
   const key = nameAddressZipKey(row.name, row.address, row.zip);
   const hits = snapshot.restaurants.filter(
     (restaurant) =>
@@ -966,14 +985,58 @@ function findMatch(
       nameAddressZipKey(restaurant.name, restaurant.address ?? '', dbZip(restaurant)) === key,
   );
   if (hits.length > 1) {
-    errors.push({
-      line: row.line,
-      market_slug: row.market_slug,
-      message: 'name, address, and zip match multiple database rows',
-    });
+    return { status: 'ambiguous', message: 'name, address, and zip match multiple database rows' };
+  }
+  return hits[0] ? { status: 'matched', restaurant: hits[0] } : { status: 'none' };
+}
+
+function findMatch(
+  row: CatalogImportRow,
+  snapshot: CatalogDbSnapshot,
+  marketId: string | null,
+  errors: CatalogMessage[],
+): CatalogDbRestaurant | null | 'ambiguous' {
+  const match = matchRestaurant(row, snapshot, marketId);
+  if (match.status === 'ambiguous') {
+    errors.push({ line: row.line, market_slug: row.market_slug, message: match.message });
     return 'ambiguous';
   }
-  return hits[0] ?? null;
+  return match.status === 'matched' ? match.restaurant : null;
+}
+
+function storedCuisineTagSet(restaurant: CatalogDbRestaurant): Set<string> {
+  return new Set((restaurant.cuisine_tags ?? []).map((tag) => tag.trim().toLowerCase()).filter(Boolean));
+}
+
+function reconcileStoredCuisineTags(
+  rows: readonly CatalogImportRow[],
+  errors: readonly CatalogMessage[],
+  snapshot: CatalogDbSnapshot,
+  warnings: CatalogMessage[],
+): CatalogMessage[] {
+  const rowsByLine = new Map<number, CatalogImportRow>();
+  for (const row of rows) rowsByLine.set(row.line, row);
+  const kept: CatalogMessage[] = [];
+  for (const error of errors) {
+    const tag = cuisineTagFromError(error.message);
+    const row = tag != null && error.line != null ? rowsByLine.get(error.line) : undefined;
+    if (!tag || !row) {
+      kept.push(error);
+      continue;
+    }
+    const marketId = snapshot.markets.find((market) => market.slug === row.market_slug)?.id ?? null;
+    const match = matchRestaurant(row, snapshot, marketId);
+    if (match.status !== 'matched' || !storedCuisineTagSet(match.restaurant).has(tag.trim().toLowerCase())) {
+      kept.push(error);
+      continue;
+    }
+    warnings.push({
+      line: error.line,
+      market_slug: error.market_slug,
+      message: `${cuisineTagError(tag)}; kept because the matched row already stores it`,
+    });
+  }
+  return kept;
 }
 
 function possibleDuplicates(snapshot: CatalogDbSnapshot, marketSlugs: ReadonlySet<string>): CatalogPossibleDuplicate[] {
@@ -1356,7 +1419,7 @@ export async function buildCatalogPlan(args: {
   }
 
   let rows = [...args.document.rows];
-  let errors = [...args.document.errors];
+  let errors = reconcileStoredCuisineTags(rows, args.document.errors, args.snapshot, warnings);
   const dropErrorRows = () => {
     if (!args.options.skipInvalid || errors.length === 0) return;
     const badLines = new Set(

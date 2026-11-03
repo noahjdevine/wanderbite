@@ -21,7 +21,7 @@ CSV header or a JSON array of objects. Unknown columns are rejected.
 | `zip` | yes | 5-digit US ZIP. Not a database column. |
 | `lat`, `lon` | both or neither | `lat` in [-90, 90], `lon` in [-180, 180]. |
 | `google_place_id` | no | |
-| `cuisine_tags` | no | Pipe-separated. Each tag must be a cuisine id or keyword from `src/lib/cuisines.ts`. |
+| `cuisine_tags` | no | Pipe-separated cuisine ids or keywords from `src/lib/cuisines.ts`. A legacy tag already stored on the matched row is preserved. |
 | `is_vegan`, `is_dairy_free`, `is_halal` | no | `true`/`false`/`yes`/`no`/`1`/`0`. Default false. |
 | `price_range`, `neighborhood` | no | |
 | `status` | no | `active` or `paused`. Default `active`. |
@@ -30,7 +30,7 @@ CSV header or a JSON array of objects. Unknown columns are rejected.
 | `valid_from`, `valid_until` | no | ISO timestamps. Default now, and now plus 12 UTC calendar months. The window must still be selectable (`valid_until` more than 840 hours ahead). |
 | `is_test_offer` | no | `true` appends an `offer.test_mark` audit row. `false` with other offer columns is a real offer and is not published unless `--publish-real-offers` is set. |
 
-JSON `cuisine_tags` may be a string array instead of a pipe-separated string.
+JSON `cuisine_tags` may be a string array instead of a pipe-separated string. Legacy tags already stored on the matched restaurant are preserved and reported as warnings.
 
 ## Match, dedupe, coordinates
 

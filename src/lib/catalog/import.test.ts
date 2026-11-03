@@ -10,6 +10,7 @@ import {
   fetchGooglePlaceCoordinates,
   geocodeWithCache,
   emptyGeocodeCache,
+  importRowsFromSnapshot,
   isTestOfferAuditMarker,
   parseCatalogImportArgs,
   parseCatalogImportDocument,
@@ -17,6 +18,7 @@ import {
   TEST_OFFER_MARK_ACTION,
   TEST_OFFER_PUBLISH_ACTION,
   TEST_OFFER_SOURCE,
+  type CatalogDbRestaurant,
   type CatalogDbSnapshot,
   type CatalogPlan,
   type CatalogPlanOptions,
@@ -50,6 +52,37 @@ function snapshot(extra?: Partial<CatalogDbSnapshot>): CatalogDbSnapshot {
     restaurants: [],
     test_offers: [],
     ...extra,
+  };
+}
+
+const MCKINNEY_MARKET = {
+  id: 'market-1',
+  slug: 'mckinney-tx',
+  name: 'McKinney',
+  state: 'TX',
+  timezone: 'America/Chicago',
+  status: 'active',
+};
+
+function dbRestaurant(
+  overrides: Partial<CatalogDbRestaurant> & Pick<CatalogDbRestaurant, 'id' | 'slug' | 'name' | 'address'>,
+): CatalogDbRestaurant {
+  return {
+    market_id: 'market-1',
+    lat: 33.2,
+    lon: -96.61,
+    google_place_id: null,
+    cuisine_tags: ['american'],
+    is_vegan: false,
+    is_dairy_free: false,
+    is_halal: false,
+    price_range: null,
+    neighborhood: null,
+    status: 'active',
+    current_offer_version_id: 'version-1',
+    challenge_item_count: 0,
+    offer_version_count: 1,
+    ...overrides,
   };
 }
 
@@ -174,6 +207,193 @@ describe('catalog import parse', () => {
     expect(messages).toContain('cuisine tag not-a-cuisine is not in the cuisine list');
     expect(messages).toContain('market_timezone is not an IANA time zone');
     expect(messages).toContain('status must be active or paused');
+    expect(parsed.document.rows).toEqual([]);
+  });
+});
+
+describe('catalog import legacy cuisine tags', () => {
+  it('plans a from-db round trip of stored legacy tags with no errors and no updates', async () => {
+    const snap = snapshot({
+      markets: [MCKINNEY_MARKET],
+      restaurants: [
+        dbRestaurant({
+          id: 'keep-id',
+          name: 'Hutchins BBQ',
+          slug: 'hutchins-bbq',
+          address: '1301 N Tennessee St, McKinney, TX 75069',
+          google_place_id: 'place-hutchins',
+          cuisine_tags: ['bar', 'Live-Music', 'bbq'],
+        }),
+        dbRestaurant({
+          id: 'drop-id',
+          name: 'Hutchins BBQ',
+          slug: 'hutchins-bbq-2',
+          address: '1301 N Tennessee St, McKinney, TX 75069, USA',
+          lat: 33.201,
+          lon: -96.611,
+          google_place_id: 'place-hutchins-2',
+          cuisine_tags: ['meat', 'worth-trip', 'fine-dining'],
+          status: 'paused',
+        }),
+        dbRestaurant({
+          id: 'patio-id',
+          name: 'Patio Grill',
+          slug: 'patio-grill',
+          address: '200 Patio Ave, McKinney, TX 75069',
+          lat: 33.202,
+          lon: -96.612,
+          cuisine_tags: ['breakfast', 'patio'],
+        }),
+      ],
+    });
+    const exported = importRowsFromSnapshot(snap, 'mckinney-tx');
+    expect(exported.warnings).toEqual([]);
+    const parsed = parseCatalogImportDocument(JSON.stringify(exported.rows), 'json');
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.document.rows.find((row) => row.slug === 'hutchins-bbq')?.cuisine_tags).toEqual([
+      'bar',
+      'Live-Music',
+      'bbq',
+    ]);
+    const planned = await planOf(JSON.stringify(exported.rows), snap, {
+      testOffers: true,
+      resolveDuplicates: [{ keep: 'hutchins-bbq', drop: 'hutchins-bbq-2' }],
+    });
+    expect(planned.errors).toEqual([]);
+    expect(planned.accepted).toBe(true);
+    expect(planned.counts.create).toBe(0);
+    expect(planned.counts.update).toBe(0);
+    expect(planned.counts.pause).toBe(0);
+    expect(planned.counts.publish).toBe(0);
+    expect(planned.counts.unchanged).toBe(3);
+    expect(planned.actions).toEqual([]);
+    const warned = planned.warnings.map((warning) => warning.message);
+    for (const tag of ['bar', 'Live-Music', 'meat', 'worth-trip', 'fine-dining', 'breakfast', 'patio']) {
+      expect(warned.some((message) => message.includes(`cuisine tag ${tag} is not in the cuisine list`))).toBe(true);
+    }
+    expect(warned.some((message) => message.includes('cuisine tag bbq'))).toBe(false);
+  });
+
+  it('still errors when a new row uses an unknown cuisine tag', async () => {
+    const text = JSON.stringify([
+      {
+        market_slug: 'mckinney-tx',
+        market_name: 'McKinney',
+        market_state: 'TX',
+        market_timezone: 'America/Chicago',
+        name: 'New Grill',
+        address: '9 New Street',
+        city: 'McKinney',
+        zip: '75069',
+        lat: 33.2,
+        lon: -96.61,
+        cuisine_tags: 'not-a-cuisine',
+      },
+    ]);
+    const parsed = parseCatalogImportDocument(text, 'json');
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.document.rows[0]?.cuisine_tags).toEqual(['not-a-cuisine']);
+    expect(parsed.document.errors.map((error) => error.message)).toContain(
+      'cuisine tag not-a-cuisine is not in the cuisine list',
+    );
+    const planned = await planOf(text, snapshot({ markets: [MCKINNEY_MARKET] }));
+    expect(planned.accepted).toBe(false);
+    expect(planned.actions).toEqual([]);
+    expect(planned.errors.map((error) => error.message)).toContain(
+      'cuisine tag not-a-cuisine is not in the cuisine list',
+    );
+  });
+
+  it('still errors when a matched row adds a new unknown tag', async () => {
+    const snap = snapshot({
+      markets: [MCKINNEY_MARKET],
+      restaurants: [
+        dbRestaurant({
+          id: 'stored-id',
+          name: 'Stored Grill',
+          slug: 'stored-grill',
+          address: '1 Main Street, McKinney, TX 75069',
+          cuisine_tags: ['patio'],
+        }),
+      ],
+    });
+    const planned = await planOf(
+      JSON.stringify([
+        {
+          market_slug: 'mckinney-tx',
+          name: 'Stored Grill',
+          slug: 'missing-slug',
+          address: '1 Main Street, McKinney, TX 75069',
+          city: 'McKinney',
+          zip: '75069',
+          lat: 33.2,
+          lon: -96.61,
+          cuisine_tags: ['patio', 'brand-new-tag'],
+        },
+      ]),
+      snap,
+    );
+    expect(planned.accepted).toBe(false);
+    expect(planned.actions).toEqual([]);
+    expect(planned.errors.map((error) => error.message)).toEqual([
+      'cuisine tag brand-new-tag is not in the cuisine list',
+    ]);
+    expect(planned.warnings.map((warning) => warning.message)).toEqual([
+      'cuisine tag patio is not in the cuisine list; kept because the matched row already stores it',
+    ]);
+  });
+
+  it('keeps a stored legacy tag from the place-id match and leaves it off an unrelated patch', async () => {
+    const snap = snapshot({
+      markets: [MCKINNEY_MARKET],
+      restaurants: [
+        dbRestaurant({
+          id: 'alpha-id',
+          name: 'Alpha Grill',
+          slug: 'alpha',
+          address: '1 Alpha Street, McKinney, TX 75069',
+          google_place_id: 'place-alpha',
+          cuisine_tags: ['bar'],
+        }),
+        dbRestaurant({
+          id: 'beta-id',
+          name: 'Beta Grill',
+          slug: 'beta',
+          address: '2 Beta Street, McKinney, TX 75070',
+          lat: 33.21,
+          lon: -96.62,
+          google_place_id: 'place-beta',
+          cuisine_tags: ['american'],
+        }),
+      ],
+    });
+    const planned = await planOf(
+      JSON.stringify([
+        {
+          market_slug: 'mckinney-tx',
+          name: 'Alpha Grill',
+          slug: 'beta',
+          address: '1 Alpha Street, McKinney, TX 75069',
+          city: 'McKinney',
+          zip: '75069',
+          lat: 33.2,
+          lon: -96.61,
+          google_place_id: 'place-alpha',
+          cuisine_tags: 'bar',
+        },
+      ]),
+      snap,
+    );
+    expect(planned.errors).toEqual([]);
+    expect(planned.accepted).toBe(true);
+    expect(planned.warnings.map((warning) => warning.message)).toEqual([
+      'cuisine tag bar is not in the cuisine list; kept because the matched row already stores it',
+    ]);
+    const update = planned.actions.find((action) => action.kind === 'update_restaurant');
+    expect(update).toMatchObject({ restaurant_id: 'alpha-id', patch: { slug: 'beta' } });
+    expect(update && update.kind === 'update_restaurant' ? update.patch.cuisine_tags : ['set']).toBeUndefined();
   });
 });
 
