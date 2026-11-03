@@ -10,6 +10,7 @@ import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
 import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import { loadCreditsSwapRemaining } from '@/lib/challenges/carried-credits';
+import { revealSchemaAvailable } from '@/lib/challenges/load-monthly-reveal';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,6 +98,7 @@ export default async function DashboardPage() {
   }
 
   const streak = await calculateStreak(typedProfile.id);
+  const blockMemberGenerate = await revealSchemaAvailable();
 
   const biteNotesRes = await getBiteNotes();
   const biteNotesForDash =
@@ -125,6 +127,7 @@ export default async function DashboardPage() {
           streak={streak}
           biteNotes={biteNotesForDash}
           creditsSwapRemaining={creditsSwapRemaining}
+          blockMemberGenerate={blockMemberGenerate}
         />
       </div>
     </main>

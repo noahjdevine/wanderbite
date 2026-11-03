@@ -4,14 +4,14 @@ import {
   loadMonthlyChallengePool,
   type GenerateFailureReason,
 } from '@/lib/challenges/generate';
+import { REVEAL_LABEL_CAP, REVEAL_SUMMARY_CAP } from '@/lib/challenges/monthly-reveal-copy';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { formatCents } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
-export const REVEAL_SUMMARY_CAP = 280;
-export const REVEAL_LABEL_CAP = 80;
+export { REVEAL_LABEL_CAP, REVEAL_SUMMARY_CAP };
 export const REVEAL_SOURCE_VERSION = 'e04b.deterministic.v1';
 
 export type RevealSelectionSource = 'deterministic_fallback' | 'ai_ranked' | 'legacy_generate';
