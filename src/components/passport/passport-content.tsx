@@ -13,31 +13,19 @@ import {
   type PassportVisit,
 } from '@/components/passport/passport-client';
 
+type PassportRestaurantEmbed = {
+  id: string;
+  name: string;
+  address: string | null;
+  cuisine_tags: string[] | null;
+  neighborhood: string | null;
+  google_place_id: string | null;
+};
+
 type RedemptionRow = {
   id: string;
   verified_at: string;
-  restaurants:
-    | {
-        id: string;
-        name: string;
-        address: string | null;
-        lat: number | null;
-        lon: number | null;
-        cuisine_tags: string[] | null;
-        neighborhood: string | null;
-        google_place_id: string | null;
-      }
-    | {
-        id: string;
-        name: string;
-        address: string | null;
-        lat: number | null;
-        lon: number | null;
-        cuisine_tags: string[] | null;
-        neighborhood: string | null;
-        google_place_id: string | null;
-      }[]
-    | null;
+  restaurants: PassportRestaurantEmbed | PassportRestaurantEmbed[] | null;
 };
 
 type PassportContentProps = {
@@ -67,8 +55,6 @@ export async function PassportContent({ userId }: PassportContentProps) {
         id,
         name,
         address,
-        lat,
-        lon,
         cuisine_tags,
         neighborhood,
         google_place_id
@@ -91,39 +77,41 @@ export async function PassportContent({ userId }: PassportContentProps) {
     .map((r) => {
       const restaurant = unwrapJoin(r.restaurants);
       if (!restaurant?.id) return null;
+      const restaurantVisit: PassportVisit['restaurant'] = {
+        id: restaurant.id,
+        name: restaurant.name,
+        address: restaurant.address,
+        lat: null,
+        lon: null,
+        cuisine_tags: restaurant.cuisine_tags,
+        neighborhood: restaurant.neighborhood,
+        image_url: null,
+        google_place_id: restaurant.google_place_id,
+      };
       return {
         id: r.id,
         verifiedAt: r.verified_at,
-        restaurant: {
-          id: restaurant.id,
-          name: restaurant.name,
-          address: restaurant.address,
-          lat: restaurant.lat,
-          lon: restaurant.lon,
-          cuisine_tags: restaurant.cuisine_tags,
-          neighborhood: restaurant.neighborhood,
-          image_url: null as string | null,
-          google_place_id: restaurant.google_place_id,
-        },
+        restaurant: restaurantVisit,
       };
     })
     .filter((v): v is PassportVisit => v != null);
 
   const uniqueRestaurantIds = [...new Set(visits.map((v) => v.restaurant.id))];
   if (uniqueRestaurantIds.length > 0) {
+    // image_url, lat, and lon are not granted to authenticated. Load them
+    // with the service role for this member's verified restaurants only.
     const admin = getSupabaseAdmin();
-    const { data: imageRows } = await admin
+    const { data: detailRows } = await admin
       .from('restaurants')
-      .select('id, image_url')
+      .select('id, image_url, lat, lon')
       .in('id', uniqueRestaurantIds);
-    const safeById = new Map(
-      (imageRows ?? []).map((row) => [
-        (row as { id: string; image_url: string | null }).id,
-        safeManualImagePath((row as { image_url: string | null }).image_url),
-      ]),
-    );
+    const detailById = new Map((detailRows ?? []).map((row) => [row.id, row]));
     for (const visit of visits) {
-      visit.restaurant.image_url = safeById.get(visit.restaurant.id) ?? null;
+      const row = detailById.get(visit.restaurant.id);
+      if (!row) continue;
+      visit.restaurant.image_url = safeManualImagePath(row.image_url);
+      visit.restaurant.lat = row.lat;
+      visit.restaurant.lon = row.lon;
     }
   }
   const [streak, biteRes, ratingMap] = await Promise.all([
