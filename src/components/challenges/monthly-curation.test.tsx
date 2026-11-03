@@ -330,4 +330,23 @@ describe('monthly curation UI', () => {
     const heading = view.querySelector('h2');
     expect(document.activeElement).toBe(heading);
   });
+
+  it('shows try again and no generate button when the reveal read fails', async () => {
+    const view = await render(
+      <DashboardClient
+        launchEligible
+        currentChallenge={null}
+        streak={streak}
+        biteNotes={[]}
+        monthlyReveal={{ mode: 'retry' }}
+        blockMemberGenerate
+      />,
+    );
+    const text = view.textContent ?? '';
+    expect(text).toContain('Please try again');
+    expect(text).not.toContain('Generate Challenge');
+    expect(text).not.toContain('Reveal my challenges');
+    expect(text).not.toContain('Alpha Kitchen');
+    expect(text).not.toContain('Your challenges for this month are ready');
+  });
 });

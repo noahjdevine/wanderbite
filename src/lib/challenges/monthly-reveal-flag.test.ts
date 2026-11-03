@@ -30,17 +30,17 @@ describe('monthly reveal flag', () => {
     expect(monthlyRevealEnabled('true')).toBe(true);
   });
 
-  it('recognizes a missing relation or function', () => {
+  it('recognizes only the schema-missing codes', () => {
     expect(revealSchemaMissing(null)).toBe(false);
+    for (const code of ['42P01', '42883', 'PGRST202', 'PGRST205']) {
+      expect(revealSchemaMissing({ code, message: 'schema cache' })).toBe(true);
+    }
     expect(revealSchemaMissing({ code: '42P01', message: 'relation "challenge_reveals" does not exist' })).toBe(true);
     expect(revealSchemaMissing({ code: '42883', message: 'function reveal_monthly_challenge does not exist' })).toBe(true);
-    expect(
-      revealSchemaMissing({
-        code: 'PGRST202',
-        message: 'Could not find the function public.reveal_monthly_challenge in the schema cache',
-      }),
-    ).toBe(true);
-    expect(revealSchemaMissing({ code: 'PGRST205', message: 'Could not find the table public.challenge_reveals in the schema cache' })).toBe(true);
+    expect(revealSchemaMissing({ code: '', message: 'Could not find the function public.reveal_monthly_challenge' })).toBe(true);
+    expect(revealSchemaMissing({ code: '', message: 'Could not find the table public.challenge_reveals' })).toBe(true);
+    expect(revealSchemaMissing({ code: '500', message: 'upstream connect error' })).toBe(false);
+    expect(revealSchemaMissing({ code: 'XX000', message: 'network timeout' })).toBe(false);
     expect(revealSchemaMissing({ code: '42501', message: 'permission denied' })).toBe(false);
   });
 
