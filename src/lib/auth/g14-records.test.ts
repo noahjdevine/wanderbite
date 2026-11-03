@@ -25,6 +25,7 @@ const API_ROUTES = [
   'src/app/api/csp-report/route.ts',
   'src/app/api/restaurant-image/[id]/route.ts',
   'src/app/api/roulette/route.ts',
+  'src/app/api/roulette/transcribe/route.ts',
   'src/app/api/webhooks/stripe/route.ts',
   'src/app/api/webhooks/resend/route.ts',
   'src/app/api/cron/stripe-reconcile/route.ts',

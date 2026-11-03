@@ -7,3 +7,7 @@ export function parseIdempotencyUuid(raw: string | undefined | null): string | n
 export function rouletteIdempotencyKey(subject: string, clientUuid: string): string {
   return `roulette:${subject}:${clientUuid}`;
 }
+
+export function transcriptionIdempotencyKey(subject: string, clientUuid: string): string {
+  return `transcribe:${subject}:${clientUuid}`;
+}

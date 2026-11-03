@@ -20,6 +20,38 @@ function firstRow<T>(data: T[] | T | null): T | null {
   return data;
 }
 
+export async function rpcAiQuoteMaxCost(args: {
+  modelId: string;
+  priceVersionId: string;
+  provider: string;
+  usageUnits: Record<string, number>;
+}): Promise<number> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc(AI_BUDGET_RPCS.quoteMaxCost, {
+    p_model_id: args.modelId,
+    p_price_version_id: args.priceVersionId,
+    p_provider: args.provider,
+    p_usage_units: args.usageUnits as unknown as Json,
+  });
+  if (error) throw error;
+  if (typeof data !== 'number' || !Number.isFinite(data) || data < 0) {
+    throw new Error('ai_quote_max_cost empty');
+  }
+  return Math.trunc(data);
+}
+
+export async function rpcAiOpsHeadroom(): Promise<
+  {
+    bucket_kind: string;
+    remaining_microdollars: number;
+  }[]
+> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc(AI_BUDGET_RPCS.opsHeadroom, {});
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function rpcAiCurrentVersions() {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin.rpc(AI_BUDGET_RPCS.currentVersions);
