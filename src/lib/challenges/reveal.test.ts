@@ -12,9 +12,10 @@ import {
   selectRevealPair,
 } from '@/lib/challenges/reveal';
 
-const { loadPool, rpc } = vi.hoisted(() => ({
+const { loadPool, rpc, rank } = vi.hoisted(() => ({
   loadPool: vi.fn(),
   rpc: vi.fn(),
+  rank: vi.fn(async (_request: unknown) => null as unknown),
 }));
 
 vi.mock('@/lib/challenges/generate', () => ({
@@ -25,6 +26,13 @@ vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () => ({
     rpc: (...args: unknown[]) => rpc(...args),
   }),
+}));
+
+vi.mock('@/lib/challenges/ai-rank', () => ({
+  aiRankingEnabled: () =>
+    process.env.E04_AI_RANKING_ENABLED === 'true' && process.env.E04_MONTHLY_REVEAL_ENABLED === 'true',
+  REVEAL_AI_SOURCE_VERSION: 'e04.ai.gpt-4.1-mini',
+  rankMonthlyReveal: (request: unknown) => rank(request),
 }));
 
 const ROOT = path.resolve(__dirname, '../../..');
@@ -120,6 +128,10 @@ describe('revealMonthlyChallengeForUser returns the saved row', () => {
   beforeEach(() => {
     loadPool.mockReset();
     rpc.mockReset();
+    rank.mockReset();
+    rank.mockResolvedValue(null);
+    delete process.env.E04_AI_RANKING_ENABLED;
+    delete process.env.E04_MONTHLY_REVEAL_ENABLED;
   });
 
   it('passes the RPC brief, reasons, source, and period through on a retry', async () => {
@@ -192,5 +204,101 @@ describe('revealMonthlyChallengeForUser returns the saved row', () => {
       expect(result.reasons.some((reason) => reason.text.includes('already your challenge'))).toBe(false);
       expect(result.brief.summary).not.toBe('new brief that must not win');
     }
+    expect(rank).not.toHaveBeenCalled();
+  });
+
+  it('commits a valid ranked pair once and falls back when commit rejects it', async () => {
+    process.env.E04_MONTHLY_REVEAL_ENABLED = 'true';
+    process.env.E04_AI_RANKING_ENABLED = 'true';
+    loadPool.mockResolvedValue({
+      ok: true,
+      kind: 'pool',
+      marketId: 'market-1',
+      chicagoPeriod: '2026-11-01',
+      utcPeriod: '2026-11-01',
+      zipDistanceExpanded: false,
+      wantsCocktailExperience: false,
+      candidates: ['alpha', 'beta', 'gamma'].map((id) => ({
+        restaurantId: id,
+        offerVersionId: null,
+        baseSavingsCents: 2000,
+        minSpendCents: 5000,
+        distanceTier: 'requested',
+        restaurant: { id, name: id, cuisine_tags: ['thai'] },
+      })),
+    });
+    rank.mockResolvedValue({
+      source: 'ai_ranked',
+      sourceVersion: 'e04.ai.gpt-4.1-mini',
+      picks: [
+        { restaurantId: 'gamma', reason: 'Gamma matches the note' },
+        { restaurantId: 'beta', reason: 'Beta is the second pick' },
+      ],
+    });
+    rpc.mockResolvedValueOnce({
+      data: [{
+        outcome: 'created',
+        cycle_id: 'cycle-ai',
+        reveal_id: 'reveal-ai',
+        period_key: '2026-11-01',
+        restaurant_ids: ['gamma', 'beta'],
+        selection_source: 'ai_ranked',
+        brief: { occasion: '', discovery_level: '', summary: 'note', surprise_me: false },
+        item_reasons: [
+          { restaurant_id: 'gamma', template_id: 'ai_pair_v1', text: 'Gamma matches the note' },
+          { restaurant_id: 'beta', template_id: 'ai_pair_v1', text: 'Beta is the second pick' },
+        ],
+      }],
+      error: null,
+    });
+
+    const created = await revealMonthlyChallengeForUser('user-1', { summary: 'note' });
+    expect(created).toMatchObject({
+      ok: true,
+      selectionSource: 'ai_ranked',
+      restaurantIds: ['gamma', 'beta'],
+    });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    const firstArgs = rpc.mock.calls[0]?.[1] as { p_selection_source: string; p_source_version: string };
+    expect(firstArgs.p_selection_source).toBe('ai_ranked');
+    expect(firstArgs.p_source_version).toBe('e04.ai.gpt-4.1-mini');
+    expect(rank).toHaveBeenCalledTimes(1);
+
+    rpc.mockReset();
+    rank.mockClear();
+    rpc.mockImplementation(async (_fn: string, args: { p_selection_source: string; p_restaurant_ids: string[] }) => {
+      if (args.p_selection_source === 'ai_ranked') {
+        return {
+          data: [{ outcome: 'invalid_restaurants', cycle_id: null, reveal_id: null, period_key: null, restaurant_ids: null, selection_source: null, brief: null, item_reasons: null }],
+          error: null,
+        };
+      }
+      return {
+        data: [{
+          outcome: 'created',
+          cycle_id: 'cycle-det',
+          reveal_id: 'reveal-det',
+          period_key: '2026-11-01',
+          restaurant_ids: args.p_restaurant_ids,
+          selection_source: 'deterministic_fallback',
+          brief: { occasion: '', discovery_level: '', summary: 'note', surprise_me: false },
+          item_reasons: args.p_restaurant_ids.map((id) => ({
+            restaurant_id: id,
+            template_id: 'deterministic_pair_v1',
+            text: `${id} fallback`,
+          })),
+        }],
+        error: null,
+      };
+    });
+
+    const fallback = await revealMonthlyChallengeForUser('user-1', { summary: 'note' });
+    expect(rank).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledTimes(2);
+    expect(fallback).toMatchObject({ ok: true, selectionSource: 'deterministic_fallback' });
+    const second = rpc.mock.calls[1]?.[1] as { p_selection_source: string; p_restaurant_ids: string[] };
+    expect(second.p_selection_source).toBe('deterministic_fallback');
+    expect(second.p_restaurant_ids.every((id) => ['alpha', 'beta', 'gamma'].includes(id))).toBe(true);
+    expect(new Set(second.p_restaurant_ids).size).toBe(2);
   });
 });

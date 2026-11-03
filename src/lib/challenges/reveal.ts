@@ -4,6 +4,7 @@ import {
   loadMonthlyChallengePool,
   type GenerateFailureReason,
 } from '@/lib/challenges/generate';
+import { aiRankingEnabled, rankMonthlyReveal, REVEAL_AI_SOURCE_VERSION } from '@/lib/challenges/ai-rank';
 import { REVEAL_LABEL_CAP, REVEAL_SUMMARY_CAP } from '@/lib/challenges/monthly-reveal-copy';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { chicagoMonthStart } from '@/lib/cron-period';
@@ -32,7 +33,7 @@ export type StoredRevealBrief = {
 
 export type RevealReason = {
   restaurantId: string;
-  templateId: 'deterministic_pair_v1' | 'legacy_pair_v1';
+  templateId: 'deterministic_pair_v1' | 'legacy_pair_v1' | 'ai_pair_v1';
   text: string;
 };
 
@@ -160,7 +161,10 @@ function reasonsFromSaved(value: Json | null): RevealReason[] | null {
     if (!isRecord(entry) || typeof entry.restaurant_id !== 'string' || typeof entry.text !== 'string') {
       return null;
     }
-    const templateId = entry.template_id === 'legacy_pair_v1' ? 'legacy_pair_v1' : 'deterministic_pair_v1';
+    const templateId =
+      entry.template_id === 'legacy_pair_v1' || entry.template_id === 'ai_pair_v1'
+        ? entry.template_id
+        : 'deterministic_pair_v1';
     reasons.push({ restaurantId: entry.restaurant_id, templateId, text: entry.text });
   }
   return reasons;
@@ -212,8 +216,15 @@ export async function revealMonthlyChallengeForUser(
     let restaurantIds: string[] = [];
     let reasons: RevealReason[] = [];
     let source: RevealSelectionSource = 'deterministic_fallback';
+    let sourceVersion = REVEAL_SOURCE_VERSION;
     let offerVersionIds: Array<string | null> = [];
     let zipDistanceExpanded = false;
+    let deterministicCommit: {
+      periodKey: string;
+      restaurantIds: string[];
+      offerVersionIds: Array<string | null>;
+      reasons: RevealReason[];
+    } | null = null;
 
     if (pool.kind === 'existing') {
       source = 'legacy_generate';
@@ -227,18 +238,40 @@ export async function revealMonthlyChallengeForUser(
       if (pool.candidates.length < 2) {
         return { ok: false, error: THIN_POOL_ERROR, reason: 'thin_pool' };
       }
-      const selectedRows = selectRevealPair(
+      const byId = new Map(pool.candidates.map((candidate) => [candidate.restaurantId, candidate]));
+      const deterministicRows = selectRevealPair(
         pool.candidates.map((candidate) => candidate.restaurant),
         pool.wantsCocktailExperience,
       );
-      const byId = new Map(pool.candidates.map((candidate) => [candidate.restaurantId, candidate]));
-      const selected = selectedRows.flatMap((row) => {
+      const deterministic = deterministicRows.flatMap((row) => {
         const candidate = byId.get(row.id);
         return candidate ? [candidate] : [];
       });
-      if (selected.length < 2) {
+      if (deterministic.length < 2) {
         return { ok: false, error: THIN_POOL_ERROR, reason: 'thin_pool' };
       }
+      const ranked = aiRankingEnabled()
+        ? await rankMonthlyReveal({
+            brief,
+            userId,
+            candidates: pool.candidates.map((candidate) => ({
+              id: candidate.restaurantId,
+              name: candidate.restaurant.name,
+              cuisines: candidate.restaurant.cuisine_tags ?? [],
+              distanceTier: candidate.distanceTier,
+              baseSavingsCents: candidate.baseSavingsCents,
+              minSpendCents: candidate.minSpendCents,
+            })),
+          })
+        : null;
+      const rankedSelected = ranked
+        ? ranked.picks.flatMap((pick) => {
+            const candidate = byId.get(pick.restaurantId);
+            return candidate ? [candidate] : [];
+          })
+        : [];
+      const usingRank = rankedSelected.length === 2;
+      const selected = usingRank ? rankedSelected : deterministic;
       const versionBacked = selected.some((candidate) => candidate.offerVersionId);
       periodKey = revealCycleMonth({
         versionBacked,
@@ -248,19 +281,45 @@ export async function revealMonthlyChallengeForUser(
       zipDistanceExpanded = pool.zipDistanceExpanded;
       restaurantIds = selected.map((candidate) => candidate.restaurantId);
       offerVersionIds = selected.map((candidate) => candidate.offerVersionId);
-      reasons = selected.map((candidate) =>
-        deterministicRevealReason({
-          restaurantId: candidate.restaurantId,
-          name: candidate.restaurant.name,
-          baseSavingsCents: candidate.baseSavingsCents,
-          minSpendCents: candidate.minSpendCents,
-          zipDistanceExpanded,
+      source = usingRank ? 'ai_ranked' : 'deterministic_fallback';
+      sourceVersion = usingRank ? REVEAL_AI_SOURCE_VERSION : REVEAL_SOURCE_VERSION;
+      reasons = usingRank && ranked
+        ? ranked.picks.map((pick) => ({
+            restaurantId: pick.restaurantId,
+            templateId: 'ai_pair_v1' as const,
+            text: pick.reason,
+          }))
+        : selected.map((candidate) =>
+            deterministicRevealReason({
+              restaurantId: candidate.restaurantId,
+              name: candidate.restaurant.name,
+              baseSavingsCents: candidate.baseSavingsCents,
+              minSpendCents: candidate.minSpendCents,
+              zipDistanceExpanded,
+            }),
+          );
+      deterministicCommit = {
+        periodKey: revealCycleMonth({
+          versionBacked: deterministic.some((candidate) => candidate.offerVersionId),
+          chicagoPeriod: pool.chicagoPeriod,
+          utcPeriod: pool.utcPeriod,
         }),
-      );
+        restaurantIds: deterministic.map((candidate) => candidate.restaurantId),
+        offerVersionIds: deterministic.map((candidate) => candidate.offerVersionId),
+        reasons: deterministic.map((candidate) =>
+          deterministicRevealReason({
+            restaurantId: candidate.restaurantId,
+            name: candidate.restaurant.name,
+            baseSavingsCents: candidate.baseSavingsCents,
+            minSpendCents: candidate.minSpendCents,
+            zipDistanceExpanded: pool.zipDistanceExpanded,
+          }),
+        ),
+      };
     }
 
     const supabase = getSupabaseAdmin();
-    const { data, error } = await supabase.rpc('reveal_monthly_challenge', {
+    let { data, error } = await supabase.rpc('reveal_monthly_challenge', {
       p_user_id: userId,
       p_cycle_month: periodKey,
       p_market_id: marketId,
@@ -276,12 +335,69 @@ export async function revealMonthlyChallengeForUser(
         offer_version_ids: offerVersionIds,
         zip_distance_expanded: zipDistanceExpanded,
       } as unknown as Json,
-      p_source_version: REVEAL_SOURCE_VERSION,
+      p_source_version: sourceVersion,
     });
+    if (error && source === 'ai_ranked' && deterministicCommit) {
+      source = 'deterministic_fallback';
+      sourceVersion = REVEAL_SOURCE_VERSION;
+      periodKey = deterministicCommit.periodKey;
+      restaurantIds = deterministicCommit.restaurantIds;
+      offerVersionIds = deterministicCommit.offerVersionIds;
+      reasons = deterministicCommit.reasons;
+      const retry = await supabase.rpc('reveal_monthly_challenge', {
+        p_user_id: userId,
+        p_cycle_month: periodKey,
+        p_market_id: marketId,
+        p_restaurant_ids: restaurantIds,
+        p_brief: brief as unknown as Json,
+        p_selection_source: 'deterministic_fallback',
+        p_item_reasons: reasons.map((reason) => ({
+          restaurant_id: reason.restaurantId,
+          template_id: reason.templateId,
+          text: reason.text,
+        })) as unknown as Json,
+        p_eligibility_facts: {
+          offer_version_ids: offerVersionIds,
+          zip_distance_expanded: zipDistanceExpanded,
+        } as unknown as Json,
+        p_source_version: REVEAL_SOURCE_VERSION,
+      });
+      if (retry.error) {
+        return { ok: false, error: 'Could not save your challenges. Please try again.', reason: 'retryable' };
+      }
+      data = retry.data;
+      error = null;
+    }
     if (error) {
       return { ok: false, error: 'Could not save your challenges. Please try again.', reason: 'retryable' };
     }
-    const row = firstRpcRow(data as RevealRpcRow[] | RevealRpcRow | null);
+    let row = firstRpcRow(data as RevealRpcRow[] | RevealRpcRow | null);
+    const rejected = row?.outcome === 'capacity_full' || row?.outcome === 'below_floor' || row?.outcome === 'invalid_restaurants';
+    if (rejected && source === 'ai_ranked' && deterministicCommit) {
+      console.warn('[challenges] reveal ranking candidate was not committed', { outcome: row?.outcome });
+      const retry = await supabase.rpc('reveal_monthly_challenge', {
+        p_user_id: userId,
+        p_cycle_month: deterministicCommit.periodKey,
+        p_market_id: marketId,
+        p_restaurant_ids: deterministicCommit.restaurantIds,
+        p_brief: brief as unknown as Json,
+        p_selection_source: 'deterministic_fallback',
+        p_item_reasons: deterministicCommit.reasons.map((reason) => ({
+          restaurant_id: reason.restaurantId,
+          template_id: reason.templateId,
+          text: reason.text,
+        })) as unknown as Json,
+        p_eligibility_facts: {
+          offer_version_ids: deterministicCommit.offerVersionIds,
+          zip_distance_expanded: zipDistanceExpanded,
+        } as unknown as Json,
+        p_source_version: REVEAL_SOURCE_VERSION,
+      });
+      if (retry.error) {
+        return { ok: false, error: 'Could not save your challenges. Please try again.', reason: 'retryable' };
+      }
+      row = firstRpcRow(retry.data as RevealRpcRow[] | RevealRpcRow | null);
+    }
     const savedBrief = briefFromSaved(row?.brief ?? null);
     const savedReasons = reasonsFromSaved(row?.item_reasons ?? null);
     const savedSource = sourceFromSaved(row?.selection_source ?? null);
@@ -297,7 +413,6 @@ export async function revealMonthlyChallengeForUser(
     ) {
       if (row?.outcome === 'capacity_full' || row?.outcome === 'below_floor' || row?.outcome === 'invalid_restaurants') {
         console.warn('[challenges] reveal rpc rejected a service candidate', {
-          userId,
           outcome: row.outcome,
         });
       }
