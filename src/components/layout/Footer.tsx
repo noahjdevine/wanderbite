@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useSupabaseUser } from '@/hooks/use-supabase-user';
 
-const linkClass = 'text-sm text-muted-foreground transition-colors hover:text-foreground';
+const linkClass = 'wb-footer-link';
 
 function FooterSignOut() {
   const router = useRouter();
@@ -29,12 +29,12 @@ export function Footer() {
   const { signedIn, loading } = useSupabaseUser();
 
   return (
-    <footer className="border-t bg-background">
+    <footer className="wb-dark border-t border-white/10 bg-wb-night text-wb-cream">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 py-6 sm:flex-row sm:px-6">
-        <p className="text-sm text-muted-foreground">
+        <p className="text-sm text-wb-cream">
           © {currentYear} Wanderbite. All rights reserved.
         </p>
-        <nav className="flex flex-wrap items-center justify-center gap-6">
+        <nav aria-label="Footer" className="flex flex-wrap items-center justify-center gap-x-6 gap-y-1">
           <Link href="/#how-it-works" className={linkClass}>
             How it Works
           </Link>
@@ -57,7 +57,7 @@ export function Footer() {
             Contact
           </Link>
           {loading ? (
-            <span className="h-4 w-16 animate-pulse rounded bg-muted" aria-hidden />
+            <span className="h-4 w-16 rounded bg-white/15" aria-hidden />
           ) : signedIn ? (
             <>
               <Link href="/account" className={linkClass}>

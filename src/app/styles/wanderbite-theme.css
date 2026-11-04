@@ -229,44 +229,7 @@
   box-shadow: inset 0 0 0 2px var(--wb-blush);
 }
 
-/* ---------- Bea avatar keyframes (used by BeaAvatar.tsx) ---------- */
-@keyframes bea-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes bea-blink { 0%, 44%, 50%, 100% { transform: scaleY(1); } 47% { transform: scaleY(0.1); } }
-@keyframes bea-move {
-  0%, 14% { transform: translateX(0) rotate(0deg); }
-  28%, 70% { transform: translateX(-30px) rotate(-8deg); }
-  86%, 100% { transform: translateX(0) rotate(0deg); }
-}
-@keyframes bea-mouth {
-  0%, 20% { transform: scale(1, 1); }
-  29% { transform: scale(1.35, 2.5); }
-  34% { transform: scale(1.1, 0.45); }
-  40% { transform: scale(1, 1.3); }
-  46% { transform: scale(1, 0.6); }
-  52% { transform: scale(1, 1.15); }
-  58%, 100% { transform: scale(1, 1); }
-}
-@keyframes bea-bite { 0%, 32% { transform: scale(0); } 35%, 92% { transform: scale(1); } 97%, 100% { transform: scale(0); } }
-@keyframes bea-squint {
-  0%, 33% { transform: scaleY(1); } 36%, 54% { transform: scaleY(0.22); }
-  58%, 82% { transform: scaleY(1); } 85% { transform: scaleY(0.1); } 88%, 100% { transform: scaleY(1); }
-}
-@keyframes bea-squash {
-  0%, 33%, 100% { transform: translateY(0) scale(1, 1); }
-  37% { transform: translateY(2px) scale(1.05, 0.95); }
-  44% { transform: translateY(-4px) scale(0.97, 1.03); }
-  52% { transform: translateY(0) scale(1, 1); }
-}
-@keyframes bea-crumb {
-  0%, 34% { opacity: 0; transform: translate(0, 0); }
-  38% { opacity: 1; }
-  62%, 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); }
-}
-@keyframes bea-heart {
-  0% { opacity: 0; transform: translateY(0) scale(0.5); }
-  25% { opacity: 1; transform: translateY(-6px) scale(1); }
-  100% { opacity: 0; transform: translateY(-22px) scale(0.9); }
-}
+/* Bea keyframes live with the Bea rules further down. */
 
 /* Scoped so existing member pages keep their current motion.
    Golden Hour loops and Bea still stop under reduced motion. */
@@ -294,10 +257,52 @@
   .wb-cta-secondary,
   .wb-cta-plum,
   .bea-avatar,
-  .bea-avatar * {
+  .bea-avatar *,
+  .bea-body,
+  .bea-breathe,
+  .bea-face,
+  .bea-blink-a,
+  .bea-blink-b,
+  .bea-eye,
+  .bea-idle-eyes,
+  .bea-found-eyes,
+  .bea-mouth-idle,
+  .bea-mouth-think,
+  .bea-mouth-found,
+  .bea-food,
+  .bea-food-motion,
+  .bea-food-wobble,
+  .bea-bite,
+  .bea-crumb,
+  .bea-hand,
+  .bea-heart,
+  .bea-shadow {
     animation: none !important;
     transition: none !important;
   }
+  .bea-avatar[data-state="idle"] .bea-mouth-idle { opacity: 1 !important; }
+  .bea-avatar[data-state="idle"] .bea-mouth-think,
+  .bea-avatar[data-state="idle"] .bea-mouth-found,
+  .bea-avatar[data-state="idle"] .bea-found-eyes,
+  .bea-avatar[data-state="idle"] .bea-food,
+  .bea-avatar[data-state="idle"] .bea-heart { opacity: 0 !important; }
+  .bea-avatar[data-state="thinking"] .bea-food { opacity: 1 !important; }
+  .bea-avatar[data-state="thinking"] .bea-food-motion {
+    transform: translate(-18%, 2%) rotate(-10deg) !important;
+  }
+  .bea-avatar[data-state="thinking"] .bea-bite { transform: scale(0) !important; }
+  .bea-avatar[data-state="thinking"] .bea-mouth-idle { opacity: 1 !important; }
+  .bea-avatar[data-state="thinking"] .bea-mouth-think,
+  .bea-avatar[data-state="thinking"] .bea-crumb,
+  .bea-avatar[data-state="thinking"] .bea-heart { opacity: 0 !important; }
+  .bea-avatar[data-state="thinking"] .bea-eye { transform: none !important; }
+  .bea-avatar[data-state="found"] .bea-mouth-found,
+  .bea-avatar[data-state="found"] .bea-found-eyes,
+  .bea-avatar[data-state="found"] .bea-heart { opacity: 1 !important; }
+  .bea-avatar[data-state="found"] .bea-heart { transform: none !important; }
+  .bea-avatar[data-state="found"] .bea-mouth-idle,
+  .bea-avatar[data-state="found"] .bea-idle-eyes,
+  .bea-avatar[data-state="found"] .bea-food { opacity: 0 !important; }
   .wb-placeholder-cycle { opacity: 0 !important; transform: none !important; }
   .wb-placeholder-cycle[data-static="true"] { opacity: 1 !important; }
   .wb-ink-burst { opacity: 0 !important; }
@@ -428,45 +433,123 @@
   100% { transform: translateX(240%); }
 }
 
-/* ---------- Bea motion (RIVE_BRIEF, CSS stand-in) ---------- */
-@keyframes bea-idle {
-  0%, 100% { transform: translateY(0) scale(1, 1); }
-  50% { transform: translateY(-3px) scale(1.018, 0.982); }
+/* ---------- Bea motion (in code, Noah 2026-11-04) ----------
+   Loops start and end on the same rest pose. Percentages track each group's
+   box, so the bob and the hop stay the same size at 120px and 320px.
+   Found is a CSS chain, not a timer: 1.5s hop, then the idle bob, while
+   data-state stays "found". A state change eases the outgoing transform to
+   that rest pose in BeaAvatar before the next animation name runs.
+   Face-only breathes and blinks. It does not hop. */
+@keyframes bea-bob {
+  0%, 100% { transform: translateY(0) scale(1.012, 0.988); }
+  38% { transform: translateY(-6%) scale(0.984, 1.03); }
+  72% { transform: translateY(1.4%) scale(1.03, 0.97); }
 }
-@keyframes bea-blink-idle {
-  0%, 42%, 48%, 86%, 90%, 94%, 100% { transform: scaleY(1); }
-  45%, 88%, 92% { transform: scaleY(0.08); }
+@keyframes bea-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.028, 0.978); }
+}
+@keyframes bea-blink-a {
+  0%, 7%, 14%, 100% { transform: scaleY(1); }
+  10.5% { transform: scaleY(0.08); }
+}
+@keyframes bea-blink-b {
+  0%, 60%, 68%, 76%, 84%, 100% { transform: scaleY(1); }
+  64%, 80% { transform: scaleY(0.08); }
 }
 @keyframes bea-hop {
   0% { transform: translateY(0) scale(1, 1); }
-  16% { transform: translateY(2px) scale(1.05, 0.95); }
-  42% { transform: translateY(-12px) scale(0.96, 1.06); }
-  64% { transform: translateY(0) scale(1.03, 0.97); }
-  100% { transform: translateY(0) scale(1, 1); }
+  14% { transform: translateY(3%) scale(1.07, 0.9); }
+  40% { transform: translateY(-16%) scale(0.94, 1.09); }
+  62% { transform: translateY(1%) scale(1.05, 0.94); }
+  80% { transform: translateY(-2%) scale(0.99, 1.02); }
+  100% { transform: translateY(0) scale(1.012, 0.988); }
+}
+@keyframes bea-squash {
+  0%, 22%, 100% { transform: translateY(0) scale(1, 1); }
+  30% { transform: translateY(2.4%) scale(1.06, 0.92); }
+  42% { transform: translateY(-3.2%) scale(0.975, 1.04); }
+  56% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes bea-move {
+  0%, 12%, 100% { transform: translate(0, 0) rotate(0deg); }
+  26%, 68% { transform: translate(-18%, 2%) rotate(-10deg); }
+  86% { transform: translate(0, 0) rotate(0deg); }
+}
+@keyframes bea-wobble {
+  0%, 100% { transform: rotate(0deg); }
+  38% { transform: rotate(-6deg); }
+  74% { transform: rotate(5deg); }
+}
+@keyframes bea-bite {
+  0%, 20%, 100% { transform: scale(0); }
+  30%, 72% { transform: scale(1); }
+  88% { transform: scale(0); }
+}
+@keyframes bea-squint {
+  0%, 24%, 100% { transform: scaleY(1); }
+  32%, 48% { transform: scaleY(0.16); }
+  56%, 64% { transform: scaleY(0.85); }
+  70%, 80% { transform: scaleY(0.28); }
+  88% { transform: scaleY(1); }
+}
+@keyframes bea-mouth {
+  0%, 18%, 100% { transform: scale(1, 1); }
+  26% { transform: scale(1.15, 2.15); }
+  32% { transform: scale(1.05, 0.42); }
+  40% { transform: scale(1, 1.35); }
+  48% { transform: scale(1.04, 0.5); }
+  56% { transform: scale(1, 1.15); }
+  66%, 100% { transform: scale(1, 1); }
+}
+@keyframes bea-crumb {
+  0%, 30% { opacity: 0; transform: translate(0, 0); }
+  38% { opacity: 1; }
+  72%, 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); }
+}
+@keyframes bea-heart {
+  0% { opacity: 0; transform: translateY(10%) scale(0.35); }
+  20% { opacity: 1; transform: translateY(-8%) scale(1.14); }
+  36%, 64% { opacity: 1; transform: translateY(-30%) scale(1); }
+  100% { opacity: 0; transform: translateY(-58%) scale(0.9); }
 }
 @keyframes bea-found-out {
-  0%, 58% { opacity: 1; }
+  0% { opacity: 0; }
+  16%, 62% { opacity: 1; }
   100% { opacity: 0; }
 }
 @keyframes bea-found-in {
-  0%, 58% { opacity: 0; }
+  0%, 62% { opacity: 0; }
   100% { opacity: 1; }
+}
+@keyframes bea-shadow {
+  0%, 100% { transform: scaleX(1); opacity: 0.28; }
+  40% { transform: scaleX(0.7); opacity: 0.14; }
+  62% { transform: scaleX(1.08); opacity: 0.34; }
 }
 
 .bea-avatar .bea-body,
+.bea-avatar .bea-breathe,
+.bea-avatar .bea-face,
+.bea-avatar .bea-blink-a,
+.bea-avatar .bea-blink-b,
 .bea-avatar .bea-eye,
 .bea-avatar .bea-mouth-think,
 .bea-avatar .bea-food-motion,
+.bea-avatar .bea-food-wobble,
 .bea-avatar .bea-bite,
 .bea-avatar .bea-crumb,
 .bea-avatar .bea-heart,
+.bea-avatar .bea-shadow,
 .bea-avatar .bea-found-eyes,
 .bea-avatar .bea-mouth-found {
   transform-box: fill-box;
   transform-origin: center;
 }
 .bea-avatar .bea-body { transform-origin: 50% 100%; }
-.bea-avatar .bea-food-motion { transform-origin: 0% 50%; }
+.bea-avatar .bea-shadow { transform-origin: 50% 50%; }
+.bea-avatar .bea-food-motion { transform-origin: 72% 78%; }
+.bea-avatar .bea-food-wobble { transform-origin: 30% 55%; }
 .bea-food,
 .bea-heart,
 .bea-mouth-idle,
@@ -474,37 +557,52 @@
 .bea-mouth-found,
 .bea-found-eyes,
 .bea-idle-eyes {
-  transition: opacity 0.4s ease;
+  transition: opacity 0.35s ease;
 }
 
-.bea-avatar[data-state="idle"] .bea-body,
-.bea-avatar[data-state="found"] .bea-body {
-  animation: bea-idle 3.6s ease-in-out infinite;
+.bea-avatar:not([data-face-only="true"])[data-state="idle"] .bea-body {
+  animation: bea-bob 3.6s ease-in-out infinite;
 }
-.bea-avatar[data-state="found"] .bea-body {
-  animation: bea-hop 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) both, bea-idle 3.6s ease-in-out 1.5s infinite;
+.bea-avatar:not([data-face-only="true"])[data-state="found"] .bea-body {
+  animation: bea-hop 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) both, bea-bob 3.6s ease-in-out 1.5s infinite;
 }
-.bea-avatar[data-state="thinking"] .bea-body {
-  animation: bea-squash 4.2s ease-in-out infinite;
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-body {
+  animation: bea-squash 4s ease-in-out infinite;
+}
+.bea-avatar:not([data-face-only="true"]) .bea-breathe {
+  animation: bea-breathe 3.3s ease-in-out infinite;
+}
+.bea-avatar[data-face-only="true"] .bea-face {
+  animation: bea-breathe 3.6s ease-in-out infinite;
+}
+.bea-avatar:not([data-face-only="true"])[data-state="found"] .bea-shadow {
+  animation: bea-shadow 1.5s ease-out both;
 }
 
-.bea-avatar[data-state="idle"] .bea-eye,
-.bea-avatar[data-face-only="true"][data-state="idle"] .bea-eye {
-  animation: bea-blink-idle 8s ease-in-out infinite;
+.bea-avatar[data-state="idle"] .bea-blink-a,
+.bea-avatar[data-face-only="true"] .bea-blink-a {
+  animation: bea-blink-a 3.4s linear infinite;
 }
+.bea-avatar[data-state="idle"] .bea-blink-b,
+.bea-avatar[data-face-only="true"] .bea-blink-b {
+  animation: bea-blink-b 5.1s linear infinite;
+}
+.bea-avatar:not([data-face-only="true"])[data-state="found"] .bea-blink-a {
+  animation: bea-blink-a 3.4s linear 1.5s infinite;
+}
+.bea-avatar:not([data-face-only="true"])[data-state="found"] .bea-blink-b {
+  animation: bea-blink-b 5.1s linear 1.5s infinite;
+}
+
 .bea-avatar[data-state="found"] .bea-idle-eyes {
   opacity: 0;
   animation: bea-found-in 1.5s ease both;
 }
-.bea-avatar[data-state="found"] .bea-eye {
-  animation: bea-blink-idle 8s ease-in-out 1.5s infinite;
-}
-.bea-avatar[data-state="thinking"] .bea-eye {
-  transform: scaleY(0.22);
-  animation: bea-squint 4.2s infinite;
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-eye {
+  animation: bea-squint 4s linear infinite;
 }
 
-.bea-avatar[data-state="thinking"] .bea-mouth-idle { opacity: 0; }
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-mouth-idle { opacity: 0; }
 .bea-avatar[data-state="found"] .bea-mouth-idle {
   opacity: 0;
   animation: bea-found-in 1.5s ease both;
@@ -512,10 +610,9 @@
 .bea-mouth-think,
 .bea-mouth-found,
 .bea-found-eyes { opacity: 0; }
-.bea-avatar[data-state="thinking"] .bea-mouth-think {
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-mouth-think {
   opacity: 1;
-  transform: scale(1.05, 0.75);
-  animation: bea-mouth 4.2s infinite;
+  animation: bea-mouth 4s ease-in-out infinite;
 }
 .bea-avatar[data-state="found"] .bea-mouth-found,
 .bea-avatar[data-state="found"] .bea-found-eyes {
@@ -525,21 +622,23 @@
 
 .bea-food { opacity: 0; }
 .bea-avatar[data-state="thinking"] .bea-food { opacity: 1; }
-.bea-food-motion { transform: translateX(-30px) rotate(-8deg); }
-.bea-avatar[data-state="thinking"] .bea-food-motion {
-  animation: bea-move 4.2s ease-in-out infinite;
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-food-motion {
+  animation: bea-move 4s ease-in-out infinite;
 }
-.bea-bite { transform: scale(1); }
-.bea-avatar[data-state="thinking"] .bea-bite {
-  animation: bea-bite 4.2s infinite;
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-food-wobble {
+  animation: bea-wobble 6.4s ease-in-out infinite;
+}
+.bea-bite { transform: scale(0); }
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-bite {
+  animation: bea-bite 4s linear infinite;
 }
 .bea-crumb { opacity: 0; }
-.bea-avatar[data-state="thinking"] .bea-crumb {
-  animation: bea-crumb 4.2s infinite;
+.bea-avatar:not([data-face-only="true"])[data-state="thinking"] .bea-crumb {
+  animation: bea-crumb 4s linear infinite;
 }
 
 .bea-heart { opacity: 0; }
-.bea-avatar[data-state="found"] .bea-heart {
+.bea-avatar:not([data-face-only="true"])[data-state="found"] .bea-heart {
   opacity: 1;
   animation: bea-heart 1.5s ease-out both;
 }
@@ -604,5 +703,175 @@
     width: 18px;
     height: auto;
     background: linear-gradient(90deg, #1a0e28 0%, #4a2a6a 42%, #120a24 100%);
+  }
+}
+
+/* ---------- Public nav and footer ---------- */
+.wb-wordmark {
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 400;
+  font-size: 30px;
+  letter-spacing: -0.3px;
+  line-height: 1;
+  color: #fff;
+  text-decoration: none;
+}
+.wb-wordmark--compact { font-size: 20px; }
+.wb-nav-pill {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(16px) saturate(140%);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+}
+.wb-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.wb-nav-link:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.wb-nav-link[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-weight: 600;
+}
+.wb-nav-signin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border-radius: 999px;
+  background: #fff;
+  color: var(--wb-night-2);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.wb-nav-signin:hover { background: var(--wb-cream); color: var(--wb-night-2); }
+/* Violet stop is --wb-violet, not --wb-violet-2: white 14px text needs ≥4.5:1. */
+.wb-nav-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%);
+  color: #fff;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  box-shadow: 0 10px 22px rgba(219, 39, 119, 0.28);
+}
+.wb-nav-cta:hover { color: #fff; }
+.wb-nav-cta--compact { padding: 0 10px; font-size: 12px; }
+.wb-nav-menu {
+  background: rgba(18, 10, 36, 0.98);
+  color: #fff;
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  animation: none;
+  transition: none;
+}
+.wb-nav-menu-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--wb-cream);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+.wb-nav-menu-link:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.wb-nav-menu-link[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-weight: 600;
+}
+.wb-account-menu.wb-account-menu {
+  background: rgba(18, 10, 36, 0.96);
+  color: var(--wb-cream);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 16px;
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+.wb-account-menu a,
+.wb-account-menu [role="menuitem"] {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: var(--wb-cream);
+  font-size: 14px;
+  text-decoration: none;
+}
+.wb-account-menu a:hover,
+.wb-account-menu [role="menuitem"]:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+.wb-footer-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wb-lavender-2);
+  font-family: var(--font-sans), Outfit, sans-serif;
+  font-size: 14px;
+  line-height: 1.2;
+  text-decoration: none;
+  cursor: pointer;
+}
+.wb-footer-link:hover { color: var(--wb-blush); }
+
+@media (prefers-reduced-motion: reduce) {
+  .wb-wordmark,
+  .wb-nav-pill,
+  .wb-nav-link,
+  .wb-nav-signin,
+  .wb-nav-cta,
+  .wb-nav-menu,
+  .wb-nav-menu-link,
+  .wb-account-menu,
+  .wb-footer-link {
+    animation: none !important;
+    transition: none !important;
   }
 }

@@ -10,10 +10,10 @@ Everything Cursor and Grok need to rebuild wanderbite.co in the new "Golden Hour
 | `BEA_AI_SPEC.md` | The AI concierge: personality, avatar states, the "show your thinking" steps, the streaming API contract, and honest-matching rules. |
 | `BUILD_PLAN.md` | A phased plan with acceptance criteria and **ready-to-paste prompts** for each step. |
 | `code/wanderbite-theme.css` | Design tokens, keyframes and utility classes (`.wb-glass`, `.wb-glow`, `.wb-cta`, …). |
-| `RIVE_BRIEF.md` | **For you, not the AI tools.** A ready-to-post job brief for hiring a motion designer to build Bea in Rive. |
-| `code/Bea.tsx` | The single avatar component the app uses. It shows the SVG today and switches to Rive with one env var. |
-| `code/BeaAvatar.tsx` | The SVG placeholder avatar (`idle` / `thinking` / `found`, eats the requested cuisine). |
-| `code/BeaAvatarRive.tsx` | The Rive version, wired to the input names in the brief. It's used automatically once `bea.riv` exists. |
+| `RIVE_BRIEF.md` | Reference for Bea's states. Noah dropped the Rive hire on 2026-11-04. The animation is in code. |
+| `code/Bea.tsx` | Reference copy. The app renders `src/components/bea/Bea.tsx`. |
+| `code/BeaAvatar.tsx` | Early SVG reference (`idle` / `thinking` / `found`). The live avatar is `src/components/bea/BeaAvatar.tsx`. |
+| `code/BeaAvatarRive.tsx` | Reference only. Not wired. Do not add `@rive-app` or a `.riv` file. |
 | `cursor-rules/wanderbite-design.mdc` | A Cursor rules file so every edit follows the design system. |
 | `mockups/*.html` | Standalone HTML of every redesigned screen. Open them in a browser to see the motion. |
 
@@ -41,11 +41,9 @@ Grok works best with the specs pasted in directly:
 2. Attach the relevant mockup `.html` file(s), or screenshots of them.
 3. Paste one step's prompt from `BUILD_PLAN.md` at a time.
 
-## Bea's animation: what's on you vs. the AI tools
+## Bea's animation
 
-- **Cursor/Grok** build everything around `<Bea />` (step 0.3 in the build plan) using the SVG placeholder, so the site works fully today.
-- **You** hire a motion designer with `RIVE_BRIEF.md` to make the polished Rive character. AI coding tools can't produce this.
-- **When `bea.riv` arrives,** drop it in `public/` and run the Phase 3 Rive prompt. No other code changes are needed.
+Noah dropped the Rive hire on 2026-11-04. The animation is in code: `src/components/bea/BeaAvatar.tsx` and `src/app/styles/wanderbite-theme.css`. `RIVE_BRIEF.md` and `code/BeaAvatarRive.tsx` stay as the motion reference. Do not add `@rive-app` or a `.riv` file.
 
 ## Order matters
 
