@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 type CuisineInk = "pizza" | "sushi" | "american";
 
 const INK: Record<CuisineInk, string> = {
@@ -22,6 +24,11 @@ type StampBase = {
   accessibleDate?: string;
   pressed?: boolean;
   elementId?: string;
+  /**
+   * Play the slam once. The wrapper keeps `rotation`; the face animates
+   * relative to that angle and ends at rest. The burst is decorative.
+   */
+  playSlam?: boolean;
 };
 
 type StampProps = StampBase &
@@ -40,6 +47,7 @@ export function Stamp({
   accessibleDate,
   pressed = false,
   elementId,
+  playSlam = false,
   ...target
 }: StampProps) {
   const ink = inkColor ?? INK[cuisine];
@@ -77,28 +85,43 @@ export function Stamp({
       </div>
     );
 
-  const style = { transform: `rotate(${rotation}deg)` };
+  const controlClass = playSlam
+    ? "wb-stamp-slam relative z-[1] inline-block shrink-0 p-1 no-underline"
+    : "relative z-[1] inline-block shrink-0 p-1 no-underline";
   const shared = {
     "aria-label": label,
     "data-ink": ink,
     "data-rotation": rotation,
     id: elementId,
-    className: "inline-block shrink-0 p-1 no-underline",
-    style,
+    className: controlClass,
   };
-
-  if ("onSelect" in target && target.onSelect) {
-    return (
+  const control =
+    "onSelect" in target && target.onSelect ? (
       <button type="button" {...shared} aria-pressed={pressed} onClick={target.onSelect}>
         {face}
       </button>
+    ) : (
+      <a href={target.href} {...shared}>
+        {face}
+      </a>
     );
-  }
 
   return (
-    <a href={target.href} {...shared}>
-      {face}
-    </a>
+    <span
+      className="relative inline-block shrink-0"
+      data-stamp-rest={rotation}
+      style={{ transform: `rotate(${rotation}deg)` }}
+    >
+      {playSlam ? (
+        <span
+          aria-hidden="true"
+          data-stamp-burst=""
+          className="wb-ink-burst"
+          style={{ "--wb-burst": ink } as CSSProperties}
+        />
+      ) : null}
+      {control}
+    </span>
   );
 }
 

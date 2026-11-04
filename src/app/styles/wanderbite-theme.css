@@ -146,6 +146,24 @@
 .wb-step-in { animation: wb-step-in 0.45s ease-out both; }
 .wb-spin { animation: wb-spin 16s linear infinite; }
 .wb-stamp-slam { animation: wb-stamp 1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+/* Burst sits behind the stamp face. Color comes from the stamp ink. */
+.wb-ink-burst {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 0;
+  width: 150px;
+  height: 110px;
+  margin: -55px 0 0 -75px;
+  border-radius: 20px;
+  pointer-events: none;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--wb-burst, #7c3aed) 40%, transparent) 0%,
+    transparent 70%
+  );
+  animation: wb-ink-burst 1s ease-out both;
+}
 
 @keyframes wb-spin { to { transform: rotate(360deg); } }
 @keyframes wb-drift {
@@ -177,10 +195,18 @@
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: none; }
 }
+/* Relative to a wrapper that already holds the stamp's resting rotation.
+   The spec's −18° → 6° → 5° is that path when rest is 5°. Subtracting 5°
+   keeps the same arc and lands on this stamp's own angle instead of 5°. */
 @keyframes wb-stamp {
-  0% { opacity: 0; transform: scale(1.7) rotate(-18deg); }
-  60% { opacity: 1; transform: scale(0.94) rotate(6deg); }
-  100% { opacity: 1; transform: scale(1) rotate(5deg); }
+  0% { opacity: 0; transform: scale(1.7) rotate(-23deg); }
+  60% { opacity: 1; transform: scale(0.94) rotate(1deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+@keyframes wb-ink-burst {
+  0% { opacity: 0; transform: scale(0.4); }
+  45% { opacity: 1; transform: scale(1.3); }
+  100% { opacity: 0; transform: scale(1.6); }
 }
 @keyframes wb-placeholder-cycle {
   0% { opacity: 0; transform: translateY(6px); }
@@ -258,6 +284,7 @@
   .wb-step-in,
   .wb-spin,
   .wb-stamp-slam,
+  .wb-ink-burst,
   .wb-passport-leaf,
   .wb-map-frame,
   .wb-pending-ring,
@@ -273,6 +300,7 @@
   }
   .wb-placeholder-cycle { opacity: 0 !important; transform: none !important; }
   .wb-placeholder-cycle[data-static="true"] { opacity: 1 !important; }
+  .wb-ink-burst { opacity: 0 !important; }
 }
 
 /* ---------- Phase 0 component classes (DESIGN_SPEC §8) ---------- */

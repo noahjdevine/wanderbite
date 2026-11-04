@@ -4,6 +4,7 @@ import { MapPreview, PassportPreview, TimelinePreview } from './passport-preview
 import { ProgressPreview } from './progress-preview';
 import { RestaurantsPreview } from './restaurants-preview';
 import { ScreenPreview } from './screen-preview';
+import { StampUnlockPreview } from './stamp-unlock-preview';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,6 +24,7 @@ export default async function DevScreensPage({
   if (params.screen === 'passport') return <PassportPreview />;
   if (params.screen === 'timeline') return <TimelinePreview />;
   if (params.screen === 'map') return <MapPreview />;
+  if (params.screen === 'stamp-unlock') return <StampUnlockPreview />;
   if (params.screen === 'restaurants') {
     const state = params.state === 'empty' || params.state === 'error' ? params.state : 'ready';
     return <RestaurantsPreview state={state} />;

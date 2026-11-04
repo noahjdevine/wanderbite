@@ -53,7 +53,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
 
   const { data: restaurant } = await admin
     .from('restaurants')
-    .select('name, slug')
+    .select('name, slug, cuisine_tags, neighborhood')
     .eq('id', row.restaurant_id)
     .maybeSingle();
 
@@ -64,7 +64,12 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     .eq('active', true)
     .maybeSingle();
 
-  const rest = restaurant as { name: string; slug: string | null } | null;
+  const rest = restaurant as {
+    name: string;
+    slug: string | null;
+    cuisine_tags: string[] | null;
+    neighborhood: string | null;
+  } | null;
   const offerRow = offer as {
     discount_amount_cents: number | null;
     min_spend_cents: number | null;
@@ -153,6 +158,9 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
         minSpendLabel={minSpendLabel}
         status={phase}
         verifiedAt={verifiedAt}
+        verifiedAtIso={row.verified_at}
+        cuisineTags={rest.cuisine_tags}
+        neighborhood={rest.neighborhood}
         itemStatus={itemStatus}
         hasNote={hasNote}
       />

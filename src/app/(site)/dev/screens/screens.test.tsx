@@ -4,6 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isComponentGalleryEnabled } from '@/lib/dev/component-gallery';
 import { RestaurantsPreview } from './restaurants-preview';
+import { StampUnlockPreview } from './stamp-unlock-preview';
 
 vi.mock('next/navigation', () => ({
   notFound: () => {
@@ -70,5 +71,36 @@ describe('/dev/screens restaurants', () => {
     render(<RestaurantsPreview state="error" />);
     expect(screen.getByRole('alert').textContent).toBe('Restaurants temporarily unavailable');
     expect(screen.getByRole('link', { name: 'Retry' }).getAttribute('href')).toBe('/restaurants');
+  });
+});
+
+describe('/dev/screens stamp unlock', () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  it('404s the stamp unlock sample when the gallery is disabled', async () => {
+    const source = readFileSync(path.join(ROOT, 'src/app/(site)/dev/screens/page.tsx'), 'utf8');
+    const gate = source.indexOf('if (!isComponentGalleryEnabled()) notFound();');
+    const screenRoute = source.indexOf("params.screen === 'stamp-unlock'");
+    expect(gate).toBeGreaterThan(-1);
+    expect(screenRoute).toBeGreaterThan(gate);
+
+    vi.resetModules();
+    vi.doMock('@/lib/dev/component-gallery', () => ({
+      isComponentGalleryEnabled: () => false,
+    }));
+    const { default: DevScreensPage } = await import('./page');
+    await expect(
+      DevScreensPage({ searchParams: Promise.resolve({ screen: 'stamp-unlock' }) }),
+    ).rejects.toThrow('NEXT_NOT_FOUND');
+  });
+
+  it('renders a replay control for the slam', () => {
+    render(<StampUnlockPreview />);
+    expect(screen.getByRole('button', { name: 'Replay stamp' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /The Yard/ }).className).toContain('wb-stamp-slam');
+    expect(document.querySelector('[data-stamp-burst]')?.getAttribute('aria-hidden')).toBe('true');
+    expect(screen.getByText('New stamp: The Yard')).toBeTruthy();
   });
 });

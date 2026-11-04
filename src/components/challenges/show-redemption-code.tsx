@@ -1,12 +1,15 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import QRCode from 'react-qr-code';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { redeemChallengeItem } from '@/app/actions/redeem-challenge';
 import { Button } from '@/components/ui/button';
+import { Stamp } from '@/components/wb';
 import { buildPartnerRedeemScanUrl } from '@/lib/partner-redeem-url';
+import { chicagoVisitDate, cuisineInk, stampRotationDegrees } from '@/lib/passport/passport-board';
+import { useStampUnlock } from '@/lib/passport/stamp-unlock';
 import {
   formatRedemptionCountdown,
   REDEMPTION_CODE_LIFETIME_LABEL,
@@ -82,6 +85,10 @@ type ShowRedemptionCodeProps = {
   minSpendLabel: string;
   status: 'issued' | 'verified' | 'expired';
   verifiedAt?: string | null;
+  /** ISO `verified_at`. The display string above is not used for the slam. */
+  verifiedAtIso?: string | null;
+  cuisineTags?: string[] | null;
+  neighborhood?: string | null;
   /** Stored challenge_items.status. Null when the redemption has no item. */
   itemStatus?: string | null;
   /** True when a bite_notes row exists for this redemption. */
@@ -101,6 +108,9 @@ export function ShowRedemptionCode({
   minSpendLabel,
   status,
   verifiedAt,
+  verifiedAtIso = null,
+  cuisineTags = null,
+  neighborhood = null,
   itemStatus = null,
   hasNote = false,
 }: ShowRedemptionCodeProps) {
@@ -113,6 +123,20 @@ export function ShowRedemptionCode({
   const [announcement, setAnnouncement] = useState(() =>
     openingAnnouncement(status, expiresAt, redemptionDeadline, itemStatus, hasNote, Date.now()),
   );
+  const verifiedCandidate = useMemo(
+    () =>
+      phase === 'verified' && verifiedAtIso
+        ? [
+            {
+              id: redemptionId,
+              status: hasNote ? ('note_added' as const) : ('verified' as const),
+              verifiedAt: verifiedAtIso,
+            },
+          ]
+        : [],
+    [hasNote, phase, redemptionId, verifiedAtIso],
+  );
+  const unlock = useStampUnlock(verifiedCandidate, false);
   const refreshing = useRef(false);
   const announcedMinute = useRef(announcement === ONE_MINUTE_LEFT);
   const codeRef = useRef(liveCode);
@@ -261,6 +285,21 @@ export function ShowRedemptionCode({
         <div className="mt-8 w-full rounded-[28px] border border-[#86efac] bg-[#f0fdf4] p-6 text-center">
           <p className="font-display text-[32px] leading-none text-[#14532d]">Already verified</p>
           {verifiedAt ? <p className="mt-2 text-sm text-[#14532d]">{verifiedAt}</p> : null}
+          <div className="mt-4 flex justify-center">
+            <Stamp
+              name={restaurantName}
+              date={chicagoVisitDate(verifiedAtIso)?.short || verifiedAt || 'Verified'}
+              accessibleDate={chicagoVisitDate(verifiedAtIso)?.long || verifiedAt || undefined}
+              neighborhood={neighborhood?.trim() ?? ''}
+              inkColor={cuisineInk(cuisineTags).color}
+              rotation={stampRotationDegrees(redemptionId)}
+              playSlam={unlock.slamId === redemptionId}
+              href="/journey?view=passport"
+            />
+          </div>
+          <p className="sr-only" aria-live="polite" data-stamp-announcement="">
+            {unlock.announceId === redemptionId ? `New stamp: ${restaurantName}` : ''}
+          </p>
         </div>
       ) : phase === 'expired' || !liveCode || !scanUrl ? (
         <div className="mt-8 w-full rounded-[28px] bg-white p-6 text-center shadow-[var(--wb-shadow-card)]">
