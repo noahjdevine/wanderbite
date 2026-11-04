@@ -23,6 +23,7 @@ import {
 } from '@/components/roulette/roulette-options-fields';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { DiscoveryVoiceControls } from '@/components/roulette/discovery-voice-controls';
+import { RecipeQaAnswer, type RecipeQaAnswerView } from '@/components/recipes/recipe-qa-answer';
 import { celebrate } from '@/lib/confetti';
 
 export type RouletteApiResult = {
@@ -36,6 +37,7 @@ export type RouletteApiResult = {
   image_url: string | null;
   google_place_id: string | null;
   selectionMode: 'ai' | 'random_fallback';
+  recipeQa?: RecipeQaAnswerView | null;
 };
 
 type Phase = 'form' | 'loading' | 'result' | 'error';
@@ -118,7 +120,7 @@ export function RouletteClient() {
         }
         setResult(askResult.data);
         setPhase('result');
-        void celebrate();
+        if (!askResult.data.recipeQa) void celebrate();
       } catch {
         setErrorMessage('Network error. Check your connection and try again.');
         setPhase('error');
@@ -136,7 +138,7 @@ export function RouletteClient() {
   }, []);
 
   useEffect(() => {
-    if (phase !== 'result' || !result?.restaurantId) return;
+    if (phase !== 'result' || (!result?.restaurantId && !result?.recipeQa)) return;
     const prefersReduced =
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -150,7 +152,7 @@ export function RouletteClient() {
       region.focus();
     }, 350);
     return () => clearTimeout(id);
-  }, [phase, result?.restaurantId]);
+  }, [phase, result?.restaurantId, result?.recipeQa]);
 
   return (
     <div className="mx-auto flex max-w-lg flex-col px-4 py-12 sm:py-16">
@@ -248,7 +250,35 @@ export function RouletteClient() {
         </div>
       )}
 
-      {phase === 'result' && result && (
+      {phase === 'result' && result?.recipeQa ? (
+        <div
+          ref={resultSectionRef}
+          tabIndex={-1}
+          aria-labelledby="discovery-result-heading"
+          className="flex flex-col space-y-8 scroll-mt-6 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-[#E85D26] animate-in fade-in slide-in-from-bottom-4 duration-500"
+        >
+          <p className="text-center text-sm text-muted-foreground">{ALLERGY_NOTE}</p>
+          <div className="text-center">
+            <p className="text-sm font-medium uppercase tracking-wide text-[#E85D26]">
+              From the assistant
+            </p>
+            <h2
+              id="discovery-result-heading"
+              className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl"
+            >
+              Recipe and visit notes
+            </h2>
+          </div>
+          <RecipeQaAnswer qa={result.recipeQa} />
+          <div className="flex justify-center">
+            <Button type="button" variant="outline" className="rounded-full" onClick={() => void ask()}>
+              Ask again
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
+      {phase === 'result' && result && !result.recipeQa ? (
         <div
           ref={resultSectionRef}
           tabIndex={-1}
@@ -331,7 +361,7 @@ export function RouletteClient() {
             </Link>
           </p>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

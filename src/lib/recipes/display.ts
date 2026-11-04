@@ -26,6 +26,15 @@ export const RECIPES_SECTION_HEADING = 'Recipes inspired by this visit';
 
 export const SAVED_RECIPES_HEADING = 'Saved recipes';
 
+export const RECIPE_QA_CARDS_HEADING = 'Recipes used in this answer';
+
+export const JOURNAL_SAVED_RECIPES_HEADING = 'Your saved recipes from this visit';
+
+export const GENERATED_HOME_RECIPE_LABEL =
+  'Inspired-by home recipe (generated, not saved)';
+
+export const NO_RESTAURANT_RECIPE = "I don't have that restaurant's recipe.";
+
 export const NOT_CHECKED_LABEL = 'Not recorded';
 
 export type RecipeIngredient = {

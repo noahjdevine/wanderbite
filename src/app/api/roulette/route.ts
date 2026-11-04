@@ -70,6 +70,9 @@ import {
   mergeExcludedCuisines,
   parseModelRestaurantId,
 } from '@/lib/discovery-turn';
+import { recipeQaEnabled } from '@/lib/recipes/flag';
+import { discoveryRecipeQaIntent } from '@/lib/recipes/qa-intent';
+import { runRecipeQaTurn } from '@/lib/recipes/qa-turn';
 
 export const dynamic = 'force-dynamic';
 /** Claude + DB can exceed the default serverless limit on cold starts. */
@@ -242,10 +245,16 @@ export async function POST(request: NextRequest) {
     }
 
     const messageGate = gateDiscoveryMessage(body.message);
-    if (!messageGate.ok) {
+    const recipeQaBypassesAllergyGate =
+      !messageGate.ok && messageGate.status === 422 && recipeQaEnabled();
+    if (!messageGate.ok && !recipeQaBypassesAllergyGate) {
       return NextResponse.json({ error: messageGate.error }, { status: messageGate.status });
     }
-    const acceptedMessage = messageGate.message;
+    const acceptedMessage = messageGate.ok
+      ? messageGate.message
+      : typeof body.message === 'string'
+        ? body.message.trim()
+        : '';
 
     const bodyDietary = boundStringArray(body.dietaryQuick, ROULETTE_MAX_DIETARY);
     const priceRange =
@@ -307,6 +316,31 @@ export async function POST(request: NextRequest) {
         ]);
       const profile = profileRow as DiscoveryProfileRow | null;
       const prefs = prefsRow as DiscoveryPrefsRow | null;
+      const qaIntent = discoveryRecipeQaIntent(acceptedMessage);
+      if (qaIntent) {
+        if (profileError || prefsError || !profile) {
+          if (profileError) console.error('[roulette] profile', profileError.message);
+          if (prefsError) console.error('[roulette] preferences', prefsError.message);
+          return NextResponse.json({ error: DISCOVERY_PROFILE_ERROR }, { status: 503 });
+        }
+        const qaIp = trustedClientIpFromHeaders(request.headers);
+        const qa = await runRecipeQaTurn({
+          userId: user.id,
+          accountTier: profile.subscription_status === 'active' ? 'paid' : 'free',
+          message: acceptedMessage,
+          intent: qaIntent,
+          dietaryFlags: profile.dietary_flags,
+          allergyFlags: profile.allergy_flags,
+          excludedCuisines: prefs?.excluded_cuisines ?? [],
+          subjectKey,
+          clientUuid,
+          ipHash: qaIp ? hashClientIp(qaIp) : null,
+        });
+        return withGuestCookie(NextResponse.json({ recipeQa: qa }), guestCookieToSet);
+      }
+      if (recipeQaBypassesAllergyGate) {
+        return NextResponse.json({ error: DISCOVERY_ALLERGY_ERROR }, { status: 422 });
+      }
       const profileGate = gateSignedInProfile({
         profileError: Boolean(profileError),
         profile,
@@ -325,6 +359,9 @@ export async function POST(request: NextRequest) {
       dietaryFlags = mergeDietaryFlags(bodyDietary, profileGate.dietaryFlags);
       excludedCuisines = mergeExcludedCuisines(bodyExcluded, profileGate.excludedCuisines);
     } else {
+      if (recipeQaBypassesAllergyGate) {
+        return NextResponse.json({ error: DISCOVERY_ALLERGY_ERROR }, { status: 422 });
+      }
       const existing = parseGuestCookieValue(request.cookies.get(AI_GUEST_COOKIE_NAME)?.value);
       if (existing) {
         guestId = existing;

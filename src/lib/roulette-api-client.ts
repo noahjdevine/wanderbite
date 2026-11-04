@@ -43,6 +43,32 @@ async function postRouletteOnce(
     };
   }
 
+  if (data.recipeQa && typeof data.recipeQa.answer === 'string') {
+    return {
+      ok: true,
+      data: {
+        restaurantId: data.restaurantId ?? '',
+        restaurantName: data.restaurantName ?? '',
+        reason: data.recipeQa.answer,
+        cuisine_tags: data.cuisine_tags ?? null,
+        neighborhood: data.neighborhood ?? null,
+        address: data.address ?? null,
+        price_range: data.price_range ?? null,
+        image_url: data.image_url ?? null,
+        google_place_id: data.google_place_id ?? null,
+        selectionMode: 'ai',
+        recipeQa: {
+          answer: data.recipeQa.answer,
+          notice: data.recipeQa.notice ?? null,
+          recipes: Array.isArray(data.recipeQa.recipes) ? data.recipeQa.recipes : [],
+          generatedLabel: data.recipeQa.generatedLabel ?? null,
+          generatedText: data.recipeQa.generatedText ?? null,
+          visitLines: Array.isArray(data.recipeQa.visitLines) ? data.recipeQa.visitLines : [],
+        },
+      },
+    };
+  }
+
   if (!data.restaurantId || !data.restaurantName || !data.reason) {
     return { ok: false, error: 'We got an unexpected response. Please try again.' };
   }
