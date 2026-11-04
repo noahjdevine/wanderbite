@@ -18,7 +18,7 @@ const CHECKOUT_UI_FILES = [
   'src/components/pricing/pricing-client.tsx',
   'src/components/onboarding/OnboardingWizard.tsx',
   'src/components/dashboard/paywall-card.tsx',
-  'src/components/landing/club-section.tsx',
+  'src/components/landing/membership-section.tsx',
   'src/app/(site)/billing/page.tsx',
 ];
 
