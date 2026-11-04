@@ -1,9 +1,11 @@
 /**
  * The only avatar the app should render.
  *
- * Rive is intentionally not wired: no @rive-app dependency and no .riv file.
- * design-handoff/code/BeaAvatarRive.tsx stays in the handoff pack for reference.
- * Reduced motion and sizes under 48px are handled in the SVG stylesheet.
+ * Bea's animation is in code (Noah, 2026-11-04): the SVG in BeaAvatar.tsx and
+ * the keyframes in wanderbite-theme.css. The Rive hire was dropped. There is
+ * no @rive-app dependency and no .riv file. design-handoff/code/BeaAvatarRive.tsx
+ * and design-handoff/RIVE_BRIEF.md stay as reference. Reduced motion and sizes
+ * under 48px are handled in the stylesheet. The props below are the whole API.
  */
 import { BeaAvatar, type BeaState } from "./BeaAvatar";
 import type { BeaFood } from "./food";
