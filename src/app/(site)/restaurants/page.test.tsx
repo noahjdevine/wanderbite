@@ -150,6 +150,7 @@ describe('restaurants page', () => {
     ]);
     expect(query.selected()).toContain('neighborhood');
     expect(query.selected()).toContain('price_range');
+    expect(query.selected()).toContain('google_place_id');
     expect(query.selected()).not.toContain('markets');
 
     expect(screen.getAllByRole('article')).toHaveLength(3);

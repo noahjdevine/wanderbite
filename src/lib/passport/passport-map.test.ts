@@ -205,6 +205,8 @@ describe('passport map pins and neighborhoods', () => {
     expect(neighborhoodCounterLabel(2, 4, 'McKinney')).toBe('2 of 4 McKinney neighborhoods explored');
     expect(neighborhoodCounterLabel(1, 1, 'McKinney')).toBe('1 of 1 McKinney neighborhood explored');
     expect(neighborhoodCounterLabel(5, 4, 'McKinney')).toBe('4 of 4 McKinney neighborhoods explored');
+    expect(neighborhoodCounterLabel(0, 0, 'McKinney')).toBeNull();
+    expect(neighborhoodCounterLabel(3, 0, 'McKinney')).toBeNull();
     expect(neighborhoodCounterLabel(null, 4, 'McKinney')).toBeNull();
     expect(neighborhoodCounterLabel(2, null, 'McKinney')).toBeNull();
   });

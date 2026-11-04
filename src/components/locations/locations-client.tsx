@@ -51,6 +51,7 @@ function DirectoryTicket({ restaurant }: { restaurant: DirectoryRestaurant }) {
         <RestaurantPhoto
           restaurantId={restaurant.id}
           imageUrl={restaurant.image_url}
+          googlePlaceId={restaurant.google_place_id}
           className="h-full w-full object-cover"
         />
       }

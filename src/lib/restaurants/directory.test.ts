@@ -14,6 +14,7 @@ function row(overrides: Partial<DirectoryRestaurantRow> = {}): DirectoryRestaura
     lat: 33.2,
     lon: -96.6,
     image_url: '/images/restaurant-placeholder.jpg',
+    google_place_id: '  ChIJ-place  ',
     ...overrides,
   };
 }
@@ -27,6 +28,7 @@ describe('mapDirectoryRestaurant', () => {
     expect(mapped.cuisine_tags).toEqual(['Pizza']);
     expect(mapped.address).toBe('1 Main');
     expect(mapped.image_url).toBe('/images/restaurant-placeholder.jpg');
+    expect(mapped.google_place_id).toBe('ChIJ-place');
   });
 
   it('drops blank neighborhood, description, price, and cuisine without using a market name', () => {
@@ -37,6 +39,7 @@ describe('mapDirectoryRestaurant', () => {
         price_range: '  ',
         cuisine_tags: ['  ', ''],
         image_url: 'https://example.com/photo.jpg',
+        google_place_id: '   ',
       }),
     );
     expect(mapped.neighborhood).toBeNull();
@@ -44,6 +47,7 @@ describe('mapDirectoryRestaurant', () => {
     expect(mapped.price_range).toBeNull();
     expect(mapped.cuisine_tags).toEqual([]);
     expect(mapped.image_url).toBeNull();
+    expect(mapped.google_place_id).toBeNull();
     expect(JSON.stringify(mapped)).not.toContain('McKinney');
     expect(RESTAURANT_IMAGE_PLACEHOLDER).toBe('/images/restaurant-placeholder.jpg');
   });

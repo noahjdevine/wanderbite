@@ -13,6 +13,7 @@ const SAMPLE: DirectoryRestaurant[] = [
     lat: 33.197,
     lon: -96.615,
     image_url: '/images/restaurant-placeholder.jpg',
+    google_place_id: null,
   },
   {
     id: '22222222-2222-4222-8222-222222222222',
@@ -25,6 +26,7 @@ const SAMPLE: DirectoryRestaurant[] = [
     lat: 33.158,
     lon: -96.699,
     image_url: '/images/restaurant-placeholder.jpg',
+    google_place_id: null,
   },
   {
     id: '33333333-3333-4333-8333-333333333333',
@@ -37,6 +39,7 @@ const SAMPLE: DirectoryRestaurant[] = [
     lat: 33.21,
     lon: -96.73,
     image_url: null,
+    google_place_id: null,
   },
 ];
 

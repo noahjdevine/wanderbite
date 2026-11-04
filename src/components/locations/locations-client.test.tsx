@@ -1,7 +1,7 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DIRECTORY_PHOTO_HEIGHT,
   RESTAURANTS_EMPTY_MESSAGE,
@@ -24,6 +24,7 @@ function restaurant(overrides: Partial<DirectoryRestaurant> = {}): DirectoryRest
     lat: 33.2,
     lon: -96.6,
     image_url: null,
+    google_place_id: null,
     ...overrides,
   };
 }
@@ -31,6 +32,7 @@ function restaurant(overrides: Partial<DirectoryRestaurant> = {}): DirectoryRest
 describe('restaurant directory cards', () => {
   afterEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
   });
 
   it('hides blank fields, trims the neighborhood, and uses the placeholder', () => {
@@ -74,6 +76,71 @@ describe('restaurant directory cards', () => {
     }
     expect(screen.getByText('3')).toBeTruthy();
     expect(screen.getByText('partner spots')).toBeTruthy();
+  });
+
+  it('requests the place photo proxy and lets a manual image win', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        contentType: 'image/jpeg',
+        imageBase64: btoa('photo'),
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const createObjectURL = vi.fn(() => 'blob:place-photo');
+    vi.stubGlobal('URL', Object.assign(URL, {
+      createObjectURL,
+      revokeObjectURL: vi.fn(),
+    }));
+
+    const { unmount } = render(
+      <RestaurantsDirectory
+        restaurants={[
+          restaurant({
+            id: 'place-only',
+            name: 'Place Grill',
+            image_url: null,
+            google_place_id: ' ChIJ-place ',
+          }),
+        ]}
+      />,
+    );
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith('/api/restaurant-image/place-only', { cache: 'no-store' });
+    });
+    await waitFor(() => {
+      expect(screen.getByRole('article', { name: 'Place Grill' }).querySelector('img')?.getAttribute('src')).toBe(
+        'blob:place-photo',
+      );
+    });
+    const placeCard = screen.getByRole('article', { name: 'Place Grill' });
+    expect(placeCard.querySelector('img')?.getAttribute('src')).not.toBe(RESTAURANT_IMAGE_PLACEHOLDER);
+    expect(placeCard.querySelector('[data-photo-frame]')?.getAttribute('data-photo-height')).toBe(
+      String(DIRECTORY_PHOTO_HEIGHT),
+    );
+    unmount();
+    fetchMock.mockClear();
+
+    render(
+      <RestaurantsDirectory
+        restaurants={[
+          restaurant({
+            id: 'manual-wins',
+            name: 'Manual Grill',
+            image_url: '/images/yard.jpg',
+            google_place_id: 'ChIJ-place',
+          }),
+        ]}
+      />,
+    );
+    const manual = screen.getByRole('article', { name: 'Manual Grill' });
+    expect(manual.querySelector('img')?.getAttribute('src')).toBe('/images/yard.jpg');
+    expect(manual.querySelector('img')?.getAttribute('src')).not.toBe(RESTAURANT_IMAGE_PLACEHOLDER);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(manual.querySelector('[data-photo-frame]')?.getAttribute('data-photo-height')).toBe(
+      String(DIRECTORY_PHOTO_HEIGHT),
+    );
   });
 
   it('keeps search and shows an empty catalog without sample restaurants', () => {

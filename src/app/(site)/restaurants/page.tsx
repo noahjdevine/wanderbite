@@ -12,7 +12,7 @@ export const revalidate = 1800;
  */
 
 const DIRECTORY_COLUMNS =
-  'id, name, cuisine_tags, description, address, lat, lon, image_url, neighborhood, price_range';
+  'id, name, cuisine_tags, description, address, lat, lon, image_url, google_place_id, neighborhood, price_range';
 
 export default async function RestaurantsPage() {
   const supabase = getSupabaseAdmin();

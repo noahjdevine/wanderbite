@@ -230,6 +230,24 @@ describe('passport map segment', () => {
     expect(screen.getByText('0 of 4 McKinney neighborhoods explored')).toBeTruthy();
   });
 
+  it('hides the neighborhood counter when the partner set total is 0', () => {
+    render(
+      <PassportMapScreen
+        {...baseProps}
+        segment="map"
+        visits={[]}
+        neighborhoods={0}
+        exploredNeighborhoods={0}
+        partnerNeighborhoods={0}
+        verifiedVisits={0}
+        pendingVisits={0}
+        uniqueRestaurants={0}
+      />,
+    );
+    expect(screen.queryByText(/neighborhoods explored/)).toBeNull();
+    expect(screen.queryByText('0 of 0')).toBeNull();
+  });
+
   it('never shows more explored neighborhoods than the partner set', () => {
     render(
       <PassportMapScreen

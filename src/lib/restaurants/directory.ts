@@ -10,8 +10,10 @@ export type DirectoryRestaurant = {
   address: string | null;
   lat: number | null;
   lon: number | null;
-  /** Safe `/images/` path. Null uses the local placeholder. */
+  /** Safe `/images/` path. Null falls through to the place photo, then the placeholder. */
   image_url: string | null;
+  /** Trimmed `restaurants.google_place_id` (migration 009). Blank is null. */
+  google_place_id: string | null;
 };
 
 export type DirectoryRestaurantRow = {
@@ -25,6 +27,7 @@ export type DirectoryRestaurantRow = {
   lat: number | null;
   lon: number | null;
   image_url: string | null;
+  google_place_id: string | null;
 };
 
 function trimmedOrNull(value: string | null | undefined): string | null {
@@ -52,5 +55,6 @@ export function mapDirectoryRestaurant(row: DirectoryRestaurantRow): DirectoryRe
     lat: row.lat,
     lon: row.lon,
     image_url: safeManualImagePath(row.image_url),
+    google_place_id: trimmedOrNull(row.google_place_id),
   };
 }

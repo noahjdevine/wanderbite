@@ -206,15 +206,15 @@ export function exploredNeighborhoodsInPartnerSet(
  * `explored` is `exploredNeighborhoodsInPartnerSet`.
  * `partnerNeighborhoods` is the distinct neighborhood set on active launch-market restaurants.
  * A null on either side means that read did not load, so the line is omitted.
- * The shown count is clamped so the line cannot read N greater than M.
+ * A partner total of 0 hides the line. Otherwise the shown count is clamped so it cannot read N greater than M.
  */
 export function neighborhoodCounterLabel(
   explored: number | null,
   partnerNeighborhoods: number | null,
   city: string,
 ): string | null {
-  if (explored == null || partnerNeighborhoods == null) return null;
-  const partner = Math.max(0, partnerNeighborhoods);
+  if (explored == null || partnerNeighborhoods == null || partnerNeighborhoods <= 0) return null;
+  const partner = partnerNeighborhoods;
   const shown = Math.min(Math.max(0, explored), partner);
   return `${shown} of ${partner} ${city} ${pluralNoun(partner, 'neighborhood')} explored`;
 }
