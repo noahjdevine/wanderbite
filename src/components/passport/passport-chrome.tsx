@@ -22,7 +22,7 @@ export type PassportBadge = {
 
 export type PassportChromeProps = {
   displayName: string;
-  segment: Extract<PassportSegmentId, 'stamps' | 'timeline'>;
+  segment: PassportSegmentId;
   progressUnavailable: boolean;
   verifiedVisits: number;
   uniqueRestaurants: number;

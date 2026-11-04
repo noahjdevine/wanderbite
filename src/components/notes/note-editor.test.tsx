@@ -46,6 +46,9 @@ describe('note return targets', () => {
     expect(resolveNoteReturnTarget('/journey?view=passport', REDEMPTION)).toBe(
       `/journey?view=passport${hash}`,
     );
+    expect(resolveNoteReturnTarget('/journey?view=map', REDEMPTION)).toBe(
+      `/journey?view=map${hash}`,
+    );
     expect(resolveNoteReturnTarget(`/challenges${hash}`, REDEMPTION)).toBe(`/challenges${hash}`);
     expect(resolveNoteReturnTarget(null, REDEMPTION)).toBe(`/journal${hash}`);
     expect(resolveNoteReturnTarget('   ', REDEMPTION)).toBe(`/journal${hash}`);

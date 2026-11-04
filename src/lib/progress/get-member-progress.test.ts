@@ -431,6 +431,25 @@ describe('getMemberProgress', () => {
     }
   });
 
+  it('counts trimmed neighborhood names once and skips blanks', async () => {
+    mockTables(
+      tablesFor({
+        redemptions: [
+          verified('2026-09-15T18:00:00.000Z', 'rest-a'),
+          verified('2026-10-02T15:00:00.000Z', 'rest-b'),
+          verified('2026-10-20T15:00:00.000Z', 'rest-c'),
+        ],
+        restaurants: [
+          { id: 'rest-a', neighborhood: ' Adriatica ' },
+          { id: 'rest-b', neighborhood: 'Adriatica' },
+          { id: 'rest-c', neighborhood: '   ' },
+        ],
+      }),
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({ neighborhoods: 1, uniqueRestaurants: 3, verifiedVisits: 3 });
+  });
+
   it('returns an empty success, not an error, when the member has no rows', async () => {
     mockTables(tablesFor({ redemptions: [] }));
     const progress = await getMemberProgress('user-1', NOV_3);

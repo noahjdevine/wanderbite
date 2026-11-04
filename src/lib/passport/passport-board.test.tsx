@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PassportMemoryCard } from '@/components/passport/passport-memory';
+import { PassportMemoryCard, QuickMemoryCard } from '@/components/passport/passport-memory';
 import { PassportSegments } from '@/components/passport/passport-segments';
 import { PassportClient, type PassportVisit } from '@/components/passport/passport-client';
 import {
@@ -9,7 +9,9 @@ import {
   chicagoVisitDate,
   cuisineInk,
   FALLBACK_CUISINE_INK,
+  MAP_SEGMENT_HREF,
   offerPublicToggle,
+  passportHolderLine,
   passportIssuedOn,
   passportPageCount,
   passportPageItems,
@@ -19,7 +21,7 @@ import {
   stampKind,
   stampRotationDegrees,
 } from '@/lib/passport/passport-board';
-import { parseMyJourneyView } from '@/lib/my-journey-views';
+import { MY_JOURNEY_VIEWS, parseMyJourneyView } from '@/lib/my-journey-views';
 import type { VisitStatus } from '@/lib/visits/visit-status';
 
 const push = vi.hoisted(() => vi.fn());
@@ -187,13 +189,24 @@ describe('passport board', () => {
     expect(parseMyJourneyView('journey')).toBe('journey');
     expect(parseMyJourneyView('journal')).toBe('journal');
     expect(parseMyJourneyView('passport')).toBe('passport');
+    expect(parseMyJourneyView('map')).toBe('map');
+    expect(parseMyJourneyView(['map'])).toBe('map');
     expect(parseMyJourneyView('progress')).toBe('journey');
+    expect(MY_JOURNEY_VIEWS).toEqual(['journey', 'journal', 'passport']);
     expect(segmentForJourneyView('passport')).toBe('stamps');
     expect(segmentForJourneyView('journal')).toBe('timeline');
+    expect(segmentForJourneyView('map')).toBe('map');
     expect(segmentForJourneyView('journey')).toBeNull();
     expect(segmentHref('stamps')).toBe('/journey?view=passport');
     expect(segmentHref('timeline')).toBe('/journey?view=journal');
-    expect(segmentHref('map')).toBeNull();
+    expect(segmentHref('map')).toBe(MAP_SEGMENT_HREF);
+    expect(MAP_SEGMENT_HREF).toBe('/journey?view=map');
+  });
+
+  it('names an unnamed passport holder without a dangling word', () => {
+    expect(passportHolderLine('Your')).toBe('Your Passport');
+    expect(passportHolderLine('  ')).toBe('Your Passport');
+    expect(passportHolderLine('Noah')).toBe('Noah');
   });
 
   it('offers public only for a verified redemption with verified_at', () => {
@@ -338,15 +351,51 @@ describe('passport board', () => {
     expect(screen.queryByText('0 months streak')).toBeNull();
   });
 
-  it('links Passport and Timeline and leaves Map closed', () => {
+  it('links Passport, Timeline, and Map', () => {
     render(<PassportSegments active="stamps" />);
     expect(screen.getByRole('radio', { name: 'Passport' }).getAttribute('href')).toBe('/journey?view=passport');
+    expect(screen.getByRole('radio', { name: 'Passport' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('radio', { name: 'Timeline' }).getAttribute('href')).toBe('/journey?view=journal');
-    const map = screen.getByRole('radio', { name: 'Map, coming later' });
-    expect(map.getAttribute('aria-disabled')).toBe('true');
-    expect(map.getAttribute('href')).toBeNull();
-    fireEvent.keyDown(screen.getByRole('radiogroup', { name: 'Passport views' }), { key: 'ArrowRight' });
+    const map = screen.getByRole('radio', { name: 'Map' });
+    expect(map.getAttribute('href')).toBe('/journey?view=map');
+    expect(map.getAttribute('aria-checked')).toBe('false');
+    expect(map.getAttribute('aria-disabled')).toBeNull();
+    const group = screen.getByRole('radiogroup', { name: 'Passport views' });
+    fireEvent.keyDown(group, { key: 'ArrowRight' });
     expect(push).toHaveBeenCalledWith('/journey?view=journal');
+    fireEvent.keyDown(group, { key: 'ArrowLeft' });
+    expect(push).toHaveBeenCalledWith('/journey?view=map');
+  });
+
+  it('shows Your Passport on the cover when the member has no name', () => {
+    render(
+      <PassportClient
+        {...baseProps}
+        userDisplayName="Your"
+        visits={[]}
+        verifiedVisits={0}
+        pendingVisits={0}
+        uniqueRestaurants={0}
+        neighborhoods={0}
+        currentStreak={0}
+        longestStreak={0}
+      />,
+    );
+    expect(document.querySelector('[data-passport-holder]')?.textContent).toBe('Your Passport');
+    expect(screen.getByRole('heading', { name: 'Your Passport' })).toBeTruthy();
+  });
+
+  it('opens one Add memory link from the Bea card', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    render(<QuickMemoryCard restaurantName="North Grill" redemptionId={id} />);
+    const links = screen.getAllByRole('link');
+    expect(links).toHaveLength(1);
+    expect(links[0]?.textContent).toBe('Add memory');
+    const href = links[0]?.getAttribute('href') ?? '';
+    expect(href).toContain(`/journal/notes/${id}`);
+    expect(decodeURIComponent(href)).toContain('return=/journey?view=passport');
+    expect(href).not.toMatch(/rating|star/i);
+    expect(screen.queryByRole('link', { name: /star/i })).toBeNull();
   });
 
   it('does not offer Public on an unverified memory and toggles a verified one', async () => {

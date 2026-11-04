@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
+import { countDistinctNeighborhoods } from '@/lib/progress/neighborhoods';
 import {
   assembleBadges,
   ESTIMATED_SAVINGS_FALLBACK_CENTS,
@@ -178,12 +179,9 @@ export async function getMemberProgress(
         .select('id, neighborhood')
         .in('id', restaurantIds);
       if (restaurantError) return fail(restaurantError.message);
-      const names = new Set<string>();
-      for (const row of restaurantData ?? []) {
-        const name = row.neighborhood?.trim();
-        if (name) names.add(name);
-      }
-      neighborhoods = names.size;
+      neighborhoods = countDistinctNeighborhoods(
+        (restaurantData ?? []).map((row) => row.neighborhood),
+      );
     }
 
     const sealedCentsByItem = new Map<string, number>();

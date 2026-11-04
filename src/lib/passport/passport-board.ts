@@ -44,6 +44,21 @@ export const JOURNAL_SEGMENT_HREF = '/journey?view=journal';
 
 export const PASSPORT_SEGMENT_HREF = '/journey?view=passport';
 
+export const MAP_SEGMENT_HREF = '/journey?view=map';
+
+/** Display name used when the member has no usable first name. */
+export const PASSPORT_UNNAMED_DISPLAY = 'Your';
+
+/**
+ * Cover line under the passport title. "Your" alone reads as a fragment,
+ * so the unnamed member sees "Your Passport".
+ */
+export function passportHolderLine(displayName: string): string {
+  const trimmed = displayName.trim();
+  if (!trimmed || trimmed === PASSPORT_UNNAMED_DISPLAY) return 'Your Passport';
+  return trimmed;
+}
+
 const SHARE_MARK = '🍽️🔥';
 
 export function buildPassportShare(source: PassportShareSource): PassportSharePayload {
@@ -190,6 +205,7 @@ export type PassportSegmentId = 'stamps' | 'timeline' | 'map';
 export function segmentForJourneyView(view: MyJourneyView): PassportSegmentId | null {
   if (view === 'passport') return 'stamps';
   if (view === 'journal') return 'timeline';
+  if (view === 'map') return 'map';
   return null;
 }
 
@@ -225,10 +241,10 @@ export function passportIssuedOn(verifiedAt: readonly (string | null | undefined
   return earliest ? chicagoVisitDate(earliest)?.long ?? null : null;
 }
 
-export function segmentHref(segment: PassportSegmentId): string | null {
+export function segmentHref(segment: PassportSegmentId): string {
   if (segment === 'stamps') return PASSPORT_SEGMENT_HREF;
   if (segment === 'timeline') return JOURNAL_SEGMENT_HREF;
-  return null;
+  return MAP_SEGMENT_HREF;
 }
 
 /** Public is offered only when the redemption is verified and verified_at is set. */

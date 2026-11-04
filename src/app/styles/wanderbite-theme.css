@@ -259,6 +259,7 @@
   .wb-spin,
   .wb-stamp-slam,
   .wb-passport-leaf,
+  .wb-map-frame,
   .wb-pending-ring,
   .wb-shine,
   .wb-xp-fill,
@@ -542,6 +543,17 @@
   height: 14px;
   flex: none;
   background: linear-gradient(180deg, #3a2158 0%, #120a24 100%);
+}
+.wb-map-frame {
+  height: 420px;
+  overflow: hidden;
+  border-radius: 26px;
+  border: 1px solid #eadfce;
+  background: #f6f1e8;
+  box-shadow: 0 14px 34px rgba(42, 20, 66, 0.1);
+}
+@media (min-width: 768px) {
+  .wb-map-frame { height: 480px; }
 }
 .wb-passport-leaf[data-turning="true"] {
   transform-origin: left center;

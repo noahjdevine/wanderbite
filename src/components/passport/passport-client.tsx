@@ -12,11 +12,13 @@ import { visitElementId } from '@/lib/notes/note-rules';
 import {
   chicagoVisitDate,
   cuisineInk,
+  passportHolderLine,
   passportIssuedOn,
   passportPageCount,
   passportPageItems,
   stampKind,
   stampRotationDegrees,
+  type PassportSegmentId,
 } from '@/lib/passport/passport-board';
 import { RECIPES_SECTION_HEADING, type RecipeSections } from '@/lib/recipes/display';
 import { visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
@@ -72,6 +74,9 @@ export type PassportClientProps = {
   showFirstBiteLocked: boolean;
   pageYear?: string;
   recipeSections?: RecipeSections;
+  segment?: Extract<PassportSegmentId, 'stamps' | 'map'>;
+  /** Distinct neighborhoods on active launch-market restaurants. Null when that read did not load. */
+  partnerNeighborhoods?: number | null;
 };
 
 const CITY = LAUNCH_MARKET.displayName.split(',')[0] ?? 'McKinney';
@@ -216,7 +221,9 @@ export function PassportClient({
               <h2 id="passport-book" className="font-display m-0 text-[34px] leading-none text-wb-ink">
                 Wanderbite Passport
               </h2>
-              <p className="m-0 text-lg font-semibold text-wb-ink">{userDisplayName}</p>
+              <p className="m-0 text-lg font-semibold text-wb-ink" data-passport-holder="">
+                {passportHolderLine(userDisplayName)}
+              </p>
               <p className="m-0 text-sm text-wb-muted">{CITY}</p>
               {issuedOn ? <p className="m-0 text-sm text-wb-ink">Issued {issuedOn}</p> : null}
             </div>
