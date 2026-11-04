@@ -70,6 +70,7 @@ describe('ShowRedemptionCode', () => {
       />,
     );
     expect(view.textContent).toContain('WB-LIVE1');
+    expect(view.textContent).toContain('Codes expire after 15 minutes.');
     expect(view.textContent).toMatch(/Code expires in 14:/);
     expect(view.textContent).not.toContain('Code expires in 15:00');
     const countdown = view.querySelector('p.tabular-nums');
@@ -190,6 +191,7 @@ describe('ShowRedemptionCode', () => {
       />,
     );
     expect(verified.textContent).toContain('Already verified');
+    expect(verified.querySelector('[aria-live="polite"]')?.textContent).toBe('Already verified');
     expect(verified.textContent).not.toContain('Get a new one');
     expect(redeemChallengeItem).not.toHaveBeenCalled();
   });

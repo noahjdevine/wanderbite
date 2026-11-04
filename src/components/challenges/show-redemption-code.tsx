@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { buildPartnerRedeemScanUrl } from '@/lib/partner-redeem-url';
 import {
   formatRedemptionCountdown,
+  REDEMPTION_CODE_LIFETIME_LABEL,
   visitWindowOpen,
 } from '@/lib/redemption-expiry';
 import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
@@ -64,6 +65,7 @@ function openingAnnouncement(
     return remaining <= ONE_MINUTE_MS ? ONE_MINUTE_LEFT : visitStatusLabel('code_issued');
   }
   if (derived === 'code_expired' || derived === 'expired') return visitStatusLabel(derived);
+  if (derived === 'verified' || derived === 'note_added') return 'Already verified';
   return '';
 }
 
@@ -235,33 +237,35 @@ export function ShowRedemptionCode({
     }
   }
 
+  const lifetimeCopy = `Codes expire after ${REDEMPTION_CODE_LIFETIME_LABEL}.`;
+
   return (
-    <div className="mx-auto flex min-h-[80vh] max-w-md flex-col justify-center px-4 py-10">
+    <div className="wb-sheet mx-auto flex min-h-[calc(100dvh-3.5rem)] w-full max-w-lg flex-col items-center justify-center px-5 py-8">
       <p className="sr-only" aria-live="polite">
         {announcement}
       </p>
       <div className="text-center">
-        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Show your server
-        </p>
-        <h1 className="mt-1 text-xl font-semibold">{restaurantName}</h1>
-        <p className="mt-2 text-sm font-medium" data-visit-status={liveStatus}>
+        <p className="text-sm font-semibold tracking-wide text-wb-muted uppercase">Show your server</p>
+        <h1 className="font-display mt-2 text-[40px] leading-none text-wb-ink">{restaurantName}</h1>
+        <p className="mt-3 text-sm font-medium text-wb-ink" data-visit-status={liveStatus}>
           {statusLabel}
         </p>
-        <p className="mt-1 text-sm text-primary">{discountLabel}</p>
-        <p className="text-xs text-muted-foreground">{minSpendLabel}</p>
+      </div>
+
+      <div className="mt-4 w-full rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-4 py-3 text-center">
+        <p className="font-display text-[28px] leading-none text-wb-plum">{discountLabel}</p>
+        {minSpendLabel ? <p className="mt-1 text-sm text-wb-muted">{minSpendLabel}</p> : null}
       </div>
 
       {phase === 'verified' ? (
-        <div className="mt-8 rounded-xl border-2 border-green-600 bg-green-50 p-6 text-center dark:border-green-500 dark:bg-green-950/40">
-          <p className="font-semibold text-green-900 dark:text-green-100">Already verified</p>
-          {verifiedAt && (
-            <p className="mt-1 text-sm text-green-800 dark:text-green-200">{verifiedAt}</p>
-          )}
+        <div className="mt-8 w-full rounded-[28px] border border-[#86efac] bg-[#f0fdf4] p-6 text-center">
+          <p className="font-display text-[32px] leading-none text-[#14532d]">Already verified</p>
+          {verifiedAt ? <p className="mt-2 text-sm text-[#14532d]">{verifiedAt}</p> : null}
         </div>
       ) : phase === 'expired' || !liveCode || !scanUrl ? (
-        <div className="mt-8 rounded-xl border bg-card p-6 text-center">
-          <p className="font-medium">{statusLabel}</p>
+        <div className="mt-8 w-full rounded-[28px] bg-white p-6 text-center shadow-[var(--wb-shadow-card)]">
+          <p className="font-medium text-wb-ink">{statusLabel}</p>
+          <p className="mt-2 text-sm text-wb-muted">{lifetimeCopy}</p>
           {windowOpen && challengeItemId ? (
             <Button className="mt-4" disabled={reissuing} onClick={() => void reissue()} type="button">
               {reissuing ? 'Getting a new code…' : 'Get a new one'}
@@ -275,21 +279,22 @@ export function ShowRedemptionCode({
         </div>
       ) : (
         <>
-          <div className="mt-8 flex justify-center rounded-xl border bg-white p-6 shadow-sm dark:bg-card">
-            <QRCode value={scanUrl} size={220} level="M" />
+          <div className="mt-6 rounded-[28px] bg-white p-5 shadow-[var(--wb-shadow-card)]">
+            <QRCode value={scanUrl} size={280} level="M" />
           </div>
 
-          <p className="mt-4 text-center text-sm text-muted-foreground">
+          <p className="mt-4 max-w-sm text-center text-sm text-wb-muted">
             Server can scan this QR, or use the code below if scanning isn&apos;t available.
           </p>
 
-          <div className="mt-6 rounded-xl border-2 border-primary/30 bg-primary/5 p-5 text-center">
-            <p className="font-mono text-3xl font-bold tracking-widest text-foreground">{liveCode}</p>
-          </div>
+          <p className="font-mono mt-5 text-center text-4xl font-bold tracking-[0.28em] text-wb-ink sm:text-5xl">
+            {liveCode}
+          </p>
 
-          <p className="mt-4 text-center text-sm tabular-nums text-foreground">{statusText}</p>
+          <p className="mt-4 text-center text-sm text-wb-ink tabular-nums">{statusText}</p>
+          <p className="mt-2 text-center text-sm text-wb-muted">{lifetimeCopy}</p>
 
-          <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
+          <p className="mt-6 max-w-sm text-center text-xs leading-relaxed text-wb-muted">
             Your server will verify this in Wanderbite, then apply the discount on your check. POS
             integration is coming later — for now the discount is applied manually on the bill.
           </p>
@@ -297,7 +302,7 @@ export function ShowRedemptionCode({
       )}
 
       <div className="mt-10 text-center">
-        <Link href="/challenges" className="text-sm font-medium text-primary underline-offset-4 hover:underline">
+        <Link href="/challenges" className="text-sm font-medium text-wb-plum underline-offset-4 hover:underline">
           Back to challenges
         </Link>
       </div>
