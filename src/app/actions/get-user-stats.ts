@@ -4,8 +4,7 @@ import { format } from 'date-fns';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
-
-const XP_PER_REDEMPTION = 100;
+import { levelFromXp, xpFromVerifiedVisits } from '@/lib/progress/rules';
 
 export type UserStatsHistoryItem = {
   restaurantName: string;
@@ -37,68 +36,6 @@ export type GetUserStatsResult =
   | { ok: true; data: UserStats }
   | { ok: false; error: string };
 
-/** Tier structure aligned with How It Works and Journey (300, 1000, 1500, 2500 XP). */
-const LEVELS: {
-  level: number;
-  minXp: number;
-  nextLevelXp: number | null;
-  name: string;
-}[] = [
-  { level: 1, minXp: 300, nextLevelXp: 1000, name: 'The Explorer' },
-  { level: 2, minXp: 1000, nextLevelXp: 1500, name: 'The Tastemaker' },
-  { level: 3, minXp: 1500, nextLevelXp: 2500, name: 'The Connoisseur' },
-  { level: 4, minXp: 2500, nextLevelXp: null, name: 'The Local Legend' },
-];
-
-function getLevelInfo(xp: number): {
-  level: number;
-  currentLevelName: string;
-  nextLevelXp: number | null;
-  levelStartXp: number;
-  progressPercent: number;
-} {
-  for (let i = LEVELS.length - 1; i >= 0; i--) {
-    const tier = LEVELS[i];
-    if (xp >= tier.minXp) {
-      const nextLevelXp = tier.nextLevelXp;
-      if (nextLevelXp == null) {
-        return {
-          level: tier.level,
-          currentLevelName: tier.name,
-          nextLevelXp: null,
-          levelStartXp: tier.minXp,
-          progressPercent: 100,
-        };
-      }
-      const range = nextLevelXp - tier.minXp;
-      const progressInLevel = Math.min(xp - tier.minXp, range);
-      const progressPercent = range > 0
-        ? Math.min(100, Math.round((progressInLevel / range) * 100))
-        : 100;
-      return {
-        level: tier.level,
-        currentLevelName: tier.name,
-        nextLevelXp,
-        levelStartXp: tier.minXp,
-        progressPercent,
-      };
-    }
-  }
-  // Below first tier (300 XP): next level is Level 1 at 300 XP
-  const firstTier = LEVELS[0];
-  const xpToFirstLevel = firstTier.minXp;
-  return {
-    level: 0,
-    currentLevelName: 'Getting started',
-    nextLevelXp: xpToFirstLevel,
-    levelStartXp: 0,
-    progressPercent: Math.min(
-      100,
-      Math.round((xp / xpToFirstLevel) * 100)
-    ),
-  };
-}
-
 /**
  * Fetches user stats: XP, level, and redemption history.
  */
@@ -122,9 +59,12 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
 
     const list = redemptions ?? [];
     const redemptionCount = list.length;
-    const xp = redemptionCount * XP_PER_REDEMPTION;
-    const { level, currentLevelName, nextLevelXp, progressPercent } =
-      getLevelInfo(xp);
+    const xp = xpFromVerifiedVisits(redemptionCount);
+    const levelInfo = levelFromXp(xp);
+    const level = levelInfo.level;
+    const currentLevelName = levelInfo.name;
+    const nextLevelXp = levelInfo.nextLevel?.xp ?? null;
+    const progressPercent = levelInfo.progressPercent;
 
     const history: UserStatsHistoryItem[] = list.map((row) => {
       const r = row as {

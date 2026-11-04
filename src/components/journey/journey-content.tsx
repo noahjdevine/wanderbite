@@ -1,9 +1,14 @@
 import { redirect } from 'next/navigation';
-import { format } from 'date-fns';
-import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import type { Json } from '@/types/database.types';
 import { getUserStats } from '@/app/actions/get-user-stats';
+import { getMemberProgress } from '@/lib/progress/get-member-progress';
+import {
+  formatEarnedOn,
+  levelFromXp,
+  memberHeaderLabel,
+  PROGRESS_UNAVAILABLE_MESSAGE,
+  XP_LEVELS,
+} from '@/lib/progress/rules';
 import {
   Card,
   CardContent,
@@ -26,16 +31,6 @@ import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadSavedRecipes } from '@/lib/recipes/load';
 
-const SAVINGS_PER_REDEMPTION_CENTS = 1000;
-const CURRENT_STREAK_MOCK = 1;
-
-const LEVEL_TITLES = [
-  { level: 1, minXp: 300, title: 'The Explorer' },
-  { level: 2, minXp: 1000, title: 'The Tastemaker' },
-  { level: 3, minXp: 1500, title: 'The Connoisseur' },
-  { level: 4, minXp: 2500, title: 'The Local Legend' },
-] as const;
-
 type JourneyContentProps = {
   userId: string;
 };
@@ -44,7 +39,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
   const admin = getSupabaseAdmin();
   const { data: profile } = await admin
     .from('user_profiles')
-    .select('id, email')
+    .select('id, full_name')
     .eq('id', userId)
     .maybeSingle();
 
@@ -52,75 +47,83 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
     redirect('/onboarding');
   }
 
-  const statsResult = await getUserStats();
-  if (!statsResult.ok) {
-    return <p className="text-destructive">{statsResult.error}</p>;
+  const headerLabel = memberHeaderLabel(
+    (profile as { full_name: string | null }).full_name,
+  );
+  const [progress, statsResult, savedRecipes] = await Promise.all([
+    getMemberProgress(userId),
+    getUserStats(),
+    loadSavedRecipes(),
+  ]);
+  const savedRecipesCard = savedRecipes.enabled ? (
+    <Card>
+      <CardHeader>
+        <CardTitle>{SAVED_RECIPES_HEADING}</CardTitle>
+        <CardDescription>
+          Recipes you saved from a visit. Saving a recipe does not change credits or visits.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <RecipeCards
+          headingId="saved-recipes"
+          heading={SAVED_RECIPES_HEADING}
+          exclusionLine={savedRecipes.exclusionLine}
+          recipes={savedRecipes.recipes}
+          emptyLabel="You have not saved a recipe yet."
+          showHeading={false}
+        />
+      </CardContent>
+    </Card>
+  ) : null;
+
+  if ('error' in progress) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">{headerLabel}</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>{PROGRESS_UNAVAILABLE_MESSAGE}</p>
+          </CardContent>
+        </Card>
+        {savedRecipesCard}
+      </div>
+    );
   }
 
-  const { data: stats } = statsResult;
-  const email = (profile as { email: string | null }).email ?? 'Signed in user';
-  const title = `Level ${stats.level} ${stats.currentLevelName}`;
-  const { data: verifiedRows } = await admin
-    .from('redemptions')
-    .select('challenge_item_id')
-    .eq('user_id', userId)
-    .eq('status', 'verified');
-  const verified = (verifiedRows ?? []) as { challenge_item_id: string | null }[];
-  const itemIds = verified.flatMap((row) => (row.challenge_item_id ? [row.challenge_item_id] : []));
-  const sealedCentsByItem = new Map<string, number>();
-  if (itemIds.length > 0) {
-    const { data: items } = await admin
-      .from('challenge_items')
-      .select('id, offer_version_id')
-      .in('id', itemIds);
-    const rows = (items ?? []) as { id: string; offer_version_id: string | null }[];
-    const versionIds = rows.flatMap((item) => (item.offer_version_id ? [item.offer_version_id] : []));
-    const centsByVersion = new Map<string, number>();
-    if (versionIds.length > 0) {
-      const { data: versions } = await admin
-        .from('offer_versions')
-        .select('id, tiers')
-        .in('id', versionIds);
-      for (const version of versions ?? []) {
-        const base = lowestSealedBase((version as { tiers: Json }).tiers);
-        if (base) centsByVersion.set(version.id, base.discount_amount_cents);
-      }
-    }
-    for (const item of rows) {
-      if (!item.offer_version_id) continue;
-      const cents = centsByVersion.get(item.offer_version_id);
-      if (cents != null) sealedCentsByItem.set(item.id, cents);
-    }
-  }
-  const totalSavingsCents = verified.reduce((sum, row) => {
-    if (row.challenge_item_id && sealedCentsByItem.has(row.challenge_item_id)) {
-      return sum + (sealedCentsByItem.get(row.challenge_item_id) ?? 0);
-    }
-    return sum + SAVINGS_PER_REDEMPTION_CENTS;
-  }, 0);
-  const totalSavingsDollars = totalSavingsCents / 100;
-  const savedRecipes = await loadSavedRecipes();
+  const levelInfo = levelFromXp(progress.xp);
+  const title = `Level ${levelInfo.level} ${levelInfo.name}`;
+  const badges = [...progress.badges].sort((a, b) => {
+    const aEarned = a.earnedAt != null;
+    const bEarned = b.earnedAt != null;
+    if (aEarned === bEarned) return 0;
+    return aEarned ? -1 : 1;
+  });
+  const savingsLabel = progress.savings.isEstimate
+    ? 'Total Savings (estimated)'
+    : 'Total Savings';
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">{email}</CardTitle>
+          <CardTitle className="text-lg">{headerLabel}</CardTitle>
           <CardDescription>{title}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
           <div className="flex items-center justify-between text-sm text-muted-foreground">
             <span>
-              {stats.xp}
-              {stats.nextLevelXp != null
-                ? ` / ${stats.nextLevelXp} XP`
+              {progress.xp}
+              {levelInfo.nextLevel != null
+                ? ` / ${levelInfo.nextLevel.xp} XP`
                 : ' XP (Max Level)'}
             </span>
-            {stats.nextLevelXp != null && (
-              <span>{stats.nextLevelXp - stats.xp} XP to next level</span>
+            {levelInfo.nextLevel != null && (
+              <span>{levelInfo.nextLevel.xp - progress.xp} XP to next level</span>
             )}
           </div>
-          <Progress value={stats.progressPercent} max={100} className="h-3" />
+          <Progress value={levelInfo.progressPercent} max={100} className="h-3" />
         </CardContent>
       </Card>
 
@@ -133,8 +136,8 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
         </CardHeader>
         <CardContent>
           <ul className="space-y-3">
-            {LEVEL_TITLES.map(({ level, minXp, title }) => {
-              const unlocked = stats.xp >= minXp;
+            {XP_LEVELS.map(({ level, minXp, name }) => {
+              const unlocked = progress.xp >= minXp;
               return (
                 <li
                   key={level}
@@ -158,7 +161,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
                     <p
                       className={`font-medium ${unlocked ? 'text-foreground' : 'text-muted-foreground'}`}
                     >
-                      Level {level} · {title}
+                      Level {level} · {name}
                     </p>
                     <p className="text-xs text-muted-foreground">{minXp} XP</p>
                   </div>
@@ -181,20 +184,22 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
-            <CardDescription>Total Savings</CardDescription>
-            <CardTitle className="text-2xl">${totalSavingsDollars.toFixed(0)}</CardTitle>
+            <CardDescription>{savingsLabel}</CardDescription>
+            <CardTitle className="text-2xl">
+              {progress.savings.amount == null ? '—' : `$${progress.savings.amount.toFixed(0)}`}
+            </CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Places Visited</CardDescription>
-            <CardTitle className="text-2xl">{stats.redemptionCount}</CardTitle>
+            <CardTitle className="text-2xl">{progress.uniqueRestaurants}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Current Streak</CardDescription>
-            <CardTitle className="text-2xl">{CURRENT_STREAK_MOCK}</CardTitle>
+            <CardTitle className="text-2xl">{progress.currentMonthlyStreak}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -206,53 +211,35 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2">
-            {stats.badges.map((b) => (
-              <Card key={b.id} className={b.isEarned ? '' : 'opacity-60 grayscale'}>
-                <CardContent className="flex items-start gap-4 pt-6">
-                  <span className="text-4xl" aria-hidden>
-                    {b.icon}
-                  </span>
-                  <div className="min-w-0 flex-1 space-y-1">
-                    <p className="font-medium">{b.name}</p>
-                    <p className="text-sm text-muted-foreground">
-                      {b.isEarned ? b.description : 'Locked'}
-                    </p>
-                    {b.isEarned && b.awardedAt && (
-                      <p className="text-xs text-muted-foreground">
-                        Earned on {format(new Date(b.awardedAt), 'PP')}
+            {badges.map((b) => {
+              const earned = b.earnedAt != null;
+              return (
+                <Card key={b.id} className={earned ? '' : 'opacity-60 grayscale'}>
+                  <CardContent className="flex items-start gap-4 pt-6">
+                    <span className="text-4xl" aria-hidden>
+                      {b.icon}
+                    </span>
+                    <div className="min-w-0 flex-1 space-y-1">
+                      <p className="font-medium">{b.name}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {earned ? b.description : 'Locked'}
                       </p>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                      {earned && b.earnedAt ? (
+                        <p className="text-xs text-muted-foreground">{formatEarnedOn(b.earnedAt)}</p>
+                      ) : null}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
-          {stats.badges.length === 0 && (
+          {badges.length === 0 && (
             <p className="text-sm text-muted-foreground">No badges available yet.</p>
           )}
         </CardContent>
       </Card>
 
-      {savedRecipes.enabled ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>{SAVED_RECIPES_HEADING}</CardTitle>
-            <CardDescription>
-              Recipes you saved from a visit. Saving a recipe does not change credits or visits.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RecipeCards
-              headingId="saved-recipes"
-              heading={SAVED_RECIPES_HEADING}
-              exclusionLine={savedRecipes.exclusionLine}
-              recipes={savedRecipes.recipes}
-              emptyLabel="You have not saved a recipe yet."
-              showHeading={false}
-            />
-          </CardContent>
-        </Card>
-      ) : null}
+      {savedRecipesCard}
 
       <Card>
         <CardHeader>
@@ -260,7 +247,9 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
           <CardDescription>Restaurants you&apos;ve visited</CardDescription>
         </CardHeader>
         <CardContent>
-          {stats.history.length === 0 ? (
+          {!statsResult.ok ? (
+            <p>{PROGRESS_UNAVAILABLE_MESSAGE}</p>
+          ) : statsResult.data.history.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No redemptions yet. Complete a challenge to see your history here.
             </p>
@@ -274,7 +263,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {stats.history.map((row, i) => (
+                {statsResult.data.history.map((row, i) => (
                   <TableRow key={i}>
                     <TableCell className="font-medium">{row.restaurantName}</TableCell>
                     <TableCell>{row.date}</TableCell>
