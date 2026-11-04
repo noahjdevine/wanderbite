@@ -866,6 +866,145 @@
   background: linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%);
 }
 
+/* ---------- Contact and legal reading pages ----------
+   Privacy and terms page sources stay attested (LEGAL_CONTENT_ID).
+   This frame paints those unchanged trees, plus /contact and /rules.
+   No motion, and nothing starts hidden. */
+.wb-reading {
+  background: var(--wb-cream);
+  color: var(--wb-ink);
+  overflow-x: clip;
+}
+.wb-reading main {
+  min-height: 0;
+  background: transparent;
+  color: inherit;
+}
+.wb-reading article {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+.wb-reading article > header {
+  background: var(--wb-night);
+  color: #fff;
+  border: 0;
+  padding: 4rem 1.25rem 5.5rem;
+  text-align: center;
+}
+.wb-reading article > header h1 {
+  margin: 0 auto;
+  max-width: 16em;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 42px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: #fff;
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+.wb-reading article > header p {
+  margin: 1rem auto 0;
+  max-width: 40rem;
+  color: var(--wb-lavender-2);
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
+}
+.wb-reading article > div {
+  position: relative;
+  margin-top: -30px;
+  border-radius: var(--wb-r-sheet) var(--wb-r-sheet) 0 0;
+  background: var(--wb-cream);
+  padding: 3rem 1.25rem 4.5rem;
+  color: var(--wb-ink);
+  font-family: var(--font-sans), Outfit, sans-serif;
+  font-size: 17px;
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+.wb-reading article > div > * {
+  max-width: 72ch;
+  margin-left: auto;
+  margin-right: auto;
+}
+.wb-reading article > div > p,
+.wb-reading article > div > ul {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+.wb-reading article > div h2 {
+  margin-top: 2.75rem;
+  margin-bottom: 0.75rem;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 32px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  color: var(--wb-ink);
+}
+.wb-reading article > div h3 {
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--wb-ink);
+}
+.wb-reading article > div > p.border-t {
+  margin-top: 2.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--wb-line);
+  color: var(--wb-muted);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.wb-reading ul.list-disc {
+  padding-left: 1.25rem;
+  list-style: disc;
+}
+.wb-reading ul.list-none {
+  padding-left: 0;
+  list-style: none;
+}
+.wb-reading article > div li + li {
+  margin-top: 0.5rem;
+}
+.wb-reading .wb-reading-address p {
+  margin: 0;
+}
+.wb-reading article > div a {
+  color: var(--wb-pink-ink);
+  font-weight: 600;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+}
+.wb-reading article > div a:hover {
+  text-decoration-thickness: 2px;
+}
+.wb-reading :focus-visible {
+  outline: 2px solid var(--wb-violet);
+  outline-offset: 3px;
+}
+@media (min-width: 640px) {
+  .wb-reading article > header h1 {
+    font-size: 56px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-reading,
+  .wb-reading * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wb-wordmark,
   .wb-nav-pill,
