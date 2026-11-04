@@ -11,6 +11,7 @@
     "test:db": "tsx scripts/test-database.ts",
     "catalog:convert": "tsx scripts/e02-catalog-conversion.ts",
     "catalog:import": "tsx scripts/catalog-import.ts",
+    "menu:recipes": "tsx scripts/e05-menu-recipes.ts",
     "supply:gate": "tsx scripts/e02-supply-gate.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

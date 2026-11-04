@@ -195,6 +195,31 @@ do $$ begin
   end if;
 end $$;
 
+insert into public.recipes (
+  id, slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps,
+  substitutions, rights_basis, visibility, source_kind, source_url, source_name,
+  description, menu_wording, retrieved_at, is_demo
+) values (
+  'e0500000-0000-4000-8000-000000000025',
+  'e05-public-menu-draft',
+  'Unpublished menu take',
+  'inspired_by',
+  'e0500000-0000-4000-8000-000000000010',
+  2, 25,
+  '[{"name":"Demo beans","quantity":"1","unit":"cup"}]'::jsonb,
+  '[{"order":1,"text":"Stir the demo beans."}]'::jsonb,
+  '[]'::jsonb,
+  'original',
+  'draft',
+  'public_menu',
+  'https://example.com/e05-menu-draft',
+  'Public menu',
+  'A home skillet of beans with smoked paprika.',
+  'paraphrase',
+  '2026-01-15T18:00:00Z',
+  false
+);
+
 set local role anon;
 do $$ begin
   if (select count(*) from public.recipes) <> 2 then
@@ -205,6 +230,12 @@ do $$ begin
     where visibility <> 'published'
   ) then
     raise exception 'FAIL: anon published filter';
+  end if;
+  if exists (
+    select 1 from public.recipes
+    where id = 'e0500000-0000-4000-8000-000000000025'
+  ) then
+    raise exception 'FAIL: unpublished public_menu row is visible to anon';
   end if;
   begin
     perform 1 from public.saved_recipes;
@@ -237,8 +268,15 @@ begin
     raise exception 'FAIL: member can see draft or hidden recipes';
   end if;
   if exists (select 1 from public.recipes where id = 'e0500000-0000-4000-8000-000000000022')
-    or exists (select 1 from public.recipes where id = 'e0500000-0000-4000-8000-000000000023') then
+    or exists (select 1 from public.recipes where id = 'e0500000-0000-4000-8000-000000000023')
+    or exists (select 1 from public.recipes where id = 'e0500000-0000-4000-8000-000000000025') then
     raise exception 'FAIL: draft or hidden recipe is visible';
+  end if;
+  if exists (
+    select 1 from public.recipes
+    where source_kind = 'public_menu' and visibility = 'draft'
+  ) then
+    raise exception 'FAIL: unpublished public_menu row is visible to members';
   end if;
 
   begin

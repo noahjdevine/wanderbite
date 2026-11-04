@@ -331,6 +331,30 @@ describe('retrieval and prompt isolation', () => {
     expect(selected.rows.map((item) => item.restaurant_id)).toEqual([RESTAURANT]);
     expect(selected.hasOfficial).toBe(false);
   });
+
+  it('keeps an unpublished public_menu draft out of Discover', () => {
+    const selected = selectPublishedRecipes({
+      rows: [
+        row(),
+        row({
+          id: '66666666-6666-4666-8666-666666666666',
+          title: 'Unpublished menu take',
+          visibility: 'draft',
+          source_kind: 'public_menu',
+          source_url: 'https://example.com/menu',
+          description: 'A home skillet of beans with smoked paprika.',
+          menu_wording: 'paraphrase',
+          retrieved_at: '2026-01-15T18:00:00.000Z',
+          is_demo: false,
+        }),
+      ],
+      restaurantId: RESTAURANT,
+      keywords: ['beans', 'skillet'],
+      intent: 'recipe',
+    });
+    expect(selected.rows.map((item) => item.id)).toEqual(['33333333-3333-4333-8333-333333333333']);
+    expect(selected.rows.every((item) => item.visibility === 'published')).toBe(true);
+  });
 });
 
 describe('dietary warning and stale dates', () => {
