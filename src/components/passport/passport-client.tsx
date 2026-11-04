@@ -1,76 +1,32 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
-import Map, { Marker, NavigationControl, Popup } from 'react-map-gl/maplibre';
-import type { StyleSpecification } from 'maplibre-gl';
-import { format } from 'date-fns';
-import { toast } from 'sonner';
-import { pluralize, pluralNoun } from '@/lib/format/text';
-import { PROGRESS_UNAVAILABLE_MESSAGE } from '@/lib/progress/rules';
-import { publicShareUrl } from '@/lib/public-site';
-import { shareOrCopy } from '@/lib/share';
-import { BookMarked, Flame, Share2, Star, StarHalf } from 'lucide-react';
-import type { BiteNoteRow } from '@/app/actions/bite-notes';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import {
-  roundAvgRatingToHalf,
-  SocialProofRatingBlock,
-} from '@/components/restaurant-social-proof';
-import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
-import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
-import { LAUNCH_MARKET } from '@/lib/launch-market';
+import { useMemo, useState } from 'react';
 import { FocusVisitFromHash } from '@/components/notes/focus-visit';
-import { MemoryEntryLink } from '@/components/notes/memory-entry';
-import { NotePrivacyControl } from '@/components/notes/note-privacy';
+import { PassportChrome } from '@/components/passport/passport-chrome';
+import { PassportMemoryCard, QuickMemoryCard } from '@/components/passport/passport-memory';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
-import { RECIPES_SECTION_HEADING, type RecipeSections } from '@/lib/recipes/display';
+import { SocialProofRatingBlock } from '@/components/restaurant-social-proof';
+import { EmptyStampSlot, PendingStamp, Stamp } from '@/components/wb';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
 import { visitElementId } from '@/lib/notes/note-rules';
+import {
+  chicagoVisitDate,
+  cuisineInk,
+  stampKind,
+  stampRotationDegrees,
+} from '@/lib/passport/passport-board';
+import { RECIPES_SECTION_HEADING, type RecipeSections } from '@/lib/recipes/display';
 import { visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
-
-import 'maplibre-gl/dist/maplibre-gl.css';
-
-const BRAND_PIN = '#E85D26';
-
-const LAUNCH: { longitude: number; latitude: number; zoom: number } = {
-  longitude: LAUNCH_MARKET.centroid.lon,
-  latitude: LAUNCH_MARKET.centroid.lat,
-  zoom: 11,
-};
-
-const OSM_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    },
-  },
-  layers: [
-    {
-      id: 'osm',
-      type: 'raster',
-      source: 'osm',
-      minzoom: 0,
-      maxzoom: 19,
-    },
-  ],
-};
+import type { BiteNoteRow } from '@/app/actions/bite-notes';
 
 export type PassportVisit = {
   id: string;
   verifiedAt: string;
   visitStatus: VisitStatus;
+  redemptionStatus?: string | null;
+  verifiedOnShort?: string | null;
+  verifiedOnLong?: string | null;
+  chicagoMonth?: string | null;
   restaurant: {
     id: string;
     name: string;
@@ -84,28 +40,17 @@ export type PassportVisit = {
   };
 };
 
-type MapMarker = {
-  restaurantId: string;
-  longitude: number;
-  latitude: number;
-  visit: PassportVisit;
-};
-
 export type PassportRestaurantRatings = Record<
   string,
   { avgRating: number; totalRatings: number }
 >;
 
-/** One row per bite note; grouped under `restaurant_id` for passport lookups. */
 export type PassportBiteNoteEntry = Pick<
   BiteNoteRow,
   'id' | 'rating' | 'note' | 'restaurant_id' | 'redemption_id' | 'updated_at' | 'is_public'
 >;
 
-export type PassportBiteNotesByRestaurant = Record<
-  string,
-  PassportBiteNoteEntry[]
->;
+export type PassportBiteNotesByRestaurant = Record<string, PassportBiteNoteEntry[]>;
 
 export type PassportClientProps = {
   userDisplayName: string;
@@ -118,133 +63,33 @@ export type PassportClientProps = {
   progressUnavailable?: boolean;
   uniqueRestaurants: number;
   neighborhoods: number | null;
+  verifiedVisits?: number;
+  pendingVisits?: number;
   earnedBadges: { id: string; name: string; earnedOn: string | null }[];
   showFirstBiteLocked: boolean;
+  pageYear?: string;
   recipeSections?: RecipeSections;
 };
 
-const PASSPORT_RETURN = '/journey?view=passport';
+const CITY = LAUNCH_MARKET.displayName.split(',')[0] ?? 'McKinney';
 
 function biteNoteForVisit(
   visit: PassportVisit,
-  byRestaurant: PassportBiteNotesByRestaurant
+  byRestaurant: PassportBiteNotesByRestaurant,
 ): PassportBiteNoteEntry | null {
   const list = byRestaurant[visit.restaurant.id];
   if (!list?.length) return null;
-  return list.find((n) => n.redemption_id === visit.id) ?? null;
+  return list.find((note) => note.redemption_id === visit.id) ?? null;
 }
 
-function truncateNote(text: string | null, maxLen: number): string | null {
-  if (text == null || !text.trim()) return null;
-  const t = text.trim();
-  if (t.length <= maxLen) return t;
-  return `${t.slice(0, maxLen - 1)}…`;
+function faceDate(visit: PassportVisit): string {
+  if (visit.verifiedOnShort) return visit.verifiedOnShort;
+  return chicagoVisitDate(visit.verifiedAt)?.short ?? '';
 }
 
-function UserStarRatingRow({ rating }: { rating: number }) {
-  const n = Math.min(5, Math.max(1, Math.round(rating)));
-  return (
-    <div className="flex items-center gap-0.5" aria-label={`You rated ${n} out of 5`}>
-      {Array.from({ length: 5 }, (_, i) => (
-        <Star
-          key={i}
-          className={
-            i < n
-              ? 'size-3.5 fill-amber-400 text-amber-400'
-              : 'size-3.5 fill-transparent text-muted-foreground/35'
-          }
-          aria-hidden
-        />
-      ))}
-    </div>
-  );
-}
-
-function PassportVisitRestaurantPhoto({
-  restaurant,
-}: {
-  restaurant: PassportVisit['restaurant'];
-}) {
-  return (
-    <RestaurantPhoto
-      restaurantId={restaurant.id}
-      imageUrl={restaurant.image_url}
-      googlePlaceId={restaurant.google_place_id}
-    />
-  );
-}
-
-function CommunityStarsCompact({ avgRating }: { avgRating: number }) {
-  const rounded = roundAvgRatingToHalf(avgRating);
-  const fullStars = Math.floor(rounded);
-  const hasHalf = rounded - fullStars >= 0.5;
-  const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
-  return (
-    <span className="inline-flex items-center gap-0.5" aria-hidden>
-      {Array.from({ length: fullStars }, (_, i) => (
-        <Star key={`cf-${i}`} className="size-3.5 fill-amber-400 text-amber-400" />
-      ))}
-      {hasHalf ? (
-        <StarHalf className="size-3.5 fill-amber-400 text-amber-400" />
-      ) : null}
-      {Array.from({ length: emptyStars }, (_, i) => (
-        <Star
-          key={`ce-${i}`}
-          className="size-3.5 fill-transparent text-muted-foreground/35"
-        />
-      ))}
-    </span>
-  );
-}
-
-function hasCoords(v: PassportVisit): boolean {
-  const { lat, lon } = v.restaurant;
-  return (
-    lat != null &&
-    lon != null &&
-    !Number.isNaN(Number(lat)) &&
-    !Number.isNaN(Number(lon))
-  );
-}
-
-function boundsFromPoints(
-  points: { longitude: number; latitude: number }[]
-): [[number, number], [number, number]] | null {
-  if (points.length === 0) return null;
-  let minLng = points[0].longitude;
-  let maxLng = points[0].longitude;
-  let minLat = points[0].latitude;
-  let maxLat = points[0].latitude;
-  for (const p of points) {
-    minLng = Math.min(minLng, p.longitude);
-    maxLng = Math.max(maxLng, p.longitude);
-    minLat = Math.min(minLat, p.latitude);
-    maxLat = Math.max(maxLat, p.latitude);
-  }
-  if (minLng === maxLng && minLat === maxLat) {
-    const pad = 0.025;
-    return [
-      [minLng - pad, minLat - pad],
-      [maxLng + pad, maxLat + pad],
-    ];
-  }
-  return [
-    [minLng, minLat],
-    [maxLng, maxLat],
-  ];
-}
-
-function PinMarker({ selected }: { selected: boolean }) {
-  return (
-    <div
-      className="size-5 cursor-pointer rounded-full border-[3px] border-white shadow-md ring-2 ring-black/10"
-      style={{
-        backgroundColor: BRAND_PIN,
-        boxShadow: selected ? '0 0 0 4px rgba(232, 93, 38, 0.45)' : undefined,
-      }}
-      aria-hidden
-    />
-  );
+function spokenDate(visit: PassportVisit): string {
+  if (visit.verifiedOnLong) return visit.verifiedOnLong;
+  return chicagoVisitDate(visit.verifiedAt)?.long ?? faceDate(visit);
 }
 
 export function PassportClient({
@@ -258,414 +103,197 @@ export function PassportClient({
   progressUnavailable = false,
   uniqueRestaurants,
   neighborhoods,
+  verifiedVisits,
+  pendingVisits,
   earnedBadges,
   showFirstBiteLocked,
+  pageYear,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
 }: PassportClientProps) {
-  const [popupVisitId, setPopupVisitId] = useState<string | null>(null);
+  const stamps = useMemo(
+    () => visits.filter((visit) => stampKind(visit.visitStatus) === 'stamp'),
+    [visits],
+  );
+  const pending = useMemo(
+    () => visits.filter((visit) => stampKind(visit.visitStatus) === 'pending'),
+    [visits],
+  );
+  const [selectedId, setSelectedId] = useState<string | null>(stamps[0]?.id ?? null);
 
-  const streakPhrase = `${pluralize(currentStreak, 'month')} streak`;
+  const selected = stamps.find((visit) => visit.id === selectedId) ?? stamps[0] ?? null;
+  const selectedNote = selected ? biteNoteForVisit(selected, biteNotesByRestaurantId) : null;
+  const quick = stamps.find((visit) => biteNoteForVisit(visit, biteNotesByRestaurantId) == null) ?? null;
+  const visitCount = verifiedVisits ?? stamps.length;
+  const pendingCount = pendingVisits ?? pending.length;
 
-  const mapMarkers: MapMarker[] = useMemo(() => {
+  const cuisines = useMemo(() => {
     const seen = new Set<string>();
-    const out: MapMarker[] = [];
-    for (const v of visits) {
-      if (!hasCoords(v)) continue;
-      if (seen.has(v.restaurant.id)) continue;
-      seen.add(v.restaurant.id);
-      out.push({
-        restaurantId: v.restaurant.id,
-        longitude: Number(v.restaurant.lon),
-        latitude: Number(v.restaurant.lat),
-        visit: v,
-      });
+    const chips: { key: string; label: string; pending: boolean; color: string }[] = [];
+    for (const visit of stamps) {
+      for (const tag of visit.restaurant.cuisine_tags ?? []) {
+        const label = tag.trim();
+        if (!label) continue;
+        const ink = cuisineInk([label]);
+        const key = label.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        chips.push({ key, label, pending: false, color: ink.color });
+      }
     }
-    return out;
-  }, [visits]);
-
-  const bounds = useMemo(
-    () => boundsFromPoints(mapMarkers.map((m) => ({ longitude: m.longitude, latitude: m.latitude }))),
-    [mapMarkers]
-  );
-
-  const initialViewState = useMemo(() => {
-    if (bounds) {
-      return {
-        bounds,
-        fitBoundsOptions: { padding: 48, maxZoom: 15 },
-      };
+    for (const visit of pending) {
+      for (const tag of visit.restaurant.cuisine_tags ?? []) {
+        const label = tag.trim();
+        if (!label) continue;
+        const key = `${label.toLowerCase()}|pending`;
+        if (seen.has(label.toLowerCase()) || seen.has(key)) continue;
+        seen.add(key);
+        chips.push({ key, label: `${label} · pending`, pending: true, color: cuisineInk([label]).color });
+      }
     }
-    return {
-      longitude: LAUNCH.longitude,
-      latitude: LAUNCH.latitude,
-      zoom: LAUNCH.zoom,
-    };
-  }, [bounds]);
+    return chips;
+  }, [pending, stamps]);
 
-  const handleShare = useCallback(async () => {
-    const outcome = await shareOrCopy({
-      title: 'My Wanderbite Food Passport',
-      text: progressUnavailable
-        ? 'My Wanderbite Food Passport'
-        : neighborhoods == null
-          ? `I've explored ${pluralize(uniqueRestaurants, 'restaurant')} with Wanderbite 🍽️🔥 ${pluralize(currentStreak, 'month')} streak and counting.`
-          : `I've explored ${pluralize(uniqueRestaurants, 'restaurant')} across ${pluralize(neighborhoods, 'neighborhood')} with Wanderbite 🍽️🔥 ${pluralize(currentStreak, 'month')} streak and counting.`,
-      url: publicShareUrl(),
-    });
-    if (outcome === 'copied') {
-      toast.success('Link copied to clipboard!');
-    } else if (outcome === 'error') {
-      toast.error('Could not share. Try copying the link manually.');
-    }
-  }, [currentStreak, neighborhoods, progressUnavailable, uniqueRestaurants]);
-
-  const popupVisit = popupVisitId
-    ? mapMarkers.find((m) => m.visit.id === popupVisitId)?.visit
-    : null;
-
-  const popupBiteNote = popupVisit
-    ? biteNoteForVisit(popupVisit, biteNotesByRestaurantId)
-    : null;
-  const popupCommunity = popupVisit
-    ? ratingsByRestaurantId[popupVisit.restaurant.id]
-    : null;
-  const popupShowCommunity =
-    popupCommunity != null && popupCommunity.totalRatings >= 3;
-
-  const badgeSummary =
-    earnedBadges.length > 0
-      ? earnedBadges
-          .map((badge) => (badge.earnedOn ? `${badge.name} · ${badge.earnedOn}` : badge.name))
-          .join(', ')
-      : showFirstBiteLocked
-        ? 'First Bite locked'
-        : 'No badge yet';
-
-  const badgeRow = progressUnavailable ? (
-    <p className="mt-2 text-sm text-muted-foreground">{PROGRESS_UNAVAILABLE_MESSAGE}</p>
-  ) : (
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <Flame
-        className={`size-5 shrink-0 ${earnedBadges.length > 0 ? 'text-[#E85D26]' : 'text-muted-foreground'}`}
-        aria-hidden
-      />
-      {earnedBadges.length > 0 ? (
-        earnedBadges.map((badge) => (
-          <Badge
-            key={badge.id}
-            variant="secondary"
-            className="border-[#E85D26]/30 bg-[#E85D26]/10 text-sm font-medium text-[#E85D26]"
-          >
-            {badge.name}
-            {badge.earnedOn ? ` · ${badge.earnedOn}` : ''}
-          </Badge>
-        ))
-      ) : (
-        <span className="text-sm text-muted-foreground">
-          {showFirstBiteLocked
-            ? 'First Bite locked'
-            : 'No badge yet — verify a visit this month to grow your streak'}
-        </span>
-      )}
-    </div>
-  );
-
-  const statBar = progressUnavailable ? (
-    <p className="text-sm text-muted-foreground">{PROGRESS_UNAVAILABLE_MESSAGE}</p>
-  ) : (
-    <div className="space-y-1.5">
-      <div className="rounded-lg border bg-muted/30 px-4 py-3 text-center text-sm font-medium leading-relaxed text-foreground md:text-left">
-        <span className="text-[#E85D26]">{uniqueRestaurants}</span>{' '}
-        {pluralNoun(uniqueRestaurants, 'restaurant')} visited ·{' '}
-        <span className="text-[#E85D26]">{neighborhoods == null ? '—' : neighborhoods}</span>{' '}
-        {neighborhoods == null ? 'neighborhoods' : pluralNoun(neighborhoods, 'neighborhood')} ·{' '}
-        <span className="text-[#E85D26]">{streakPhrase}</span>
-        {' · '}
-        <span className="text-[#E85D26]">{badgeSummary}</span>
-      </div>
-      {longestStreak >= 1 ? (
-        <p className="text-center text-xs text-muted-foreground md:text-left">
-          Longest streak: {pluralize(longestStreak, 'month')}
-        </p>
-      ) : null}
-    </div>
-  );
-
-  if (visits.length === 0) {
-    return (
-      <div className="space-y-6">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2 text-[#E85D26]">
-              <BookMarked className="size-8 shrink-0" aria-hidden />
-              <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-                {userDisplayName}&apos;s Passport
-              </h1>
-            </div>
-            {badgeRow}
-            <p className="text-muted-foreground">
-              Your map of Wanderbite dining adventures.
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            className="shrink-0 gap-2 self-start border-[#E85D26]/40 text-[#E85D26] hover:bg-[#E85D26]/10"
-            onClick={handleShare}
-          >
-            <Share2 className="size-4" aria-hidden />
-            Share My Passport
-          </Button>
-        </header>
-        {statBar}
-        <Card className="border-dashed">
-          <CardContent className="py-10 text-center text-muted-foreground">
-            Your passport is empty — complete your first challenge to start your food
-            story
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const empty = stamps.length === 0 && pending.length === 0;
 
   return (
-    <div className="space-y-8">
+    <PassportChrome
+      displayName={userDisplayName}
+      segment="stamps"
+      progressUnavailable={progressUnavailable}
+      verifiedVisits={visitCount}
+      uniqueRestaurants={uniqueRestaurants}
+      neighborhoods={neighborhoods}
+      currentStreak={currentStreak}
+      longestStreak={longestStreak}
+      pendingVisits={pendingCount}
+      earnedBadges={earnedBadges}
+      showFirstBiteLocked={showFirstBiteLocked}
+      pageYear={pageYear}
+    >
       <FocusVisitFromHash />
-      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-[#E85D26]">
-            <BookMarked className="size-8 shrink-0" aria-hidden />
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground md:text-3xl">
-              {userDisplayName}&apos;s Passport
-            </h1>
-          </div>
-          {badgeRow}
-          <p className="text-muted-foreground">
-            Every place you&apos;ve tasted through Wanderbite challenges.
+      <section
+        aria-labelledby="stamp-page"
+        className="flex flex-col gap-4 rounded-[26px] border border-[#ece2d0] px-3 py-5 shadow-[0_14px_34px_rgba(42,20,66,0.08)] sm:px-4"
+        style={{
+          background:
+            'repeating-linear-gradient(0deg, #fffdf8 0px, #fffdf8 27px, #f3ece0 27px, #f3ece0 28px)',
+        }}
+      >
+        <div className="flex items-baseline justify-between gap-3 px-1">
+          <h2 id="stamp-page" className="font-display m-0 text-[30px] leading-none text-wb-ink">
+            {CITY} · Page 1
+          </h2>
+          {pageYear ? (
+            <span className="text-[11px] font-bold tracking-[1.6px] text-[#6b5f4b]">{pageYear}</span>
+          ) : null}
+        </div>
+        {empty ? (
+          <p className="m-0 px-1 text-sm text-wb-muted" data-passport-empty="">
+            Your passport is empty. A visit shows up here after it is verified.
           </p>
-        </div>
-        <Button
-          type="button"
-          variant="outline"
-          className="shrink-0 gap-2 self-start border-[#E85D26]/40 text-[#E85D26] hover:bg-[#E85D26]/10 sm:self-auto"
-          onClick={handleShare}
-        >
-          <Share2 className="size-4" aria-hidden />
-          Share My Passport
-        </Button>
-      </header>
-
-      {statBar}
-
-      <Card className="overflow-hidden p-0">
-        <div className="h-[min(420px,55vh)] w-full md:h-[480px]">
-          <Map
-            initialViewState={initialViewState}
-            mapStyle={OSM_STYLE}
-            style={{ width: '100%', height: '100%' }}
-            reuseMaps
-            onClick={() => setPopupVisitId(null)}
-          >
-            <NavigationControl position="top-right" showCompass={false} />
-            {mapMarkers.map((m) => (
-              <Marker
-                key={m.restaurantId}
-                longitude={m.longitude}
-                latitude={m.latitude}
-                anchor="center"
-                onClick={(e) => {
-                  e.originalEvent.stopPropagation();
-                  setPopupVisitId(m.visit.id);
-                }}
-              >
-                <PinMarker selected={popupVisitId === m.visit.id} />
-              </Marker>
-            ))}
-            {popupVisit && hasCoords(popupVisit) && (
-              <Popup
-                longitude={Number(popupVisit.restaurant.lon)}
-                latitude={Number(popupVisit.restaurant.lat)}
-                anchor="top"
-                onClose={() => setPopupVisitId(null)}
-                closeButton
-                closeOnClick={false}
-                maxWidth="280px"
-              >
-                <div className="space-y-2 p-1 text-sm">
-                  <p className="font-semibold text-foreground">
-                    {popupVisit.restaurant.name}
-                  </p>
-                  {(popupVisit.restaurant.cuisine_tags ?? []).some((tag) => tag.trim()) ? (
-                    <div className="flex flex-wrap gap-1">
-                      {(popupVisit.restaurant.cuisine_tags ?? [])
-                        .filter((tag) => tag.trim())
-                        .map((tag) => (
-                          <Badge key={tag} variant="secondary" className="text-xs">
-                            {tag}
-                          </Badge>
-                        ))}
-                    </div>
-                  ) : null}
-                  {popupVisit.restaurant.neighborhood && (
-                    <p className="text-muted-foreground">
-                      {popupVisit.restaurant.neighborhood}
-                    </p>
-                  )}
-                  {popupBiteNote ? (
-                    <div className="space-y-1 border-t border-border pt-2">
-                      <UserStarRatingRow rating={popupBiteNote.rating} />
-                      {truncateNote(popupBiteNote.note, 80) ? (
-                        <p className="text-xs leading-snug text-muted-foreground">
-                          {truncateNote(popupBiteNote.note, 80)}
-                        </p>
-                      ) : null}
-                      <NotePrivacyControl
-                        noteId={popupBiteNote.id}
-                        isPublic={popupBiteNote.is_public}
-                      />
-                    </div>
-                  ) : null}
-                  <MemoryEntryLink
-                    status={popupVisit.visitStatus}
-                    redemptionId={popupVisit.id}
-                    returnTo={PASSPORT_RETURN}
-                  />
-                  {popupShowCommunity && popupCommunity ? (
-                    <div className="space-y-1 border-t border-border pt-2">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        Community
-                      </p>
-                      <SocialProofRatingBlock
-                        avgRating={popupCommunity.avgRating}
-                        totalRatings={popupCommunity.totalRatings}
-                      />
-                    </div>
-                  ) : null}
-                  <p className="text-xs font-medium text-foreground" data-visit-status={popupVisit.visitStatus}>
-                    {visitStatusLabel(popupVisit.visitStatus)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Visited{' '}
-                    {format(new Date(popupVisit.verifiedAt), 'MMM d, yyyy')}
-                  </p>
-                </div>
-              </Popup>
-            )}
-          </Map>
-        </div>
-      </Card>
-
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold tracking-tight">Your visits</h2>
-        <div className="grid max-h-[520px] grid-cols-1 gap-4 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
-          {visits.map((v) => (
-            <Card
-              key={v.id}
-              id={visitElementId(v.id) ?? undefined}
-              tabIndex={visitElementId(v.id) ? -1 : undefined}
-              className="scroll-mt-24 overflow-hidden outline-none"
-            >
-              <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
-                <PassportVisitRestaurantPhoto restaurant={v.restaurant} />
+        ) : null}
+        <div className="grid grid-cols-2 justify-items-center gap-x-2 gap-y-6 sm:grid-cols-4">
+          {stamps.map((visit, index) => {
+            const ink = cuisineInk(visit.restaurant.cuisine_tags);
+            const rotation = stampRotationDegrees(visit.id);
+            const short = faceDate(visit);
+            const neighborhood = visit.restaurant.neighborhood?.trim() ?? '';
+            return (
+              <div key={visit.id} className="flex flex-col items-center gap-1">
+                <Stamp
+                  name={visit.restaurant.name}
+                  date={short || '—'}
+                  accessibleDate={spokenDate(visit)}
+                  neighborhood={neighborhood}
+                  inkColor={ink.color}
+                  shape={index === 0 ? 'rect' : 'round'}
+                  rotation={rotation}
+                  newest={index === 0}
+                  statusLabel={visitStatusLabel(visit.visitStatus)}
+                  pressed={selected?.id === visit.id}
+                  elementId={visitElementId(visit.id) ?? undefined}
+                  onSelect={() => setSelectedId(visit.id)}
+                />
+                <span className="sr-only" data-visit-status={visit.visitStatus}>
+                  {visitStatusLabel(visit.visitStatus)}
+                </span>
               </div>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base leading-snug">
-                  {v.restaurant.name}
-                </CardTitle>
-                {v.restaurant.neighborhood && (
-                  <CardDescription>{v.restaurant.neighborhood}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-2 pt-0">
-                {(v.restaurant.cuisine_tags ?? []).some((tag) => tag.trim()) ? (
-                  <div className="flex flex-wrap gap-1">
-                    {(v.restaurant.cuisine_tags ?? [])
-                      .filter((tag) => tag.trim())
-                      .map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs">
-                          {tag}
-                        </Badge>
-                      ))}
-                  </div>
-                ) : null}
-                {(() => {
-                  const mine = biteNoteForVisit(v, biteNotesByRestaurantId);
-                  const community = ratingsByRestaurantId[v.restaurant.id];
-                  const showCommunity =
-                    community != null && community.totalRatings >= 3;
-                  const preview = mine ? truncateNote(mine.note, 80) : null;
-
-                  if (!mine && showCommunity && community) {
-                    return (
-                      <div className="space-y-2">
-                        <SocialProofRatingBlock
-                          avgRating={community.avgRating}
-                          totalRatings={community.totalRatings}
-                        />
-                      </div>
-                    );
-                  }
-
-                  return (
-                    <div className="space-y-2">
-                      {mine || showCommunity ? (
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-                          {mine ? (
-                            <span className="inline-flex flex-wrap items-center gap-1.5">
-                              <span className="text-muted-foreground">You rated:</span>
-                              <UserStarRatingRow rating={mine.rating} />
-                            </span>
-                          ) : null}
-                          {mine && showCommunity ? (
-                            <span className="text-muted-foreground" aria-hidden>
-                              ·
-                            </span>
-                          ) : null}
-                          {mine && showCommunity && community ? (
-                            <span className="inline-flex flex-wrap items-center gap-1.5">
-                              <span className="text-muted-foreground">Community:</span>
-                              <CommunityStarsCompact avgRating={community.avgRating} />
-                              <span className="text-muted-foreground">
-                                {community.totalRatings} Wanderbiters visited
-                              </span>
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {preview ? (
-                        <p className="text-xs leading-snug text-muted-foreground">
-                          {preview}
-                        </p>
-                      ) : null}
-                      {mine ? (
-                        <NotePrivacyControl noteId={mine.id} isPublic={mine.is_public} />
-                      ) : null}
-                    </div>
-                  );
-                })()}
-                <RestaurantReviews restaurantId={v.restaurant.id} className="pt-1" />
-                <MemoryEntryLink
-                  status={v.visitStatus}
-                  redemptionId={v.id}
-                  returnTo={PASSPORT_RETURN}
-                />
-                <p className="text-sm font-medium text-foreground" data-visit-status={v.visitStatus}>
-                  {visitStatusLabel(v.visitStatus)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {format(new Date(v.verifiedAt), 'MMM d, yyyy')}
-                </p>
-                <RecipeCards
-                  headingId={`passport-recipes-${v.id}`}
-                  heading={RECIPES_SECTION_HEADING}
-                  exclusionLine={recipeSections.exclusionLine}
-                  recipes={recipeSections.byRestaurantId[v.restaurant.id] ?? []}
-                />
-              </CardContent>
-            </Card>
+            );
+          })}
+          {pending.map((visit) => (
+            <PendingStamp key={visit.id} name={visit.restaurant.name} />
           ))}
+          <EmptyStampSlot href="/challenges" challengeName="Challenges" />
         </div>
       </section>
-    </div>
+
+      {selected ? (
+        <PassportMemoryCard
+          name={selected.restaurant.name}
+          meta={[spokenDate(selected), selected.restaurant.neighborhood?.trim() || null]
+            .filter(Boolean)
+            .join(' · ')}
+          note={selectedNote?.note?.trim() ? selectedNote.note.trim() : null}
+          rating={selectedNote ? selectedNote.rating : null}
+          photoLabel="Restaurant photo"
+          restaurantId={selected.restaurant.id}
+          imageUrl={selected.restaurant.image_url}
+          googlePlaceId={selected.restaurant.google_place_id}
+          redemptionId={selected.id}
+          status={selected.visitStatus}
+          noteId={selectedNote?.id}
+          isPublic={selectedNote?.is_public ?? false}
+          redemptionStatus={
+            selected.redemptionStatus ??
+            (selected.visitStatus === 'verified' || selected.visitStatus === 'note_added'
+              ? 'verified'
+              : null)
+          }
+          verifiedAt={selected.verifiedAt || null}
+        />
+      ) : null}
+
+      {selected && (ratingsByRestaurantId[selected.restaurant.id]?.totalRatings ?? 0) >= 3 ? (
+        <SocialProofRatingBlock
+          avgRating={ratingsByRestaurantId[selected.restaurant.id]?.avgRating ?? 0}
+          totalRatings={ratingsByRestaurantId[selected.restaurant.id]?.totalRatings ?? 0}
+        />
+      ) : null}
+      {selected && (recipeSections.byRestaurantId[selected.restaurant.id] ?? []).length > 0 ? (
+        <RecipeCards
+          headingId={`passport-recipes-${selected.id}`}
+          heading={RECIPES_SECTION_HEADING}
+          exclusionLine={recipeSections.exclusionLine}
+          recipes={recipeSections.byRestaurantId[selected.restaurant.id] ?? []}
+        />
+      ) : null}
+
+      {quick ? (
+        <QuickMemoryCard restaurantName={quick.restaurant.name} redemptionId={quick.id} />
+      ) : null}
+
+      {cuisines.length > 0 ? (
+        <section aria-labelledby="cuisines-tried" className="flex flex-col gap-3">
+          <h2 id="cuisines-tried" className="font-display m-0 text-[28px] leading-none text-wb-ink">
+            Cuisines tried
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {cuisines.map((chip) => (
+              <span
+                key={chip.key}
+                className="rounded-full px-3.5 py-2 text-[13px] font-semibold"
+                style={
+                  chip.pending
+                    ? { border: '1.5px dashed #d8cfbf', color: '#6b5f4b' }
+                    : { background: '#f6f1e8', color: chip.color }
+                }
+              >
+                {chip.label}
+              </span>
+            ))}
+          </div>
+        </section>
+      ) : null}
+    </PassportChrome>
   );
 }

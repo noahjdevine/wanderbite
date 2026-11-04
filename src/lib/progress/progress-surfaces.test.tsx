@@ -158,7 +158,7 @@ describe('progress surfaces', () => {
         showFirstBiteLocked={false}
       />,
     );
-    expect(passport.textContent).toContain(PROGRESS_UNAVAILABLE_MESSAGE);
+    expect(passport.textContent).toContain('Passport temporarily unavailable');
     expect(passport.textContent).not.toContain('0 restaurants');
     expect(passport.textContent).not.toContain('0 months streak');
   });

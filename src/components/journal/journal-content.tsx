@@ -1,23 +1,19 @@
-import { format } from 'date-fns';
-import Link from 'next/link';
-import { Star } from 'lucide-react';
 import { getBiteNotes, type BiteNoteRow } from '@/app/actions/bite-notes';
+import { PassportChrome } from '@/components/passport/passport-chrome';
 import { FocusVisitFromHash } from '@/components/notes/focus-visit';
 import { VisitNoteRead } from '@/components/notes/visit-note';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
 import { requireUser } from '@/lib/auth/require-user';
 import { JOURNAL_SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadJournalSavedRecipeLinks } from '@/lib/recipes/journal-links';
+import { chicagoVisitDate, JOURNAL_SEGMENT_HREF } from '@/lib/passport/passport-board';
+import { getMemberProgress, presentMemberProgress } from '@/lib/progress/get-member-progress';
+import { memberHeaderLabel, NEUTRAL_MEMBER_HEADER } from '@/lib/progress/rules';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 import { cn } from '@/lib/utils';
+import Link from 'next/link';
+import { Star } from 'lucide-react';
 
 function StarDisplay({ rating }: { rating: number }) {
   return (
@@ -101,6 +97,7 @@ type OpenMemory = {
   redemptionId: string;
   restaurantName: string;
   status: VisitStatus;
+  verifiedAt: string;
 };
 
 async function verifiedVisitsWithoutNotes(
@@ -140,6 +137,7 @@ async function verifiedVisitsWithoutNotes(
       redemptionId: redemption.id,
       restaurantName: unwrapJoin(redemption.restaurants)?.name ?? 'Restaurant',
       status,
+      verifiedAt: redemption.verified_at,
     });
   }
   return { ok: true, visits };
@@ -147,19 +145,59 @@ async function verifiedVisitsWithoutNotes(
 
 const JOURNAL_RETURN = '/journey?view=journal';
 
+function statusChipClass(status: VisitStatus): string {
+  if (status === 'verified' || status === 'note_added') {
+    return 'bg-[#dcfce7] text-[#14532d]';
+  }
+  if (status === 'code_issued' || status === 'ready') {
+    return 'bg-[#fef3c7] text-[#78350f]';
+  }
+  return 'bg-[#f6f1e8] text-wb-ink';
+}
+
 export async function JournalContent() {
   const auth = await requireUser();
   if (!auth.ok) {
     return <p className="text-destructive">{auth.error}</p>;
   }
 
-  const res = await getBiteNotes();
+  const now = new Date();
+  const admin = getSupabaseAdmin();
+  const [res, progress, profileResult] = await Promise.all([
+    getBiteNotes(),
+    getMemberProgress(auth.userId, now),
+    admin.from('user_profiles').select('full_name').eq('id', auth.userId),
+  ]);
+  const presented = presentMemberProgress(progress);
+  const profileRows = (profileResult.data ?? []) as { full_name: string | null }[];
+  const first = memberHeaderLabel(profileRows[0]?.full_name);
+  const displayName = first === NEUTRAL_MEMBER_HEADER ? 'Your' : first;
+  const pendingVisits = 'error' in progress ? 0 : progress.pendingVisits;
+
   if (!res.ok) {
-    return <p className="text-destructive">{res.error}</p>;
+    return (
+      <PassportChrome
+        displayName={displayName}
+        segment="timeline"
+        progressUnavailable={presented.progressUnavailable}
+        verifiedVisits={presented.verifiedVisits}
+        uniqueRestaurants={presented.uniqueRestaurants}
+        neighborhoods={presented.neighborhoods}
+        currentStreak={presented.streak.currentStreak}
+        longestStreak={presented.streak.longestStreak}
+        pendingVisits={pendingVisits}
+        earnedBadges={presented.earnedBadges}
+        showFirstBiteLocked={presented.showFirstBiteLocked}
+        retryHref={JOURNAL_SEGMENT_HREF}
+      >
+        <p className="text-destructive">{res.error}</p>
+      </PassportChrome>
+    );
   }
 
-  const notes = res.data;
-  const now = new Date();
+  const notes = [...res.data].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
   const [statuses, openMemories] = await Promise.all([
     statusByRedemption(notes, now),
     verifiedVisitsWithoutNotes(
@@ -173,33 +211,57 @@ export async function JournalContent() {
   );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-8">
+    <PassportChrome
+      displayName={displayName}
+      segment="timeline"
+      progressUnavailable={presented.progressUnavailable}
+      verifiedVisits={presented.verifiedVisits}
+      uniqueRestaurants={presented.uniqueRestaurants}
+      neighborhoods={presented.neighborhoods}
+      currentStreak={presented.streak.currentStreak}
+      longestStreak={presented.streak.longestStreak}
+      pendingVisits={pendingVisits}
+      earnedBadges={presented.earnedBadges}
+      showFirstBiteLocked={presented.showFirstBiteLocked}
+      retryHref={JOURNAL_SEGMENT_HREF}
+    >
       <FocusVisitFromHash />
       <header className="space-y-2">
-        <h2 className="text-2xl font-semibold tracking-tight">Journal</h2>
-        <p className="text-muted-foreground">
+        <h2 className="font-display m-0 text-[30px] text-wb-ink">Timeline</h2>
+        <p className="m-0 text-sm text-wb-muted">
           Your dining memories. You choose which ones to share.
         </p>
       </header>
 
       {openMemories.ok && openMemories.visits.length > 0 ? (
-        <ul className="space-y-4">
+        <ul className="m-0 flex list-none flex-col gap-4 p-0">
           {openMemories.visits.map((visit) => (
             <li key={visit.redemptionId}>
-              <Card>
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-lg">{visit.restaurantName}</CardTitle>
-                  <CardDescription>{visitStatusLabel(visit.status)}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <VisitNoteRead
-                    redemptionId={visit.redemptionId}
-                    status={visit.status}
-                    returnTo={JOURNAL_RETURN}
-                    note={null}
-                  />
-                </CardContent>
-              </Card>
+              <article className="flex flex-col gap-3 rounded-[26px] bg-white p-4 shadow-[0_14px_34px_rgba(42,20,66,0.08)]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-display m-0 text-[28px] leading-none text-wb-ink">{visit.restaurantName}</h3>
+                    <p className="m-0 mt-1 text-[13px] text-wb-muted">
+                      {chicagoVisitDate(visit.verifiedAt)?.long ?? ''}
+                    </p>
+                  </div>
+                  <span
+                    data-visit-status={visit.status}
+                    className={cn(
+                      'inline-flex rounded-full px-2.5 py-1 text-xs font-bold',
+                      statusChipClass(visit.status),
+                    )}
+                  >
+                    {visitStatusLabel(visit.status)}
+                  </span>
+                </div>
+                <VisitNoteRead
+                  redemptionId={visit.redemptionId}
+                  status={visit.status}
+                  returnTo={JOURNAL_RETURN}
+                  note={null}
+                />
+              </article>
             </li>
           ))}
         </ul>
@@ -207,52 +269,54 @@ export async function JournalContent() {
       {!openMemories.ok ? <p className="text-destructive">{openMemories.error}</p> : null}
 
       {notes.length === 0 && (!openMemories.ok || openMemories.visits.length === 0) ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No notes yet</CardTitle>
-            <CardDescription>
-              After a visit is verified, you can add a memory for that visit.
-            </CardDescription>
-          </CardHeader>
-        </Card>
+        <article className="rounded-[26px] bg-white p-5 shadow-[0_14px_34px_rgba(42,20,66,0.08)]">
+          <h3 className="font-display m-0 text-[28px] text-wb-ink">No notes yet</h3>
+          <p className="m-0 mt-2 text-sm text-wb-muted">
+            After a visit is verified, you can add a memory for that visit.
+          </p>
+        </article>
       ) : notes.length > 0 ? (
-        <ul className="space-y-4">
-          {notes.map((n) => (
-            <li key={n.id}>
-              <Card>
-                <CardHeader className="pb-2">
+        <ul className="m-0 flex list-none flex-col gap-4 p-0">
+          {notes.map((n) => {
+            const status = statuses.get(n.redemption_id) ?? 'ready';
+            const when = chicagoVisitDate(n.created_at);
+            return (
+              <li key={n.id}>
+                <article className="flex flex-col gap-3 rounded-[26px] bg-white p-4 shadow-[0_14px_34px_rgba(42,20,66,0.08)]">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <CardTitle className="text-lg">{n.restaurant.name}</CardTitle>
-                      <CardDescription>
-                        {format(new Date(n.created_at), 'MMMM d, yyyy')}
+                      <h3 className="font-display m-0 text-[28px] leading-none text-wb-ink">{n.restaurant.name}</h3>
+                      <p className="m-0 mt-1 text-[13px] text-wb-muted">
+                        {when?.long ?? ''}
                         {n.restaurant.address ? ` · ${n.restaurant.address}` : ''}
-                      </CardDescription>
+                      </p>
                     </div>
                     <StarDisplay rating={n.rating} />
                   </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <p className="text-sm font-medium" data-visit-status={statuses.get(n.redemption_id)}>
-                    {visitStatusLabel(statuses.get(n.redemption_id) ?? 'ready')}
-                  </p>
+                  <span
+                    data-visit-status={status}
+                    className={cn(
+                      'inline-flex w-fit rounded-full px-2.5 py-1 text-xs font-bold',
+                      statusChipClass(status),
+                    )}
+                  >
+                    {visitStatusLabel(status)}
+                  </span>
                   <VisitNoteRead
                     redemptionId={n.redemption_id}
-                    status={statuses.get(n.redemption_id) ?? 'ready'}
+                    status={status}
                     returnTo={JOURNAL_RETURN}
                     note={{ id: n.id, note: n.note, is_public: n.is_public }}
                   />
                   {(savedByRestaurant[n.restaurant_id] ?? []).length > 0 ? (
                     <div className="space-y-2">
-                      <p className="text-sm font-medium text-foreground">
-                        {JOURNAL_SAVED_RECIPES_HEADING}
-                      </p>
+                      <p className="text-sm font-medium text-wb-ink">{JOURNAL_SAVED_RECIPES_HEADING}</p>
                       <ul className="list-disc space-y-1 pl-4 text-sm">
                         {(savedByRestaurant[n.restaurant_id] ?? []).map((recipe) => (
                           <li key={recipe.id}>
                             <Link
                               href={`/journey#saved-recipe-${recipe.id}`}
-                              className="font-medium text-[#E85D26] underline-offset-2 hover:underline"
+                              className="font-medium text-wb-violet underline-offset-2 hover:underline"
                             >
                               {recipe.title}
                             </Link>
@@ -261,12 +325,12 @@ export async function JournalContent() {
                       </ul>
                     </div>
                   ) : null}
-                </CardContent>
-              </Card>
-            </li>
-          ))}
+                </article>
+              </li>
+            );
+          })}
         </ul>
       ) : null}
-    </div>
+    </PassportChrome>
   );
 }

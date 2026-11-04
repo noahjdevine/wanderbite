@@ -1,4 +1,5 @@
 import { Suspense } from 'react';
+import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { JourneyContent } from '@/components/journey/journey-content';
@@ -9,13 +10,17 @@ import { parseMyJourneyView } from '@/lib/my-journey-views';
 
 export const dynamic = 'force-dynamic';
 
-export const metadata = {
-  title: 'Progress',
-};
-
 type JourneyPageProps = {
   searchParams: Promise<{ view?: string | string[] }>;
 };
+
+export async function generateMetadata({ searchParams }: JourneyPageProps): Promise<Metadata> {
+  const params = await searchParams;
+  const view = parseMyJourneyView(params.view);
+  if (view === 'passport') return { title: 'Passport' };
+  if (view === 'journal') return { title: 'Timeline' };
+  return { title: 'Progress' };
+}
 
 function HubViewFallback() {
   return (
@@ -41,17 +46,19 @@ export default async function JourneyPage({ searchParams }: JourneyPageProps) {
     redirect(`/signin?redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
-  return (
-    <MyJourneyHub activeView={view}>
-      <Suspense fallback={<HubViewFallback />}>
-        {view === 'journey' ? (
+  if (view === 'journey') {
+    return (
+      <MyJourneyHub activeView={view}>
+        <Suspense fallback={<HubViewFallback />}>
           <JourneyContent userId={user.id} />
-        ) : view === 'journal' ? (
-          <JournalContent />
-        ) : (
-          <PassportContent userId={user.id} />
-        )}
-      </Suspense>
-    </MyJourneyHub>
+        </Suspense>
+      </MyJourneyHub>
+    );
+  }
+
+  return (
+    <Suspense fallback={<HubViewFallback />}>
+      {view === 'journal' ? <JournalContent /> : <PassportContent userId={user.id} />}
+    </Suspense>
   );
 }
