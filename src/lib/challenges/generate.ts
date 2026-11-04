@@ -293,6 +293,29 @@ export async function loadReservedCapacityCounts(
   return { ok: true, counts };
 }
 
+/**
+ * Restaurants the member swapped out on or after `sinceIso`.
+ * `challenge_items` stores the assignment instant in `assigned_at`.
+ */
+export async function loadSwappedOutRestaurantIds(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  cycleIds: readonly string[],
+  sinceIso: string,
+): Promise<Set<string>> {
+  const swappedOutRestaurantIds = new Set<string>();
+  if (cycleIds.length === 0) return swappedOutRestaurantIds;
+  const { data: swappedItems } = await supabase
+    .from('challenge_items')
+    .select('restaurant_id')
+    .in('cycle_id', [...cycleIds])
+    .eq('status', 'swapped_out')
+    .gte('assigned_at', sinceIso);
+  for (const row of swappedItems ?? []) {
+    swappedOutRestaurantIds.add((row as { restaurant_id: string }).restaurant_id);
+  }
+  return swappedOutRestaurantIds;
+}
+
 export type MonthlyChallengePool =
   | { ok: false; error: string; reason: GenerateFailureReason }
   | { ok: true; kind: 'existing'; data: GeneratedChallenge; periodKey: string; marketId: string }
@@ -529,18 +552,11 @@ export async function loadMonthlyChallengePool(
       .select('id')
       .eq('user_id', userId);
     const cycleIds = (userCycles ?? []).map((c) => (c as { id: string }).id);
-    const swappedOutRestaurantIds = new Set<string>();
-    if (cycleIds.length > 0) {
-      const { data: swappedItems } = await supabase
-        .from('challenge_items')
-        .select('restaurant_id')
-        .in('cycle_id', cycleIds)
-        .eq('status', 'swapped_out')
-        .gte('created_at', threeMonthsAgo.toISOString());
-      for (const row of swappedItems ?? []) {
-        swappedOutRestaurantIds.add((row as { restaurant_id: string }).restaurant_id);
-      }
-    }
+    const swappedOutRestaurantIds = await loadSwappedOutRestaurantIds(
+      supabase,
+      cycleIds,
+      threeMonthsAgo.toISOString(),
+    );
 
     const sixMonthVarietyStart = varietyCycleMonthLowerBound(now, 6);
     const twelveMonthVarietyStart = varietyCycleMonthLowerBound(now, 12);
