@@ -84,9 +84,9 @@ describe('ShowRedemptionCode', () => {
       window.dispatchEvent(new Event('focus'));
     });
     expect(getRedemptionCode).toHaveBeenCalledWith('red-1');
-    expect(view.textContent).toContain('This code expired. Get a new one');
+    expect(view.textContent).toContain('Code expired. Get a new one');
     expect(view.textContent).not.toContain('WB-LIVE1');
-    expect(live()?.textContent).toBe('This code expired. Get a new one');
+    expect(live()?.textContent).toBe('Code expired. Get a new one');
     expect(view.querySelector('p.tabular-nums')).toBeNull();
   });
 
@@ -143,7 +143,7 @@ describe('ShowRedemptionCode', () => {
         status="expired"
       />,
     );
-    expect(view.textContent).toContain('This code expired. Get a new one');
+    expect(view.textContent).toContain('Code expired. Get a new one');
     const button = Array.from(view.querySelectorAll('button')).find((node) =>
       node.textContent?.includes('Get a new one'),
     );
@@ -169,7 +169,8 @@ describe('ShowRedemptionCode', () => {
         status="expired"
       />,
     );
-    expect(closed.textContent).toContain('This code expired. Get a new one');
+    expect(closed.textContent).toContain('This adventure is no longer active.');
+    expect(closed.textContent).not.toContain('Get a new one');
     expect(
       Array.from(closed.querySelectorAll('button')).some((node) => node.textContent === 'Get a new one'),
     ).toBe(false);

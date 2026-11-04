@@ -30,6 +30,7 @@ import { Lock } from 'lucide-react';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadSavedRecipes } from '@/lib/recipes/load';
+import { visitStatusLabel } from '@/lib/visits/visit-status';
 
 type JourneyContentProps = {
   userId: string;
@@ -268,7 +269,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
                     <TableCell className="font-medium">{row.restaurantName}</TableCell>
                     <TableCell>{row.date}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">Verified</Badge>
+                      <Badge variant="secondary">{visitStatusLabel(row.visitStatus)}</Badge>
                     </TableCell>
                   </TableRow>
                 ))}

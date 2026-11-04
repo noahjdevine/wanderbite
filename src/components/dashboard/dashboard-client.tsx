@@ -163,7 +163,8 @@ export function DashboardClient({
     currentChallenge?.items.filter(
       (item) =>
         item.challengeItem.status === 'assigned' ||
-        item.challengeItem.status === 'redeemed'
+        item.challengeItem.status === 'redeemed' ||
+        item.challengeItem.status === 'expired'
     ) ?? [];
 
   const biteNoteByRedemptionId = useMemo(() => {

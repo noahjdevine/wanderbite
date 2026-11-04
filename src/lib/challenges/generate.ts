@@ -27,6 +27,7 @@ import { varietyCycleMonthLowerBound } from '@/lib/challenges/restaurant-safety'
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
+import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
 import {
   deriveDistanceMatch,
   isLaunchEligibleAddress,
@@ -111,6 +112,8 @@ export type GeneratedChallengeItem = {
   redemptionToken?: string | null;
   /** Redemption row id when status is 'redeemed' (for Bite Notes, etc.). */
   redemptionId?: string | null;
+  /** Derived on the server. Issued codes are not visits. */
+  visitStatus?: VisitStatus;
   /** Aggregate Bite Note ratings for this restaurant (from all users). */
   socialProof?: { avgRating: number | null; totalRatings: number };
 };
@@ -823,30 +826,61 @@ async function loadChallengeItemsWithRestaurants(
   // redemptions.token_hash is a SHA-256 digest of the WB- code, not the code itself.
   // The display token is shown once at redeem time only; it is not recoverable from the DB.
 
-  const redeemedItemIds = (items as ChallengeItemRow[])
-    .filter((i) => i.status === 'redeemed')
-    .map((i) => i.id);
-  const redemptionIdByChallengeItemId = new Map<string, string>();
-  if (redeemedItemIds.length > 0) {
+  const itemIds = (items as ChallengeItemRow[]).map((item) => item.id);
+  const redemptionByItemId = new Map<string, {
+    id: string;
+    challenge_item_id: string;
+    status: string | null;
+    verified_at: string | null;
+    expires_at: string | null;
+  }>();
+  if (itemIds.length > 0) {
     const { data: redemptionRows } = await supabase
       .from('redemptions')
-      .select('id, challenge_item_id, created_at')
-      .in('challenge_item_id', redeemedItemIds)
+      .select('id, challenge_item_id, status, verified_at, expires_at, created_at')
+      .in('challenge_item_id', itemIds)
       .order('created_at', { ascending: false });
     for (const row of redemptionRows ?? []) {
-      const rr = row as { id: string; challenge_item_id: string };
-      if (!redemptionIdByChallengeItemId.has(rr.challenge_item_id)) {
-        redemptionIdByChallengeItemId.set(rr.challenge_item_id, rr.id);
-      }
+      const rr = row as {
+        id: string;
+        challenge_item_id: string | null;
+        status: string | null;
+        verified_at: string | null;
+        expires_at: string | null;
+      };
+      if (!rr.challenge_item_id || redemptionByItemId.has(rr.challenge_item_id)) continue;
+      redemptionByItemId.set(rr.challenge_item_id, {
+        id: rr.id,
+        challenge_item_id: rr.challenge_item_id,
+        status: rr.status,
+        verified_at: rr.verified_at,
+        expires_at: rr.expires_at,
+      });
+    }
+  }
+
+  const noteByRedemptionId = new Map<string, { note: string | null }>();
+  const redemptionIds = [...redemptionByItemId.values()].map((row) => row.id);
+  if (redemptionIds.length > 0) {
+    const { data: noteRows } = await supabase
+      .from('bite_notes')
+      .select('redemption_id, note')
+      .in('redemption_id', redemptionIds);
+    for (const row of noteRows ?? []) {
+      const note = row as { redemption_id: string; note: string | null };
+      noteByRedemptionId.set(note.redemption_id, { note: note.note });
     }
   }
 
   const ratingsMap = await getRestaurantRatings(restIds);
+  const now = new Date();
 
   return (items as ChallengeItemRow[]).map((item) => {
     const restaurant = restMap.get(item.restaurant_id)!;
     const offer = offerMap.get(item.restaurant_id);
     const stats = ratingsMap.get(item.restaurant_id);
+    const redemption = redemptionByItemId.get(item.id) ?? null;
+    const note = redemption ? noteByRedemptionId.get(redemption.id) ?? null : null;
     return {
       challengeItem: item,
       restaurant: {
@@ -874,10 +908,22 @@ async function loadChallengeItemsWithRestaurants(
             }
           : { available: true, discount_amount_cents: 1000, min_spend_cents: 4000 },
       redemptionToken: null,
-      redemptionId:
-        item.status === 'redeemed'
-          ? redemptionIdByChallengeItemId.get(item.id) ?? null
+      redemptionId: item.status === 'redeemed' ? redemption?.id ?? null : null,
+      visitStatus: deriveVisitStatus({
+        item: {
+          status: item.status,
+          redemptionDeadline: item.redemption_deadline ?? null,
+        },
+        redemption: redemption
+          ? {
+              status: redemption.status ?? '',
+              verifiedAt: redemption.verified_at,
+              expiresAt: redemption.expires_at,
+            }
           : null,
+        note,
+        now,
+      }),
       socialProof: stats
         ? { avgRating: stats.avgRating, totalRatings: stats.totalRatings }
         : { avgRating: null, totalRatings: 0 },

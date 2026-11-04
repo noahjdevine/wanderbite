@@ -28,6 +28,7 @@ import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { RECIPES_SECTION_HEADING, type RecipeSections } from '@/lib/recipes/display';
+import { visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -64,6 +65,7 @@ const OSM_STYLE: StyleSpecification = {
 export type PassportVisit = {
   id: string;
   verifiedAt: string;
+  visitStatus: VisitStatus;
   restaurant: {
     id: string;
     name: string;
@@ -523,6 +525,9 @@ export function PassportClient({
                       />
                     </div>
                   ) : null}
+                  <p className="text-xs font-medium text-foreground" data-visit-status={popupVisit.visitStatus}>
+                    {visitStatusLabel(popupVisit.visitStatus)}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Visited{' '}
                     {format(new Date(popupVisit.verifiedAt), 'MMM d, yyyy')}
@@ -623,6 +628,9 @@ export function PassportClient({
                     📝 Add note
                   </Link>
                 ) : null}
+                <p className="text-sm font-medium text-foreground" data-visit-status={v.visitStatus}>
+                  {visitStatusLabel(v.visitStatus)}
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {format(new Date(v.verifiedAt), 'MMM d, yyyy')}
                 </p>

@@ -11,6 +11,11 @@ import {
 } from '@/lib/progress/rules';
 import { monthlyStreakFromVerifiedAt } from '@/lib/streaks';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import {
+  deriveVisitStatus,
+  visitStatusCountsAsVisit,
+  type VisitStatus,
+} from '@/lib/visits/visit-status';
 import type { Json } from '@/types/database.types';
 
 export type MemberBadge = {
@@ -86,16 +91,36 @@ function uniqueIds(ids: readonly (string | null)[]): string[] {
   return [...new Set(ids.filter((id): id is string => Boolean(id)))];
 }
 
-function isVerified(row: RedemptionRow): boolean {
-  return row.status === 'verified';
-}
+type ItemClock = {
+  id: string;
+  offer_version_id: string | null;
+  status: string | null;
+  redemption_deadline: string | null;
+};
 
-/** Issued codes that have not reached `expires_at`. Expired rows are omitted. */
-function isPending(row: RedemptionRow, now: Date): boolean {
-  if (row.status !== 'issued') return false;
-  const expires = new Date(row.expires_at).getTime();
-  if (Number.isNaN(expires)) return false;
-  return expires > now.getTime();
+/**
+ * A bite note does not add a second visit, so this read does not load
+ * `bite_notes`. A verified redemption is `verified` here and still counts;
+ * `note_added` counts through the same helper when a caller passes the row.
+ */
+function statusForRow(
+  row: RedemptionRow,
+  item: ItemClock | undefined,
+  now: Date,
+): VisitStatus {
+  return deriveVisitStatus({
+    item: {
+      status: item?.status ?? 'assigned',
+      redemptionDeadline: item?.redemption_deadline ?? null,
+    },
+    redemption: {
+      status: row.status ?? '',
+      verifiedAt: row.verified_at,
+      expiresAt: row.expires_at,
+    },
+    note: null,
+    now,
+  });
 }
 
 /**
@@ -115,11 +140,31 @@ export async function getMemberProgress(
 
     if (redemptionError) return fail(redemptionError.message);
     const redemptions = (redemptionData ?? []) as RedemptionRow[];
-    const verified = redemptions.filter(isVerified);
-    const pendingVisits = redemptions.filter((row) => isPending(row, now)).length;
+    const itemIds = uniqueIds(redemptions.map((row) => row.challenge_item_id));
+    const itemById = new Map<string, ItemClock>();
+    if (itemIds.length > 0) {
+      const { data: itemData, error: itemError } = await admin
+        .from('challenge_items')
+        .select('id, offer_version_id, status, redemption_deadline')
+        .in('id', itemIds);
+      if (itemError) return fail(itemError.message);
+      for (const item of (itemData ?? []) as ItemClock[]) itemById.set(item.id, item);
+    }
+
+    const classified = redemptions.map((row) => ({
+      row,
+      status: statusForRow(
+        row,
+        row.challenge_item_id ? itemById.get(row.challenge_item_id) : undefined,
+        now,
+      ),
+    }));
+    const verified = classified
+      .filter((entry) => visitStatusCountsAsVisit(entry.status))
+      .map((entry) => entry.row);
+    const pendingVisits = classified.filter((entry) => entry.status === 'code_issued').length;
     const verifiedVisits = verified.length;
     const restaurantIds = uniqueIds(verified.map((row) => row.restaurant_id));
-    const itemIds = uniqueIds(verified.map((row) => row.challenge_item_id));
 
     const verifiedAtAsc = verified
       .flatMap((row) => (row.verified_at ? [row.verified_at] : []))
@@ -142,13 +187,12 @@ export async function getMemberProgress(
     }
 
     const sealedCentsByItem = new Map<string, number>();
-    if (itemIds.length > 0) {
-      const { data: itemData, error: itemError } = await admin
-        .from('challenge_items')
-        .select('id, offer_version_id')
-        .in('id', itemIds);
-      if (itemError) return fail(itemError.message);
-      const items = (itemData ?? []) as { id: string; offer_version_id: string | null }[];
+    const savingsItemIds = uniqueIds(verified.map((row) => row.challenge_item_id));
+    if (savingsItemIds.length > 0) {
+      const items = savingsItemIds.flatMap((id) => {
+        const item = itemById.get(id);
+        return item ? [item] : [];
+      });
       const versionIds = uniqueIds(items.map((item) => item.offer_version_id));
       const centsByVersion = new Map<string, number>();
       if (versionIds.length > 0) {

@@ -1,7 +1,7 @@
 import { format } from 'date-fns';
 import Link from 'next/link';
 import { Star } from 'lucide-react';
-import { getBiteNotes } from '@/app/actions/bite-notes';
+import { getBiteNotes, type BiteNoteRow } from '@/app/actions/bite-notes';
 import {
   Card,
   CardContent,
@@ -11,6 +11,8 @@ import {
 } from '@/components/ui/card';
 import { JOURNAL_SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadJournalSavedRecipeLinks } from '@/lib/recipes/journal-links';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 import { cn } from '@/lib/utils';
 
 function StarDisplay({ rating }: { rating: number }) {
@@ -31,6 +33,66 @@ function StarDisplay({ rating }: { rating: number }) {
   );
 }
 
+async function statusByRedemption(notes: BiteNoteRow[], now: Date): Promise<Map<string, VisitStatus>> {
+  const statuses = new Map<string, VisitStatus>();
+  if (notes.length === 0) return statuses;
+  const admin = getSupabaseAdmin();
+  const { data: redemptionRows } = await admin
+    .from('redemptions')
+    .select('id, status, verified_at, expires_at, challenge_item_id')
+    .in(
+      'id',
+      notes.map((note) => note.redemption_id),
+    );
+  const redemptions = (redemptionRows ?? []) as {
+    id: string;
+    status: string | null;
+    verified_at: string | null;
+    expires_at: string | null;
+    challenge_item_id: string | null;
+  }[];
+  const itemIds = [
+    ...new Set(redemptions.flatMap((row) => (row.challenge_item_id ? [row.challenge_item_id] : []))),
+  ];
+  const itemById = new Map<string, { status: string; redemption_deadline: string | null }>();
+  if (itemIds.length > 0) {
+    const { data: itemRows } = await admin
+      .from('challenge_items')
+      .select('id, status, redemption_deadline')
+      .in('id', itemIds);
+    for (const item of itemRows ?? []) {
+      itemById.set(item.id, {
+        status: item.status ?? 'assigned',
+        redemption_deadline: item.redemption_deadline,
+      });
+    }
+  }
+  const redemptionById = new Map(redemptions.map((row) => [row.id, row]));
+  for (const note of notes) {
+    const redemption = redemptionById.get(note.redemption_id);
+    const item = redemption?.challenge_item_id ? itemById.get(redemption.challenge_item_id) : undefined;
+    statuses.set(
+      note.redemption_id,
+      deriveVisitStatus({
+        item: {
+          status: item?.status ?? 'assigned',
+          redemptionDeadline: item?.redemption_deadline ?? null,
+        },
+        redemption: redemption
+          ? {
+              status: redemption.status ?? '',
+              verifiedAt: redemption.verified_at,
+              expiresAt: redemption.expires_at,
+            }
+          : null,
+        note: { note: note.note },
+        now,
+      }),
+    );
+  }
+  return statuses;
+}
+
 export async function JournalContent() {
   const res = await getBiteNotes();
   if (!res.ok) {
@@ -38,6 +100,7 @@ export async function JournalContent() {
   }
 
   const notes = res.data;
+  const statuses = await statusByRedemption(notes, new Date());
   const savedByRestaurant = await loadJournalSavedRecipeLinks(
     notes.map((note) => note.restaurant_id),
   );
@@ -79,6 +142,9 @@ export async function JournalContent() {
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <p className="text-sm font-medium" data-visit-status={statuses.get(n.redemption_id)}>
+                    {visitStatusLabel(statuses.get(n.redemption_id) ?? 'ready')}
+                  </p>
                   {n.note ? (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                       {n.note}

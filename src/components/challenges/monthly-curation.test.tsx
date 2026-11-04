@@ -104,6 +104,7 @@ function challenge(): GeneratedChallenge {
           org_id: 'org-1',
         },
         offer: { available: true, discount_amount_cents: 2000, min_spend_cents: 5000 },
+        visitStatus: 'code_issued',
       },
       {
         challengeItem: {
@@ -128,6 +129,7 @@ function challenge(): GeneratedChallenge {
           org_id: 'org-1',
         },
         offer: { available: true, discount_amount_cents: 1500, min_spend_cents: 4000 },
+        visitStatus: 'ready',
       },
     ],
   };

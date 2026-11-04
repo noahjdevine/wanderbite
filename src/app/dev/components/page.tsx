@@ -36,7 +36,7 @@ export const metadata = {
 const FOODS: BeaFoodIndex[] = [0, 1, 2, 3, 4, 5];
 const FOOD_NAMES = ["Dumpling", "Nigiri", "Pizza", "Taco", "Burger", "BBQ"] as const;
 const SIZES = [32, 48, 120, 240] as const;
-const TRACKS: StatusTrackStatus[] = ["ready", "code_issued", "verified", "note_added", "expired", "swapped"];
+const TRACKS: StatusTrackStatus[] = ["ready", "code_issued", "code_expired", "verified", "note_added", "expired", "swapped"];
 
 function BadgeIcon() {
   return (
