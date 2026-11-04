@@ -11,6 +11,9 @@ import {
  * Returns the plaintext WB- code while status is `issued` and `expires_at` is still
  * in the future (server time). An issued code past `expires_at`, or a row already
  * marked `expired`, returns `{ state: 'expired' }` and does not throw.
+ * The signed-in member's own `verified` row returns `{ state: 'verified', verifiedAt }`
+ * from `redemptions.verified_at` and does not include the code. Any other member's
+ * id is `unavailable`.
  */
 export async function getRedemptionCode(redemptionId: string): Promise<RedemptionCodeResult> {
   if (!redemptionId?.trim()) {
@@ -28,7 +31,7 @@ export async function getRedemptionCode(redemptionId: string): Promise<Redemptio
 
     const { data, error } = await supabase
       .from('redemptions')
-      .select('status, encrypted_code, code_iv, user_id, expires_at')
+      .select('status, encrypted_code, code_iv, user_id, expires_at, verified_at')
       .eq('id', redemptionId.trim())
       .maybeSingle();
 
@@ -46,10 +49,18 @@ export async function getRedemptionCode(redemptionId: string): Promise<Redemptio
       code_iv: string | null;
       user_id: string;
       expires_at: string | null;
+      verified_at: string | null;
     };
 
     if (row.user_id !== user.id) {
       return { state: 'unavailable' };
+    }
+
+    if (row.status === 'verified') {
+      return {
+        state: 'verified',
+        verifiedAt: typeof row.verified_at === 'string' ? row.verified_at : null,
+      };
     }
 
     const expiresAt = typeof row.expires_at === 'string' ? row.expires_at : null;
