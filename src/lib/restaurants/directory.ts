@@ -1,5 +1,9 @@
 import { safeManualImagePath } from '@/lib/restaurant-image';
 
+/** Columns the public directory and the homepage partner grid both read. */
+export const PUBLIC_DIRECTORY_COLUMNS =
+  'id, name, cuisine_tags, description, address, lat, lon, image_url, google_place_id, neighborhood, price_range';
+
 export type DirectoryRestaurant = {
   id: string;
   name: string;

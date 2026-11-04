@@ -85,12 +85,18 @@ describe('partner directory filter', () => {
 
   it('uses the same active launch-market filters as the restaurant directory', () => {
     const catalog = readFileSync(path.join(root, 'src/lib/home/hero-catalog.ts'), 'utf8');
-    const directory = readFileSync(path.join(root, 'src/app/(site)/restaurants/page.tsx'), 'utf8');
+    const directory = readFileSync(path.join(root, 'src/lib/restaurants/load-directory.ts'), 'utf8');
     expect(catalog).toMatch(/\.eq\('status', 'active'\)/);
     expect(catalog).toMatch(/\.eq\('market_id', market\.marketId\)/);
     expect(catalog).toMatch(/requireLaunchMarketId/);
     expect(directory).toMatch(/\.eq\('status', 'active'\)/);
     expect(directory).toMatch(/\.eq\('market_id', market\.marketId\)/);
+    expect(readFileSync(path.join(root, 'src/app/(site)/restaurants/page.tsx'), 'utf8')).toMatch(
+      /loadPublicDirectory/,
+    );
+    expect(readFileSync(path.join(root, 'src/app/(site)/page.tsx'), 'utf8')).toMatch(
+      /loadPublicDirectory/,
+    );
     expect(catalog).toMatch(/isTestOfferAuditMarker/);
   });
 });

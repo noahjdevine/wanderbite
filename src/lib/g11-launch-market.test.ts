@@ -260,7 +260,8 @@ describe('G11 wiring (source)', () => {
 
   it('filters Roulette and the directory by launch market id without exposing market_id on restaurants_public', () => {
     const roulette = source('src/lib/discover/turn.ts');
-    const directory = source('src/app/(site)/restaurants/page.tsx');
+    const directory = source('src/lib/restaurants/load-directory.ts');
+    expect(source('src/app/(site)/restaurants/page.tsx')).toMatch(/loadPublicDirectory/);
     const publicView = source('src/types/database.types.ts');
     const publicStart = publicView.indexOf('restaurants_public:');
     const publicEnd = publicView.indexOf('Relationships: []', publicStart);
@@ -295,7 +296,7 @@ describe('G11 copy and legal surfaces (source)', () => {
   const MARKETING = [
     'src/lib/club-plan-content.ts',
     'src/components/landing/landing-page.tsx',
-    'src/components/landing/club-section.tsx',
+    'src/components/landing/membership-section.tsx',
     'src/components/landing/hero-slider.tsx',
     'src/components/dashboard/paywall-card.tsx',
     'src/components/pricing/pricing-client.tsx',
@@ -327,9 +328,10 @@ describe('G11 copy and legal surfaces (source)', () => {
     expect(source('src/components/landing/hero-slider.tsx')).toMatch(
       /McKinney, Texas/
     );
-    expect(source('src/components/landing/club-section.tsx')).toMatch(
-      /McKinney, Texas/
+    expect(source('src/components/landing/membership-section.tsx')).toMatch(
+      /LAUNCH_MARKET\.displayName/
     );
+    expect(LAUNCH_MARKET.displayName).toBe('McKinney, Texas');
     expect(AREA_HOLD_BODY).toMatch(/McKinney, Texas/);
     expect(AREA_HOLD_BODY.toLowerCase()).toMatch(/not collecting/);
     for (const rel of MARKETING) {

@@ -1,51 +1,35 @@
-import { UtensilsCrossed, Ticket, TrendingUp } from 'lucide-react';
-import { ClubSection } from '@/components/landing/club-section';
+import { HowItWorks } from '@/components/landing/how-it-works';
+import { MembershipSection } from '@/components/landing/membership-section';
+import { PartnerPhotoGrid } from '@/components/landing/partner-photo-grid';
+import { PassportPreview } from '@/components/landing/passport-preview';
+import { Reveal } from '@/components/wb/reveal';
+import { selectPartnerPhotos } from '@/lib/home/partner-grid';
+import type { DirectoryRestaurant } from '@/lib/restaurants/directory';
 
-export function LandingPage() {
+type LandingPageProps = {
+  restaurants: readonly DirectoryRestaurant[];
+};
+
+export function LandingPage({ restaurants }: LandingPageProps) {
+  const partners = selectPartnerPhotos(restaurants);
+
   return (
-    <main className="bg-background">
-      <div id="landing-continue" className="mx-auto max-w-7xl px-4 sm:px-6">
-        {/* How it Works */}
-        <section className="py-20" id="how-it-works">
-          <h2 className="mb-12 text-center text-2xl font-semibold tracking-tight md:text-3xl">
-            How it Works
-          </h2>
-          <div className="grid gap-10 md:grid-cols-3">
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <UtensilsCrossed className="size-7" />
-              </div>
-              <span className="mb-2 text-sm font-medium text-muted-foreground">Step 1</span>
-              <h3 className="font-semibold">We Pick the Spot</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Get two curated restaurant challenges every month—no more endless scrolling.
-              </p>
-            </div>
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Ticket className="size-7" />
-              </div>
-              <span className="mb-2 text-sm font-medium text-muted-foreground">Step 2</span>
-              <h3 className="font-semibold">You Get the Offer</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Each challenge shows its discount and minimum spend.
-              </p>
-            </div>
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <TrendingUp className="size-7" />
-              </div>
-              <span className="mb-2 text-sm font-medium text-muted-foreground">Step 3</span>
-              <h3 className="font-semibold">Rate & Level Up</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Complete visits, earn badges, and level up as you explore.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Club / Pricing */}
-        <ClubSection />
+    <main id="landing-continue" className="wb-sheet wb-on-cream">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-16 px-4 py-16 sm:px-6 md:gap-24 md:py-24 lg:px-8">
+        <Reveal>
+          <HowItWorks />
+        </Reveal>
+        {partners.length > 0 ? (
+          <Reveal>
+            <PartnerPhotoGrid restaurants={partners} />
+          </Reveal>
+        ) : null}
+        <Reveal>
+          <PassportPreview />
+        </Reveal>
+        <Reveal>
+          <MembershipSection />
+        </Reveal>
       </div>
     </main>
   );
