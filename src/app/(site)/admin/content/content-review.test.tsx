@@ -41,7 +41,7 @@ function model(): ContentReviewModel {
         attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
         verifiedLabel: 'Nov 3, 2026, 10:00 PM CST',
         recipeLabel: 'Home Skillet Beans · recipe version 1 · fact version 1',
-        approveKind: 'publish',
+        approveKind: 'review_only',
         approveBlock: null,
         canEdit: true,
       },
@@ -142,12 +142,13 @@ describe('ContentReview', () => {
     expect(document.body.textContent).toContain('injection_suspected');
     expect(document.body.textContent).not.toContain('Approve and publish');
     expect(document.body.textContent).toContain('Nothing was published.');
+    expect(document.body.textContent).toContain('Edit publishes a paraphrase.');
 
     await act(async () => {
       filter.value = 'all';
       filter.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    const approve = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Approve and publish');
+    const approve = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Mark reviewed');
     await act(async () => {
       approve?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });

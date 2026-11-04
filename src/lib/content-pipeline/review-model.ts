@@ -15,7 +15,7 @@ export type ExceptionView = {
   attemptedLabel: string;
   verifiedLabel: string;
   recipeLabel: string;
-  approveKind: 'publish' | 'review_only' | 'blocked';
+  approveKind: 'review_only' | 'blocked';
   approveBlock: string | null;
   canEdit: boolean;
 };

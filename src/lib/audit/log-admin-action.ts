@@ -25,7 +25,7 @@ export async function logAdminAction(params: {
   targetType: string;
   targetId?: string;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
+}): Promise<boolean> {
   const admin = getSupabaseAdmin();
   const { error } = await admin.from('admin_audit_log').insert({
     actor_user_id: params.actorUserId,
@@ -37,5 +37,7 @@ export async function logAdminAction(params: {
 
   if (error) {
     console.error('[audit] failed to write admin_audit_log:', error.message);
+    return false;
   }
+  return true;
 }

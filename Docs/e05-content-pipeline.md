@@ -67,7 +67,7 @@ WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --rollback recipe 
 
 `/admin/content` is an operator page behind `assertAdmin` (role plus current session `aal2`). A signed-in member, or an admin who has not finished MFA, is refused before any pipeline read or write. The queue lists open `content_exceptions`, newest source attempt first, filtered by reason. Each row shows the restaurant, the source URL, the reason, before, after, a short evidence excerpt, last attempted and last verified in America/Chicago, and the linked recipe and fact version. Evidence and after text render as plain text. This view does not send that text to a model.
 
-Approve of a description conflict on an inspired-by public-menu recipe calls `apply_recipe_description_fact` once. `recipes.version` bumps, the prior fact stays, and `menu_wording` and `visibility` are not changed. Approving again returns "Already resolved." and writes nothing. Approve of `missing_source`, `injection_suspected`, `sensitive`, or `validation_failed` only marks the row reviewed and publishes no recipe. Edit publishes the operator's paraphrase through the same RPC when it is non-empty, at most 400 characters, and not a copy of the menu. Reject marks the row rejected and writes no recipe or fact. Rollback on a recipe's history calls `rollback_recipe_to_previous` and does not call `rollback_content_fact`. Each of those actions writes one `admin_audit_log` row. Sources can be paused or resumed. There is no form to add a URL.
+The refresh opens conflicts on price and ingredients, and rows for a missing dish, sensitive price, hours, dietary or allergen text, injection, or a failed paraphrase. Approve marks those rows reviewed and publishes nothing. Approving again returns "Already resolved." and writes nothing. Edit publishes the operator's paraphrase through `apply_recipe_description_fact` when it is non-empty, at most 400 characters, and not a copy of the menu. That call bumps `recipes.version` and keeps the prior fact. `menu_wording` and `visibility` are not changed. Reject marks the row rejected and writes no recipe or fact. Rollback on a recipe's history calls `rollback_recipe_to_previous` and does not call `rollback_content_fact`. Each of those actions writes one `admin_audit_log` row. Sources can be paused or resumed. There is no form to add a URL.
 
 ## Scheduled refresh
 
@@ -79,7 +79,7 @@ Listed timestamps use America/Chicago. Stored timestamps are UTC.
 
 ## Hosted
 
-Local review uses a local database. The script refuses a hosted Supabase URL unless `WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1`. Writes also need `WANDERBITE_CONTENT_REFRESH_APPLY=1`. Migration `20261104040000_e05_b2_content_pipeline.sql` is not on hosted. Noah runs `supabase db push` only after a separate OK. Do not run `npm run types:db` against hosted for this slice; the checked-in table types were hand-edited to match the migration.
+Local review uses a local database. The script refuses a hosted Supabase URL unless `WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1`. Writes also need `WANDERBITE_CONTENT_REFRESH_APPLY=1`. Migration `20261104040000_e05_b2_content_pipeline.sql` was applied to the hosted database on 2026-11-03 with Noah's OK, and its `schema_migrations` version is aligned. Do not run `npm run types:db` against hosted for this slice; the checked-in table types were hand-edited to match the migration.
 
 ## Rollback of the PR
 

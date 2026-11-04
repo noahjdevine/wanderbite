@@ -37,6 +37,7 @@ const harness = vi.hoisted(() => ({
     | { ok: true; userId: string; email: string | null }
     | { ok: false; error: string },
   failApply: false,
+  failAudit: false,
   tables: {} as Record<string, Row[]>,
 }));
 
@@ -59,6 +60,7 @@ function resetTables() {
   };
   harness.calls = [];
   harness.failApply = false;
+  harness.failAudit = false;
   harness.role = 'admin';
   harness.user = { ok: true, userId: ADMIN_ID, email: 'a@example.com' };
   harness.aal = { currentLevel: 'aal2', nextLevel: 'aal2' };
@@ -145,6 +147,9 @@ vi.mock('@/lib/supabase-admin', () => ({
         const rows = harness.tables[table] ?? [];
         const matched = rows.filter((row) => matches(row, filters));
         if (op === 'insert' && payload) {
+          if (table === 'admin_audit_log' && harness.failAudit) {
+            return { data: null, error: { message: 'audit down' } };
+          }
           rows.push({ ...payload });
           harness.tables[table] = rows;
           return { data: [{ ...payload }], error: null };
@@ -189,7 +194,7 @@ vi.mock('@/lib/supabase-admin', () => ({
         single() {
           return api.maybeSingle();
         },
-        then(onFulfilled: (value: { data: unknown; error: null }) => unknown, onRejected?: (reason: unknown) => unknown) {
+        then(onFulfilled: (value: { data: unknown; error: { message: string } | null }) => unknown, onRejected?: (reason: unknown) => unknown) {
           return Promise.resolve(execute()).then(onFulfilled, onRejected);
         },
       };
@@ -338,26 +343,22 @@ describe('content review guards', () => {
 });
 
 describe('content review actions', () => {
-  it('approves one description version, keeps the saved text, and ignores a second approve', async () => {
+  it('approves a conflict without publishing and ignores a second approve', async () => {
     seedConflict();
+    harness.tables.content_exceptions![0]!.field = 'price';
     const first = await approveContentException(EXCEPTION_ID);
-    expect(first).toEqual({
-      ok: true,
-      published: true,
-      notice: 'Approved. The paraphrase is a new description version.',
-    });
-    expect(harness.calls.filter((call) => call.table === 'apply_recipe_description_fact')).toHaveLength(1);
+    expect(first).toEqual({ ok: true, published: false, notice: `Approved. ${NOTHING_PUBLISHED}` });
+    expect(harness.calls.filter((call) => call.table === 'apply_recipe_description_fact')).toHaveLength(0);
     expect(harness.calls.some((call) => call.table === 'rollback_content_fact')).toBe(false);
     expect(recipeRow()).toMatchObject({
-      description: PARAPHRASE,
-      version: 2,
+      description: OLD,
+      version: 1,
       visibility: 'draft',
       recipe_type: 'inspired_by',
       menu_wording: 'paraphrase',
     });
-    expect(harness.tables.source_facts?.filter((row) => row.status === 'current')).toHaveLength(1);
-    expect(harness.tables.source_facts?.find((row) => row.version === 1)?.status).toBe('superseded');
-    expect(resolveSavedDescription(facts(), 1)).toBe(OLD);
+    expect(harness.tables.source_facts).toHaveLength(1);
+    expect(harness.tables.source_facts?.[0]?.status).toBe('current');
     expect(harness.tables.saved_recipes).toEqual([
       { user_id: 'member-1', recipe_id: RECIPE_ID, recipe_version: 1 },
     ]);
@@ -373,9 +374,9 @@ describe('content review actions', () => {
     const writes = harness.calls.length;
     const second = await approveContentException(EXCEPTION_ID);
     expect(second).toEqual({ ok: false, error: 'Already resolved.' });
-    expect(harness.calls.filter((call) => call.table === 'apply_recipe_description_fact')).toHaveLength(1);
+    expect(harness.calls.filter((call) => call.op === 'rpc')).toHaveLength(0);
     expect(harness.tables.admin_audit_log).toHaveLength(1);
-    expect(harness.tables.source_facts).toHaveLength(2);
+    expect(harness.tables.source_facts).toHaveLength(1);
     expect(harness.calls.length).toBeGreaterThan(writes);
     expect(harness.calls.slice(writes).every((call) => call.op === 'select')).toBe(true);
   });
@@ -392,6 +393,10 @@ describe('content review actions', () => {
       menu_wording: 'paraphrase',
     });
     expect(harness.tables.content_exceptions?.[0]?.status).toBe('edited');
+    expect(resolveSavedDescription(facts(), 1)).toBe(OLD);
+    expect(harness.tables.saved_recipes).toEqual([
+      { user_id: 'member-1', recipe_id: RECIPE_ID, recipe_version: 1 },
+    ]);
 
     resetTables();
     seedConflict();
@@ -400,6 +405,21 @@ describe('content review actions', () => {
     expect(recipeRow()?.description).toBe(OLD);
     expect(harness.tables.content_exceptions?.[0]?.status).toBe('open');
     expect(harness.calls.some((call) => call.op === 'rpc')).toBe(false);
+    expect(harness.tables.admin_audit_log).toHaveLength(0);
+  });
+
+  it('keeps the published edit when the audit insert fails', async () => {
+    seedConflict();
+    harness.failAudit = true;
+    const result = await editContentException(EXCEPTION_ID, EDITED);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('The description was published.');
+      expect(result.error).toContain('Audit row was not written.');
+    }
+    expect(harness.tables.content_exceptions?.[0]?.status).toBe('edited');
+    expect(recipeRow()).toMatchObject({ description: EDITED, version: 2 });
+    expect(harness.tables.source_facts?.find((row) => row.version === 1)?.status).toBe('superseded');
     expect(harness.tables.admin_audit_log).toHaveLength(0);
   });
 

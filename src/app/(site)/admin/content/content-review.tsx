@@ -270,13 +270,17 @@ function ExceptionCard({
           <p className="font-medium">Evidence</p>
           <PlainText text={row.evidenceText} testId={`evidence-${row.id}`} />
         </div>
-        {row.approveKind === 'publish' ? <p>Approve publishes this description as a new version.</p> : null}
-        {row.approveKind === 'review_only' ? <p>{`Approve marks this reviewed. ${NOTHING_PUBLISHED}`}</p> : null}
+        {row.approveKind === 'review_only' ? (
+          <p>
+            {`Approve marks this reviewed. ${NOTHING_PUBLISHED}`}
+            {row.canEdit ? ' Edit publishes a paraphrase.' : ''}
+          </p>
+        ) : null}
         {row.approveBlock ? <p>{row.approveBlock}</p> : null}
         <div className="flex flex-wrap gap-2">
           {row.approveKind === 'blocked' ? null : (
             <Button type="button" size="sm" disabled={pending} onClick={onApprove}>
-              {row.approveKind === 'publish' ? 'Approve and publish' : 'Mark reviewed'}
+              Mark reviewed
             </Button>
           )}
           <Button type="button" size="sm" variant="outline" disabled={pending} onClick={onReject}>

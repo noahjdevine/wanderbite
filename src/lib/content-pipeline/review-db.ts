@@ -144,13 +144,14 @@ export function contentReviewStore(supabase: AdminClient = getSupabaseAdmin()): 
       return (data ?? []).length === 1;
     },
     async audit(entry) {
-      await logAdminAction({
+      const wrote = await logAdminAction({
         actorUserId: entry.adminId,
         action: entry.action,
         targetType: entry.targetType,
         targetId: entry.targetId,
         metadata: entry.metadata,
       });
+      if (!wrote) throw new Error('Audit row was not written.');
     },
   };
 }

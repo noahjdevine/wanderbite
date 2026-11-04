@@ -4,7 +4,6 @@ import {
   hoursSuspected,
   injectionSuspected,
 } from '@/lib/content-pipeline/change-detect';
-import type { ExceptionReason } from '@/lib/content-pipeline/exceptions';
 import {
   descriptionFactValue,
   evidenceExcerpt,
@@ -30,13 +29,6 @@ import {
 export const RECIPE_DESCRIPTION_MAX = 400;
 export const CONTENT_REFRESH_JOB = 'content-refresh';
 export { NOTHING_PUBLISHED };
-
-const REVIEW_ONLY_REASONS = new Set<ExceptionReason>([
-  'missing_source',
-  'injection_suspected',
-  'sensitive',
-  'validation_failed',
-]);
 
 const CHICAGO_DAY = new Intl.DateTimeFormat('en-US', {
   timeZone: 'America/Chicago',
@@ -137,16 +129,7 @@ type PublishPlan = {
   supersedeFactId: string;
 };
 
-type ApprovePlan =
-  | { kind: 'review_only' }
-  | { kind: 'publish'; plan: PublishPlan }
-  | { kind: 'invalid'; error: string };
-
-function afterText(value: Json | null): string | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const text = value.text;
-  return typeof text === 'string' ? text.trim() : null;
-}
+type ApprovePlan = { kind: 'review_only' };
 
 function menuContext(fact: DescriptionFact): { menuDescription: string; prose: string } {
   return {
@@ -157,7 +140,6 @@ function menuContext(fact: DescriptionFact): { menuDescription: string; prose: s
 
 export function descriptionPublishError(
   text: string,
-  mode: 'approve' | 'edit',
   menu?: { menuDescription: string; prose: string } | null,
 ): string | null {
   if (!text) return 'Description is required.';
@@ -167,7 +149,7 @@ export function descriptionPublishError(
   if (injectionSuspected(text) || dietaryClaim(text) || hoursSuspected(text) || extractPrice(text)) {
     return 'That text is not a publishable paraphrase.';
   }
-  if (mode === 'edit' && menu && descriptionCopiesMenu(text, menu.menuDescription, menu.prose)) {
+  if (menu && descriptionCopiesMenu(text, menu.menuDescription, menu.prose)) {
     return 'That text repeats the menu. Write a paraphrase.';
   }
   return null;
@@ -184,50 +166,17 @@ function recipePublishError(recipe: RecipeGuard | null): string | null {
   return null;
 }
 
-function publishPlan(
-  exception: StoredException,
-  recipe: RecipeGuard,
-  fact: DescriptionFact,
-  description: string,
-): PublishPlan | { error: string } {
-  if (fact.version !== recipe.version) return { error: 'Description fact version does not match the recipe version.' };
-  if (fact.subjectId !== recipe.id || fact.sourceId !== exception.sourceId) {
-    return { error: 'Description fact does not match this exception.' };
-  }
-  const textError = descriptionPublishError(description, 'approve');
-  if (textError) return { error: textError };
-  return {
-    recipeId: recipe.id,
-    description,
-    value: {
-      ...descriptionFactValue(fact),
-      text: description,
-    },
-    evidenceExcerpt: evidenceExcerpt(exception.evidenceExcerpt || description),
-    supersedeFactId: fact.id,
-  };
-}
-
+/**
+ * Refresh opens conflicts on price and ingredients, plus missing, sensitive,
+ * injection, and validation rows. None of those carry a paraphrase to publish.
+ * Edit is the publish path.
+ */
 export function planApprove(
-  exception: StoredException,
-  recipe: RecipeGuard | null,
-  fact: DescriptionFact | null,
+  _exception: StoredException,
+  _recipe: RecipeGuard | null,
+  _fact: DescriptionFact | null,
 ): ApprovePlan {
-  if (REVIEW_ONLY_REASONS.has(exception.reason as ExceptionReason) || !isDescriptionConflict(exception)) {
-    return { kind: 'review_only' };
-  }
-  const guard = recipePublishError(recipe);
-  if (guard) return { kind: 'invalid', error: guard };
-  if (!fact || !recipe) return { kind: 'invalid', error: 'No current description to replace.' };
-  const description = afterText(exception.after);
-  if (!description) return { kind: 'invalid', error: 'There is no description to publish.' };
-  const planned = publishPlan(exception, recipe, fact, description);
-  if ('error' in planned) return { kind: 'invalid', error: planned.error };
-  return { kind: 'publish', plan: planned };
-}
-
-function isDescriptionConflict(exception: StoredException): boolean {
-  return exception.reason === 'conflict' && exception.field === 'description';
+  return { kind: 'review_only' };
 }
 
 export function approvePublishes(
@@ -235,7 +184,7 @@ export function approvePublishes(
   recipe: RecipeGuard | null,
   fact: DescriptionFact | null,
 ): boolean {
-  return planApprove(exception, recipe, fact).kind === 'publish';
+  return planApprove(exception, recipe, fact).kind !== 'review_only';
 }
 
 function editPlan(
@@ -249,7 +198,7 @@ function editPlan(
   if (!fact || !recipe) return { error: 'No current description to replace.' };
   if (fact.version !== recipe.version) return { error: 'Description fact version does not match the recipe version.' };
   const text = description.trim();
-  const textError = descriptionPublishError(text, 'edit', menuContext(fact));
+  const textError = descriptionPublishError(text, menuContext(fact));
   if (textError) return { error: textError };
   return {
     recipeId: recipe.id,
@@ -282,11 +231,12 @@ export async function approveOpenException(
   if (!exception) return { ok: false, error: 'Exception not found.' };
   if (exception.status !== 'open') return { ok: false, error: 'Already resolved.' };
   const { recipe, fact } = await context(store, exception);
-  const plan = planApprove(exception, recipe, fact);
-  if (plan.kind === 'invalid') return { ok: false, error: plan.error };
-  if (plan.kind === 'review_only') {
-    const claimed = await store.claimException(exception.id, 'approved', input.adminId);
-    if (!claimed) return { ok: false, error: 'Already resolved.' };
+  if (planApprove(exception, recipe, fact).kind !== 'review_only') {
+    return { ok: false, error: 'Approve does not publish.' };
+  }
+  const claimed = await store.claimException(exception.id, 'approved', input.adminId);
+  if (!claimed) return { ok: false, error: 'Already resolved.' };
+  try {
     await store.audit({
       adminId: input.adminId,
       action: 'content.exception_approve',
@@ -297,19 +247,16 @@ export async function approveOpenException(
         exceptionId: exception.id,
         published: false,
         reason: exception.reason,
+        field: exception.field,
         ...hashes(exception.before, exception.after),
       },
     });
-    return { ok: true, published: false, notice: `Approved. ${NOTHING_PUBLISHED}` };
+  } catch (err) {
+    await store.reopenException(exception.id);
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: message };
   }
-  return publishClaim(store, {
-    exception,
-    adminId: input.adminId,
-    status: 'approved',
-    action: 'content.exception_approve',
-    plan: plan.plan,
-    notice: 'Approved. The paraphrase is a new description version.',
-  });
+  return { ok: true, published: false, notice: `Approved. ${NOTHING_PUBLISHED}` };
 }
 
 export async function editOpenException(
@@ -370,14 +317,23 @@ async function publishClaim(
 ): Promise<ContentActionResult> {
   const claimed = await store.claimException(input.exception.id, input.status, input.adminId);
   if (!claimed) return { ok: false, error: 'Already resolved.' };
+  let factId: string;
   try {
-    const factId = await store.applyDescriptionFact({
+    factId = await store.applyDescriptionFact({
       sourceId: input.exception.sourceId,
       recipeId: input.plan.recipeId,
       supersedeFactId: input.plan.supersedeFactId,
       value: input.plan.value,
       evidenceExcerpt: input.plan.evidenceExcerpt,
     });
+  } catch (err) {
+    await store.reopenException(input.exception.id);
+    const message = err instanceof Error ? err.message : 'Description fact was not published.';
+    return { ok: false, error: message };
+  }
+  // apply_recipe_description_fact already superseded the fact and bumped the
+  // recipe in that one call. Reopening would offer a second publish.
+  try {
     await store.audit({
       adminId: input.adminId,
       action: input.action,
@@ -394,12 +350,11 @@ async function publishClaim(
         ...hashes(input.exception.before, input.plan.value),
       },
     });
-    return { ok: true, published: true, notice: input.notice };
   } catch (err) {
-    await store.reopenException(input.exception.id);
-    const message = err instanceof Error ? err.message : 'Description fact was not published.';
-    return { ok: false, error: message };
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: `The description was published. ${message}` };
   }
+  return { ok: true, published: true, notice: input.notice };
 }
 
 export async function rollbackRecipeDescription(
@@ -520,19 +475,7 @@ export function assembleContentReview(input: {
             (item) => item.status === 'current' && item.subjectId === row.subjectId && item.sourceId === row.sourceId,
           ) ?? null
         : null;
-      const stored: StoredException = {
-        id: row.id,
-        sourceId: row.sourceId,
-        subjectId: row.subjectId,
-        field: row.field,
-        reason: row.reason,
-        before: row.before,
-        after: row.after,
-        evidenceExcerpt: row.evidenceExcerpt,
-        status: row.status,
-      };
       const guardOk = recipePublishError(recipe) == null;
-      const plan = planApprove(stored, recipe, fact);
       return {
         sortAt: source?.lastAttemptedAt ?? '',
         view: {
@@ -548,8 +491,8 @@ export function assembleContentReview(input: {
           attemptedLabel: formatContentInstant(source?.lastAttemptedAt),
           verifiedLabel: formatContentInstant(source?.lastVerifiedAt),
           recipeLabel: recipeLabel(recipe, fact),
-          approveKind: plan.kind === 'publish' ? 'publish' : plan.kind === 'review_only' ? 'review_only' : 'blocked',
-          approveBlock: plan.kind === 'invalid' ? plan.error : null,
+          approveKind: 'review_only',
+          approveBlock: null,
           canEdit: Boolean(guardOk && fact && recipe && fact.version === recipe.version),
         } satisfies ExceptionView,
       };
