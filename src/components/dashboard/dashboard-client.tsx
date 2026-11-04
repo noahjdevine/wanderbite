@@ -35,6 +35,7 @@ import {
   reasonForSlot,
   type MonthlyRevealPanel,
 } from '@/lib/challenges/monthly-reveal-copy';
+import type { ActivitySuggestions } from '@/lib/activities/types';
 import type { RecipeSections } from '@/lib/recipes/display';
 
 export type DashboardStreakStats = {
@@ -76,6 +77,8 @@ type DashboardClientProps = {
   blockMemberGenerate?: boolean;
   /** Empty when E05_RECIPES_ENABLED is not exactly true. */
   recipeSections?: RecipeSections;
+  /** Empty when E06_ACTIVITIES_ENABLED is not exactly true. */
+  activitySuggestions?: ActivitySuggestions;
 };
 
 export function DashboardClient({
@@ -93,6 +96,7 @@ export function DashboardClient({
   monthlyReveal = { mode: 'off' },
   blockMemberGenerate = false,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
+  activitySuggestions = { byRestaurantId: {} },
 }: DashboardClientProps) {
   const router = useRouter();
   const pairHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -321,6 +325,7 @@ export function DashboardClient({
                 }
                 recipes={recipeSections.byRestaurantId[item.restaurant.id] ?? []}
                 recipeExclusionLine={recipeSections.exclusionLine}
+                activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
               />
             ))}
           </div>
@@ -386,6 +391,7 @@ export function DashboardClient({
         biteNoteByRedemptionId={biteNoteByRedemptionId}
         launchEligible={launchEligible}
         recipeSections={recipeSections}
+        activitySuggestions={activitySuggestions}
       />
     </div>
   );

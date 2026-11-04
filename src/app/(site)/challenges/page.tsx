@@ -18,6 +18,7 @@ import {
 } from '@/lib/challenges/carried-credits';
 import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-reveal';
+import { loadActivitySuggestions } from '@/lib/activities/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +40,7 @@ export default async function ChallengesPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, role, subscription_status, username, address, address_street, address_city, address_state, address_zip, workflow_version')
+    .select('id, role, subscription_status, username, address, address_street, address_city, address_state, address_zip, workflow_version, distance_band')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -66,6 +67,7 @@ export default async function ChallengesPage() {
     address_state: string | null;
     address_zip: string | null;
     workflow_version: string;
+    distance_band: string | null;
   };
 
   const gate = profileGate({
@@ -160,13 +162,17 @@ export default async function ChallengesPage() {
     carriedCredits = carried.credits;
   }
 
-  const recipeRestaurantIds = [
-    ...(currentChallenge?.items ?? []).map((item) => item.restaurant.id),
-    ...carriedCredits.flatMap((credit) =>
-      credit.item ? [credit.item.restaurant.id] : [],
-    ),
+  const activityRestaurants = [
+    ...(currentChallenge?.items ?? []).map((item) => item.restaurant),
+    ...carriedCredits.flatMap((credit) => (credit.item ? [credit.item.restaurant] : [])),
   ];
-  const recipeSections = await loadRecipeSections(recipeRestaurantIds);
+  const [recipeSections, activitySuggestions] = await Promise.all([
+    loadRecipeSections(activityRestaurants.map((restaurant) => restaurant.id)),
+    loadActivitySuggestions({
+      restaurants: activityRestaurants,
+      distanceBand: typedProfile.distance_band,
+    }),
+  ]);
 
   const monthlyReveal = await loadMonthlyRevealForChallenges({
     userId: typedProfile.id,
@@ -202,6 +208,7 @@ export default async function ChallengesPage() {
           carriedCredits={carriedCredits}
           monthlyReveal={monthlyReveal}
           recipeSections={recipeSections}
+          activitySuggestions={activitySuggestions}
         />
       </div>
     </main>

@@ -34,6 +34,7 @@ import {
   formatIssuePeriodLabel,
 } from '@/lib/challenges/challenge-deadline';
 import type { CarriedCreditView } from '@/lib/challenges/carried-credits';
+import type { ActivitySuggestion } from '@/lib/activities/types';
 import type { RecipeCardModel } from '@/lib/recipes/display';
 
 type CarriedCreditCardProps = {
@@ -46,6 +47,7 @@ type CarriedCreditCardProps = {
   biteNote?: BiteNoteSummary;
   recipes?: RecipeCardModel[];
   recipeExclusionLine?: string | null;
+  activities?: ActivitySuggestion[];
 };
 
 function offerLine(candidate: CarriedAssignCandidate): string {
@@ -64,6 +66,7 @@ export function CarriedCreditCard({
   biteNote,
   recipes = [],
   recipeExclusionLine = null,
+  activities = [],
 }: CarriedCreditCardProps) {
   const router = useRouter();
   const [nowMs] = useState(() => Date.now());
@@ -144,6 +147,7 @@ export function CarriedCreditCard({
           storedDeadline={credit.effectiveDeadline}
           recipes={recipes}
           recipeExclusionLine={recipeExclusionLine}
+          activities={activities}
         />
       </div>
     );

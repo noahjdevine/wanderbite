@@ -3,6 +3,8 @@ import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
 import { DEMO_RECIPE_SEEDS, DEMO_RECIPE_SOURCE_NAME } from './fixtures/e05-demo-recipes';
+import { SAMPLE_ACTIVITY_SEEDS } from './fixtures/e06-sample-activities';
+import { chicagoCalendarDate, shiftCalendarDate } from '../src/lib/activities/match';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
@@ -144,6 +146,31 @@ async function seed() {
       is_demo: true,
     });
     if (recipeError) throw new Error(`recipes: ${recipe.slug}: ${recipeError.message}`);
+  }
+
+  const today = chicagoCalendarDate(new Date());
+  const verifiedAt = new Date().toISOString();
+  for (const activity of SAMPLE_ACTIVITY_SEEDS) {
+    const { error: activityError } = await supabase.from('activities').insert({
+      name: activity.name,
+      category: activity.category,
+      source_url: activity.sourceUrl,
+      lat: activity.lat,
+      lon: activity.lon,
+      zip: activity.zip,
+      typical_duration_minutes: activity.typicalDurationMinutes,
+      cost_category: activity.costCategory,
+      hours_note: null,
+      valid_from: activity.dated ? today : null,
+      valid_until: activity.dated ? shiftCalendarDate(today, 14) : null,
+      weather_dependent: activity.weatherDependent,
+      booking_required: activity.bookingRequired,
+      last_verified_at: verifiedAt,
+      status: 'active',
+      is_sample: true,
+      version: 1,
+    });
+    if (activityError) throw new Error(`activities: ${activity.name}: ${activityError.message}`);
   }
 
   console.log('✅ Seed Complete! Database is populated.');

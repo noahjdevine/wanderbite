@@ -42,6 +42,75 @@ export type Database = {
           target_id?: string | null
           target_type?: string
         }
+        Relationships: [        ]
+      }
+      activities: {
+        Row: {
+          booking_required: boolean
+          category: string
+          cost_category: string
+          created_at: string
+          hours_note: string | null
+          id: string
+          is_sample: boolean
+          last_verified_at: string | null
+          lat: number | null
+          lon: number | null
+          name: string
+          source_url: string | null
+          status: string
+          typical_duration_minutes: number | null
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+          version: number
+          weather_dependent: boolean
+          zip: string | null
+        }
+        Insert: {
+          booking_required?: boolean
+          category: string
+          cost_category: string
+          created_at?: string
+          hours_note?: string | null
+          id?: string
+          is_sample?: boolean
+          last_verified_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          name: string
+          source_url?: string | null
+          status?: string
+          typical_duration_minutes?: number | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+          version?: number
+          weather_dependent?: boolean
+          zip?: string | null
+        }
+        Update: {
+          booking_required?: boolean
+          category?: string
+          cost_category?: string
+          created_at?: string
+          hours_note?: string | null
+          id?: string
+          is_sample?: boolean
+          last_verified_at?: string | null
+          lat?: number | null
+          lon?: number | null
+          name?: string
+          source_url?: string | null
+          status?: string
+          typical_duration_minutes?: number | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+          version?: number
+          weather_dependent?: boolean
+          zip?: string | null
+        }
         Relationships: []
       }
       ai_bucket_balances: {
