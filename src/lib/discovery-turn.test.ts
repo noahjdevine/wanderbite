@@ -233,6 +233,7 @@ describe('discovery replay HMAC', () => {
 describe('discovery route contracts', () => {
   it('keeps one fetch, gates before reserve, and leaves ceilings and checkout alone', () => {
     const route = readFileSync(path.join(ROOT, 'src/app/api/roulette/route.ts'), 'utf8');
+    const turn = readFileSync(path.join(ROOT, 'src/lib/discover/turn.ts'), 'utf8');
     const client = readFileSync(path.join(ROOT, 'src/lib/roulette-api-client.ts'), 'utf8');
     const hero = readFileSync(path.join(ROOT, 'src/components/roulette/roulette-hero.tsx'), 'utf8');
     const page = readFileSync(path.join(ROOT, 'src/components/roulette/roulette-client.tsx'), 'utf8');
@@ -243,16 +244,18 @@ describe('discovery route contracts', () => {
     );
 
     expect(route).toMatch(/export const maxDuration = 60/);
-    expect(route.match(/fetch\('https:\/\/api\.anthropic\.com\/v1\/messages'/g)?.length).toBe(1);
-    expect(route).toMatch(/featureClass = 'optional'/);
-    expect(route).toMatch(/featureClass: 'optional' \| 'guest' = 'guest'/);
-    expect(route).not.toMatch(/protected_core/);
-    expect(route).not.toMatch(/hasAllergyConflict/);
-    expect(route).not.toMatch(/generateMonthlyChallengeForUser/);
-    expect(route).not.toMatch(/vibeMatch|suggestedDish|allergy-safe|trouble reading/);
-    expect(route.indexOf('gateDiscoveryMessage(')).toBeLessThan(route.indexOf('await rpcAiReserve'));
-    expect(route).toMatch(/subscription_status, dietary_flags, allergy_flags/);
+    expect(route).toMatch(/runDiscoverTurn/);
+    expect(turn.match(/fetch\('https:\/\/api\.anthropic\.com\/v1\/messages'/g)?.length).toBe(1);
+    expect(turn).toMatch(/featureClass = 'optional'/);
+    expect(turn).toMatch(/featureClass: 'optional' \| 'guest' = 'guest'/);
+    expect(turn).not.toMatch(/protected_core/);
+    expect(turn).not.toMatch(/hasAllergyConflict/);
+    expect(turn).not.toMatch(/generateMonthlyChallengeForUser/);
+    expect(turn).not.toMatch(/vibeMatch|suggestedDish|allergy-safe|trouble reading/);
+    expect(turn.indexOf('gateDiscoveryMessage(')).toBeLessThan(turn.indexOf('await rpcAiReserve'));
+    expect(turn).toMatch(/subscription_status, dietary_flags, allergy_flags/);
     expect(route).not.toMatch(/CHECKOUT_ENABLED/);
+    expect(turn).not.toMatch(/CHECKOUT_ENABLED/);
 
     expect(client).not.toMatch(/The spin took too long/);
     expect(client).not.toMatch(/vibeMatch|suggestedDish/);

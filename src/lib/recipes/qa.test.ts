@@ -145,7 +145,7 @@ describe('recipe Q&A flag gate', () => {
     expect(discoveryRecipeQaIntent('what is the exact recipe from Demo Grill')).toBeNull();
     expect(queries).toEqual([]);
 
-    const route = readFileSync(path.join(ROOT, 'src/app/api/roulette/route.ts'), 'utf8');
+    const route = readFileSync(path.join(ROOT, 'src/lib/discover/turn.ts'), 'utf8');
     expect(route).toContain('discoveryRecipeQaIntent(acceptedMessage)');
     expect(route).toContain('if (qaIntent && profile)');
     expect(route).not.toContain('recipeQaBypassesAllergyGate');

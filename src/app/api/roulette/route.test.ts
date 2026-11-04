@@ -624,7 +624,7 @@ describe('Discover fallback reasons', () => {
 
   it('passes a reason into every randomFallback call', () => {
     const route = readFileSync(
-      path.join(path.resolve(__dirname, '../../../..'), 'src/app/api/roulette/route.ts'),
+      path.join(path.resolve(__dirname, '../../../..'), 'src/lib/discover/turn.ts'),
       'utf8',
     );
     const calls = [...route.matchAll(/randomFallback\(([^)]*)\)/g)].map((match) => match[1] ?? '');

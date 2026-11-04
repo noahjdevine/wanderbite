@@ -23,6 +23,7 @@ function walk(dir: string, acc: string[] = []): string[] {
 
 const API_ROUTES = [
   'src/app/api/csp-report/route.ts',
+  'src/app/api/discover/route.ts',
   'src/app/api/restaurant-image/[id]/route.ts',
   'src/app/api/roulette/route.ts',
   'src/app/api/roulette/transcribe/route.ts',

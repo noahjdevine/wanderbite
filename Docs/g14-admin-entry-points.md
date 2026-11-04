@@ -22,6 +22,7 @@ No sensitive export endpoint exists in this checkout. `src/` has no CSV download
 - `src/app/api/csp-report/route.ts`
 - `src/app/api/restaurant-image/[id]/route.ts`
 - `src/app/api/roulette/route.ts`
+- `src/app/api/discover/route.ts`
 - `src/app/api/webhooks/stripe/route.ts`
 - `src/app/api/cron/stripe-reconcile/route.ts`
 - `src/app/api/cron/webhook-outbox/route.ts`

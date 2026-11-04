@@ -87,6 +87,8 @@ describe('G17-A legal attestation', () => {
     for (const rel of [
       'src/app/(site)/challenges/page.tsx',
       'src/app/api/roulette/route.ts',
+      'src/lib/discover/turn.ts',
+      'src/app/api/discover/route.ts',
       'src/app/(site)/billing/manage-subscription-button.tsx',
     ]) {
       expect(source(rel), rel).not.toMatch(/legal_attestations|record_legal_attestation/);

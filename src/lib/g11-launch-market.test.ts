@@ -259,7 +259,7 @@ describe('G11 wiring (source)', () => {
   });
 
   it('filters Roulette and the directory by launch market id without exposing market_id on restaurants_public', () => {
-    const roulette = source('src/app/api/roulette/route.ts');
+    const roulette = source('src/lib/discover/turn.ts');
     const directory = source('src/app/(site)/restaurants/page.tsx');
     const publicView = source('src/types/database.types.ts');
     const publicStart = publicView.indexOf('restaurants_public:');

@@ -114,7 +114,7 @@ describe('G13-B1 source contracts', () => {
   });
 
   it('switches roulette to the trusted x-forwarded-for helper and keeps AI fail-closed', () => {
-    const route = source('src/app/api/roulette/route.ts');
+    const route = source('src/lib/discover/turn.ts');
     expect(route).toMatch(/trustedClientIpFromHeaders/);
     expect(route).toMatch(/allowBillableRoulette/);
     expect(route).toMatch(/isWanderbiteAiDisabled/);
