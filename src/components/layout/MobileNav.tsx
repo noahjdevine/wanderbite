@@ -1,11 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
 import { useSupabaseUser } from '@/hooks/use-supabase-user';
 import {
   MEMBER_NAV_ITEMS,
@@ -13,21 +12,29 @@ import {
   isNavItemActive,
   resolveNavHref,
 } from '@/lib/nav-items';
-import { cn } from '@/lib/utils';
 import { AccountMenu } from '@/components/layout/account-menu';
 import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+function focusableElements(root: ParentNode): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (node) => node.tabIndex >= 0 && !node.hasAttribute('disabled'),
+  );
+}
 
 export function MobileNav() {
   const { signedIn, loading } = useSupabaseUser();
   const pathname = usePathname();
   const router = useRouter();
   const [drawerState, setDrawerState] = useState({ pathname, open: false });
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLElement>(null);
 
   const items = signedIn ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
-  const onDarkHero = pathname === '/';
 
-  const drawerOpen =
-    drawerState.pathname === pathname ? drawerState.open : false;
+  const drawerOpen = drawerState.pathname === pathname ? drawerState.open : false;
 
   const closeDrawer = useCallback(() => {
     setDrawerState({ pathname, open: false });
@@ -35,19 +42,41 @@ export function MobileNav() {
 
   const toggleDrawer = useCallback(() => {
     setDrawerState((prev) =>
-      prev.pathname === pathname
-        ? { pathname, open: !prev.open }
-        : { pathname, open: true }
+      prev.pathname === pathname ? { pathname, open: !prev.open } : { pathname, open: true },
     );
   }, [pathname]);
 
   useEffect(() => {
     if (!drawerOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDrawer();
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDrawer();
+        toggleRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+      const panel = panelRef.current;
+      const toggle = toggleRef.current;
+      if (!panel) return;
+      const itemsInTrap = [...(toggle ? [toggle] : []), ...focusableElements(panel)];
+      if (itemsInTrap.length === 0) return;
+      const current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const index = current ? itemsInTrap.indexOf(current) : -1;
+      if (event.shiftKey) {
+        if (index <= 0) {
+          event.preventDefault();
+          itemsInTrap[itemsInTrap.length - 1]?.focus();
+        }
+        return;
+      }
+      if (index === -1 || index === itemsInTrap.length - 1) {
+        event.preventDefault();
+        itemsInTrap[0]?.focus();
+      }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
   }, [drawerOpen, closeDrawer]);
 
   async function handleSignOut() {
@@ -59,40 +88,32 @@ export function MobileNav() {
   }
 
   return (
-    <header
-      className={cn(
-        'fixed inset-x-0 top-0 z-50 border-b backdrop-blur-md xl:hidden',
-        onDarkHero ? 'wb-dark border-white/15 bg-[rgba(18,10,36,0.86)] text-white' : 'border-white/20 bg-white/90',
-      )}
-    >
-      <div className="flex h-14 items-center gap-2 px-4">
+    <header className="wb-dark fixed inset-x-0 top-0 z-50 bg-wb-night text-white xl:hidden">
+      <div className="flex h-14 items-center gap-2 px-3">
         <WanderbiteLogoLink compact />
 
         <div className="flex flex-1 items-center justify-end gap-2">
           {loading ? (
-            <div className="h-8 w-20 animate-pulse rounded-md bg-muted" />
+            <div className="h-11 w-20 rounded-full bg-white/15" />
           ) : signedIn ? (
-            <AccountMenu
-              variant="icon"
-              className={onDarkHero ? 'border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white' : undefined}
-            />
+            <AccountMenu variant="icon" />
           ) : (
-            <Button size="sm" className="shrink-0 text-xs sm:text-sm" asChild>
-              <Link href="/signup">Start Your Adventure</Link>
-            </Button>
+            <Link href="/signup" className="wb-nav-cta wb-nav-cta--compact">
+              Start Your Adventure
+            </Link>
           )}
 
-          <Button
+          <button
+            ref={toggleRef}
             type="button"
-            variant="outline"
-            size="icon-sm"
             aria-expanded={drawerOpen}
+            aria-controls="site-menu"
             aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
             onClick={toggleDrawer}
-            className={onDarkHero ? 'border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white' : undefined}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-white/25 bg-white/10 text-white"
           >
-            {drawerOpen ? <X className="size-5" /> : <Menu className="size-5" />}
-          </Button>
+            {drawerOpen ? <X className="size-5" aria-hidden /> : <Menu className="size-5" aria-hidden />}
+          </button>
         </div>
       </div>
 
@@ -100,13 +121,21 @@ export function MobileNav() {
         <>
           <button
             type="button"
-            className="fixed inset-0 top-14 z-40 bg-black/30"
-            aria-label="Close menu"
-            onClick={closeDrawer}
+            tabIndex={-1}
+            aria-label="Dismiss menu"
+            className="fixed inset-0 top-14 z-40 bg-black/45"
+            onClick={() => {
+              closeDrawer();
+              toggleRef.current?.focus();
+            }}
           />
           <nav
-            className="absolute left-0 right-0 top-full z-50 border-b border-border bg-background px-4 py-4 shadow-lg"
-            aria-label="Mobile menu"
+            ref={panelRef}
+            id="site-menu"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Menu"
+            className="wb-nav-menu absolute left-0 right-0 top-full z-50 px-3 py-3"
           >
             <ul className="space-y-1">
               {items.map((item) => {
@@ -119,12 +148,8 @@ export function MobileNav() {
                       href={href}
                       onClick={closeDrawer}
                       aria-label={item.ariaLabel}
-                      className={cn(
-                        'flex items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium',
-                        active
-                          ? 'bg-primary/10 text-foreground'
-                          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                      )}
+                      aria-current={active ? 'page' : undefined}
+                      className="wb-nav-menu-link"
                     >
                       {Icon ? <Icon className="size-5 shrink-0" aria-hidden /> : null}
                       {item.label}
@@ -134,22 +159,14 @@ export function MobileNav() {
               })}
             </ul>
 
-            <hr className="my-4 border-border" />
+            <hr className="my-3 border-white/15" />
 
             {signedIn ? (
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="w-full rounded-md px-3 py-2.5 text-left text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
+              <button type="button" onClick={handleSignOut} className="wb-nav-menu-link">
                 Sign Out
               </button>
             ) : (
-              <Link
-                href="/signin"
-                onClick={closeDrawer}
-                className="block rounded-md px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground"
-              >
+              <Link href="/signin" onClick={closeDrawer} className="wb-nav-signin w-full">
                 Sign In
               </Link>
             )}

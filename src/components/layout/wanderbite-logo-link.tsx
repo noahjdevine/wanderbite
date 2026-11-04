@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { WANDERBITE_RESET_ROULETTE_EVENT } from '@/lib/wanderbite-roulette-events';
+import { cn } from '@/lib/utils';
 
 type WanderbiteLogoLinkProps = {
   compact?: boolean;
@@ -10,7 +11,6 @@ type WanderbiteLogoLinkProps = {
 
 export function WanderbiteLogoLink({ compact }: WanderbiteLogoLinkProps) {
   const pathname = usePathname();
-  const onDarkHero = pathname === '/';
 
   return (
     <Link
@@ -22,29 +22,9 @@ export function WanderbiteLogoLink({ compact }: WanderbiteLogoLinkProps) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
         window.dispatchEvent(new Event(WANDERBITE_RESET_ROULETTE_EVENT));
       }}
-      className="flex shrink-0 items-center gap-2 no-underline"
+      className={cn('wb-wordmark shrink-0', compact && 'wb-wordmark--compact')}
     >
-      <div
-        className="rounded-[10px] px-2 py-1"
-        style={{ background: '#e8d3ff' }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/logo.svg"
-          alt=""
-          className="block object-contain object-top"
-          style={{
-            width: compact ? 28 : 32,
-            height: compact ? 28 : 32,
-          }}
-        />
-      </div>
-      <span
-        className={onDarkHero ? 'font-semibold text-white' : 'font-semibold text-[#111111]'}
-        style={{ fontSize: compact ? 14 : 16 }}
-      >
-        Wanderbite
-      </span>
+      Wanderbite
     </Link>
   );
 }

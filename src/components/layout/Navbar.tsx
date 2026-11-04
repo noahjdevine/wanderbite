@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Button } from '@/components/ui/button';
 import { useSupabaseUser } from '@/hooks/use-supabase-user';
 import {
   MEMBER_NAV_ITEMS,
@@ -23,29 +22,17 @@ export function Navbar() {
   return (
     <header
       className={cn(
-        'top-0 z-40 hidden w-full xl:flex',
-        onDarkHero
-          ? 'wb-dark absolute inset-x-0 border-transparent bg-transparent'
-          : 'sticky border-b border-white/20 bg-white/80 backdrop-blur-md',
+        'wb-dark top-0 z-40 hidden h-16 w-full bg-wb-night text-white xl:flex',
+        onDarkHero ? 'absolute inset-x-0' : 'sticky',
       )}
     >
       <nav
-        className={cn(
-          'mx-auto flex h-14 w-full items-center gap-4 px-4 sm:gap-6 sm:px-6',
-          onDarkHero && 'max-w-[1280px] sm:px-10',
-          !onDarkHero && 'max-w-6xl',
-        )}
+        aria-label="Main"
+        className="mx-auto flex h-full w-full max-w-[1280px] items-center justify-between gap-4 px-6 xl:px-10"
       >
         <WanderbiteLogoLink />
 
-        <div
-          className={cn(
-            'flex min-w-0 flex-1 items-center justify-center',
-            onDarkHero
-              ? 'gap-1 rounded-full border border-white/20 bg-[rgba(18,10,36,0.78)] px-1.5 py-1 backdrop-blur-md'
-              : 'gap-8',
-          )}
-        >
+        <div className="wb-nav-pill">
           {items.map((item) => {
             const href = resolveNavHref(item);
             const active = isNavItemActive(item, pathname);
@@ -55,16 +42,8 @@ export function Navbar() {
                 key={item.href + item.label}
                 href={href}
                 aria-label={item.ariaLabel}
-                className={cn(
-                  'inline-flex items-center gap-1.5 text-sm font-medium transition-colors',
-                  onDarkHero
-                    ? active
-                      ? 'rounded-full bg-white/15 px-3 py-2 text-white'
-                      : 'rounded-full px-3 py-2 text-white/85 hover:bg-white/10 hover:text-white'
-                    : active
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground',
-                )}
+                aria-current={active ? 'page' : undefined}
+                className="wb-nav-link"
               >
                 {Icon ? <Icon className="size-4 shrink-0" aria-hidden /> : null}
                 {item.label}
@@ -75,22 +54,17 @@ export function Navbar() {
 
         <div className="flex shrink-0 items-center justify-end gap-2">
           {loading ? (
-            <div className={cn('h-9 w-24 animate-pulse rounded-md', onDarkHero ? 'bg-white/15' : 'bg-muted')} />
+            <div className="h-11 w-24 rounded-full bg-white/15" />
           ) : signedIn ? (
-            <AccountMenu className={onDarkHero ? 'border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white' : undefined} />
+            <AccountMenu />
           ) : (
             <>
-              <Button
-                size="sm"
-                variant="outline"
-                className={onDarkHero ? 'border-transparent bg-white text-wb-plum hover:bg-white/90 hover:text-wb-plum' : undefined}
-                asChild
-              >
-                <Link href="/signin">Sign In</Link>
-              </Button>
-              <Button size="sm" asChild>
-                <Link href="/signup">Start Your Adventure</Link>
-              </Button>
+              <Link href="/signin" className="wb-nav-signin">
+                Sign In
+              </Link>
+              <Link href="/signup" className="wb-nav-cta">
+                Start Your Adventure
+              </Link>
             </>
           )}
         </div>
