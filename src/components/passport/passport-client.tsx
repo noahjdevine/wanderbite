@@ -6,6 +6,7 @@ import Map, { Marker, NavigationControl, Popup } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { PROGRESS_UNAVAILABLE_MESSAGE } from '@/lib/progress/rules';
 import { shareOrCopy } from '@/lib/share';
 import { BookMarked, Flame, Share2, Star, StarHalf } from 'lucide-react';
 import type { BiteNoteRow } from '@/app/actions/bite-notes';
@@ -107,7 +108,11 @@ export type PassportClientProps = {
   currentStreak: number;
   longestStreak: number;
   totalMonthsActive: number;
-  badgeLabel: string | null;
+  progressUnavailable?: boolean;
+  uniqueRestaurants: number;
+  neighborhoods: number | null;
+  earnedBadges: { id: string; name: string; earnedOn: string | null }[];
+  showFirstBiteLocked: boolean;
   recipeSections?: RecipeSections;
 };
 
@@ -241,26 +246,14 @@ export function PassportClient({
   currentStreak,
   longestStreak,
   totalMonthsActive: _totalMonthsActive,
-  badgeLabel,
+  progressUnavailable = false,
+  uniqueRestaurants,
+  neighborhoods,
+  earnedBadges,
+  showFirstBiteLocked,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
 }: PassportClientProps) {
   const [popupVisitId, setPopupVisitId] = useState<string | null>(null);
-
-  const verifiedRedemptionCount = visits.length;
-
-  const uniqueRestaurantCount = useMemo(
-    () => new Set(visits.map((v) => v.restaurant.id)).size,
-    [visits]
-  );
-
-  const neighborhoodCount = useMemo(() => {
-    const n = new Set<string>();
-    for (const v of visits) {
-      const nb = v.restaurant.neighborhood?.trim();
-      if (nb) n.add(nb);
-    }
-    return n.size;
-  }, [visits]);
 
   const streakPhrase = useMemo(
     () =>
@@ -307,7 +300,11 @@ export function PassportClient({
   const handleShare = useCallback(async () => {
     const outcome = await shareOrCopy({
       title: 'My Wanderbite Food Passport',
-      text: `I've explored ${uniqueRestaurantCount} restaurants across ${neighborhoodCount} neighborhoods with Wanderbite 🍽️🔥 ${currentStreak} month streak and counting.`,
+      text: progressUnavailable
+        ? 'My Wanderbite Food Passport'
+        : neighborhoods == null
+          ? `I've explored ${uniqueRestaurants} restaurants with Wanderbite 🍽️🔥 ${currentStreak} month streak and counting.`
+          : `I've explored ${uniqueRestaurants} restaurants across ${neighborhoods} neighborhoods with Wanderbite 🍽️🔥 ${currentStreak} month streak and counting.`,
       url: 'https://wanderbite.com',
     });
     if (outcome === 'copied') {
@@ -315,7 +312,7 @@ export function PassportClient({
     } else if (outcome === 'error') {
       toast.error('Could not share. Try copying the link manually.');
     }
-  }, [currentStreak, neighborhoodCount, uniqueRestaurantCount]);
+  }, [currentStreak, neighborhoods, progressUnavailable, uniqueRestaurants]);
 
   const popupVisit = popupVisitId
     ? mapMarkers.find((m) => m.visit.id === popupVisitId)?.visit
@@ -330,36 +327,56 @@ export function PassportClient({
   const popupShowCommunity =
     popupCommunity != null && popupCommunity.totalRatings >= 3;
 
-  const badgeRow = (
+  const badgeSummary =
+    earnedBadges.length > 0
+      ? earnedBadges
+          .map((badge) => (badge.earnedOn ? `${badge.name} · ${badge.earnedOn}` : badge.name))
+          .join(', ')
+      : showFirstBiteLocked
+        ? 'First Bite locked'
+        : 'No badge yet';
+
+  const badgeRow = progressUnavailable ? (
+    <p className="mt-2 text-sm text-muted-foreground">{PROGRESS_UNAVAILABLE_MESSAGE}</p>
+  ) : (
     <div className="mt-2 flex flex-wrap items-center gap-2">
       <Flame
-        className={`size-5 shrink-0 ${badgeLabel ? 'text-[#E85D26]' : 'text-muted-foreground'}`}
+        className={`size-5 shrink-0 ${earnedBadges.length > 0 ? 'text-[#E85D26]' : 'text-muted-foreground'}`}
         aria-hidden
       />
-      {badgeLabel ? (
-        <Badge
-          variant="secondary"
-          className="border-[#E85D26]/30 bg-[#E85D26]/10 text-sm font-medium text-[#E85D26]"
-        >
-          {badgeLabel}
-        </Badge>
+      {earnedBadges.length > 0 ? (
+        earnedBadges.map((badge) => (
+          <Badge
+            key={badge.id}
+            variant="secondary"
+            className="border-[#E85D26]/30 bg-[#E85D26]/10 text-sm font-medium text-[#E85D26]"
+          >
+            {badge.name}
+            {badge.earnedOn ? ` · ${badge.earnedOn}` : ''}
+          </Badge>
+        ))
       ) : (
         <span className="text-sm text-muted-foreground">
-          No badge yet — verify a visit this month to grow your streak
+          {showFirstBiteLocked
+            ? 'First Bite locked'
+            : 'No badge yet — verify a visit this month to grow your streak'}
         </span>
       )}
     </div>
   );
 
-  const statBar = (
+  const statBar = progressUnavailable ? (
+    <p className="text-sm text-muted-foreground">{PROGRESS_UNAVAILABLE_MESSAGE}</p>
+  ) : (
     <div className="space-y-1.5">
       <div className="rounded-lg border bg-muted/30 px-4 py-3 text-center text-sm font-medium leading-relaxed text-foreground md:text-left">
-        <span className="text-[#E85D26]">{verifiedRedemptionCount}</span> restaurants
+        <span className="text-[#E85D26]">{uniqueRestaurants}</span> restaurants
         visited ·{' '}
-        <span className="text-[#E85D26]">{neighborhoodCount}</span> neighborhoods ·{' '}
+        <span className="text-[#E85D26]">{neighborhoods == null ? '—' : neighborhoods}</span>{' '}
+        neighborhoods ·{' '}
         <span className="text-[#E85D26]">{streakPhrase}</span>
         {' · '}
-        <span className="text-[#E85D26]">{badgeLabel ?? 'No badge yet'}</span>
+        <span className="text-[#E85D26]">{badgeSummary}</span>
       </div>
       {longestStreak >= 1 ? (
         <p className="text-center text-xs text-muted-foreground md:text-left">

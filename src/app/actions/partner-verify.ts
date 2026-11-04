@@ -14,6 +14,7 @@ import {
 } from '@/lib/partner-verify-limit';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { reportVerifyIntegrityError } from '@/lib/report-verify-integrity-error';
+import { badgeIdsEarnedByVerifiedVisits } from '@/lib/progress/rules';
 
 const BADGE_ID_TO_NAME: Record<string, string> = {
   first_bite: 'First Bite',
@@ -80,15 +81,7 @@ async function awardBadgesForVerifiedCount(
 
   if (countErr || count == null) return [];
 
-  const verifiedCount = count;
-
-  const badgeIdsToAward: string[] = [];
-  if (verifiedCount >= 1) badgeIdsToAward.push('first_bite');
-  if (verifiedCount >= 3) {
-    badgeIdsToAward.push('hat_trick');
-    badgeIdsToAward.push('wanderer');
-  }
-  if (verifiedCount >= 5) badgeIdsToAward.push('high_five');
+  const badgeIdsToAward = badgeIdsEarnedByVerifiedVisits(count);
 
   if (badgeIdsToAward.length === 0) return [];
 

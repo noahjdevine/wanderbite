@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getCurrentChallenge } from '@/app/actions/generate-challenge';
-import { calculateStreak } from '@/lib/streaks';
+import { getMemberProgress, presentMemberProgress } from '@/lib/progress/get-member-progress';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
@@ -84,9 +84,11 @@ export default async function ChallengesPage() {
   const resolvedAddress = resolveProfileAddress(typedProfile);
   const area = launchAreaState(resolvedAddress);
 
-  const streak = await calculateStreak(typedProfile.id);
-
-  const biteNotesRes = await getBiteNotes();
+  const [progress, biteNotesRes] = await Promise.all([
+    getMemberProgress(typedProfile.id),
+    getBiteNotes(),
+  ]);
+  const presentedProgress = presentMemberProgress(progress);
   const biteNotesForDash =
     biteNotesRes.ok
       ? biteNotesRes.data.map((b) => ({
@@ -189,7 +191,11 @@ export default async function ChallengesPage() {
         <DashboardClient
           launchEligible={area === 'eligible'}
           currentChallenge={currentChallenge}
-          streak={streak}
+          streak={presentedProgress.streak}
+          progressUnavailable={presentedProgress.progressUnavailable}
+          earnedBadges={presentedProgress.earnedBadges}
+          showFirstBiteLocked={presentedProgress.showFirstBiteLocked}
+          nextBadge={presentedProgress.nextBadge}
           biteNotes={biteNotesForDash}
           creditHold={creditHold}
           creditsSwapRemaining={creditsSwapRemaining}

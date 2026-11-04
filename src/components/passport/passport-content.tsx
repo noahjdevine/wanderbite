@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
-import { calculateStreak, getStreakBadgeForLongest } from '@/lib/streaks';
+import { getMemberProgress, presentMemberProgress } from '@/lib/progress/get-member-progress';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { loadRecipeSections } from '@/lib/recipes/load';
 import {
@@ -35,6 +35,7 @@ type PassportContentProps = {
 
 export async function PassportContent({ userId }: PassportContentProps) {
   const supabase = await createClient();
+  const progressPromise = getMemberProgress(userId);
 
   const { data: profile } = await supabase
     .from('user_profiles')
@@ -68,6 +69,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
     .order('verified_at', { ascending: false });
 
   if (error) {
+    void progressPromise;
     return (
       <p className="text-destructive">Could not load your passport: {error.message}</p>
     );
@@ -115,14 +117,12 @@ export async function PassportContent({ userId }: PassportContentProps) {
       visit.restaurant.lon = row.lon;
     }
   }
-  const [streak, biteRes, ratingMap] = await Promise.all([
-    calculateStreak(userId),
+  const [progress, biteRes, ratingMap] = await Promise.all([
+    progressPromise,
     getBiteNotes(),
     getRestaurantRatings(uniqueRestaurantIds),
   ]);
-
-  const earnedBadge = getStreakBadgeForLongest(streak.longestStreak);
-  const badgeLabel = earnedBadge?.label ?? null;
+  const presented = presentMemberProgress(progress);
 
   const biteNotesByRestaurantId: PassportBiteNotesByRestaurant = {};
   if (biteRes.ok) {
@@ -150,10 +150,14 @@ export async function PassportContent({ userId }: PassportContentProps) {
       visits={visits}
       ratingsByRestaurantId={ratingsByRestaurantId}
       biteNotesByRestaurantId={biteNotesByRestaurantId}
-      currentStreak={streak.currentStreak}
-      longestStreak={streak.longestStreak}
-      totalMonthsActive={streak.totalMonthsActive}
-      badgeLabel={badgeLabel}
+      currentStreak={presented.streak.currentStreak}
+      longestStreak={presented.streak.longestStreak}
+      totalMonthsActive={presented.streak.totalMonthsActive}
+      progressUnavailable={presented.progressUnavailable}
+      uniqueRestaurants={presented.uniqueRestaurants}
+      neighborhoods={presented.neighborhoods}
+      earnedBadges={presented.earnedBadges}
+      showFirstBiteLocked={presented.showFirstBiteLocked}
       recipeSections={recipeSections}
     />
   );

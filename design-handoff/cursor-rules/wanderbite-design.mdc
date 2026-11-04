@@ -33,7 +33,7 @@ Source of truth: `design-handoff/DESIGN_SPEC.md`, `design-handoff/BEA_AI_SPEC.md
 - Notes are private by default; show a Private/Public badge + toggle wherever a note is shown.
 - Don't show discounts that aren't currently available. Checkout status copy must match reality.
 - Canonical URL is `https://wanderbite.co`.
-- `getMemberProgress()` and `DiscoverEvent` are not in `src/` yet. A later slice that adds those helpers updates this rule then.
+- Member progress (streak, visits, badges, level, and savings) is read from `getMemberProgress()` in `src/lib/progress/get-member-progress.ts`. `DiscoverEvent` is not in `src/` yet.
 
 ## Bea (AI)
 - For Discover, render only the thinking steps the current `/api/roulette` response actually provides.

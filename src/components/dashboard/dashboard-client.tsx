@@ -21,11 +21,7 @@ import {
 } from '@/app/actions/generate-challenge';
 import { swapChallengeItem } from '@/app/actions/swap-challenge';
 import { redeemChallengeItem } from '@/app/actions/redeem-challenge';
-import {
-  getBadgeProgress,
-  getNextBadgeMilestoneMonths,
-  getStreakBadgeForLongest,
-} from '@/lib/streaks';
+import { PROGRESS_UNAVAILABLE_MESSAGE } from '@/lib/progress/rules';
 import type { BiteNoteSummary } from '@/app/actions/bite-notes';
 import { AreaHoldNotice } from '@/components/area-hold-notice';
 import { distanceMatchCopy } from '@/lib/launch-market';
@@ -47,10 +43,27 @@ export type DashboardStreakStats = {
   totalMonthsActive: number;
 };
 
+export type DashboardEarnedBadge = {
+  id: string;
+  name: string;
+  earnedOn: string | null;
+};
+
+export type DashboardNextBadge = {
+  name: string;
+  current: number;
+  target: number;
+};
+
 type DashboardClientProps = {
   launchEligible: boolean;
   currentChallenge: GeneratedChallenge | null;
   streak: DashboardStreakStats;
+  /** True when getMemberProgress could not be read. Hides streak numbers. */
+  progressUnavailable?: boolean;
+  earnedBadges?: DashboardEarnedBadge[];
+  showFirstBiteLocked?: boolean;
+  nextBadge?: DashboardNextBadge | null;
   biteNotes: BiteNoteSummary[];
   /** Set only for a credits-workflow account. Legacy accounts omit it. */
   creditHold?: { pendingCount: number } | null;
@@ -69,6 +82,10 @@ export function DashboardClient({
   launchEligible,
   currentChallenge,
   streak,
+  progressUnavailable = false,
+  earnedBadges = [],
+  showFirstBiteLocked = false,
+  nextBadge = null,
   biteNotes,
   creditHold = null,
   creditsSwapRemaining = null,
@@ -153,9 +170,6 @@ export function DashboardClient({
     return m;
   }, [biteNotes]);
 
-  const streakBadge = getStreakBadgeForLongest(streak.longestStreak);
-  const nextMilestone = getNextBadgeMilestoneMonths(streak.longestStreak);
-  const badgeProgress = getBadgeProgress(streak.longestStreak);
   const streakLabel =
     streak.currentStreak === 1
       ? '1 month streak'
@@ -186,7 +200,9 @@ export function DashboardClient({
               <div>
                 <CardTitle className="text-lg">Dining streak</CardTitle>
                 <CardDescription>
-                  {streak.currentStreak > 0 ? (
+                  {progressUnavailable ? (
+                    <span className="text-muted-foreground">{PROGRESS_UNAVAILABLE_MESSAGE}</span>
+                  ) : streak.currentStreak > 0 ? (
                     <span className="font-medium text-foreground">{streakLabel}</span>
                   ) : (
                     <span className="text-muted-foreground">
@@ -196,16 +212,28 @@ export function DashboardClient({
                 </CardDescription>
               </div>
             </div>
-            {streakBadge && (
-              <Badge
-                variant="secondary"
-                className="shrink-0 border-[#E85D26]/30 bg-[#E85D26]/10 text-[#E85D26] dark:bg-[#E85D26]/20"
-              >
-                {streakBadge.label}
-              </Badge>
+            {progressUnavailable || (earnedBadges.length === 0 && !showFirstBiteLocked) ? null : (
+              <div className="flex flex-wrap justify-end gap-2">
+                {earnedBadges.map((badge) => (
+                  <Badge
+                    key={badge.id}
+                    variant="secondary"
+                    className="shrink-0 border-[#E85D26]/30 bg-[#E85D26]/10 text-[#E85D26] dark:bg-[#E85D26]/20"
+                  >
+                    {badge.name}
+                    {badge.earnedOn ? ` · ${badge.earnedOn}` : ''}
+                  </Badge>
+                ))}
+                {showFirstBiteLocked ? (
+                  <Badge variant="outline" className="shrink-0 text-muted-foreground">
+                    First Bite locked
+                  </Badge>
+                ) : null}
+              </div>
             )}
           </div>
         </CardHeader>
+        {progressUnavailable ? null : (
         <CardContent className="space-y-3 pt-0">
           <p className="text-sm text-muted-foreground">
             Longest streak:{' '}
@@ -221,20 +249,23 @@ export function DashboardClient({
               </>
             )}
           </p>
-          {streak.longestStreak >= 1 && nextMilestone != null && (
+          {nextBadge != null && nextBadge.target > 0 ? (
             <div className="space-y-1.5">
               <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>Progress to next badge</span>
-                <span>{nextMilestone} mo. longest</span>
+                <span>Progress to {nextBadge.name}</span>
+                <span>
+                  {nextBadge.current} / {nextBadge.target}
+                </span>
               </div>
               <Progress
-                value={Math.round(badgeProgress * 100)}
+                value={Math.min(100, Math.round((nextBadge.current / nextBadge.target) * 100))}
                 max={100}
                 className="h-1.5 bg-muted"
               />
             </div>
-          )}
+          ) : null}
         </CardContent>
+        )}
       </Card>
 
       {launchEligible ? null : <AreaHoldNotice />}
