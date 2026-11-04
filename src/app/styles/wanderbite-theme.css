@@ -258,6 +258,7 @@
   .wb-step-in,
   .wb-spin,
   .wb-stamp-slam,
+  .wb-passport-leaf,
   .wb-pending-ring,
   .wb-shine,
   .wb-xp-fill,
@@ -512,4 +513,56 @@
 .bea-avatar[data-state="found"] .bea-heart {
   opacity: 1;
   animation: bea-heart 1.5s ease-out both;
+}
+
+/* Passport book. The turn plays once per page change. Reduced motion shows the page at rest. */
+.wb-passport-spread {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 8px 18px 18px 8px;
+  background: #f3eadc;
+  box-shadow:
+    0 18px 40px rgba(42, 20, 66, 0.14),
+    8px 0 0 #e7dcc8,
+    12px 0 0 #dccfb8;
+}
+.wb-passport-cover,
+.wb-passport-leaf {
+  position: relative;
+  min-width: 0;
+  background-color: #f7f1e4;
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(255, 255, 255, 0.7), transparent 42%),
+    repeating-linear-gradient(0deg, transparent 0 3px, rgba(138, 115, 85, 0.04) 3px 4px);
+}
+.wb-passport-cover { padding: 22px 20px 18px; }
+.wb-passport-leaf { padding: 18px 14px 16px; }
+.wb-passport-spine {
+  height: 14px;
+  flex: none;
+  background: linear-gradient(180deg, #3a2158 0%, #120a24 100%);
+}
+.wb-passport-leaf[data-turning="true"] {
+  transform-origin: left center;
+  animation: wb-page-turn 0.45s ease;
+}
+@keyframes wb-page-turn {
+  from { transform: rotateY(-16deg); }
+  to { transform: rotateY(0deg); }
+}
+@media (min-width: 768px) {
+  .wb-passport-spread {
+    flex-direction: row;
+    align-items: stretch;
+    border-radius: 10px 16px 16px 10px;
+    box-shadow: 0 22px 46px rgba(42, 20, 66, 0.16);
+  }
+  .wb-passport-cover,
+  .wb-passport-leaf { flex: 1 1 0; }
+  .wb-passport-spine {
+    width: 18px;
+    height: auto;
+    background: linear-gradient(90deg, #1a0e28 0%, #4a2a6a 42%, #120a24 100%);
+  }
 }

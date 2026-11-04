@@ -10,6 +10,10 @@ import {
   cuisineInk,
   FALLBACK_CUISINE_INK,
   offerPublicToggle,
+  passportIssuedOn,
+  passportPageCount,
+  passportPageItems,
+  PASSPORT_PAGE_SIZE,
   segmentForJourneyView,
   segmentHref,
   stampKind,
@@ -163,6 +167,21 @@ describe('passport board', () => {
     expect(parts?.year).toBe('2026');
   });
 
+  it('pages four marks at a time and issues the passport on the earliest Chicago date', () => {
+    expect(PASSPORT_PAGE_SIZE).toBe(4);
+    expect(passportPageCount(0)).toBe(1);
+    expect(passportPageCount(4)).toBe(1);
+    expect(passportPageCount(5)).toBe(2);
+    expect(passportPageItems(['a', 'b', 'c', 'd', 'e'], 0)).toEqual(['a', 'b', 'c', 'd']);
+    expect(passportPageItems(['a', 'b', 'c', 'd', 'e'], 1)).toEqual(['e']);
+    expect(passportPageItems(['a', 'b', 'c', 'd', 'e'], 9)).toEqual(['e']);
+    expect(passportIssuedOn([])).toBeNull();
+    expect(passportIssuedOn(['', null])).toBeNull();
+    expect(
+      passportIssuedOn(['2026-11-01T04:30:00.000Z', '2026-04-26T18:00:00.000Z']),
+    ).toBe('April 26, 2026');
+  });
+
   it('keeps parseMyJourneyView and maps segments onto the same URLs', () => {
     expect(parseMyJourneyView(undefined)).toBe('journey');
     expect(parseMyJourneyView('journey')).toBe('journey');
@@ -242,12 +261,41 @@ describe('passport board', () => {
     expect(screen.getByText('2 visits').closest('[data-passport-visits]')?.getAttribute('data-passport-visits')).toBe(
       '2',
     );
+    expect(screen.getByRole('heading', { name: 'Wanderbite Passport' })).toBeTruthy();
+    expect(screen.getByText('Issued October 31, 2026')).toBeTruthy();
+    expect(screen.getByText('Page 1 of 1')).toBeTruthy();
     const north = screen.getByRole('button', { name: /North Grill/ });
     expect(north.getAttribute('aria-label')).toContain('October 31, 2026');
     expect(north.getAttribute('aria-label')).toContain('Verified');
     expect(north.tagName).toBe('BUTTON');
     fireEvent.click(screen.getByRole('button', { name: /South Grill/ }));
     expect(screen.getByRole('heading', { name: 'South Grill' })).toBeTruthy();
+  });
+
+  it('turns the passport leaf when the marks fill more than one page', () => {
+    const ids = [
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+      '33333333-3333-4333-8333-333333333333',
+      '44444444-4444-4444-8444-444444444444',
+      '55555555-5555-4555-8555-555555555555',
+    ];
+    render(
+      <PassportClient
+        {...baseProps}
+        visits={ids.map((id, index) => visit(id, 'verified', `Grill ${index + 1}`))}
+        verifiedVisits={5}
+      />,
+    );
+    expect(screen.getByText('Page 1 of 2')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Grill 5/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    expect(screen.getByText('Page 2 of 2')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Grill 5/ })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('group', { name: 'Passport pages' }), { key: 'ArrowLeft' });
+    expect(screen.queryByText('Page 1 of 1')).toBeNull();
+    expect(screen.getByText('Page 1 of 2')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Grill 1/ })).toBeTruthy();
   });
 
   it('shows an empty passport without sample restaurants', () => {

@@ -193,6 +193,38 @@ export function segmentForJourneyView(view: MyJourneyView): PassportSegmentId | 
   return null;
 }
 
+/** Marks on one passport leaf. Fixed so the server and the browser page the same list. */
+export const PASSPORT_PAGE_SIZE = 4;
+
+export function passportPageCount(itemCount: number): number {
+  if (itemCount <= 0) return 1;
+  return Math.ceil(itemCount / PASSPORT_PAGE_SIZE);
+}
+
+export function passportPageItems<T>(items: readonly T[], pageIndex: number): T[] {
+  const last = passportPageCount(items.length) - 1;
+  const page = Math.min(Math.max(pageIndex, 0), last);
+  const start = page * PASSPORT_PAGE_SIZE;
+  return items.slice(start, start + PASSPORT_PAGE_SIZE);
+}
+
+/**
+ * Chicago long date of the earliest verified visit. Pending codes are not
+ * passed in. An empty list has no issued date.
+ */
+export function passportIssuedOn(verifiedAt: readonly (string | null | undefined)[]): string | null {
+  let earliest: string | null = null;
+  let earliestMs = Number.POSITIVE_INFINITY;
+  for (const iso of verifiedAt) {
+    if (!iso) continue;
+    const ms = new Date(iso).getTime();
+    if (Number.isNaN(ms) || ms >= earliestMs) continue;
+    earliest = iso;
+    earliestMs = ms;
+  }
+  return earliest ? chicagoVisitDate(earliest)?.long ?? null : null;
+}
+
 export function segmentHref(segment: PassportSegmentId): string | null {
   if (segment === 'stamps') return PASSPORT_SEGMENT_HREF;
   if (segment === 'timeline') return JOURNAL_SEGMENT_HREF;

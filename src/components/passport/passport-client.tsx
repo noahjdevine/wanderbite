@@ -12,6 +12,9 @@ import { visitElementId } from '@/lib/notes/note-rules';
 import {
   chicagoVisitDate,
   cuisineInk,
+  passportIssuedOn,
+  passportPageCount,
+  passportPageItems,
   stampKind,
   stampRotationDegrees,
 } from '@/lib/passport/passport-board';
@@ -72,6 +75,22 @@ export type PassportClientProps = {
 };
 
 const CITY = LAUNCH_MARKET.displayName.split(',')[0] ?? 'McKinney';
+
+function PassportGuilloche({ define = false }: { define?: boolean }) {
+  return (
+    <svg aria-hidden="true" focusable="false" className="pointer-events-none absolute inset-0 h-full w-full">
+      {define ? (
+        <defs>
+          <pattern id="wb-passport-guilloche" width="32" height="18" patternUnits="userSpaceOnUse">
+            <path d="M0 9c8-8 24-8 32 0" fill="none" stroke="#8a7355" strokeWidth="0.6" />
+            <path d="M0 9c8 8 24 8 32 0" fill="none" stroke="#8a7355" strokeWidth="0.6" />
+          </pattern>
+        </defs>
+      ) : null}
+      <rect width="100%" height="100%" fill="url(#wb-passport-guilloche)" opacity="0.28" />
+    </svg>
+  );
+}
 
 function biteNoteForVisit(
   visit: PassportVisit,
@@ -154,6 +173,24 @@ export function PassportClient({
   }, [pending, stamps]);
 
   const empty = stamps.length === 0 && pending.length === 0;
+  const issuedOn = passportIssuedOn(stamps.map((visit) => visit.verifiedAt));
+  const slots = [
+    ...stamps.map((visit, index) => ({ kind: 'stamp' as const, visit, index })),
+    ...pending.map((visit) => ({ kind: 'pending' as const, visit })),
+    { kind: 'empty' as const },
+  ];
+  const pageCount = passportPageCount(slots.length);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [turning, setTurning] = useState(false);
+  const safePage = Math.min(pageIndex, pageCount - 1);
+  const pageSlots = passportPageItems(slots, safePage);
+
+  function showPage(next: number) {
+    const clamped = Math.min(Math.max(next, 0), pageCount - 1);
+    if (clamped === safePage) return;
+    setTurning(true);
+    setPageIndex(clamped);
+  }
 
   return (
     <PassportChrome
@@ -171,59 +208,103 @@ export function PassportClient({
       pageYear={pageYear}
     >
       <FocusVisitFromHash />
-      <section
-        aria-labelledby="stamp-page"
-        className="flex flex-col gap-4 rounded-[26px] border border-[#ece2d0] px-3 py-5 shadow-[0_14px_34px_rgba(42,20,66,0.08)] sm:px-4"
-        style={{
-          background:
-            'repeating-linear-gradient(0deg, #fffdf8 0px, #fffdf8 27px, #f3ece0 27px, #f3ece0 28px)',
-        }}
-      >
-        <div className="flex items-baseline justify-between gap-3 px-1">
-          <h2 id="stamp-page" className="font-display m-0 text-[30px] leading-none text-wb-ink">
-            {CITY} · Page 1
-          </h2>
-          {pageYear ? (
-            <span className="text-[11px] font-bold tracking-[1.6px] text-[#6b5f4b]">{pageYear}</span>
-          ) : null}
-        </div>
-        {empty ? (
-          <p className="m-0 px-1 text-sm text-wb-muted" data-passport-empty="">
-            Your passport is empty. A visit shows up here after it is verified.
-          </p>
-        ) : null}
-        <div className="grid grid-cols-2 justify-items-center gap-x-2 gap-y-6 sm:grid-cols-4">
-          {stamps.map((visit, index) => {
-            const ink = cuisineInk(visit.restaurant.cuisine_tags);
-            const rotation = stampRotationDegrees(visit.id);
-            const short = faceDate(visit);
-            const neighborhood = visit.restaurant.neighborhood?.trim() ?? '';
-            return (
-              <div key={visit.id} className="flex flex-col items-center gap-1">
-                <Stamp
-                  name={visit.restaurant.name}
-                  date={short || '—'}
-                  accessibleDate={spokenDate(visit)}
-                  neighborhood={neighborhood}
-                  inkColor={ink.color}
-                  shape={index === 0 ? 'rect' : 'round'}
-                  rotation={rotation}
-                  newest={index === 0}
-                  statusLabel={visitStatusLabel(visit.visitStatus)}
-                  pressed={selected?.id === visit.id}
-                  elementId={visitElementId(visit.id) ?? undefined}
-                  onSelect={() => setSelectedId(visit.id)}
-                />
-                <span className="sr-only" data-visit-status={visit.visitStatus}>
-                  {visitStatusLabel(visit.visitStatus)}
-                </span>
+      <section aria-labelledby="passport-book" className="wb-passport-book">
+        <div className="wb-passport-spread">
+          <div className="wb-passport-cover">
+            <PassportGuilloche define />
+            <div className="relative flex flex-col gap-2">
+              <h2 id="passport-book" className="font-display m-0 text-[34px] leading-none text-wb-ink">
+                Wanderbite Passport
+              </h2>
+              <p className="m-0 text-lg font-semibold text-wb-ink">{userDisplayName}</p>
+              <p className="m-0 text-sm text-wb-muted">{CITY}</p>
+              {issuedOn ? <p className="m-0 text-sm text-wb-ink">Issued {issuedOn}</p> : null}
+            </div>
+          </div>
+          <div className="wb-passport-spine" aria-hidden="true" />
+          <div
+            className="wb-passport-leaf"
+            data-turning={turning ? 'true' : 'false'}
+            onAnimationEnd={() => setTurning(false)}
+          >
+            <PassportGuilloche />
+            <div className="relative flex flex-col gap-4">
+              {empty ? (
+                <p className="m-0 text-sm text-wb-muted" data-passport-empty="">
+                  Your passport is empty. A visit shows up here after it is verified.
+                </p>
+              ) : null}
+              <div className="grid grid-cols-2 justify-items-center gap-x-2 gap-y-6">
+                {pageSlots.map((slot) => {
+                  if (slot.kind === 'empty') {
+                    return <EmptyStampSlot key="next-stamp" href="/challenges" challengeName="Challenges" />;
+                  }
+                  if (slot.kind === 'pending') {
+                    return <PendingStamp key={slot.visit.id} name={slot.visit.restaurant.name} />;
+                  }
+                  const visit = slot.visit;
+                  const ink = cuisineInk(visit.restaurant.cuisine_tags);
+                  const rotation = stampRotationDegrees(visit.id);
+                  const neighborhood = visit.restaurant.neighborhood?.trim() ?? '';
+                  return (
+                    <div key={visit.id} className="flex flex-col items-center gap-1">
+                      <Stamp
+                        name={visit.restaurant.name}
+                        date={faceDate(visit) || '—'}
+                        accessibleDate={spokenDate(visit)}
+                        neighborhood={neighborhood}
+                        inkColor={ink.color}
+                        shape={slot.index === 0 ? 'rect' : 'round'}
+                        rotation={rotation}
+                        newest={slot.index === 0}
+                        statusLabel={visitStatusLabel(visit.visitStatus)}
+                        pressed={selected?.id === visit.id}
+                        elementId={visitElementId(visit.id) ?? undefined}
+                        onSelect={() => setSelectedId(visit.id)}
+                      />
+                      <span className="sr-only" data-visit-status={visit.visitStatus}>
+                        {visitStatusLabel(visit.visitStatus)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-          {pending.map((visit) => (
-            <PendingStamp key={visit.id} name={visit.restaurant.name} />
-          ))}
-          <EmptyStampSlot href="/challenges" challengeName="Challenges" />
+              <div
+                className="flex items-center justify-between gap-3"
+                role="group"
+                aria-label="Passport pages"
+                onKeyDown={(event) => {
+                  if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+                  event.preventDefault();
+                  showPage(safePage + (event.key === 'ArrowRight' ? 1 : -1));
+                }}
+              >
+                <p className="m-0 text-xs font-bold tracking-[1.4px] text-wb-muted">
+                  Page {safePage + 1} of {pageCount}
+                </p>
+                {pageCount > 1 ? (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="min-h-11 rounded-full border border-wb-line px-3 text-sm font-semibold text-wb-ink disabled:opacity-40"
+                      onClick={() => showPage(safePage - 1)}
+                      disabled={safePage === 0}
+                    >
+                      Previous page
+                    </button>
+                    <button
+                      type="button"
+                      className="min-h-11 rounded-full border border-wb-line px-3 text-sm font-semibold text-wb-ink disabled:opacity-40"
+                      onClick={() => showPage(safePage + 1)}
+                      disabled={safePage >= pageCount - 1}
+                    >
+                      Next page
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
