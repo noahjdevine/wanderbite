@@ -18,6 +18,7 @@ export function PassportMapScreen({
   earnedBadges,
   showFirstBiteLocked,
   partnerNeighborhoods = null,
+  exploredNeighborhoods = null,
 }: PassportClientProps) {
   const stamps = visits.filter((visit) => stampKind(visit.visitStatus) === 'stamp');
   const pending = visits.filter((visit) => stampKind(visit.visitStatus) === 'pending');
@@ -41,7 +42,7 @@ export function PassportMapScreen({
     >
       <PassportMapView
         visits={visits}
-        neighborhoods={progressUnavailable ? null : neighborhoods}
+        neighborhoods={progressUnavailable ? null : exploredNeighborhoods}
         partnerNeighborhoods={partnerNeighborhoods}
       />
     </PassportChrome>

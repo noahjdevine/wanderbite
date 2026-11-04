@@ -21,9 +21,12 @@ describe('neighborhood count', () => {
     const map = readFileSync(path.join(ROOT, 'src/lib/passport/passport-map.ts'), 'utf8');
     const passport = readFileSync(path.join(ROOT, 'src/components/passport/passport-content.tsx'), 'utf8');
     expect(progress).toContain('countDistinctNeighborhoods');
+    expect(progress).not.toContain('exploredNeighborhoodsInPartnerSet');
     expect(map).toContain('distinctNeighborhoods');
+    expect(map).toContain('exploredNeighborhoodsInPartnerSet');
     expect(passport).toContain('countDistinctNeighborhoods');
-    expect(passport).toContain(".select('neighborhood')");
+    expect(passport).toContain('exploredNeighborhoodsInPartnerSet');
+    expect(passport).toContain(".select('id, neighborhood')");
     expect(passport).toContain(".eq('status', 'active')");
     expect(passport).toContain(".select('id, image_url, lat, lon')");
   });

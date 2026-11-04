@@ -1,94 +1,39 @@
-import { getSupabaseAdmin } from '@/lib/supabase-admin';
-import { unwrapJoin } from '@/lib/supabase/unwrap-join';
-import { LocationsClient } from '@/components/locations/locations-client';
+import { RestaurantsDirectory } from '@/components/locations/locations-client';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
-import { safeManualImagePath } from '@/lib/restaurant-image';
+import { mapDirectoryRestaurant, type DirectoryRestaurantRow } from '@/lib/restaurants/directory';
+import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 export const revalidate = 1800;
 
-/** Restaurants list: accessible to all logged-in users (including active/trial subscribers). No subscription gate. */
+/**
+ * Restaurant directory. Signed-out and signed-in visitors both reach this
+ * page: middleware treats /restaurants as public and does not redirect.
+ * There is no subscription gate.
+ */
 
-export type LocationRestaurant = {
-  id: string;
-  name: string;
-  cuisine_tags: string[] | null;
-  neighborhood: string | null;
-  description: string | null;
-  price_range: string | null;
-  address: string | null;
-  lat: number | null;
-  lon: number | null;
-  /** Optional thumbnail URL; when null, a placeholder is shown. */
-  image_url?: string | null;
-  google_place_id?: string | null;
-};
+const DIRECTORY_COLUMNS =
+  'id, name, cuisine_tags, description, address, lat, lon, image_url, neighborhood, price_range';
 
 export default async function RestaurantsPage() {
   const supabase = getSupabaseAdmin();
   const market = await requireLaunchMarketId(supabase);
   if (!market.ok) {
-    return (
-      <main className="min-h-screen bg-background px-4 py-20 sm:px-6">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-destructive">Failed to load restaurants: {market.error}</p>
-        </div>
-      </main>
-    );
+    console.error('[restaurants] launch market:', market.error);
+    return <RestaurantsDirectory restaurants={[]} unavailable />;
   }
 
   const { data: rows, error } = await supabase
     .from('restaurants')
-    .select(
-      'id, name, cuisine_tags, description, address, lat, lon, market_id, image_url, google_place_id, markets(name)'
-    )
+    .select(DIRECTORY_COLUMNS)
     .eq('status', 'active')
     .eq('market_id', market.marketId)
     .order('name');
 
   if (error) {
-    return (
-      <main className="min-h-screen bg-background px-4 py-20 sm:px-6">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-destructive">Failed to load restaurants: {error.message}</p>
-        </div>
-      </main>
-    );
+    console.error('[restaurants] directory query failed:', error.message);
+    return <RestaurantsDirectory restaurants={[]} unavailable />;
   }
 
-  const restaurants: LocationRestaurant[] = (rows ?? []).map((r) => {
-    const row = r as {
-      id: string;
-      name: string;
-      cuisine_tags: string[] | null;
-      description: string | null;
-      address: string | null;
-      lat: number | null;
-      lon: number | null;
-      image_url: string | null;
-      google_place_id: string | null;
-      markets: { name: string } | { name: string }[] | null;
-    };
-    const market = unwrapJoin(row.markets);
-    return {
-      id: row.id,
-      name: row.name,
-      cuisine_tags: row.cuisine_tags,
-      neighborhood: market?.name ?? null,
-      description: row.description?.trim() || null,
-      price_range: null,
-      address: row.address,
-      lat: row.lat,
-      lon: row.lon,
-      image_url: safeManualImagePath(row.image_url),
-      google_place_id: row.google_place_id ?? null,
-    };
-  });
-
-  return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-        <LocationsClient restaurants={restaurants} />
-      </div>
-    </main>
-  );
+  const restaurants = ((rows ?? []) as DirectoryRestaurantRow[]).map(mapDirectoryRestaurant);
+  return <RestaurantsDirectory restaurants={restaurants} />;
 }

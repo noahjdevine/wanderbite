@@ -36,7 +36,10 @@ function MapFrame({ points }: { points: MapPoint[] }) {
 
 type PassportMapViewProps = {
   visits: readonly PassportMapVisit[];
-  /** `getMemberProgress` neighborhood count. Not recounted from the visits on this page. */
+  /**
+   * Neighborhoods explored inside the partner set. Null hides the line.
+   * The Passport header keeps the separate `getMemberProgress` count.
+   */
   neighborhoods: number | null;
   /** Distinct neighborhoods on active restaurants in the launch market. */
   partnerNeighborhoods: number | null;

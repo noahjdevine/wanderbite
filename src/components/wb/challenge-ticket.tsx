@@ -5,9 +5,11 @@ import { StatusTrack, type StatusTrackStatus } from "./status-track";
 type ChallengeTicketProps = {
   name: string;
   area: string;
-  offerAmount: string;
-  offerRequirement: string;
-  status: StatusTrackStatus;
+  /** Omitted on the directory, which does not show an offer. */
+  offerAmount?: string;
+  offerRequirement?: string;
+  /** Omitted on the directory, which does not show a visit track. */
+  status?: StatusTrackStatus;
   actionHref?: string;
   actionLabel?: string;
   /** Replaces the link button. Used when the action opens a dialog. */
@@ -47,7 +49,12 @@ export function ChallengeTicket({
 }: ChallengeTicketProps) {
   return (
     <article className="wb-card relative" aria-label={name}>
-      <div className="relative overflow-hidden rounded-t-[26px]" style={{ height: photoHeight }}>
+      <div
+        className="relative overflow-hidden rounded-t-[26px]"
+        style={{ height: photoHeight }}
+        data-photo-frame=""
+        data-photo-height={photoHeight}
+      >
         {photo ? (
           <div className="absolute inset-[-6%] wb-drift [&_img]:h-full [&_img]:w-full [&_img]:object-cover">{photo}</div>
         ) : (
@@ -94,11 +101,13 @@ export function ChallengeTicket({
           <h3 className="font-display m-0 text-[36px] leading-none font-normal text-wb-ink">{name}</h3>
           {area ? <span className="text-sm text-wb-muted">{area}</span> : null}
         </div>
-        <div className="flex items-center justify-between rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-3.5 py-3">
-          <span className="font-display text-[26px] leading-none text-wb-plum">{offerAmount}</span>
-          {offerRequirement ? <span className="text-[13px] text-wb-muted"> {offerRequirement}</span> : null}
-        </div>
-        <StatusTrack status={status} />
+        {offerAmount ? (
+          <div className="flex items-center justify-between rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-3.5 py-3">
+            <span className="font-display text-[26px] leading-none text-wb-plum">{offerAmount}</span>
+            {offerRequirement ? <span className="text-[13px] text-wb-muted"> {offerRequirement}</span> : null}
+          </div>
+        ) : null}
+        {status ? <StatusTrack status={status} /> : null}
         {action ??
           (actionHref && actionLabel ? (
             <CtaButton href={actionHref} variant={actionVariant} creamStyle={actionCreamStyle} className="min-h-[52px] w-full">

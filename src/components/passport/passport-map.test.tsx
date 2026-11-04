@@ -132,6 +132,7 @@ const baseProps = {
   totalMonthsActive: 2,
   uniqueRestaurants: 3,
   neighborhoods: 2,
+  exploredNeighborhoods: 2,
   partnerNeighborhoods: 4,
   verifiedVisits: 3,
   pendingVisits: 1,
@@ -177,7 +178,7 @@ describe('passport map segment', () => {
     expect(document.querySelector('[data-map-fog]')?.getAttribute('data-map-fog')).toBe('static');
   });
 
-  it('lists a visit without coordinates and keeps the progress neighborhood count', () => {
+  it('lists a visit without coordinates and shows the partner-set neighborhood count', () => {
     render(<PassportMapScreen {...baseProps} segment="map" visits={acceptanceVisits} />);
     expect(screen.getByRole('radio', { name: 'Map' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByText('2 of 4 McKinney neighborhoods explored')).toBeTruthy();
@@ -217,6 +218,7 @@ describe('passport map segment', () => {
         segment="map"
         visits={[acceptanceVisits[3]!]}
         neighborhoods={0}
+        exploredNeighborhoods={0}
         verifiedVisits={0}
         pendingVisits={1}
         uniqueRestaurants={0}
@@ -226,6 +228,22 @@ describe('passport map segment', () => {
     expect(screen.queryByRole('heading', { name: 'Not on the map yet' })).toBeNull();
     expect(screen.queryByText('Zen Sushi')).toBeNull();
     expect(screen.getByText('0 of 4 McKinney neighborhoods explored')).toBeTruthy();
+  });
+
+  it('never shows more explored neighborhoods than the partner set', () => {
+    render(
+      <PassportMapScreen
+        {...baseProps}
+        segment="map"
+        visits={acceptanceVisits}
+        neighborhoods={5}
+        exploredNeighborhoods={5}
+        partnerNeighborhoods={4}
+      />,
+    );
+    expect(screen.getByText('4 of 4 McKinney neighborhoods explored')).toBeTruthy();
+    expect(screen.queryByText(/5 of 4/)).toBeNull();
+    expect(screen.getByText('5 neighborhoods')).toBeTruthy();
   });
 
   it('keeps the map fog still under reduced motion', () => {

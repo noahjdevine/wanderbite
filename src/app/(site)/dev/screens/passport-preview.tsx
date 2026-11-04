@@ -180,6 +180,7 @@ export function MapPreview() {
       totalMonthsActive={2}
       uniqueRestaurants={3}
       neighborhoods={2}
+      exploredNeighborhoods={2}
       partnerNeighborhoods={4}
       verifiedVisits={3}
       pendingVisits={1}

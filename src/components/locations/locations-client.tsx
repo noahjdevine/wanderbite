@@ -2,21 +2,31 @@
 
 import { useMemo, useState } from 'react';
 import { MapPin } from 'lucide-react';
-import {
-  Card,
-  CardContent,
-  CardHeader,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import type { LocationRestaurant } from '@/app/(site)/restaurants/page';
 import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
+import { ChallengeTicket } from '@/components/wb/challenge-ticket';
+import { Chip } from '@/components/wb/chip';
+import { CtaButton } from '@/components/wb/cta-button';
+import { PillLabel } from '@/components/wb/pill-label';
+import { StatTile } from '@/components/wb/stat-tile';
+import { pluralNoun } from '@/lib/format/text';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
+import type { DirectoryRestaurant } from '@/lib/restaurants/directory';
 
-type LocationsClientProps = {
-  restaurants: LocationRestaurant[];
+/** Same fixed frame on every card. A portrait photo cannot change the height. */
+export const DIRECTORY_PHOTO_HEIGHT = 180;
+
+export const RESTAURANTS_UNAVAILABLE_MESSAGE = 'Restaurants temporarily unavailable';
+export const RESTAURANTS_EMPTY_MESSAGE = 'No partner restaurants are listed right now.';
+export const RESTAURANTS_SEARCH_EMPTY = 'No restaurants match your search.';
+export const RESTAURANTS_RETRY_HREF = '/restaurants';
+
+type RestaurantsDirectoryProps = {
+  restaurants: DirectoryRestaurant[];
+  /** Query or launch-market read failed. The raw error stays off the page. */
+  unavailable?: boolean;
 };
 
-function buildMapsUrl(restaurant: LocationRestaurant): string | null {
+function mapsUrl(restaurant: DirectoryRestaurant): string | null {
   if (restaurant.address) {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(restaurant.address)}`;
   }
@@ -26,114 +36,156 @@ function buildMapsUrl(restaurant: LocationRestaurant): string | null {
   return null;
 }
 
-function RestaurantCard({ restaurant }: { restaurant: LocationRestaurant }) {
-  const mapsUrl = buildMapsUrl(restaurant);
-  const tags = [
-    ...(restaurant.cuisine_tags ?? []),
-    ...(restaurant.neighborhood ? [restaurant.neighborhood] : []),
-  ];
-  const description =
-    restaurant.description?.trim() ||
-    'Wanderbite partner — visit to discover.';
+function DirectoryTicket({ restaurant }: { restaurant: DirectoryRestaurant }) {
+  const neighborhood = restaurant.neighborhood?.trim() || null;
+  const description = restaurant.description?.trim() || null;
+  const price = restaurant.price_range?.trim() || null;
+  const cuisines = restaurant.cuisine_tags.filter((tag) => tag.trim());
+  const directions = mapsUrl(restaurant);
 
   return (
-    <Card className="flex h-full flex-col overflow-hidden p-0">
-      {/* Thumbnail: Google photo, manual image, or local placeholder */}
-      <div className="relative aspect-[16/10] w-full shrink-0 bg-muted">
+    <ChallengeTicket
+      name={restaurant.name}
+      area={neighborhood ?? ''}
+      photo={
         <RestaurantPhoto
           restaurantId={restaurant.id}
           imageUrl={restaurant.image_url}
-          googlePlaceId={restaurant.google_place_id}
+          className="h-full w-full object-cover"
         />
-      </div>
-      <CardHeader className="flex flex-row items-start justify-between gap-2 pb-2 pt-4">
-        <div className="min-w-0 flex-1">
-          <h3 className="font-bold leading-tight">{restaurant.name}</h3>
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            {tags.length > 0 ? (
-              tags.map((tag) => (
-                <Badge key={tag} variant="secondary" className="text-xs">
-                  {tag}
-                </Badge>
-              ))
-            ) : null}
-          </div>
+      }
+      photoHeight={DIRECTORY_PHOTO_HEIGHT}
+    >
+      {cuisines.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5" data-cuisine-row="">
+          {cuisines.map((tag, index) => (
+            <Chip key={`${tag}-${index}`} variant="tinted">
+              {tag}
+            </Chip>
+          ))}
         </div>
-        {mapsUrl && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="shrink-0"
-            asChild
-          >
-            <a
-              href={mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Get directions"
-            >
-              <MapPin className="size-4" />
-            </a>
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent className="pt-0">
-        <p className="text-sm text-muted-foreground line-clamp-3">{description}</p>
-      </CardContent>
-    </Card>
+      ) : null}
+      {price ? (
+        <p className="m-0 text-sm font-semibold text-wb-ink" data-price="">
+          <span className="sr-only">Price range </span>
+          {price}
+        </p>
+      ) : null}
+      {description ? (
+        <p className="m-0 line-clamp-2 text-sm text-wb-muted" data-reason="">
+          {description}
+        </p>
+      ) : null}
+      {directions ? (
+        <a
+          href={directions}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-11 items-center gap-1.5 text-sm font-semibold text-wb-plum"
+        >
+          <MapPin className="size-4" aria-hidden="true" />
+          Directions
+        </a>
+      ) : null}
+    </ChallengeTicket>
   );
 }
 
-export function LocationsClient({ restaurants }: LocationsClientProps) {
+function RestaurantBrowser({ restaurants }: { restaurants: DirectoryRestaurant[] }) {
   const [search, setSearch] = useState('');
-
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return restaurants;
-    return restaurants.filter((r) => {
-      const name = r.name.toLowerCase();
-      const neighborhood = (r.neighborhood ?? '').toLowerCase();
-      const cuisines = (r.cuisine_tags ?? []).join(' ').toLowerCase();
-      const address = (r.address ?? '').toLowerCase();
+    const query = search.trim().toLowerCase();
+    if (!query) return restaurants;
+    return restaurants.filter((restaurant) => {
+      const name = restaurant.name.toLowerCase();
+      const neighborhood = (restaurant.neighborhood ?? '').toLowerCase();
+      const cuisines = restaurant.cuisine_tags.join(' ').toLowerCase();
+      const address = (restaurant.address ?? '').toLowerCase();
       return (
-        name.includes(q) ||
-        neighborhood.includes(q) ||
-        cuisines.includes(q) ||
-        address.includes(q)
+        name.includes(query) ||
+        neighborhood.includes(query) ||
+        cuisines.includes(query) ||
+        address.includes(query)
       );
     });
   }, [restaurants, search]);
 
   return (
     <>
-      <header className="mb-10">
-        <h1 className="text-3xl font-bold tracking-tight">Our Curated Collection</h1>
-        <p className="mt-2 text-muted-foreground">
-          Partner restaurants where you can use your Wanderbite offers.
-        </p>
-        <div className="mt-6">
-          <input
-            type="search"
-            placeholder="Search by name, cuisine, or neighborhood…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            aria-label="Search restaurants"
-          />
+      <div className="max-w-md">
+        <label htmlFor="restaurant-search" className="sr-only">
+          Search restaurants
+        </label>
+        <input
+          id="restaurant-search"
+          type="search"
+          placeholder="Search by name, cuisine, or neighborhood…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="min-h-11 w-full rounded-full border border-wb-line bg-white px-4 text-sm text-wb-ink placeholder:text-wb-muted"
+          aria-label="Search restaurants"
+        />
+      </div>
+      {filtered.length === 0 ? (
+        <p className="m-0 text-center text-sm text-wb-muted">{RESTAURANTS_SEARCH_EMPTY}</p>
+      ) : (
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((restaurant) => (
+            <DirectoryTicket key={restaurant.id} restaurant={restaurant} />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
+export function RestaurantsDirectory({ restaurants, unavailable = false }: RestaurantsDirectoryProps) {
+  return (
+    <main>
+      <header className="wb-dark relative overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="wb-aurora pointer-events-none absolute -left-24 -top-20 h-80 w-80 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.55) 0%, rgba(139,92,246,0) 70%)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="wb-aurora-2 pointer-events-none absolute -right-28 top-8 h-80 w-80 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(251,113,133,0.42) 0%, rgba(251,113,133,0) 70%)' }}
+        />
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-3 px-5 pt-4 pb-16 sm:px-8 sm:pt-8">
+          <PillLabel>{LAUNCH_MARKET.displayName}</PillLabel>
+          <h1 className="wb-display m-0 text-[42px] text-white sm:text-[56px]">
+            Partner <em>restaurants</em>
+          </h1>
+          {unavailable ? null : (
+            <div className="mt-1 grid max-w-xs grid-cols-1" data-partner-count={restaurants.length}>
+              <StatTile
+                value={String(restaurants.length)}
+                label={pluralNoun(restaurants.length, 'partner spot')}
+              />
+            </div>
+          )}
         </div>
       </header>
-
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        {filtered.length === 0 ? (
-          <p className="col-span-full text-center text-muted-foreground">
-            No restaurants match your search.
-          </p>
-        ) : (
-          filtered.map((restaurant) => (
-            <RestaurantCard key={restaurant.id} restaurant={restaurant} />
-          ))
-        )}
+      <div className="wb-sheet">
+        <div className="mx-auto flex max-w-5xl flex-col gap-5 px-4 pt-6 pb-16 sm:px-8">
+          {unavailable ? (
+            <div className="flex flex-col items-start gap-3" data-directory-error="">
+              <p className="m-0 text-base text-wb-ink" role="alert">
+                {RESTAURANTS_UNAVAILABLE_MESSAGE}
+              </p>
+              <CtaButton href={RESTAURANTS_RETRY_HREF}>Retry</CtaButton>
+            </div>
+          ) : restaurants.length === 0 ? (
+            <p className="m-0 text-base text-wb-ink" data-directory-empty="">
+              {RESTAURANTS_EMPTY_MESSAGE}
+            </p>
+          ) : (
+            <RestaurantBrowser restaurants={restaurants} />
+          )}
+        </div>
       </div>
-    </>
+    </main>
   );
 }

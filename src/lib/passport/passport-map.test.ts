@@ -3,6 +3,7 @@ import { countDistinctNeighborhoods } from '@/lib/progress/neighborhoods';
 import {
   chicagoCalendarKey,
   exploredNeighborhoodNames,
+  exploredNeighborhoodsInPartnerSet,
   mapPoints,
   neighborhoodCounterLabel,
   neighborhoodGlowPoints,
@@ -193,7 +194,7 @@ describe('passport map pins and neighborhoods', () => {
     expect(routeLine([points[0]!])).toBeNull();
   });
 
-  it('uses the shared neighborhood definition and the progress count for N', () => {
+  it('uses the shared neighborhood definition and clamps the counter at the partner set', () => {
     const names = exploredNeighborhoodNames(visits);
     expect(names).toEqual(['Adriatica', 'Stonebridge', 'Downtown']);
     expect(countDistinctNeighborhoods(names)).toBe(names.length);
@@ -203,7 +204,34 @@ describe('passport map pins and neighborhoods', () => {
     ]);
     expect(neighborhoodCounterLabel(2, 4, 'McKinney')).toBe('2 of 4 McKinney neighborhoods explored');
     expect(neighborhoodCounterLabel(1, 1, 'McKinney')).toBe('1 of 1 McKinney neighborhood explored');
+    expect(neighborhoodCounterLabel(5, 4, 'McKinney')).toBe('4 of 4 McKinney neighborhoods explored');
     expect(neighborhoodCounterLabel(null, 4, 'McKinney')).toBeNull();
     expect(neighborhoodCounterLabel(2, null, 'McKinney')).toBeNull();
+  });
+
+  it('counts stamp visits whose restaurant is still in the partner set', () => {
+    const active = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const paused = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const visits = [
+      {
+        visitStatus: 'verified' as const,
+        restaurant: { id: active, neighborhood: ' Downtown ' },
+      },
+      {
+        visitStatus: 'note_added' as const,
+        restaurant: { id: paused, neighborhood: 'West' },
+      },
+      {
+        visitStatus: 'verified' as const,
+        restaurant: { id: active, neighborhood: 'Downtown' },
+      },
+      {
+        visitStatus: 'code_issued' as const,
+        restaurant: { id: active, neighborhood: 'Craig Ranch' },
+      },
+    ];
+    expect(exploredNeighborhoodsInPartnerSet(visits, [active])).toBe(1);
+    expect(exploredNeighborhoodsInPartnerSet(visits, [active, paused])).toBe(2);
+    expect(exploredNeighborhoodsInPartnerSet(visits, [])).toBe(0);
   });
 });

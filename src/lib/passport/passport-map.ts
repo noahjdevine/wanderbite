@@ -1,5 +1,5 @@
 import { pluralNoun } from '@/lib/format/text';
-import { distinctNeighborhoods } from '@/lib/progress/neighborhoods';
+import { countDistinctNeighborhoods, distinctNeighborhoods } from '@/lib/progress/neighborhoods';
 import { stampKind } from '@/lib/passport/passport-board';
 import type { VisitStatus } from '@/lib/visits/visit-status';
 
@@ -177,10 +177,36 @@ export function boundsFromPoints(
   ];
 }
 
+type PartnerSetVisit = {
+  visitStatus: VisitStatus;
+  restaurant: { id: string; neighborhood?: string | null };
+};
+
 /**
- * `explored` is the `getMemberProgress` neighborhood count.
+ * Neighborhoods on stamp-worthy visits whose restaurant is in the partner set.
+ * That set is the active launch-market restaurants counted as M.
+ * A paused or other-market visit does not add its neighborhood.
+ * `getMemberProgress` keeps its own neighborhoods number.
+ */
+export function exploredNeighborhoodsInPartnerSet(
+  visits: readonly PartnerSetVisit[],
+  partnerRestaurantIds: readonly string[],
+): number {
+  const ids = new Set(partnerRestaurantIds);
+  return countDistinctNeighborhoods(
+    visits
+      .filter(
+        (visit) => stampKind(visit.visitStatus) === 'stamp' && ids.has(visit.restaurant.id),
+      )
+      .map((visit) => visit.restaurant.neighborhood),
+  );
+}
+
+/**
+ * `explored` is `exploredNeighborhoodsInPartnerSet`.
  * `partnerNeighborhoods` is the distinct neighborhood set on active launch-market restaurants.
  * A null on either side means that read did not load, so the line is omitted.
+ * The shown count is clamped so the line cannot read N greater than M.
  */
 export function neighborhoodCounterLabel(
   explored: number | null,
@@ -188,5 +214,7 @@ export function neighborhoodCounterLabel(
   city: string,
 ): string | null {
   if (explored == null || partnerNeighborhoods == null) return null;
-  return `${explored} of ${partnerNeighborhoods} ${city} ${pluralNoun(partnerNeighborhoods, 'neighborhood')} explored`;
+  const partner = Math.max(0, partnerNeighborhoods);
+  const shown = Math.min(Math.max(0, explored), partner);
+  return `${shown} of ${partner} ${city} ${pluralNoun(partner, 'neighborhood')} explored`;
 }

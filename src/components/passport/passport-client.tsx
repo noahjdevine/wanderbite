@@ -77,6 +77,11 @@ export type PassportClientProps = {
   segment?: Extract<PassportSegmentId, 'stamps' | 'map'>;
   /** Distinct neighborhoods on active launch-market restaurants. Null when that read did not load. */
   partnerNeighborhoods?: number | null;
+  /**
+   * Map counter only. Distinct neighborhoods of stamp visits whose restaurant
+   * is in the active launch-market set. The header still uses `neighborhoods`.
+   */
+  exploredNeighborhoods?: number | null;
 };
 
 const CITY = LAUNCH_MARKET.displayName.split(',')[0] ?? 'McKinney';

@@ -15,6 +15,7 @@ import {
   stampKind,
   type PassportSegmentId,
 } from '@/lib/passport/passport-board';
+import { exploredNeighborhoodsInPartnerSet } from '@/lib/passport/passport-map';
 import { countDistinctNeighborhoods } from '@/lib/progress/neighborhoods';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import {
@@ -174,7 +175,7 @@ export async function PassportContent({ userId, segment = 'stamps' }: PassportCo
       visit.restaurant.lon = row.lon;
     }
   }
-  let partnerNeighborhoods: number | null = null;
+  let partnerRows: { id: string; neighborhood: string | null }[] | null = null;
   if (segment === 'map') {
     // Active launch-market rows are the partner set. M is their distinct
     // neighborhood values. lat and lon stay off this query.
@@ -182,15 +183,11 @@ export async function PassportContent({ userId, segment = 'stamps' }: PassportCo
     if (market.ok) {
       const { data: neighborhoodRows, error: neighborhoodError } = await admin
         .from('restaurants')
-        .select('neighborhood')
+        .select('id, neighborhood')
         .eq('status', 'active')
         .eq('market_id', market.marketId);
       if (!neighborhoodError) {
-        partnerNeighborhoods = countDistinctNeighborhoods(
-          ((neighborhoodRows ?? []) as { neighborhood: string | null }[]).map(
-            (row) => row.neighborhood,
-          ),
-        );
+        partnerRows = (neighborhoodRows ?? []) as { id: string; neighborhood: string | null }[];
       }
     }
   }
@@ -247,6 +244,16 @@ export async function PassportContent({ userId, segment = 'stamps' }: PassportCo
     visit.chicagoMonth = dated?.month ?? null;
   }
 
+  const partnerNeighborhoods = partnerRows
+    ? countDistinctNeighborhoods(partnerRows.map((row) => row.neighborhood))
+    : null;
+  const exploredNeighborhoods = partnerRows
+    ? exploredNeighborhoodsInPartnerSet(
+        visits,
+        partnerRows.map((row) => row.id),
+      )
+    : null;
+
   visits.sort((a, b) => {
     const aStamp = stampKind(a.visitStatus) === 'stamp';
     const bStamp = stampKind(b.visitStatus) === 'stamp';
@@ -287,6 +294,7 @@ export async function PassportContent({ userId, segment = 'stamps' }: PassportCo
         recipeSections={recipeSections}
         segment="map"
         partnerNeighborhoods={partnerNeighborhoods}
+        exploredNeighborhoods={exploredNeighborhoods}
       />
     );
   }
