@@ -1,6 +1,9 @@
 /** Exact string only. Unset, empty, and every other value stay off. */
 export const RECIPES_FLAG = 'E05_RECIPES_ENABLED';
 
+/** Exact string only. Also requires `E05_RECIPES_ENABLED=true`. */
+export const RECIPE_QA_FLAG = 'E05_RECIPE_QA_ENABLED';
+
 const UNAVAILABLE_LOG = '[recipes] unavailable';
 const READ_FAILED_LOG = '[recipes] read failed';
 const SAVE_FAILED_LOG = '[recipes] save failed';
@@ -13,6 +16,13 @@ export function recipesEnabled(
   value: string | undefined = process.env.E05_RECIPES_ENABLED,
 ): boolean {
   return value === 'true';
+}
+
+export function recipeQaEnabled(
+  qaValue: string | undefined = process.env.E05_RECIPE_QA_ENABLED,
+  recipesValue: string | undefined = process.env.E05_RECIPES_ENABLED,
+): boolean {
+  return qaValue === 'true' && recipesEnabled(recipesValue);
 }
 
 export function recipeSchemaMissing(

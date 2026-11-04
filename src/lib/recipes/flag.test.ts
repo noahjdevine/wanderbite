@@ -3,6 +3,7 @@ import {
   logRecipesReadFailedOnce,
   logRecipesSaveFailedOnce,
   logRecipesUnavailableOnce,
+  recipeQaEnabled,
   recipeSchemaMissing,
   recipesEnabled,
   resetRecipesLogs,
@@ -20,6 +21,11 @@ describe('recipes flag', () => {
     expect(recipesEnabled('TRUE')).toBe(false);
     expect(recipesEnabled('1')).toBe(false);
     expect(recipesEnabled('true')).toBe(true);
+    expect(recipeQaEnabled(undefined, 'true')).toBe(false);
+    expect(recipeQaEnabled('true', undefined)).toBe(false);
+    expect(recipeQaEnabled('TRUE', 'true')).toBe(false);
+    expect(recipeQaEnabled('true', 'TRUE')).toBe(false);
+    expect(recipeQaEnabled('true', 'true')).toBe(true);
   });
 
   it('logs a static line with no user id', () => {

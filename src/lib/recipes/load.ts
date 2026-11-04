@@ -33,7 +33,7 @@ const EMPTY_SECTIONS: RecipeSections = { exclusionLine: null, byRestaurantId: {}
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type RecipeRow = {
+export type PublishedRecipeRow = {
   id: string;
   slug: string;
   title: string;
@@ -58,7 +58,7 @@ type RecipeRow = {
   is_demo: boolean;
 };
 
-const RECIPE_COLUMNS =
+export const PUBLISHED_RECIPE_COLUMNS =
   'id, slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps, substitutions, dietary_tags, description, source_url, source_name, source_kind, retrieved_at, menu_wording, rights_basis, visibility, checked_at, version, is_demo';
 
 function asRecord(value: Json): Record<string, Json | undefined> | null {
@@ -117,7 +117,7 @@ function parseSubstitutions(value: Json): RecipeSubstitution[] | null {
 }
 
 export function toRecipeCard(
-  row: RecipeRow,
+  row: PublishedRecipeRow,
   savedIds: ReadonlySet<string>,
   dietaryFlags: string[] | null,
   allergyFlags: string[] | null,
@@ -215,7 +215,7 @@ export async function loadRecipeSections(restaurantIds: readonly string[]): Prom
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('recipes')
-    .select(RECIPE_COLUMNS)
+    .select(PUBLISHED_RECIPE_COLUMNS)
     .in('restaurant_id', ids)
     .eq('visibility', 'published')
     .order('title', { ascending: true });
@@ -255,7 +255,7 @@ export async function loadSavedRecipes(): Promise<SavedRecipesView> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('recipes')
-    .select(RECIPE_COLUMNS)
+    .select(PUBLISHED_RECIPE_COLUMNS)
     .in('id', [...member.savedIds])
     .eq('visibility', 'published')
     .order('title', { ascending: true });

@@ -7,6 +7,7 @@ import { setSavedRecipe } from '@/app/actions/save-recipe';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
+  RECIPE_QA_CARDS_HEADING,
   RECIPES_SECTION_HEADING,
   SAVED_RECIPES_HEADING,
   type RecipeCardModel,
@@ -14,7 +15,10 @@ import {
 
 type RecipeCardsProps = {
   headingId: string;
-  heading: typeof RECIPES_SECTION_HEADING | typeof SAVED_RECIPES_HEADING;
+  heading:
+    | typeof RECIPES_SECTION_HEADING
+    | typeof SAVED_RECIPES_HEADING
+    | typeof RECIPE_QA_CARDS_HEADING;
   description?: string;
   exclusionLine: string | null;
   recipes: RecipeCardModel[];
@@ -45,7 +49,11 @@ function RecipeCard({ recipe }: { recipe: RecipeCardModel }) {
   }
 
   return (
-    <article className="space-y-3 rounded-lg border border-border p-3" data-recipe-type={recipe.recipeType}>
+    <article
+      id={`saved-recipe-${recipe.id}`}
+      className="space-y-3 rounded-lg border border-border p-3"
+      data-recipe-type={recipe.recipeType}
+    >
       <div className="flex flex-wrap items-center gap-2">
         <Badge variant="secondary">{recipe.typeLabel}</Badge>
         {recipe.demoLabel ? <Badge variant="outline">{recipe.demoLabel}</Badge> : null}

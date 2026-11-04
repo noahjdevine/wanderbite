@@ -1,4 +1,5 @@
 import { format } from 'date-fns';
+import Link from 'next/link';
 import { Star } from 'lucide-react';
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import {
@@ -8,6 +9,8 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { JOURNAL_SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
+import { loadJournalSavedRecipeLinks } from '@/lib/recipes/journal-links';
 import { cn } from '@/lib/utils';
 
 function StarDisplay({ rating }: { rating: number }) {
@@ -35,6 +38,9 @@ export async function JournalContent() {
   }
 
   const notes = res.data;
+  const savedByRestaurant = await loadJournalSavedRecipeLinks(
+    notes.map((note) => note.restaurant_id),
+  );
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -72,7 +78,7 @@ export async function JournalContent() {
                     <StarDisplay rating={n.rating} />
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="space-y-4">
                   {n.note ? (
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
                       {n.note}
@@ -80,6 +86,25 @@ export async function JournalContent() {
                   ) : (
                     <p className="text-sm italic text-muted-foreground">No written note</p>
                   )}
+                  {(savedByRestaurant[n.restaurant_id] ?? []).length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-foreground">
+                        {JOURNAL_SAVED_RECIPES_HEADING}
+                      </p>
+                      <ul className="list-disc space-y-1 pl-4 text-sm">
+                        {(savedByRestaurant[n.restaurant_id] ?? []).map((recipe) => (
+                          <li key={recipe.id}>
+                            <Link
+                              href={`/journey#saved-recipe-${recipe.id}`}
+                              className="font-medium text-[#E85D26] underline-offset-2 hover:underline"
+                            >
+                              {recipe.title}
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             </li>

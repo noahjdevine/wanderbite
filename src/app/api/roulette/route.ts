@@ -70,6 +70,9 @@ import {
   mergeExcludedCuisines,
   parseModelRestaurantId,
 } from '@/lib/discovery-turn';
+import { recipeQaEnabled } from '@/lib/recipes/flag';
+import { discoveryRecipeQaIntent } from '@/lib/recipes/qa-intent';
+import { loadVisitCatalogNames, runRecipeQaTurn } from '@/lib/recipes/qa-turn';
 
 export const dynamic = 'force-dynamic';
 /** Claude + DB can exceed the default serverless limit on cold starts. */
@@ -324,6 +327,28 @@ export async function POST(request: NextRequest) {
       accountTier = profileGate.accountTier;
       dietaryFlags = mergeDietaryFlags(bodyDietary, profileGate.dietaryFlags);
       excludedCuisines = mergeExcludedCuisines(bodyExcluded, profileGate.excludedCuisines);
+      const classified = discoveryRecipeQaIntent(acceptedMessage);
+      const restaurantNames =
+        !classified && recipeQaEnabled() && /\b(?:hours|visit)\b/i.test(acceptedMessage)
+          ? await loadVisitCatalogNames(admin)
+          : [];
+      const qaIntent = classified ?? discoveryRecipeQaIntent(acceptedMessage, { restaurantNames });
+      if (qaIntent && profile) {
+        const qaIp = trustedClientIpFromHeaders(request.headers);
+        const qa = await runRecipeQaTurn({
+          userId: user.id,
+          accountTier: profileGate.accountTier,
+          message: acceptedMessage,
+          intent: qaIntent,
+          dietaryFlags: profile.dietary_flags,
+          allergyFlags: profile.allergy_flags,
+          excludedCuisines: [...profileGate.excludedCuisines],
+          subjectKey,
+          clientUuid,
+          ipHash: qaIp ? hashClientIp(qaIp) : null,
+        });
+        return withGuestCookie(NextResponse.json({ recipeQa: qa }), guestCookieToSet);
+      }
     } else {
       const existing = parseGuestCookieValue(request.cookies.get(AI_GUEST_COOKIE_NAME)?.value);
       if (existing) {
