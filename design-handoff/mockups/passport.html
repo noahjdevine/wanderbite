@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Noah's Passport — Wanderbite mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Outfit:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#6d28d9}a:hover{color:#4c1d95}
+@keyframes wbAurora{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-30px,24px) scale(1.18)}}
+@keyframes wbAurora2{0%,100%{transform:translate(0,0) scale(1.1)}50%{transform:translate(40px,-20px) scale(.9)}}
+@keyframes wbStamp{0%{opacity:0;transform:scale(1.7) rotate(-18deg)}10%{opacity:1;transform:scale(.94) rotate(6deg)}14%{transform:scale(1) rotate(5deg)}90%{opacity:1;transform:scale(1) rotate(5deg)}100%{opacity:1;transform:scale(1) rotate(5deg)}}
+@keyframes wbInk{0%,8%{opacity:0;transform:scale(.4)}14%{opacity:.5;transform:scale(1.3)}24%,100%{opacity:0;transform:scale(1.6)}}
+@keyframes wbDrift{0%{transform:scale(1.06) translate(0,0)}50%{transform:scale(1.16) translate(-3%,-2%)}100%{transform:scale(1.06) translate(0,0)}}
+@keyframes wbDash{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important}}
+</style>
+<style>html{background:#0b0616}body{display:flex;justify-content:center;padding:32px 0}body>div{box-shadow:0 30px 80px rgba(0,0,0,.6);border-radius:28px}</style>
+</head>
+<body>
+<div style="position: relative; width: 390px; height: 1900px; overflow: hidden; background: #faf6ef; font-family: 'Outfit', system-ui, sans-serif; color: #1f1530">
+
+  <!-- Cinematic top zone -->
+  <header style="position: relative; overflow: hidden; background: #120a24; color: #ffffff; padding: 14px 20px 64px">
+    <div aria-hidden="true" style="position: absolute; left: -100px; top: -60px; width: 340px; height: 340px; border-radius: 50%; background: radial-gradient(circle, rgba(251,113,133,0.45) 0%, rgba(251,113,133,0) 70%); animation: wbAurora 13s ease-in-out infinite"></div>
+    <div aria-hidden="true" style="position: absolute; right: -110px; top: 90px; width: 340px; height: 340px; border-radius: 50%; background: radial-gradient(circle, rgba(139,92,246,0.55) 0%, rgba(139,92,246,0) 70%); animation: wbAurora2 15s ease-in-out infinite"></div>
+
+    <div style="position: relative; display: flex; align-items: center; justify-content: space-between; height: 44px">
+      <span style="font-family: 'Instrument Serif', serif; font-size: 26px">Wanderbite</span>
+      <button style="font-family: inherit; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 999px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.24); backdrop-filter: blur(12px); color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer">
+        <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98"></path></svg>
+        Share
+      </button>
+    </div>
+
+    <h1 style="position: relative; margin: 30px 0 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 56px; line-height: 0.92; letter-spacing: -1px">Noah's<br><span style="font-style: italic; color: #ffc9d6">Passport</span></h1>
+
+    <div style="position: relative; margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap">
+      <span style="font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18)">2 stamps · 1 pending</span>
+      <span style="font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18)">1 neighborhood</span>
+      <span style="font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18)">2 cuisines</span>
+    </div>
+
+    <nav aria-label="Passport views" style="position: relative; margin-top: 20px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 5px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); backdrop-filter: blur(14px)">
+      <a href="#" aria-current="page" style="height: 40px; border-radius: 999px; background: #ffffff; color: #1f1530; font-size: 14px; font-weight: 600; text-decoration: none; display: flex; align-items: center; justify-content: center">Stamps</a>
+      <a href="#" style="height: 40px; border-radius: 999px; color: rgba(255,255,255,0.85); font-size: 14px; font-weight: 500; text-decoration: none; display: flex; align-items: center; justify-content: center">Timeline</a>
+      <a href="#" style="height: 40px; border-radius: 999px; color: rgba(255,255,255,0.85); font-size: 14px; font-weight: 500; text-decoration: none; display: flex; align-items: center; justify-content: center">Map</a>
+    </nav>
+  </header>
+
+  <!-- Paper zone -->
+  <main style="position: relative; margin-top: -30px; border-radius: 32px 32px 0 0; background: #faf6ef; padding: 26px 16px 120px; display: flex; flex-direction: column; gap: 28px">
+
+    <!-- Stamp page -->
+    <section aria-labelledby="sp" style="border-radius: 26px; padding: 20px 16px 24px; background: repeating-linear-gradient(0deg, #fffdf8 0px, #fffdf8 27px, #f3ece0 27px, #f3ece0 28px); border: 1px solid #ece2d0; box-shadow: 0 14px 34px rgba(42,20,66,0.08); display: flex; flex-direction: column; gap: 18px">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; padding: 0 4px">
+        <h2 id="sp" style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 30px; line-height: 1">McKinney · Page 1</h2>
+        <span style="font-size: 11px; font-weight: 700; letter-spacing: 1.6px; color: #6b5f4b">2026</span>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px 10px; justify-items: center">
+
+        <button aria-label="Cadillac Pizza Pub, stamped February 2" style="font-family: inherit; background: none; border: none; padding: 4px; cursor: pointer; transform: rotate(-8deg)">
+          <div style="width: 138px; height: 138px; border-radius: 50%; border: 3px solid #c2410c; box-sizing: border-box; padding: 6px; opacity: 0.9">
+            <div style="width: 100%; height: 100%; border-radius: 50%; border: 1.5px dashed #c2410c; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; color: #c2410c; text-align: center">
+              <span style="font-size: 9px; font-weight: 700; letter-spacing: 1.5px">CADILLAC PIZZA PUB</span>
+              <span style="font-family: 'Instrument Serif', serif; font-size: 30px; line-height: 1">Feb 2</span>
+              <span style="font-size: 9px; font-weight: 700; letter-spacing: 1.6px">DOWNTOWN</span>
+            </div>
+          </div>
+        </button>
+
+        <button aria-label="The Yard, stamped April 26, newest stamp" style="position: relative; font-family: inherit; background: none; border: none; padding: 4px; cursor: pointer; align-self: center">
+          <span aria-hidden="true" style="position: absolute; left: 50%; top: 50%; width: 150px; height: 110px; margin: -55px 0 0 -75px; border-radius: 20px; background: radial-gradient(circle, rgba(124,58,237,0.35) 0%, rgba(124,58,237,0) 70%); animation: wbInk 8s ease-out infinite"></span>
+          <div style="width: 144px; border: 4px double #6d28d9; border-radius: 10px; box-sizing: border-box; padding: 12px 8px; display: flex; flex-direction: column; align-items: center; gap: 6px; color: #6d28d9; animation: wbStamp 8s cubic-bezier(.2,.8,.2,1) infinite">
+            <span style="font-size: 9px; font-weight: 700; letter-spacing: 2px">WANDERBITE</span>
+            <span style="font-family: 'Instrument Serif', serif; font-size: 32px; line-height: 1">The Yard</span>
+            <span style="width: 100%; border-top: 1.5px dashed #6d28d9"></span>
+            <span style="font-size: 11px; font-weight: 700; letter-spacing: 1.6px">APR 26 · DOWNTOWN</span>
+          </div>
+        </button>
+
+        <div role="img" aria-label="Zen Sushi and Grill, pending: stamps once verified" style="position: relative; width: 138px; height: 138px; margin-top: 4px">
+          <span aria-hidden="true" style="position: absolute; inset: 0; border-radius: 50%; border: 2.5px dashed #5eead4; box-sizing: border-box; animation: wbDash 30s linear infinite"></span>
+          <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 18px; color: #0f766e">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+            <span style="font-size: 12px; font-weight: 700">Zen Sushi</span>
+            <span style="font-size: 11px; line-height: 1.3; color: #115e59">Stamps once verified</span>
+          </div>
+        </div>
+
+        <a href="challenges.html" style="width: 138px; height: 138px; margin-top: 4px; border-radius: 50%; border: 2px dashed #d8cfbf; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center; padding: 16px; text-decoration: none">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8a7d68" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"></path></svg>
+          <span style="font-size: 12px; font-weight: 700; color: #5a4f3d">Next stamp</span>
+          <span style="font-size: 11px; color: #6b5f4b">The Common Table</span>
+        </a>
+      </div>
+    </section>
+
+    <!-- Memory (Journal) -->
+    <section aria-labelledby="mm" style="border-radius: 26px; background: #ffffff; overflow: hidden; box-shadow: 0 14px 34px rgba(42,20,66,0.1)">
+      <div style="position: relative; height: 150px; overflow: hidden">
+        <div aria-hidden="true" style="position: absolute; inset: -6%; background: radial-gradient(circle at 30% 45%, rgba(253,224,171,0.8) 0%, rgba(253,224,171,0) 36%), radial-gradient(circle at 75% 55%, rgba(163,230,53,0.35) 0%, rgba(163,230,53,0) 40%), linear-gradient(155deg, #3f3a1f 0%, #2a1442 70%, #120a24 100%); animation: wbDrift 20s ease-in-out infinite"></div>
+        <span style="position: absolute; right: 12px; bottom: 12px; font-size: 10px; letter-spacing: 1px; font-weight: 600; color: rgba(255,255,255,0.85); border: 1px dashed rgba(255,255,255,0.45); padding: 4px 8px; border-radius: 999px">YOUR PHOTO · patio at dusk</span>
+        <span style="position: absolute; left: 12px; top: 12px; font-size: 12px; font-weight: 700; color: #14532d; background: #dcfce7; padding: 5px 10px; border-radius: 999px">Verified</span>
+      </div>
+      <div style="padding: 18px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 10px">
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <h2 id="mm" style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 34px; line-height: 1">The Yard</h2>
+            <span style="font-size: 13px; color: #6b6275">Apr 26 · Downtown · saved $10</span>
+          </div>
+          <div role="img" aria-label="Rated 5 out of 5" style="display: flex; gap: 2px; color: #f59e0b; padding-bottom: 4px">
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+            <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg>
+          </div>
+        </div>
+        <p style="margin: 0; font-family: 'Instrument Serif', serif; font-style: italic; font-size: 22px; line-height: 1.3; color: #2a1442">“Amazing outdoor atmosphere and great service!”</p>
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: #f6f1e8">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#5a4f6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+          <div style="display: flex; flex-direction: column; gap: 1px; flex: 1">
+            <span style="font-size: 14px; font-weight: 600">Private</span>
+            <span style="font-size: 12px; color: #6b6275">Only you can see this memory</span>
+          </div>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; color: #3f3550; cursor: pointer">
+            Share
+            <span style="position: relative; width: 44px; height: 26px; border-radius: 13px; background: #d9d0c2">
+              <input type="checkbox" aria-label="Share as a public review" style="position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer">
+              <span aria-hidden="true" style="position: absolute; left: 3px; top: 3px; width: 20px; height: 20px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.2)"></span>
+            </span>
+          </label>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px">
+          <button style="font-family: inherit; height: 46px; border-radius: 999px; border: 1.5px solid #d9cfe6; background: #ffffff; color: #2a1442; font-size: 14px; font-weight: 600; cursor: pointer">Edit memory</button>
+          <button style="font-family: inherit; height: 46px; border-radius: 999px; border: none; background: #2a1442; color: #ffffff; font-size: 14px; font-weight: 600; cursor: pointer">Add photo</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick memory prompt -->
+    <section aria-labelledby="qm" style="border-radius: 26px; padding: 20px; background: #2a1442; color: #ffffff; position: relative; overflow: hidden; display: flex; flex-direction: column; gap: 14px">
+      <div aria-hidden="true" style="position: absolute; right: -60px; top: -60px; width: 200px; height: 200px; border-radius: 50%; background: radial-gradient(circle, rgba(251,113,133,0.4) 0%, rgba(251,113,133,0) 70%)"></div>
+      <div style="position: relative; display: flex; align-items: center; gap: 10px">
+        <span aria-hidden="true" style="width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 32% 30%, #ffffff 0%, #fbcfe8 14%, #a78bfa 48%, #6d28d9 78%, #3b0764 100%)"></span>
+        <span style="font-size: 13px; color: #ddd6fe">Bea asks</span>
+      </div>
+      <h2 id="qm" style="position: relative; margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 28px; line-height: 1.08">How was Cadillac Pizza Pub? <span style="font-style: italic; color: #ffc9d6">One tap is enough.</span></h2>
+      <div style="position: relative; display: flex; gap: 8px">
+        <button aria-label="1 star" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.06); color: #fde68a; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></button>
+        <button aria-label="2 stars" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.06); color: #fde68a; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></button>
+        <button aria-label="3 stars" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.06); color: #fde68a; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></button>
+        <button aria-label="4 stars" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.06); color: #fde68a; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></button>
+        <button aria-label="5 stars" style="width: 48px; height: 48px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.06); color: #fde68a; display: flex; align-items: center; justify-content: center; cursor: pointer"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"></path></svg></button>
+      </div>
+      <span style="position: relative; font-size: 12px; color: rgba(255,255,255,0.7)">Memories stay private unless you choose to share them.</span>
+    </section>
+
+    <!-- Cuisines tried -->
+    <section aria-labelledby="ct" style="display: flex; flex-direction: column; gap: 12px; padding: 0 4px">
+      <h2 id="ct" style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 28px; line-height: 1">Cuisines tried</h2>
+      <div style="display: flex; gap: 8px; flex-wrap: wrap">
+        <span style="font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px; background: #ffedd5; color: #9a3412">Pizza</span>
+        <span style="font-size: 13px; font-weight: 600; padding: 8px 14px; border-radius: 999px; background: #ede9fe; color: #5b21b6">American</span>
+        <span style="font-size: 13px; font-weight: 500; padding: 8px 14px; border-radius: 999px; border: 1.5px dashed #d8cfbf; color: #6b5f4b">Sushi · pending</span>
+      </div>
+    </section>
+  </main>
+
+  <!-- Floating glass tab bar -->
+  <nav aria-label="Main" style="position: absolute; left: 16px; right: 16px; bottom: 18px; height: 64px; border-radius: 32px; background: rgba(18,10,36,0.86); border: 1px solid rgba(255,255,255,0.14); backdrop-filter: blur(20px); box-shadow: 0 16px 36px rgba(18,10,36,0.35); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center">
+    <a href="discover-1-ask.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z"></path></svg>Discover</a>
+    <a href="challenges.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 17v2M13 11v2"></path></svg>Challenges</a>
+    <a href="progress.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>Progress</a>
+    <a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 700; color: #ffc9d6">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>Passport</a>
+  </nav>
+</div>
+</body>
+</html>

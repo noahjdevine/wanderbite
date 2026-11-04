@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bea takes a bite — Wanderbite mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Outfit:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+@keyframes fdMove{0%,14%{transform:translateX(0) rotate(0deg)}26%,36%{transform:translateX(-18px) rotate(-7deg)}50%,100%{transform:translateX(0) rotate(0deg)}}
+@keyframes fdMouth{0%,20%{transform:scale(1,1)}29%{transform:scale(1.35,2.5)}34%{transform:scale(1.1,.45)}40%{transform:scale(1,1.3)}46%{transform:scale(1,.6)}52%{transform:scale(1,1.15)}58%,100%{transform:scale(1,1)}}
+@keyframes fdBite{0%,32%{transform:scale(0)}35%,92%{transform:scale(1)}97%,100%{transform:scale(0)}}
+@keyframes fdEye{0%,33%{transform:scaleY(1)}36%,54%{transform:scaleY(.22)}58%,82%{transform:scaleY(1)}85%{transform:scaleY(.1)}88%,100%{transform:scaleY(1)}}
+@keyframes fdCrumb{0%,34%{opacity:0;transform:translate(0,0)}38%{opacity:1}62%,100%{opacity:0;transform:translate(var(--dx),var(--dy))}}
+@keyframes fdBody{0%,33%,100%{transform:translateY(0) scale(1,1)}37%{transform:translateY(2px) scale(1.05,.95)}44%{transform:translateY(-4px) scale(.97,1.03)}52%{transform:translateY(0) scale(1,1)}}
+@keyframes fdHeart{0%,40%{opacity:0;transform:translateY(0) scale(.5)}48%{opacity:1;transform:translateY(-6px) scale(1)}70%,100%{opacity:0;transform:translateY(-22px) scale(.9)}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important}}
+</style>
+<style>html{background:#0b0616}body{display:flex;justify-content:center;padding:32px 0}body>div{box-shadow:0 30px 80px rgba(0,0,0,.6);border-radius:28px}</style>
+</head>
+<body>
+<div style="position: relative; overflow: hidden; width: 1200px; height: 600px; box-sizing: border-box; background: #120a24; color: #ffffff; font-family: 'Outfit', system-ui, sans-serif; display: flex; flex-direction: column">
+  <div aria-hidden="true" style="position: absolute; left: -100px; top: -160px; width: 600px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(139,92,246,0.35) 0%, rgba(139,92,246,0) 70%)"></div>
+  <div aria-hidden="true" style="position: absolute; right: -120px; bottom: -200px; width: 600px; height: 500px; border-radius: 50%; background: radial-gradient(circle, rgba(251,113,133,0.25) 0%, rgba(251,113,133,0) 70%)"></div>
+
+  <div style="position: relative; flex: 1; display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; padding: 34px 44px 0">
+
+    <!-- Hero: nigiri -->
+    <div style="display: flex; flex-direction: column; gap: 6px">
+      <h1 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 40px; line-height: 1">Bea takes a <span style="font-style: italic; color: #ffc9d6">bite</span></h1>
+      <span style="font-size: 15px; color: rgba(255,255,255,0.65)">Plays while she thinks, and she eats whatever you asked for</span>
+      <svg role="img" aria-label="Bea, a round violet character, takes a bite of salmon nigiri" width="520" height="364" viewBox="0 0 200 140" style="margin-top: 6px; overflow: visible">
+        <defs>
+          <radialGradient id="bA" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".12" stop-color="#fbcfe8"></stop><stop offset=".45" stop-color="#a78bfa"></stop><stop offset=".8" stop-color="#6d28d9"></stop><stop offset="1" stop-color="#3b0764"></stop></radialGradient>
+          <mask id="kA" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="140">
+            <rect width="200" height="140" fill="#ffffff"></rect>
+            <circle cx="114" cy="89" r="10" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite"></circle>
+            <circle cx="117" cy="101" r="7" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite"></circle>
+          </mask>
+        </defs>
+        <ellipse cx="80" cy="132" rx="38" ry="5" fill="rgba(0,0,0,0.35)"></ellipse>
+        <g style="transform-box: fill-box; transform-origin: 50% 100%; animation: fdBody 4.2s ease-in-out infinite">
+          <circle cx="80" cy="78" r="50" fill="url(#bA)"></circle>
+          <ellipse cx="60" cy="50" rx="14" ry="7" fill="#ffffff" opacity=".45" transform="rotate(-30 60 50)"></ellipse>
+          <circle cx="58" cy="86" r="6" fill="#f472b6" opacity=".55"></circle>
+          <circle cx="104" cy="84" r="6" fill="#f472b6" opacity=".55"></circle>
+          <ellipse cx="70" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite"></ellipse>
+          <ellipse cx="96" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite"></ellipse>
+          <ellipse cx="88" cy="91" rx="7" ry="4.5" fill="#3b0764" style="transform-box: fill-box; transform-origin: center; animation: fdMouth 4.2s infinite"></ellipse>
+        </g>
+        <g style="transform-box: fill-box; transform-origin: 0% 50%; animation: fdMove 4.2s ease-in-out infinite">
+          <g mask="url(#kA)">
+            <rect x="114" y="93" width="48" height="16" rx="8" fill="#fffaf0" stroke="#eadfcb" stroke-width="1.5"></rect>
+            <rect x="111" y="82" width="54" height="15" rx="7.5" fill="#fb923c"></rect>
+            <path d="M123 84 l-4 11 M135 84 l-4 11 M147 84 l-4 11 M159 84 l-4 11" stroke="#ffedd5" stroke-width="2.5" stroke-linecap="round"></path>
+          </g>
+          <circle cx="131" cy="112" r="7" fill="#7c3aed"></circle>
+        </g>
+        <circle cx="104" cy="94" r="2.2" fill="#fed7aa" style="--dx: 16px; --dy: -18px; animation: fdCrumb 4.2s infinite"></circle>
+        <circle cx="102" cy="98" r="1.8" fill="#fffaf0" style="--dx: 22px; --dy: 4px; animation: fdCrumb 4.2s infinite"></circle>
+        <circle cx="100" cy="92" r="1.6" fill="#fed7aa" style="--dx: 6px; --dy: -24px; animation: fdCrumb 4.2s infinite"></circle>
+        <path d="M118 52 c-3 -4 -9 -1 -6 4 l6 6 l6 -6 c3 -5 -3 -8 -6 -4z" fill="#ffc9d6" style="transform-box: fill-box; transform-origin: center; animation: fdHeart 4.2s infinite"></path>
+      </svg>
+    </div>
+
+    <!-- Variants -->
+    <div style="display: flex; flex-direction: column; gap: 16px; padding-top: 6px">
+      <span style="font-size: 12px; font-weight: 700; letter-spacing: 1.4px; color: rgba(255,255,255,0.6)">SHE EATS WHAT YOU ASKED FOR</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px">
+
+        <!-- Pizza -->
+        <div style="border-radius: 22px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); padding: 12px 8px 14px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <svg role="img" aria-label="Bea biting a pizza slice" width="150" height="105" viewBox="0 0 200 140">
+            <defs>
+              <radialGradient id="bB" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".12" stop-color="#fbcfe8"></stop><stop offset=".45" stop-color="#a78bfa"></stop><stop offset=".8" stop-color="#6d28d9"></stop><stop offset="1" stop-color="#3b0764"></stop></radialGradient>
+              <mask id="kB" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="140"><rect width="200" height="140" fill="#ffffff"></rect><circle cx="114" cy="92" r="10" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite .6s"></circle><circle cx="119" cy="102" r="7" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite .6s"></circle></mask>
+            </defs>
+            <g style="transform-box: fill-box; transform-origin: 50% 100%; animation: fdBody 4.2s ease-in-out infinite .6s">
+              <circle cx="80" cy="78" r="50" fill="url(#bB)"></circle>
+              <ellipse cx="70" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite .6s"></ellipse>
+              <ellipse cx="96" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite .6s"></ellipse>
+              <ellipse cx="88" cy="91" rx="7" ry="4.5" fill="#3b0764" style="transform-box: fill-box; transform-origin: center; animation: fdMouth 4.2s infinite .6s"></ellipse>
+            </g>
+            <g style="transform-box: fill-box; transform-origin: 0% 50%; animation: fdMove 4.2s ease-in-out infinite .6s">
+              <g mask="url(#kB)">
+                <path d="M110 95 L164 74 L164 116 Z" fill="#fcd34d"></path>
+                <rect x="160" y="72" width="9" height="46" rx="4.5" fill="#d97706"></rect>
+                <circle cx="140" cy="95" r="5" fill="#dc2626"></circle><circle cx="154" cy="85" r="4" fill="#dc2626"></circle><circle cx="154" cy="105" r="4" fill="#dc2626"></circle>
+              </g>
+              <circle cx="150" cy="118" r="7" fill="#7c3aed"></circle>
+            </g>
+          </svg>
+          <span style="font-size: 14px; font-weight: 600">Pizza night</span>
+        </div>
+
+        <!-- Taco -->
+        <div style="border-radius: 22px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); padding: 12px 8px 14px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <svg role="img" aria-label="Bea biting a taco" width="150" height="105" viewBox="0 0 200 140">
+            <defs>
+              <radialGradient id="bC" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".12" stop-color="#fbcfe8"></stop><stop offset=".45" stop-color="#a78bfa"></stop><stop offset=".8" stop-color="#6d28d9"></stop><stop offset="1" stop-color="#3b0764"></stop></radialGradient>
+              <mask id="kC" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="140"><rect width="200" height="140" fill="#ffffff"></rect><circle cx="114" cy="88" r="10" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite 1.2s"></circle><circle cx="117" cy="99" r="7" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite 1.2s"></circle></mask>
+            </defs>
+            <g style="transform-box: fill-box; transform-origin: 50% 100%; animation: fdBody 4.2s ease-in-out infinite 1.2s">
+              <circle cx="80" cy="78" r="50" fill="url(#bC)"></circle>
+              <ellipse cx="70" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite 1.2s"></ellipse>
+              <ellipse cx="96" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite 1.2s"></ellipse>
+              <ellipse cx="88" cy="91" rx="7" ry="4.5" fill="#3b0764" style="transform-box: fill-box; transform-origin: center; animation: fdMouth 4.2s infinite 1.2s"></ellipse>
+            </g>
+            <g style="transform-box: fill-box; transform-origin: 0% 50%; animation: fdMove 4.2s ease-in-out infinite 1.2s">
+              <g mask="url(#kC)">
+                <path d="M112 84 Q114 80 120 82 Q126 76 132 82 Q138 76 144 82 Q150 76 156 82 Q162 78 164 84 Z" fill="#4ade80"></path>
+                <circle cx="128" cy="83" r="3" fill="#ef4444"></circle><circle cx="148" cy="82" r="3" fill="#ef4444"></circle>
+                <path d="M110 84 A28 26 0 0 0 166 84 Z" fill="#fbbf24"></path>
+                <path d="M118 92 A20 18 0 0 0 158 92" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round"></path>
+              </g>
+              <circle cx="146" cy="112" r="7" fill="#7c3aed"></circle>
+            </g>
+          </svg>
+          <span style="font-size: 14px; font-weight: 600">Taco Tuesday</span>
+        </div>
+
+        <!-- Dumpling -->
+        <div style="border-radius: 22px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); padding: 12px 8px 14px; display: flex; flex-direction: column; align-items: center; gap: 6px">
+          <svg role="img" aria-label="Bea biting a dumpling" width="150" height="105" viewBox="0 0 200 140">
+            <defs>
+              <radialGradient id="bD" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".12" stop-color="#fbcfe8"></stop><stop offset=".45" stop-color="#a78bfa"></stop><stop offset=".8" stop-color="#6d28d9"></stop><stop offset="1" stop-color="#3b0764"></stop></radialGradient>
+              <mask id="kD" maskUnits="userSpaceOnUse" x="0" y="0" width="200" height="140"><rect width="200" height="140" fill="#ffffff"></rect><circle cx="114" cy="92" r="10" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite 1.8s"></circle><circle cx="118" cy="103" r="7" fill="#000000" style="transform-box: fill-box; transform-origin: center; animation: fdBite 4.2s infinite 1.8s"></circle></mask>
+            </defs>
+            <g style="transform-box: fill-box; transform-origin: 50% 100%; animation: fdBody 4.2s ease-in-out infinite 1.8s">
+              <circle cx="80" cy="78" r="50" fill="url(#bD)"></circle>
+              <ellipse cx="70" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite 1.8s"></ellipse>
+              <ellipse cx="96" cy="68" rx="4.5" ry="6.5" fill="#1d1033" style="transform-box: fill-box; transform-origin: center; animation: fdEye 4.2s infinite 1.8s"></ellipse>
+              <ellipse cx="88" cy="91" rx="7" ry="4.5" fill="#3b0764" style="transform-box: fill-box; transform-origin: center; animation: fdMouth 4.2s infinite 1.8s"></ellipse>
+            </g>
+            <g style="transform-box: fill-box; transform-origin: 0% 50%; animation: fdMove 4.2s ease-in-out infinite 1.8s">
+              <g mask="url(#kD)">
+                <path d="M110 108 Q112 78 138 78 Q164 78 166 108 Z" fill="#fdf4e3" stroke="#e9dcc3" stroke-width="1.5"></path>
+                <path d="M126 81 q3 7 0 12 M138 79 q3 7 0 12 M150 81 q3 7 0 12" fill="none" stroke="#dccbaa" stroke-width="2" stroke-linecap="round"></path>
+              </g>
+              <circle cx="148" cy="114" r="7" fill="#7c3aed"></circle>
+            </g>
+          </svg>
+          <span style="font-size: 14px; font-weight: 600">Dumplings</span>
+        </div>
+      </div>
+
+      <div style="margin-top: 6px; border-radius: 20px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); padding: 16px 18px; display: flex; flex-direction: column; gap: 10px">
+        <span style="font-size: 12px; font-weight: 700; letter-spacing: 1.4px; color: rgba(255,255,255,0.6)">WHERE EACH STATE PLAYS</span>
+        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; font-size: 13px; color: rgba(255,255,255,0.85)">
+          <span><strong style="color: #ffc9d6; font-weight: 600">Idle</strong><br>blinks, small bob</span>
+          <span><strong style="color: #ffc9d6; font-weight: 600">Thinking</strong><br>chomps your cuisine</span>
+          <span><strong style="color: #ffc9d6; font-weight: 600">Found it</strong><br>happy squint + heart</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Small size -->
+  <div style="position: relative; display: flex; align-items: center; gap: 28px; padding: 20px 44px; background: #faf6ef; color: #2a1442">
+    <span style="font-size: 12px; font-weight: 700; letter-spacing: 1.4px; color: #6b6275">AT 28PX, JUST THE FACE</span>
+    <div style="display: flex; align-items: center; gap: 8px">
+      <svg aria-hidden="true" width="28" height="28" viewBox="0 0 100 100"><defs><radialGradient id="bS" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".12" stop-color="#fbcfe8"></stop><stop offset=".45" stop-color="#a78bfa"></stop><stop offset=".8" stop-color="#6d28d9"></stop><stop offset="1" stop-color="#3b0764"></stop></radialGradient></defs><circle cx="50" cy="50" r="48" fill="url(#bS)"></circle><ellipse cx="37" cy="44" rx="6" ry="8.5" fill="#1d1033"></ellipse><ellipse cx="63" cy="44" rx="6" ry="8.5" fill="#1d1033"></ellipse><path d="M38 64 Q50 74 62 64" fill="none" stroke="#3b0764" stroke-width="6" stroke-linecap="round"></path></svg>
+      <span style="font-family: 'Instrument Serif', serif; font-style: italic; font-size: 18px; padding: 6px 12px; border-radius: 14px 14px 14px 4px; background: #ffffff; border: 1px solid #ece2d0">Ooh, I've got one for you.</span>
+    </div>
+    <div style="display: flex; align-items: center; gap: 10px; margin-left: auto">
+      <span aria-hidden="true" style="width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(150deg, #2a1442, #120a24); display: flex; align-items: center; justify-content: center">
+        <svg width="40" height="40" viewBox="0 0 100 100"><defs><radialGradient id="bT" cx="35%" cy="28%" r="80%"><stop offset="0" stop-color="#ffffff"></stop><stop offset=".12" stop-color="#fbcfe8"></stop><stop offset=".45" stop-color="#a78bfa"></stop><stop offset=".8" stop-color="#6d28d9"></stop><stop offset="1" stop-color="#3b0764"></stop></radialGradient></defs><circle cx="50" cy="50" r="46" fill="url(#bT)"></circle><ellipse cx="37" cy="44" rx="6" ry="8.5" fill="#1d1033"></ellipse><ellipse cx="63" cy="44" rx="6" ry="8.5" fill="#1d1033"></ellipse><path d="M38 64 Q50 74 62 64" fill="none" stroke="#3b0764" stroke-width="6" stroke-linecap="round"></path></svg>
+      </span>
+      <span style="font-size: 13px; color: #6b6275">App icon</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

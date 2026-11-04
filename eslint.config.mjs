@@ -50,6 +50,7 @@ const eslintConfig = defineConfig([
     'next-env.d.ts',
     'coverage/**',
     '.vitest-cache/**',
+    'design-handoff/**',
   ]),
 ]);
 
