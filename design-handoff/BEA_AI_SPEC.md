@@ -32,8 +32,7 @@ The concept is a round, glossy violet character (brand gradient) with simple eye
 
 - At small sizes (< 48px: chat avatar, app icon, favicon), show **only the face**, with no food or hand.
 - If no cuisine was parsed, use a neutral food (dumpling) or a generic plate.
-- **Production:** a motion designer (a human hire, not an AI tool) rebuilds the character in **Rive** from `RIVE_BRIEF.md`, delivering `bea.riv` with artboard `Bea`, state machine `Bea`, and Number inputs `state` (0 idle, 1 thinking, 2 found) and `food` (0–5).
-- **In code, always render `<Bea />` (`code/Bea.tsx`).** It shows the SVG placeholder (`BeaAvatar.tsx`) today and switches to the Rive version (`BeaAvatarRive.tsx`) when `public/bea.riv` exists and `NEXT_PUBLIC_BEA_RIVE=1` is set. Reduced-motion users and sizes under 48px always get the SVG.
+- **In code, always render `<Bea />` (`src/components/bea/Bea.tsx`).** Noah dropped the Rive hire on 2026-11-04. The animation is in the SVG and in `src/app/styles/wanderbite-theme.css`. `RIVE_BRIEF.md` and `code/BeaAvatarRive.tsx` are reference only. Do not add `@rive-app` or a `.riv` file. Reduced-motion users get a static pose. Sizes under 48px are the face only.
 
 ---
 

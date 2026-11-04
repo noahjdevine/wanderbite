@@ -1,9 +1,8 @@
 import { notFound } from "next/navigation";
 import { BookOpen, Compass, Target, Trophy } from "lucide-react";
-import { Bea } from "@/components/bea/Bea";
 import { BEA_FOUND_LINES, fillBeaName } from "@/components/bea/copy";
 import { BEA_DISPLAY_NAME } from "@/components/bea/name";
-import type { BeaFoodIndex } from "@/components/bea/food";
+import { BeaGallery } from "./bea-gallery";
 import { isComponentGalleryEnabled } from "@/lib/dev/component-gallery";
 import {
   BadgeMedallion,
@@ -33,9 +32,6 @@ export const metadata = {
   robots: { index: false, follow: false },
 };
 
-const FOODS: BeaFoodIndex[] = [0, 1, 2, 3, 4, 5];
-const FOOD_NAMES = ["Dumpling", "Nigiri", "Pizza", "Taco", "Burger", "BBQ"] as const;
-const SIZES = [32, 48, 120, 240] as const;
 const TRACKS: StatusTrackStatus[] = ["ready", "code_issued", "code_expired", "verified", "note_added", "expired", "swapped"];
 
 function BadgeIcon() {
@@ -62,37 +58,11 @@ export default function DevComponentsPage() {
       </header>
 
       <section aria-label="Bea on night" className="mx-auto flex max-w-5xl flex-col gap-6 px-5 pb-10">
-        <h2 className="font-display m-0 text-[30px] font-normal">Bea on night</h2>
-        <div className="grid gap-4 sm:grid-cols-3">
-          <figure className="m-0 flex flex-col items-center gap-2">
-            <Bea state="idle" size={180} />
-            <figcaption className="text-sm text-white/75">Idle</figcaption>
-          </figure>
-          <figure className="m-0 flex flex-col items-center gap-2">
-            <Bea state="thinking" food={1} size={220} />
-            <figcaption className="text-sm text-white/75">Thinking · nigiri</figcaption>
-          </figure>
-          <figure className="m-0 flex flex-col items-center gap-2">
-            <Bea state="found" size={180} />
-            <figcaption className="text-sm text-white/75">Found</figcaption>
-          </figure>
-        </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {FOODS.map((food) => (
-            <figure key={food} className="m-0 flex flex-col items-center gap-1 rounded-[22px] border border-white/15 bg-white/5 px-2 py-3">
-              <Bea state="thinking" food={food} size={140} />
-              <figcaption className="text-sm font-semibold">{FOOD_NAMES[food]}</figcaption>
-            </figure>
-          ))}
-        </div>
-        <div className="flex flex-wrap items-end gap-6">
-          {SIZES.map((size) => (
-            <figure key={size} className="m-0 flex flex-col items-center gap-1">
-              <Bea state={size < 48 ? "idle" : "thinking"} food={0} size={size} />
-              <figcaption className="text-xs text-white/70">{size}px</figcaption>
-            </figure>
-          ))}
-        </div>
+        <h2 className="font-display m-0 text-[30px] font-normal">Bea</h2>
+        <p className="m-0 max-w-xl text-sm text-white/75">
+          Every state with every food, 32px, 120px, and 320px, on plum and cream. The switcher plays idle to thinking to found to idle, and thinking to found while the bite is in progress.
+        </p>
+        <BeaGallery />
       </section>
 
       <section aria-label="Controls on night" className="mx-auto flex max-w-5xl flex-col gap-4 px-5 pb-12">
@@ -136,13 +106,6 @@ export default function DevComponentsPage() {
           <h2 className="wb-display m-0 text-[30px] text-wb-ink">
             Bea on <em>cream</em>
           </h2>
-          <div className="flex flex-wrap items-end gap-6 rounded-[22px] bg-wb-cream">
-            <Bea state="idle" size={160} />
-            <Bea state="thinking" food="sushi" size={200} />
-            <Bea state="found" size={160} />
-            <Bea state="idle" size={32} />
-          </div>
-
           <div className="flex flex-wrap gap-3">
             <CtaButton href="/challenges">I&apos;m here — get my code</CtaButton>
             <CtaButton href="/challenges" variant="secondary-cream" creamStyle="plum">

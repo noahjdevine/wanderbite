@@ -1,8 +1,15 @@
+"use client";
+
 /**
- * SVG stand-in for Bea. Import this only from Bea.tsx.
- * Motion lives in wanderbite-theme.css (idle bob, blink, thinking bite, found hop).
+ * SVG Bea. Import this only from Bea.tsx.
+ *
+ * Motion is CSS in wanderbite-theme.css (Noah, 2026-11-04): bob, breathe,
+ * two blink cycles, the thinking bite, and a found hop that chains into idle.
+ * A state change holds the current pose and eases it to the shared rest pose
+ * before the next loop, so a mid-bite handoff does not snap. Found stays on
+ * the found label; the idle motion after the hop is the CSS chain, not a timer.
  */
-import { useId, type CSSProperties, type ReactElement } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactElement, type Ref } from "react";
 import { resolveBeaFood, type BeaFood, type BeaFoodIndex } from "./food";
 import { BEA_DISPLAY_NAME } from "./name";
 
@@ -15,6 +22,9 @@ type Props = {
   label?: string;
   className?: string;
 };
+
+const HANDOFF_MS = 200;
+const HANDOFF_SELECTOR = ".bea-body, .bea-breathe, .bea-face, .bea-food-motion, .bea-food-wobble, .bea-bite";
 
 const CRUMBS: Record<BeaFoodIndex, string> = {
   0: "#fdf4e3",
@@ -33,6 +43,72 @@ const HAND: Record<BeaFoodIndex, { cx: number; cy: number }> = {
   4: { cx: 154, cy: 122 },
   5: { cx: 164, cy: 108 },
 };
+
+function prefersReducedMotion(): boolean {
+  if (typeof window.matchMedia !== "function") return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function restTransform(node: SVGElement): string {
+  if (node.classList.contains("bea-bite")) return "scale(0)";
+  return "none";
+}
+
+function clearHandoff(node: SVGElement) {
+  node.style.animation = "";
+  node.style.transition = "";
+  node.style.transform = "";
+}
+
+/**
+ * Keeps `data-state` on the pose that is actually on screen until the outgoing
+ * transform has been copied. The stylesheet then eases that copy to rest.
+ */
+function useBeaHandoff(state: BeaState) {
+  const [shown, setShown] = useState(state);
+  const shownRef = useRef(state);
+  const rootRef = useRef<SVGSVGElement>(null);
+
+  useEffect(() => {
+    const previous = shownRef.current;
+    if (previous === state) return;
+    const svg = rootRef.current;
+    if (!svg || prefersReducedMotion()) {
+      shownRef.current = state;
+      setShown(state);
+      return () => {
+        shownRef.current = previous;
+      };
+    }
+
+    const nodes = [...svg.querySelectorAll<SVGElement>(HANDOFF_SELECTOR)];
+    for (const node of nodes) {
+      const transform = getComputedStyle(node).transform;
+      node.style.animation = "none";
+      node.style.transform = transform && transform !== "none" ? transform : "none";
+    }
+    shownRef.current = state;
+    setShown(state);
+
+    const frame = window.requestAnimationFrame(() => {
+      for (const node of nodes) {
+        node.style.transition = `transform ${HANDOFF_MS}ms cubic-bezier(0.22, 0.8, 0.3, 1)`;
+        node.style.transform = restTransform(node);
+      }
+    });
+    const timer = window.setTimeout(() => {
+      for (const node of nodes) clearHandoff(node);
+    }, HANDOFF_MS + 40);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+      shownRef.current = previous;
+    };
+  }, [state]);
+
+  return { shown, rootRef };
+}
 
 function foodArt(index: BeaFoodIndex): ReactElement {
   switch (index) {
@@ -99,6 +175,55 @@ function foodArt(index: BeaFoodIndex): ReactElement {
   }
 }
 
+/**
+ * Mask hole on the side nearest her mouth. It lives inside the moving food
+ * group, so the bite travels with the food. Scale 0 leaves the food whole.
+ */
+function biteMark(index: BeaFoodIndex): ReactElement {
+  const hole: Record<BeaFoodIndex, ReactElement> = {
+    0: (
+      <>
+        <ellipse cx="141" cy="98" rx="11" ry="9" />
+        <ellipse cx="149" cy="108" rx="7" ry="5.5" />
+      </>
+    ),
+    1: (
+      <>
+        <ellipse cx="134" cy="96" rx="10" ry="8" />
+        <ellipse cx="142" cy="104" rx="6" ry="5" />
+      </>
+    ),
+    2: (
+      <>
+        <path d="M132 92 Q140 86 148 96 Q140 108 130 100 Q128 96 132 92 Z" />
+      </>
+    ),
+    3: (
+      <>
+        <ellipse cx="132" cy="94" rx="10" ry="8" />
+        <ellipse cx="140" cy="102" rx="6" ry="5" />
+      </>
+    ),
+    4: (
+      <>
+        <ellipse cx="140" cy="112" rx="11" ry="9" />
+        <circle cx="148" cy="102" r="6" />
+      </>
+    ),
+    5: (
+      <>
+        <ellipse cx="142" cy="100" rx="10" ry="8" />
+        <ellipse cx="150" cy="108" rx="6" ry="5" />
+      </>
+    ),
+  };
+  return (
+    <g className="bea-bite" data-bite={index} fill="#000">
+      {hole[index]}
+    </g>
+  );
+}
+
 function labelFor(state: BeaState, foodLabel: string, faceOnly: boolean, label?: string): string {
   if (label) return label;
   if (state === "thinking") {
@@ -110,12 +235,61 @@ function labelFor(state: BeaState, foodLabel: string, faceOnly: boolean, label?:
   return `${BEA_DISPLAY_NAME}, your Wanderbite concierge`;
 }
 
+function Face({ tiny }: { tiny: boolean }) {
+  if (tiny) {
+    return (
+      <>
+        <g className="bea-blink-a">
+          <g className="bea-blink-b">
+            <g className="bea-idle-eyes">
+              <ellipse className="bea-eye" cx="38" cy="48" rx="5.5" ry="7.5" fill="#1d1033" />
+              <ellipse className="bea-eye" cx="62" cy="48" rx="5.5" ry="7.5" fill="#1d1033" />
+            </g>
+          </g>
+        </g>
+        <g className="bea-found-eyes">
+          <path d="M32 50 Q38 42 44 50" fill="none" stroke="#1d1033" strokeWidth="3.5" strokeLinecap="round" />
+          <path d="M56 50 Q62 42 68 50" fill="none" stroke="#1d1033" strokeWidth="3.5" strokeLinecap="round" />
+        </g>
+        <path className="bea-mouth-idle" d="M40 66 Q50 76 60 66" fill="none" stroke="#3b0764" strokeWidth="4" strokeLinecap="round" />
+        <ellipse className="bea-mouth-think" cx="52" cy="68" rx="6" ry="4" fill="#3b0764" />
+        <path className="bea-mouth-found" d="M40 64 Q50 78 60 64" fill="#3b0764" />
+      </>
+    );
+  }
+  return (
+    <>
+      <g className="bea-blink-a">
+        <g className="bea-blink-b">
+          <g className="bea-idle-eyes">
+            <ellipse className="bea-eye" cx="68" cy="72" rx="5" ry="7" fill="#1d1033" />
+            <ellipse className="bea-eye" cx="96" cy="72" rx="5" ry="7" fill="#1d1033" />
+          </g>
+        </g>
+      </g>
+      <g className="bea-found-eyes">
+        <path d="M60 74 Q68 62 76 74" fill="none" stroke="#1d1033" strokeWidth="4" strokeLinecap="round" />
+        <path d="M88 74 Q96 62 104 74" fill="none" stroke="#1d1033" strokeWidth="4" strokeLinecap="round" />
+      </g>
+      <path className="bea-mouth-idle" d="M72 90 Q84 98 96 90" fill="none" stroke="#3b0764" strokeWidth="3.5" strokeLinecap="round" />
+      <ellipse className="bea-mouth-think" cx="88" cy="92" rx="7" ry="4.5" fill="#3b0764" />
+      <path className="bea-mouth-found" d="M70 88 Q84 104 98 88" fill="#3b0764" />
+    </>
+  );
+}
+
+function crumbStyle(dx: string, dy: string, delay: string): CSSProperties {
+  return { "--dx": dx, "--dy": dy, animationDelay: delay } as CSSProperties;
+}
+
 export function BeaAvatar({ state = "idle", food = 0, size = 120, label, className }: Props) {
   const uid = useId().replace(/:/g, "");
   const gradId = `bea-g-${uid}`;
+  const maskId = `bea-bite-${uid}`;
   const faceOnly = size < 48;
   const resolved = resolveBeaFood(food);
   const aria = labelFor(state, resolved.label, faceOnly, label);
+  const { shown, rootRef } = useBeaHandoff(state);
   const hand = HAND[resolved.index];
 
   const gradient = (
@@ -131,89 +305,87 @@ export function BeaAvatar({ state = "idle", food = 0, size = 120, label, classNa
   if (faceOnly) {
     return (
       <svg
+        ref={rootRef as Ref<SVGSVGElement>}
         role="img"
         aria-label={aria}
         width={size}
         height={size}
         viewBox="0 0 100 100"
         className={`bea-avatar ${className ?? ""}`.trim()}
-        data-state={state}
+        data-state={shown}
         data-food={resolved.index}
         data-face-only="true"
       >
         <defs>{gradient}</defs>
-        <circle cx="50" cy="50" r="48" fill={`url(#${gradId})`} />
-        <ellipse cx="36" cy="42" rx="16" ry="8" fill="#fff" opacity="0.45" transform="rotate(-28 36 42)" />
-        <circle cx="34" cy="62" r="5" fill="#f472b6" opacity="0.55" />
-        <circle cx="66" cy="62" r="5" fill="#f472b6" opacity="0.55" />
-        <g className="bea-idle-eyes">
-          <ellipse className="bea-eye" cx="38" cy="48" rx="5.5" ry="7.5" fill="#1d1033" />
-          <ellipse className="bea-eye" cx="62" cy="48" rx="5.5" ry="7.5" fill="#1d1033" />
+        <g className="bea-face">
+          <circle cx="50" cy="50" r="48" fill={`url(#${gradId})`} />
+          <ellipse cx="36" cy="42" rx="16" ry="8" fill="#fff" opacity="0.45" transform="rotate(-28 36 42)" />
+          <circle cx="34" cy="62" r="5" fill="#f472b6" opacity="0.55" />
+          <circle cx="66" cy="62" r="5" fill="#f472b6" opacity="0.55" />
+          <Face tiny />
         </g>
-        <g className="bea-found-eyes">
-          <path d="M32 50 Q38 42 44 50" fill="none" stroke="#1d1033" strokeWidth="3.5" strokeLinecap="round" />
-          <path d="M56 50 Q62 42 68 50" fill="none" stroke="#1d1033" strokeWidth="3.5" strokeLinecap="round" />
-        </g>
-        <path className="bea-mouth-idle" d="M40 66 Q50 76 60 66" fill="none" stroke="#3b0764" strokeWidth="4" strokeLinecap="round" />
-        <ellipse className="bea-mouth-think" cx="52" cy="68" rx="6" ry="4" fill="#3b0764" />
-        <path className="bea-mouth-found" d="M40 64 Q50 78 60 64" fill="#3b0764" />
       </svg>
     );
   }
 
-  const crumbStyle = (dx: string, dy: string, delay: string): CSSProperties =>
-    ({ "--dx": dx, "--dy": dy, animationDelay: delay }) as CSSProperties;
-
   return (
     <svg
+      ref={rootRef as Ref<SVGSVGElement>}
       role="img"
       aria-label={aria}
       width={size}
       height={Math.round(size * 0.7)}
       viewBox="0 0 200 140"
       className={`bea-avatar ${className ?? ""}`.trim()}
-      data-state={state}
+      data-state={shown}
       data-food={resolved.index}
       data-face-only="false"
       style={{ overflow: "visible" }}
     >
       <defs>{gradient}</defs>
 
-      <ellipse cx="80" cy="128" rx="36" ry="5" fill="rgba(0,0,0,0.28)" />
+      <ellipse className="bea-shadow" cx="80" cy="128" rx="36" ry="5" fill="rgba(0,0,0,0.28)" />
 
       <g className="bea-body">
-        <circle cx="80" cy="78" r="50" fill={`url(#${gradId})`} />
-        <ellipse cx="58" cy="52" rx="16" ry="8" fill="#fff" opacity="0.5" transform="rotate(-32 58 52)" />
-        <circle cx="58" cy="90" r="6.5" fill="#f472b6" opacity="0.55" />
-        <circle cx="104" cy="88" r="6.5" fill="#f472b6" opacity="0.55" />
-        <g className="bea-idle-eyes">
-          <ellipse className="bea-eye" cx="68" cy="72" rx="5" ry="7" fill="#1d1033" />
-          <ellipse className="bea-eye" cx="96" cy="72" rx="5" ry="7" fill="#1d1033" />
+        <g className="bea-breathe">
+          <circle cx="80" cy="78" r="50" fill={`url(#${gradId})`} />
+          <ellipse cx="58" cy="52" rx="16" ry="8" fill="#fff" opacity="0.5" transform="rotate(-32 58 52)" />
+          <circle cx="58" cy="90" r="6.5" fill="#f472b6" opacity="0.55" />
+          <circle cx="104" cy="88" r="6.5" fill="#f472b6" opacity="0.55" />
+          <Face tiny={false} />
         </g>
-        <g className="bea-found-eyes">
-          <path d="M60 74 Q68 64 76 74" fill="none" stroke="#1d1033" strokeWidth="4" strokeLinecap="round" />
-          <path d="M88 74 Q96 64 104 74" fill="none" stroke="#1d1033" strokeWidth="4" strokeLinecap="round" />
-        </g>
-        <path className="bea-mouth-idle" d="M72 90 Q84 98 96 90" fill="none" stroke="#3b0764" strokeWidth="3.5" strokeLinecap="round" />
-        <ellipse className="bea-mouth-think" cx="88" cy="92" rx="7" ry="4.5" fill="#3b0764" />
-        <path className="bea-mouth-found" d="M72 88 Q84 102 96 88" fill="#3b0764" />
       </g>
 
       <g className="bea-food">
         <g className="bea-food-motion">
-          {foodArt(resolved.index)}
-          <circle cx={hand.cx} cy={hand.cy} r="7" fill="#7c3aed" />
+          <rect className="bea-metric" x="0" y="0" width="200" height="140" fill="none" />
+          <g className="bea-food-wobble">
+            <mask id={maskId} maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="0" y="0" width="200" height="140">
+              <rect x="0" y="0" width="200" height="140" fill="#fff" />
+              {biteMark(resolved.index)}
+            </mask>
+            <g mask={`url(#${maskId})`}>{foodArt(resolved.index)}</g>
+            <circle className="bea-hand" cx={hand.cx} cy={hand.cy} r="7" fill="#7c3aed" />
+          </g>
         </g>
       </g>
-      <circle className="bea-crumb" cx="108" cy="96" r="2.2" fill={CRUMBS[resolved.index]} style={crumbStyle("16px", "-18px", "0s")} />
-      <circle className="bea-crumb" cx="104" cy="100" r="1.8" fill={CRUMBS[resolved.index]} style={crumbStyle("22px", "6px", "0.08s")} />
-      <circle className="bea-crumb" cx="102" cy="92" r="1.6" fill={CRUMBS[resolved.index]} style={crumbStyle("8px", "-22px", "0.16s")} />
+      <g className="bea-crumb" style={crumbStyle("28%", "-36%", "0s")}>
+        <rect className="bea-metric" x="88" y="78" width="40" height="36" fill="none" />
+        <circle cx="108" cy="96" r="2.2" fill={CRUMBS[resolved.index]} />
+      </g>
+      <g className="bea-crumb" style={crumbStyle("42%", "16%", "0.1s")}>
+        <rect className="bea-metric" x="86" y="82" width="40" height="36" fill="none" />
+        <circle cx="104" cy="100" r="1.8" fill={CRUMBS[resolved.index]} />
+      </g>
+      <g className="bea-crumb" style={crumbStyle("18%", "-48%", "0.18s")}>
+        <rect className="bea-metric" x="84" y="74" width="40" height="36" fill="none" />
+        <circle cx="102" cy="92" r="1.6" fill={CRUMBS[resolved.index]} />
+      </g>
 
-      <path
-        className="bea-heart"
-        d="M118 46 c-3 -4 -9 -1 -6 4 l6 6 l6 -6 c3 -5 -3 -8 -6 -4z"
-        fill="#ffc9d6"
-      />
+      <g className="bea-heart">
+        <rect className="bea-metric" x="100" y="6" width="56" height="58" fill="none" />
+        <path d="M128 18 c-8 -12 -24 -4 -16 8 l16 18 l16 -18 c8 -12 -8 -20 -16 -8z" fill="#ffc9d6" />
+      </g>
     </svg>
   );
 }

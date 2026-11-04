@@ -45,7 +45,7 @@ Keep NEXT_PUBLIC_BEA_RIVE unset for now so the SVG placeholder renders. Add .env
 NEXT_PUBLIC_BEA_RIVE=0 and a comment explaining it. Add <Bea /> in every state and size to /dev/components.
 Do not create or edit any .riv file; a motion designer will deliver public/bea.riv later (design-handoff/RIVE_BRIEF.md).
 ```
-**Done when:** the app uses `<Bea />` everywhere, the SVG renders, and turning Rive on later is just a file drop plus one env var.
+**Done when:** the app uses `<Bea />` everywhere and the SVG renders. Noah dropped the Rive hire on 2026-11-04. The animation is in code. Do not add `@rive-app` or a `.riv` file.
 
 ---
 
@@ -179,17 +179,7 @@ notes, email and codes by default.
 
 ## Phase 3 — Delight (after Phases 1–2 work)
 
-- **Rive Bea (human task + one prompt):**
-  1. **You:** hire a motion designer using `RIVE_BRIEF.md` (post it on Upwork, Fiverr, Contra or the Rive community). Cursor and Grok can't do this part.
-  2. When `bea.riv` arrives, put it in `public/bea.riv` and run this prompt:
-     ```
-     A motion designer delivered public/bea.riv per design-handoff/RIVE_BRIEF.md (artboard "Bea",
-     state machine "Bea", Number inputs "state" 0/1/2 and "food" 0–5). Verify the file's artboard,
-     state machine and input names match what components/bea/BeaAvatarRive.tsx expects; fix the mapping
-     if the designer named anything differently. Set NEXT_PUBLIC_BEA_RIVE=1 in .env.local and Vercel.
-     Check /dev/components: idle, thinking with each food, found → idle. Confirm reduced-motion users
-     still get the SVG, and small (<48px) avatars stay SVG face-only. Report bundle size impact.
-     ```
+- **Bea animation (Noah, 2026-11-04):** the Rive hire was dropped. Motion is in the SVG avatar and `wanderbite-theme.css`. `RIVE_BRIEF.md` and `code/BeaAvatarRive.tsx` stay as reference. Do not install `@rive-app` or add a `.riv` file.
 - **Stamp unlock moment:** the stamp slam + ink burst plays once when a visit becomes verified.
 - **Share card:** generate a passport share image with `next/og` (stamps, level, opt-in only).
 - **Scroll reveals** on the homepage sections; partner photo grid.
