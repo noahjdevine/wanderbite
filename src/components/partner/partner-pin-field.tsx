@@ -13,6 +13,8 @@ type PartnerPinFieldProps = {
   disabled?: boolean;
   placeholder?: string;
   className?: string;
+  describedBy?: string;
+  invalid?: boolean;
   onChange?: (value: string) => void;
 };
 
@@ -23,6 +25,8 @@ export function PartnerPinField({
   disabled,
   placeholder = '4–6 digit PIN',
   className,
+  describedBy,
+  invalid,
   onChange,
 }: PartnerPinFieldProps) {
   return (
@@ -37,6 +41,8 @@ export function PartnerPinField({
       value={value}
       placeholder={placeholder}
       disabled={disabled}
+      aria-describedby={describedBy}
+      aria-invalid={invalid || undefined}
       className={
         className ??
         'w-full rounded-md border border-input bg-background px-4 py-3 text-sm font-mono focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20 disabled:opacity-50'

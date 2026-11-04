@@ -3,24 +3,6 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardDescription,
-} from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Progress } from '@/components/ui/progress';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
 import { formatCents } from '@/lib/offers/sealed-base';
 import { toast } from 'sonner';
@@ -32,6 +14,9 @@ type PartnerDashboardProps = {
   restaurantSlug: string;
   analytics: PartnerAnalyticsResult | null;
 };
+
+const CODE_HINT_ID = 'partner-dashboard-code-hint';
+const CODE_ERROR_ID = 'partner-dashboard-code-error';
 
 export function PartnerDashboard({
   restaurantName,
@@ -64,6 +49,7 @@ export function PartnerDashboard({
     1,
     ...historicalVolume.map((h) => h.count)
   );
+  const codeError = result && !result.success ? result : null;
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
@@ -108,217 +94,186 @@ export function PartnerDashboard({
 
   return (
     <>
-      <header className="mb-8 flex items-center justify-between">
+      <header className="wb-partner-page-head">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            Partner Portal
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {restaurantName}
-          </p>
+          <h1 className="wb-partner-title">Partner Portal</h1>
+          <p className="wb-partner-name">{restaurantName}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="default" size="sm" asChild>
-            <Link href={`/partner/${restaurantSlug}/redeem`}>Redeem mode</Link>
-          </Button>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
+        <div className="wb-partner-page-actions">
+          <Link href={`/partner/${restaurantSlug}/redeem`} className="wb-cta wb-partner-cta">
+            Redeem mode
+          </Link>
+          <button type="button" className="wb-cta-secondary wb-cta-secondary-cream wb-partner-secondary" onClick={handleLogout}>
             Log out
-          </Button>
+          </button>
         </div>
       </header>
 
-      {/* Redeem Code — prominent at top */}
-      <Card className="mb-8">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-lg">Redeem Customer Code</CardTitle>
-          <CardDescription>
-            Enter the code from the customer&apos;s device.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <form onSubmit={handleVerify} className="flex gap-3">
+      <section className="wb-partner-card">
+        <form onSubmit={handleVerify} className="wb-partner-verify">
+          <div>
+            <label htmlFor="partner-dashboard-code" className="wb-partner-section-title">
+              Redeem Customer Code
+            </label>
+            <p id={CODE_HINT_ID} className="wb-partner-section-copy">
+              Enter the code from the customer&apos;s device.
+            </p>
+          </div>
+          <div className="wb-partner-verify-row">
             <input
+              id="partner-dashboard-code"
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="Enter code (e.g., WB-XXXXX)"
-              className="flex-1 rounded-md border border-input bg-background px-4 py-3 text-base placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+              className="wb-partner-code"
               disabled={isVerifying}
               autoComplete="off"
               autoFocus
+              aria-invalid={codeError ? true : undefined}
+              aria-describedby={codeError ? `${CODE_HINT_ID} ${CODE_ERROR_ID}` : CODE_HINT_ID}
             />
-            <Button
+            <button
               type="submit"
-              className="shrink-0"
+              className="wb-cta wb-partner-cta"
               disabled={isVerifying || !code.trim()}
             >
               {isVerifying ? 'Verifying…' : 'Redeem Code'}
-            </Button>
-          </form>
+            </button>
+          </div>
+        </form>
 
-          {result?.success && (
-            <Alert
-              className="border-green-600 bg-green-50 text-green-900 dark:border-green-500 dark:bg-green-950/30 dark:text-green-100"
-              variant="default"
-            >
-              <AlertTitle>
-                {result.sealedDiscountCents != null && result.sealedMinSpendCents != null
-                  ? `Valid — ${formatCents(result.sealedDiscountCents)} off ${formatCents(result.sealedMinSpendCents)}`
-                  : result.hideDiscountAmount
-                    ? 'Valid'
-                    : 'Valid — $10 discount applied'}
-              </AlertTitle>
-              <AlertDescription>
-                <div className="mt-2 space-y-1 text-sm">
-                  {result.email && (
-                    <p>
-                      <span className="font-medium">Customer:</span>{' '}
-                      {result.email}
-                    </p>
-                  )}
-                  <p>
-                    <span className="font-medium">Verified at:</span>{' '}
-                    {result.verifiedAt}
-                  </p>
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
+        {result?.success && (
+          <div className="wb-partner-alert wb-partner-alert-ok wb-partner-follow" role="alert" aria-live="assertive">
+            <p className="wb-partner-alert-title">
+              {result.sealedDiscountCents != null && result.sealedMinSpendCents != null
+                ? `Valid — ${formatCents(result.sealedDiscountCents)} off ${formatCents(result.sealedMinSpendCents)}`
+                : result.hideDiscountAmount
+                  ? 'Valid'
+                  : 'Valid — $10 discount applied'}
+            </p>
+            <div>
+              {result.email && (
+                <p>
+                  <span className="wb-partner-alert-title">Customer:</span>{' '}
+                  {result.email}
+                </p>
+              )}
+              <p>
+                <span className="wb-partner-alert-title">Verified at:</span>{' '}
+                {result.verifiedAt}
+              </p>
+            </div>
+          </div>
+        )}
 
-          {result && !result.success && (
-            <Alert variant="destructive">
-              <AlertTitle>Invalid or already used</AlertTitle>
-              <AlertDescription>{result.message}</AlertDescription>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
+        {codeError && (
+          <div
+            id={CODE_ERROR_ID}
+            className="wb-partner-alert wb-partner-alert-error wb-partner-follow"
+            role="alert"
+            aria-live="assertive"
+          >
+            <p className="wb-partner-alert-title">Invalid or already used</p>
+            <p>{codeError.message}</p>
+          </div>
+        )}
+      </section>
 
-      {/* Analytics section — only when we have data */}
       {analytics && !analytics.ok && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertTitle>Analytics unavailable</AlertTitle>
-          <AlertDescription>{analytics.error}</AlertDescription>
-        </Alert>
+        <div className="wb-partner-alert wb-partner-alert-error wb-partner-follow-lg" role="alert" aria-live="assertive">
+          <p className="wb-partner-alert-title">Analytics unavailable</p>
+          <p>{analytics.error}</p>
+        </div>
       )}
 
       {hasAnalytics && (
-        <div className="space-y-8">
-          {/* Top row: 3 KPI cards */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Total Redemptions (All Time)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold tracking-tight">
-                  {totalAllTime}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Redemptions (This Month)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold tracking-tight">
-                  {totalThisMonth}
-                </p>
-              </CardContent>
-            </Card>
-            <Card className="border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium text-muted-foreground">
-                  Estimated Revenue Generated
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-3xl font-bold tracking-tight text-green-700 dark:text-green-400">
-                  {revenueFormatted}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Estimated based on avg. check size of $45.
-                </p>
-              </CardContent>
-            </Card>
+        <div className="wb-partner-stack wb-partner-follow-lg">
+          <div className="wb-partner-kpis">
+            <section className="wb-partner-card">
+              <p className="wb-partner-kpi-label">Total Redemptions (All Time)</p>
+              <p className="wb-partner-kpi-value">{totalAllTime}</p>
+            </section>
+            <section className="wb-partner-card">
+              <p className="wb-partner-kpi-label">Redemptions (This Month)</p>
+              <p className="wb-partner-kpi-value">{totalThisMonth}</p>
+            </section>
+            <section className="wb-partner-card">
+              <p className="wb-partner-kpi-label">Estimated Revenue Generated</p>
+              <p className="wb-partner-kpi-value wb-partner-kpi-value-ok">{revenueFormatted}</p>
+              <p className="wb-partner-kpi-note">
+                Estimated based on avg. check size of $45.
+              </p>
+            </section>
           </div>
 
-          {/* Performance History — last 6 months */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Performance History</CardTitle>
-              <CardDescription>
-                Verified redemptions over the last 6 months
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {historicalVolume.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No redemptions in this period yet.
-                </p>
-              ) : (
-                <ul className="space-y-3">
-                  {historicalVolume.map(({ monthLabel, count }) => (
-                    <li key={monthLabel} className="space-y-1.5">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="font-medium">{monthLabel}</span>
-                        <span className="text-muted-foreground">{count}</span>
-                      </div>
-                      <Progress value={count} max={maxVolume} className="h-2" />
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
+          <section className="wb-partner-card">
+            <p className="wb-partner-section-title">Performance History</p>
+            <p className="wb-partner-section-copy">
+              Verified redemptions over the last 6 months
+            </p>
+            {historicalVolume.length === 0 ? (
+              <p className="wb-partner-section-copy">
+                No redemptions in this period yet.
+              </p>
+            ) : (
+              <ul className="wb-partner-meters">
+                {historicalVolume.map(({ monthLabel, count }) => (
+                  <li key={monthLabel} className="wb-partner-meter-row">
+                    <div className="wb-partner-meter-label">
+                      <span>{monthLabel}</span>
+                      <span>{count}</span>
+                    </div>
+                    <div
+                      className="wb-partner-meter"
+                      role="progressbar"
+                      aria-valuemin={0}
+                      aria-valuemax={maxVolume}
+                      aria-valuenow={count}
+                      aria-label={`${monthLabel} ${count}`}
+                    >
+                      <span style={{ width: `${maxVolume ? (count / maxVolume) * 100 : 0}%` }} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
 
-          {/* Recent Guests */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-lg">Recent Guests</CardTitle>
-              <CardDescription>
-                Latest verified redemptions at your location
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {recentCustomers.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  No verified redemptions yet.
-                </p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Guest Email</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+          <section className="wb-partner-card">
+            <p className="wb-partner-section-title">Recent Guests</p>
+            <p className="wb-partner-section-copy">
+              Latest verified redemptions at your location
+            </p>
+            {recentCustomers.length === 0 ? (
+              <p className="wb-partner-section-copy">
+                No verified redemptions yet.
+              </p>
+            ) : (
+              <div className="wb-partner-scroll wb-partner-follow">
+                <table className="wb-partner-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Date</th>
+                      <th scope="col">Guest Email</th>
+                      <th scope="col">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
                     {recentCustomers.map((guest, i) => (
-                      <TableRow key={i}>
-                        <TableCell className="font-medium">
-                          {guest.verifiedAt}
-                        </TableCell>
-                        <TableCell className="text-muted-foreground">
-                          {guest.emailMasked}
-                        </TableCell>
-                        <TableCell>
-                          <span className="inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400">
-                            Verified
-                          </span>
-                        </TableCell>
-                      </TableRow>
+                      <tr key={i}>
+                        <td>{guest.verifiedAt}</td>
+                        <td>{guest.emailMasked}</td>
+                        <td>
+                          <span className="wb-partner-badge">Verified</span>
+                        </td>
+                      </tr>
                     ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
         </div>
       )}
     </>
