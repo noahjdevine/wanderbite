@@ -13,7 +13,13 @@ import {
   REDEMPTION_ISSUE_UNAVAILABLE_MESSAGE,
 } from '@/lib/redemption-issue';
 import { requireUser } from '@/lib/auth/require-user';
-import { redemptionExpiresAt } from '@/lib/redemption-expiry';
+import {
+  capRedemptionExpiresAt,
+  redemptionCodeStillValid,
+  redemptionExpiresAt,
+  VISIT_WINDOW_CLOSED_MESSAGE,
+  visitWindowOpen,
+} from '@/lib/redemption-expiry';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import type { RedeemChallengeResult } from '@/types/redeem-challenge';
 
@@ -77,7 +83,7 @@ export async function redeemChallengeItem(
 
     const { data: item, error: itemErr } = await supabase
       .from('challenge_items')
-      .select('id, cycle_id, restaurant_id, status')
+      .select('id, cycle_id, restaurant_id, status, redemption_deadline')
       .eq('id', challengeItemId)
       .maybeSingle();
 
@@ -94,6 +100,7 @@ export async function redeemChallengeItem(
       cycle_id: string;
       restaurant_id: string;
       status: string;
+      redemption_deadline: string | null;
     };
 
     const { data: cycle, error: cycleErr } = await supabase
@@ -118,7 +125,7 @@ export async function redeemChallengeItem(
     if (challengeItem.status === 'redeemed') {
       const { data: existing, error: existingErr } = await supabase
         .from('redemptions')
-        .select('id, created_at, encrypted_code, code_iv')
+        .select('id, created_at, encrypted_code, code_iv, status, expires_at')
         .eq('challenge_item_id', challengeItemId)
         .maybeSingle();
 
@@ -131,23 +138,39 @@ export async function redeemChallengeItem(
         created_at: string;
         encrypted_code: string | null;
         code_iv: string | null;
+        status: string;
+        expires_at: string;
       };
-      const token = tokenFromEncrypted(existingRow.encrypted_code, existingRow.code_iv);
-      if (!token) {
+      const now = new Date();
+      if (existingRow.status === 'verified') {
         return { ok: false, error: 'This challenge has already been redeemed.' };
       }
-
-      return {
-        ok: true,
-        data: {
-          token,
-          redeemedAt: existingRow.created_at,
-          redemptionId: existingRow.id,
-        },
-      };
+      if (
+        redemptionCodeStillValid(
+          { status: existingRow.status, expiresAt: existingRow.expires_at },
+          now,
+        )
+      ) {
+        const token = tokenFromEncrypted(existingRow.encrypted_code, existingRow.code_iv);
+        if (!token) {
+          return { ok: false, error: 'This challenge has already been redeemed.' };
+        }
+        return {
+          ok: true,
+          data: {
+            token,
+            redeemedAt: existingRow.created_at,
+            redemptionId: existingRow.id,
+            expiresAt: existingRow.expires_at,
+          },
+        };
+      }
+      if (!visitWindowOpen(challengeItem.redemption_deadline, now)) {
+        return { ok: false, error: VISIT_WINDOW_CLOSED_MESSAGE };
+      }
     }
 
-    if (challengeItem.status !== 'assigned') {
+    if (challengeItem.status !== 'assigned' && challengeItem.status !== 'redeemed') {
       return {
         ok: false,
         error: 'This spot was swapped. Only assigned challenges can be redeemed.',
@@ -169,6 +192,16 @@ export async function redeemChallengeItem(
       return issueUnavailable();
     }
 
+    const requestedExpiry = capRedemptionExpiresAt(
+      redemptionExpiresAt(),
+      challengeItem.redemption_deadline
+        ? new Date(challengeItem.redemption_deadline)
+        : null,
+    );
+    if (requestedExpiry.getTime() <= Date.now()) {
+      return { ok: false, error: VISIT_WINDOW_CLOSED_MESSAGE };
+    }
+
     for (let attempt = 0; attempt < TOKEN_ATTEMPTS; attempt++) {
       const token = generateRedemptionToken();
       const tokenHash = hashRedemptionToken(token);
@@ -182,7 +215,7 @@ export async function redeemChallengeItem(
           p_token_hash: tokenHash,
           p_encrypted_code: encrypted,
           p_code_iv: iv,
-          p_expires_at: redemptionExpiresAt().toISOString(),
+          p_expires_at: requestedExpiry.toISOString(),
         }
       );
 
@@ -199,6 +232,9 @@ export async function redeemChallengeItem(
       if (issued.outcome === 'token_collision') {
         continue;
       }
+      if (issued.outcome === 'past_deadline') {
+        return { ok: false, error: VISIT_WINDOW_CLOSED_MESSAGE };
+      }
       if (issued.outcome === 'forbidden') {
         return { ok: false, error: 'This challenge does not belong to you.' };
       }
@@ -211,7 +247,11 @@ export async function redeemChallengeItem(
       if (issued.outcome === 'not_found') {
         return { ok: false, error: 'Challenge item not found.' };
       }
-      if (issued.outcome !== 'created' && issued.outcome !== 'existing') {
+      if (
+        issued.outcome !== 'created'
+        && issued.outcome !== 'existing'
+        && issued.outcome !== 'reissued'
+      ) {
         logRedemptionIssue('rpc_unexpected');
         return issueUnavailable();
       }
@@ -228,6 +268,28 @@ export async function redeemChallengeItem(
       const displayToken = tokenFromEncrypted(issued.encrypted_code, issued.code_iv);
       if (!displayToken) {
         logRedemptionIssue('decrypt_failed');
+        return issueUnavailable();
+      }
+
+      const { data: stored, error: storedErr } = await supabase
+        .from('redemptions')
+        .select('status, expires_at')
+        .eq('id', issued.redemption_id)
+        .maybeSingle();
+      const storedRow = stored as { status: string; expires_at: string } | null;
+      if (
+        storedErr
+        || !storedRow
+        || storedRow.status === 'verified'
+        || !redemptionCodeStillValid(
+          { status: storedRow?.status ?? '', expiresAt: storedRow?.expires_at ?? '' },
+          new Date(),
+        )
+      ) {
+        if (storedRow?.status === 'verified') {
+          return { ok: false, error: 'This challenge has already been redeemed.' };
+        }
+        logRedemptionIssue('stored_clock');
         return issueUnavailable();
       }
 
@@ -248,6 +310,7 @@ export async function redeemChallengeItem(
           token: displayToken,
           redeemedAt: issued.created_at,
           redemptionId: issued.redemption_id,
+          expiresAt: storedRow.expires_at,
         },
       };
     }

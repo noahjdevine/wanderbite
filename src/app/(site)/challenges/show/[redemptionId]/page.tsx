@@ -4,6 +4,7 @@ import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
 import { createClient } from '@/lib/supabase/server';
 import { formatCents, lowestSealedBase } from '@/lib/offers/sealed-base';
+import { visitWindowOpen } from '@/lib/redemption-expiry';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
@@ -28,7 +29,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
   const admin = getSupabaseAdmin();
   const { data: redemption, error } = await admin
     .from('redemptions')
-    .select('id, user_id, restaurant_id, challenge_item_id, status, verified_at')
+    .select('id, user_id, restaurant_id, challenge_item_id, status, verified_at, expires_at')
     .eq('id', redemptionId)
     .maybeSingle();
 
@@ -43,6 +44,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     challenge_item_id: string | null;
     status: string;
     verified_at: string | null;
+    expires_at: string | null;
   };
 
   if (row.user_id !== user.id) {
@@ -73,14 +75,22 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
   }
 
   let versionId: string | null = null;
+  let itemStatus: string | null = null;
+  let redemptionDeadline: string | null = null;
   if (row.challenge_item_id) {
     const { data: item } = await admin
       .from('challenge_items')
-      .select('offer_version_id')
+      .select('offer_version_id, status, redemption_deadline')
       .eq('id', row.challenge_item_id)
       .maybeSingle();
-    versionId =
-      (item as { offer_version_id: string | null } | null)?.offer_version_id ?? null;
+    const itemRow = item as {
+      offer_version_id: string | null;
+      status: string;
+      redemption_deadline: string | null;
+    } | null;
+    versionId = itemRow?.offer_version_id ?? null;
+    itemStatus = itemRow?.status ?? null;
+    redemptionDeadline = itemRow?.redemption_deadline ?? null;
   }
   let sealed = null as ReturnType<typeof lowestSealedBase>;
   if (versionId) {
@@ -101,25 +111,41 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     ? ''
     : `${formatCents(minSpendCents)} minimum spend`;
 
-  const code = row.status === 'issued' ? await getRedemptionCode(redemptionId) : null;
-
-  if (row.status === 'issued' && !code) {
+  const now = new Date();
+  const codeResult = row.status === 'verified' ? null : await getRedemptionCode(redemptionId);
+  if (row.status !== 'verified' && (!codeResult || codeResult.state === 'unavailable')) {
     redirect('/challenges');
   }
 
   const verifiedAt = row.verified_at
     ? format(new Date(row.verified_at), 'PPp')
     : null;
+  const phase =
+    row.status === 'verified'
+      ? 'verified'
+      : codeResult?.state === 'issued'
+        ? 'issued'
+        : 'expired';
+  const liveCode = codeResult?.state === 'issued' ? codeResult.code : null;
+  const liveExpiresAt =
+    codeResult?.state === 'issued' || codeResult?.state === 'expired'
+      ? codeResult.expiresAt
+      : row.expires_at;
 
   return (
     <main className="min-h-screen bg-background">
       <ShowRedemptionCode
-        code={code ?? ''}
+        redemptionId={row.id}
+        challengeItemId={row.challenge_item_id}
+        code={liveCode}
+        expiresAt={liveExpiresAt}
+        redemptionDeadline={redemptionDeadline}
+        canReissue={itemStatus === 'redeemed' && visitWindowOpen(redemptionDeadline, now)}
         restaurantName={rest.name}
         restaurantSlug={rest.slug}
         discountLabel={discountLabel}
         minSpendLabel={minSpendLabel}
-        status={row.status === 'verified' ? 'verified' : 'issued'}
+        status={phase}
         verifiedAt={verifiedAt}
       />
     </main>

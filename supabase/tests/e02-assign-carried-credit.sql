@@ -888,7 +888,9 @@ begin
     happy, happy_item, token, 'cipher', 'iviviviviviv', now() + interval '2 days'
   );
   if issued.outcome is distinct from 'created'
-     or (select expires_at from public.redemptions where challenge_item_id = happy_item) is distinct from deadline
+     or (select expires_at from public.redemptions where challenge_item_id = happy_item)
+        is distinct from least(now() + interval '2 days', deadline)
+     or (select expires_at from public.redemptions where challenge_item_id = happy_item) > deadline
      or deadline >= now() + interval '840 hours'
      or (select status from public.entitlement_credits where id = happy_credit) is distinct from 'linked' then
     raise exception 'FAIL: carried QR expiry was %', issued.outcome;

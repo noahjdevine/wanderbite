@@ -374,4 +374,48 @@ describe('verifyRedemptionTokenForPartner', () => {
       message: 'Code expired',
     });
   });
+
+  it('reports a row already marked expired', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    from.mockImplementation((table: string) => {
+      if (table !== 'redemptions') return { select: () => ({}) };
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+            limit: async () => ({
+              data: [issuedRow({ status: 'expired' })],
+              error: null,
+            }),
+          }),
+        }),
+      };
+    });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+      success: false,
+      message: 'Code expired',
+    });
+    expect(rpc).toHaveBeenCalled();
+  });
+
+  it('rejects a rotated token that no longer matches a redemption', async () => {
+    rpc.mockResolvedValue({ data: [], error: null });
+    from.mockImplementation((table: string) => {
+      if (table !== 'redemptions') return { select: () => ({}) };
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+            limit: async () => ({ data: [], error: null }),
+          }),
+        }),
+      };
+    });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    await expect(verifyRedemptionTokenForPartner('WB-OLDHASH')).resolves.toEqual({
+      success: false,
+      message: 'Invalid code',
+    });
+  });
 });
