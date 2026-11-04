@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { segmentHref, type PassportSegmentId } from '@/lib/passport/passport-board';
 
 const SEGMENTS: { id: PassportSegmentId; label: string }[] = [
-  { id: 'stamps', label: 'Stamps' },
+  { id: 'stamps', label: 'Passport' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'map', label: 'Map' },
 ];

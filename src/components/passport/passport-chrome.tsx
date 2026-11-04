@@ -138,7 +138,7 @@ export function PassportChrome({
             </p>
           )}
           {pageYear && segment === 'stamps' ? (
-            <p className="sr-only">Stamp page {pageYear}</p>
+            <p className="sr-only">Passport {pageYear}</p>
           ) : null}
           <PassportSegments active={segment} />
         </div>

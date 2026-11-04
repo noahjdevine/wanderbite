@@ -290,9 +290,9 @@ describe('passport board', () => {
     expect(screen.queryByText('0 months streak')).toBeNull();
   });
 
-  it('links Stamps and Timeline and leaves Map closed', () => {
+  it('links Passport and Timeline and leaves Map closed', () => {
     render(<PassportSegments active="stamps" />);
-    expect(screen.getByRole('radio', { name: 'Stamps' }).getAttribute('href')).toBe('/journey?view=passport');
+    expect(screen.getByRole('radio', { name: 'Passport' }).getAttribute('href')).toBe('/journey?view=passport');
     expect(screen.getByRole('radio', { name: 'Timeline' }).getAttribute('href')).toBe('/journey?view=journal');
     const map = screen.getByRole('radio', { name: 'Map, coming later' });
     expect(map.getAttribute('aria-disabled')).toBe('true');
