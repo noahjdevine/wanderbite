@@ -46,6 +46,7 @@ import { NearbyIdeas } from '@/components/activities/nearby-ideas';
 import type { ActivitySuggestion } from '@/lib/activities/types';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { RECIPES_SECTION_HEADING, type RecipeCardModel } from '@/lib/recipes/display';
+import { StatusTrack } from '@/components/wb/status-track';
 
 function formatOffer(discountCents: number, minSpendCents: number): string {
   const dollars = discountCents / 100;
@@ -421,6 +422,7 @@ export function RestaurantCard({
           </p>
         ) : null}
         {revealReason ? <p className="text-sm text-foreground">{revealReason}</p> : null}
+        {item.visitStatus ? <StatusTrack status={item.visitStatus} /> : null}
         <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
         {item.socialProof &&
           item.socialProof.totalRatings >= 3 &&

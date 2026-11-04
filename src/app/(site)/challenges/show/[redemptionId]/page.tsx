@@ -92,6 +92,12 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     itemStatus = itemRow?.status ?? null;
     redemptionDeadline = itemRow?.redemption_deadline ?? null;
   }
+  const { data: noteRow } = await admin
+    .from('bite_notes')
+    .select('redemption_id')
+    .eq('redemption_id', row.id)
+    .maybeSingle();
+  const hasNote = Boolean(noteRow);
   let sealed = null as ReturnType<typeof lowestSealedBase>;
   if (versionId) {
     const { data: version } = await admin
@@ -147,6 +153,8 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
         minSpendLabel={minSpendLabel}
         status={phase}
         verifiedAt={verifiedAt}
+        itemStatus={itemStatus}
+        hasNote={hasNote}
       />
     </main>
   );

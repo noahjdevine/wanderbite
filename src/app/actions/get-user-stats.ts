@@ -5,10 +5,12 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { levelFromXp, xpFromVerifiedVisits } from '@/lib/progress/rules';
+import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
 
 export type UserStatsHistoryItem = {
   restaurantName: string;
   date: string;
+  visitStatus: VisitStatus;
 };
 
 export type UserStatsBadge = {
@@ -48,7 +50,7 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
 
     const { data: redemptions, error } = await supabase
       .from('redemptions')
-      .select('restaurant_id, verified_at, restaurants(name)')
+      .select('id, restaurant_id, verified_at, expires_at, status, restaurants(name)')
       .eq('user_id', auth.userId)
       .eq('status', 'verified')
       .order('verified_at', { ascending: false });
@@ -58,6 +60,21 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
     }
 
     const list = redemptions ?? [];
+    const noteByRedemptionId = new Map<string, { note: string | null }>();
+    if (list.length > 0) {
+      const { data: noteRows, error: noteError } = await supabase
+        .from('bite_notes')
+        .select('redemption_id, note')
+        .in(
+          'redemption_id',
+          list.map((row) => row.id),
+        );
+      if (noteError) return { ok: false, error: noteError.message };
+      for (const row of noteRows ?? []) {
+        noteByRedemptionId.set(row.redemption_id, { note: row.note });
+      }
+    }
+    const now = new Date();
     const redemptionCount = list.length;
     const xp = xpFromVerifiedVisits(redemptionCount);
     const levelInfo = levelFromXp(xp);
@@ -68,8 +85,11 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
 
     const history: UserStatsHistoryItem[] = list.map((row) => {
       const r = row as {
+        id: string;
         restaurant_id: string;
         verified_at: string | null;
+        expires_at: string | null;
+        status: string | null;
         restaurants: { name: string } | { name: string }[] | null;
       };
       const restaurantRel = unwrapJoin(r.restaurants);
@@ -78,7 +98,20 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
         : '—';
       const restaurantName =
         restaurantRel?.name ?? 'Unknown restaurant';
-      return { restaurantName, date };
+      return {
+        restaurantName,
+        date,
+        visitStatus: deriveVisitStatus({
+          item: { status: 'redeemed', redemptionDeadline: null },
+          redemption: {
+            status: r.status ?? 'verified',
+            verifiedAt: r.verified_at,
+            expiresAt: r.expires_at,
+          },
+          note: noteByRedemptionId.get(r.id) ?? null,
+          now,
+        }),
+      };
     });
 
     const { data: allBadges, error: badgesErr } = await supabase

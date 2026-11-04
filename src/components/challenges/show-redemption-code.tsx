@@ -11,22 +11,60 @@ import {
   formatRedemptionCountdown,
   visitWindowOpen,
 } from '@/lib/redemption-expiry';
+import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 
-const CODE_ISSUED = 'Code issued';
 const ONE_MINUTE_LEFT = '1 minute left';
-const CODE_EXPIRED = 'This code expired. Get a new one';
 const CODE_REISSUED = 'Code reissued';
 const ONE_MINUTE_MS = 60_000;
+
+function liveVisitStatus(args: {
+  phase: ShowRedemptionCodeProps['status'];
+  expiresAt: string | null;
+  redemptionDeadline: string | null;
+  itemStatus: string | null;
+  hasNote: boolean;
+  verifiedAt: string | null | undefined;
+  nowMs: number;
+}): VisitStatus {
+  return deriveVisitStatus({
+    item: {
+      status: args.itemStatus ?? 'assigned',
+      redemptionDeadline: args.redemptionDeadline,
+    },
+    redemption: {
+      status: args.phase,
+      verifiedAt: args.phase === 'verified' ? (args.verifiedAt ?? 'verified') : null,
+      expiresAt: args.expiresAt,
+    },
+    note: args.hasNote ? { note: null } : null,
+    now: new Date(args.nowMs),
+  });
+}
 
 function openingAnnouncement(
   status: ShowRedemptionCodeProps['status'],
   expiresAt: string | null,
+  redemptionDeadline: string | null,
+  itemStatus: string | null,
+  hasNote: boolean,
   nowMs: number,
 ): string {
-  if (status === 'expired') return CODE_EXPIRED;
-  if (status !== 'issued' || !expiresAt) return '';
-  const remaining = new Date(expiresAt).getTime() - nowMs;
-  return remaining <= ONE_MINUTE_MS ? ONE_MINUTE_LEFT : CODE_ISSUED;
+  const derived = liveVisitStatus({
+    phase: status,
+    expiresAt,
+    redemptionDeadline,
+    itemStatus,
+    hasNote,
+    verifiedAt: null,
+    nowMs,
+  });
+  if (derived === 'code_issued') {
+    if (!expiresAt) return visitStatusLabel('code_issued');
+    const remaining = new Date(expiresAt).getTime() - nowMs;
+    return remaining <= ONE_MINUTE_MS ? ONE_MINUTE_LEFT : visitStatusLabel('code_issued');
+  }
+  if (derived === 'code_expired' || derived === 'expired') return visitStatusLabel(derived);
+  return '';
 }
 
 type ShowRedemptionCodeProps = {
@@ -42,6 +80,10 @@ type ShowRedemptionCodeProps = {
   minSpendLabel: string;
   status: 'issued' | 'verified' | 'expired';
   verifiedAt?: string | null;
+  /** Stored challenge_items.status. Null when the redemption has no item. */
+  itemStatus?: string | null;
+  /** True when a bite_notes row exists for this redemption. */
+  hasNote?: boolean;
 };
 
 export function ShowRedemptionCode({
@@ -57,6 +99,8 @@ export function ShowRedemptionCode({
   minSpendLabel,
   status,
   verifiedAt,
+  itemStatus = null,
+  hasNote = false,
 }: ShowRedemptionCodeProps) {
   const [phase, setPhase] = useState(status);
   const [liveCode, setLiveCode] = useState(code);
@@ -65,7 +109,7 @@ export function ShowRedemptionCode({
   const [reissuing, setReissuing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState(() =>
-    openingAnnouncement(status, expiresAt, Date.now()),
+    openingAnnouncement(status, expiresAt, redemptionDeadline, itemStatus, hasNote, Date.now()),
   );
   const refreshing = useRef(false);
   const announcedMinute = useRef(announcement === ONE_MINUTE_LEFT);
@@ -101,14 +145,26 @@ export function ShowRedemptionCode({
         setLiveCode(null);
         setLiveExpiresAt(result.expiresAt);
         setPhase('expired');
-        setAnnouncement(CODE_EXPIRED);
+        setAnnouncement(
+          visitStatusLabel(
+            liveVisitStatus({
+              phase: 'expired',
+              expiresAt: result.expiresAt,
+              redemptionDeadline,
+              itemStatus,
+              hasNote,
+              verifiedAt,
+              nowMs: Date.now(),
+            }),
+          ),
+        );
       }
     } catch {
       return;
     } finally {
       refreshing.current = false;
     }
-  }, [noteReissue, redemptionId]);
+  }, [hasNote, itemStatus, noteReissue, redemptionDeadline, redemptionId, verifiedAt]);
 
   useEffect(() => {
     if (phase === 'verified') return;
@@ -143,13 +199,19 @@ export function ShowRedemptionCode({
 
   const remainingMs = liveExpiresAt ? new Date(liveExpiresAt).getTime() - nowMs : 0;
   const windowOpen = canReissue && visitWindowOpen(redemptionDeadline, new Date(nowMs));
+  const liveStatus = liveVisitStatus({
+    phase,
+    expiresAt: liveExpiresAt,
+    redemptionDeadline,
+    itemStatus,
+    hasNote,
+    verifiedAt,
+    nowMs,
+  });
+  const statusLabel = visitStatusLabel(liveStatus);
   const scanUrl = liveCode ? buildPartnerRedeemScanUrl(restaurantSlug, liveCode) : null;
   const statusText =
-    phase === 'expired'
-      ? 'This code expired. Get a new one'
-      : phase === 'issued'
-        ? `Code expires in ${formatRedemptionCountdown(remainingMs)}`
-        : null;
+    phase === 'issued' ? `Code expires in ${formatRedemptionCountdown(remainingMs)}` : null;
 
   async function reissue() {
     if (!challengeItemId || reissuing) return;
@@ -183,6 +245,9 @@ export function ShowRedemptionCode({
           Show your server
         </p>
         <h1 className="mt-1 text-xl font-semibold">{restaurantName}</h1>
+        <p className="mt-2 text-sm font-medium" data-visit-status={liveStatus}>
+          {statusLabel}
+        </p>
         <p className="mt-1 text-sm text-primary">{discountLabel}</p>
         <p className="text-xs text-muted-foreground">{minSpendLabel}</p>
       </div>
@@ -196,7 +261,7 @@ export function ShowRedemptionCode({
         </div>
       ) : phase === 'expired' || !liveCode || !scanUrl ? (
         <div className="mt-8 rounded-xl border bg-card p-6 text-center">
-          <p className="font-medium">{CODE_EXPIRED}</p>
+          <p className="font-medium">{statusLabel}</p>
           {windowOpen && challengeItemId ? (
             <Button className="mt-4" disabled={reissuing} onClick={() => void reissue()} type="button">
               {reissuing ? 'Getting a new code…' : 'Get a new one'}

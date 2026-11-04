@@ -6,6 +6,7 @@ import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { getMemberProgress, presentMemberProgress } from '@/lib/progress/get-member-progress';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { loadRecipeSections } from '@/lib/recipes/load';
+import { deriveVisitStatus } from '@/lib/visits/visit-status';
 import {
   PassportClient,
   type PassportBiteNoteEntry,
@@ -94,6 +95,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
       return {
         id: r.id,
         verifiedAt: r.verified_at,
+        visitStatus: 'verified',
         restaurant: restaurantVisit,
       };
     })
@@ -125,8 +127,10 @@ export async function PassportContent({ userId }: PassportContentProps) {
   const presented = presentMemberProgress(progress);
 
   const biteNotesByRestaurantId: PassportBiteNotesByRestaurant = {};
+  const noteByRedemptionId = new Map<string, { note: string | null }>();
   if (biteRes.ok) {
     for (const row of biteRes.data) {
+      noteByRedemptionId.set(row.redemption_id, { note: row.note });
       const entry: PassportBiteNoteEntry = {
         redemption_id: row.redemption_id,
         restaurant_id: row.restaurant_id,
@@ -138,6 +142,19 @@ export async function PassportContent({ userId }: PassportContentProps) {
       list.push(entry);
       biteNotesByRestaurantId[row.restaurant_id] = list;
     }
+  }
+  const now = new Date();
+  for (const visit of visits) {
+    visit.visitStatus = deriveVisitStatus({
+      item: { status: 'redeemed', redemptionDeadline: null },
+      redemption: {
+        status: 'verified',
+        verifiedAt: visit.verifiedAt,
+        expiresAt: null,
+      },
+      note: noteByRedemptionId.get(visit.id) ?? null,
+      now,
+    });
   }
 
   const ratingsByRestaurantId: PassportRestaurantRatings =

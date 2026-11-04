@@ -5,12 +5,15 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { safeManualImagePath } from '@/lib/restaurant-image';
 import type { GeneratedChallengeItem } from '@/lib/challenges/generate';
+import { deriveVisitStatus } from '@/lib/visits/visit-status';
 
 export type CarriedRedemptionSnapshot = {
   id: string;
   challenge_item_id: string | null;
   status: string | null;
   created_at: string | null;
+  verified_at?: string | null;
+  expires_at?: string | null;
 };
 
 export type CarriedCreditView = {
@@ -126,12 +129,27 @@ export async function loadCarriedCreditsForUser(
   if (linkedItemIds.length > 0) {
     const { data: redemptions, error: redemptionError } = await admin
       .from('redemptions')
-      .select('id, challenge_item_id, status, created_at')
+      .select('id, challenge_item_id, status, created_at, verified_at, expires_at')
       .in('challenge_item_id', linkedItemIds);
     if (redemptionError) {
       return { ok: false, error: `Failed to load redemptions: ${redemptionError.message}` };
     }
     redemptionRows.push(...(redemptions ?? []));
+  }
+
+  const noteByRedemptionId = new Map<string, { note: string | null }>();
+  if (redemptionRows.length > 0) {
+    const { data: noteRows } = await admin
+      .from('bite_notes')
+      .select('redemption_id, note')
+      .in(
+        'redemption_id',
+        redemptionRows.map((row) => row.id),
+      );
+    for (const row of noteRows ?? []) {
+      const note = row as { redemption_id: string; note: string | null };
+      noteByRedemptionId.set(note.redemption_id, { note: note.note });
+    }
   }
 
   const visibleLinked = credits.flatMap((credit) => {
@@ -218,6 +236,10 @@ export async function loadCarriedCreditsForUser(
       : undefined;
     const stats = ratings.get(restaurant.id);
     const deadline = effectiveDeadlineAt(credit, linked.item);
+    const shown = linked.redemptionId
+      ? redemptionRows.find((row) => row.id === linked.redemptionId) ?? null
+      : null;
+    const note = shown ? noteByRedemptionId.get(shown.id) ?? null : null;
     views.push({
       creditId: credit.id,
       issuePeriod: credit.issue_period,
@@ -253,6 +275,21 @@ export async function loadCarriedCreditsForUser(
         offer: sealed ? { available: true, ...sealed } : { available: false },
         redemptionToken: null,
         redemptionId: linked.redemptionId,
+        visitStatus: deriveVisitStatus({
+          item: {
+            status: linked.item.status ?? 'assigned',
+            redemptionDeadline: linked.item.redemption_deadline,
+          },
+          redemption: shown
+            ? {
+                status: shown.status ?? '',
+                verifiedAt: shown.verified_at ?? null,
+                expiresAt: shown.expires_at ?? null,
+              }
+            : null,
+          note,
+          now,
+        }),
         socialProof: stats
           ? { avgRating: stats.avgRating, totalRatings: stats.totalRatings }
           : { avgRating: null, totalRatings: 0 },

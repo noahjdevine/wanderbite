@@ -269,6 +269,92 @@ describe('getMemberProgress', () => {
     expect(presentMemberProgress(progress).showFirstBiteLocked).toBe(true);
   });
 
+  it('does not count a code at expires_at, an expired code, or a swapped issued code', async () => {
+    mockTables(
+      tablesFor({
+        redemptions: [
+          {
+            id: 'at-now',
+            status: 'issued',
+            verified_at: null,
+            expires_at: NOV_3.toISOString(),
+            restaurant_id: 'rest-a',
+            challenge_item_id: null,
+          },
+          {
+            id: 'expired-row',
+            status: 'expired',
+            verified_at: null,
+            expires_at: '2026-10-01T18:00:00.000Z',
+            restaurant_id: 'rest-b',
+            challenge_item_id: null,
+          },
+          {
+            id: 'swapped-code',
+            status: 'issued',
+            verified_at: null,
+            expires_at: '2026-12-01T18:00:00.000Z',
+            restaurant_id: 'rest-c',
+            challenge_item_id: 'item-swapped',
+          },
+        ],
+        items: [
+          {
+            id: 'item-swapped',
+            offer_version_id: null,
+            status: 'swapped_out',
+            redemption_deadline: '2026-12-01T18:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 0,
+      pendingVisits: 0,
+      uniqueRestaurants: 0,
+      xp: 0,
+      currentMonthlyStreak: 0,
+      savings: { amount: 0, isEstimate: true },
+    });
+    if ('error' in progress) throw new Error('expected progress');
+    expect(progress.badges.find((badge) => badge.id === 'first_bite')?.earnedAt).toBeNull();
+  });
+
+  it('keeps a verified visit after the code clock and the visit window close', async () => {
+    mockTables(
+      tablesFor({
+        redemptions: [
+          {
+            id: 'verified-late',
+            status: 'verified',
+            verified_at: '2026-10-02T15:00:00.000Z',
+            expires_at: '2026-10-02T16:00:00.000Z',
+            restaurant_id: 'rest-a',
+            challenge_item_id: 'item-1',
+          },
+        ],
+        restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+        items: [
+          {
+            id: 'item-1',
+            offer_version_id: null,
+            status: 'expired',
+            redemption_deadline: '2026-10-03T00:00:00.000Z',
+          },
+        ],
+      }),
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 1,
+      pendingVisits: 0,
+      xp: 100,
+      uniqueRestaurants: 1,
+      savings: { amount: 10, isEstimate: true },
+    });
+  });
+
   it('counts two verified visits at one restaurant as two visits and one place', async () => {
     mockTables(
       tablesFor({
