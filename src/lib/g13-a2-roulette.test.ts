@@ -58,22 +58,25 @@ describe('G13-A2 idempotency and bounds', () => {
 describe('G13-A2 roulette route and client contracts', () => {
   it('pins Haiku snapshot, maxDuration 60, and fail-closed billable AI', () => {
     const route = readFileSync(path.join(ROOT, 'src/app/api/roulette/route.ts'), 'utf8');
+    const turn = readFileSync(path.join(ROOT, 'src/lib/discover/turn.ts'), 'utf8');
     const models = readFileSync(path.join(ROOT, 'src/lib/ai-budget/models.ts'), 'utf8');
     expect(route).toMatch(/export const maxDuration = 60/);
+    expect(route).toMatch(/runDiscoverTurn/);
     expect(models).toMatch(/claude-haiku-4-5-20251001/);
-    expect(route).toMatch(/ANTHROPIC_HAIKU_SNAPSHOT/);
-    expect(route).not.toMatch(/model: 'claude-haiku-4-5'/);
-    expect(route).toMatch(/isWanderbiteAiDisabled/);
-    expect(route).toMatch(/allowBillableRoulette/);
-    expect(route).toMatch(/trustedClientIpFromHeaders/);
-    expect(route).not.toMatch(/x-real-ip/);
-    expect(route).not.toMatch(/getClientIp/);
-    expect(route).toMatch(/rpcAiReserve/);
-    expect(route).toMatch(/rpcAiDispatch/);
-    expect(route).toMatch(/selectionMode/);
-    expect(route).not.toMatch(/anthropicRaw\.slice/);
-    expect(route.match(/fetch\('https:\/\/api\.anthropic\.com\/v1\/messages'/g)?.length).toBe(1);
+    expect(turn).toMatch(/ANTHROPIC_HAIKU_SNAPSHOT/);
+    expect(turn).not.toMatch(/model: 'claude-haiku-4-5'/);
+    expect(turn).toMatch(/isWanderbiteAiDisabled/);
+    expect(turn).toMatch(/allowBillableRoulette/);
+    expect(turn).toMatch(/trustedClientIpFromHeaders/);
+    expect(turn).not.toMatch(/x-real-ip/);
+    expect(turn).not.toMatch(/getClientIp/);
+    expect(turn).toMatch(/rpcAiReserve/);
+    expect(turn).toMatch(/rpcAiDispatch/);
+    expect(turn).toMatch(/selectionMode/);
+    expect(turn).not.toMatch(/anthropicRaw\.slice/);
+    expect(turn.match(/fetch\('https:\/\/api\.anthropic\.com\/v1\/messages'/g)?.length).toBe(1);
     expect(route).not.toMatch(/CHECKOUT_ENABLED/);
+    expect(turn).not.toMatch(/CHECKOUT_ENABLED/);
   });
 
   it('reuses one client UUID on network retry and keeps auth transfer best-effort', () => {
