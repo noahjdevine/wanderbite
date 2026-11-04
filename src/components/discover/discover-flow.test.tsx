@@ -18,7 +18,15 @@ vi.mock('next/image', () => ({
   },
 }));
 
-const partner = { id: 'rest-1', name: 'Noodle House', cuisine: 'Chinese', neighborhood: 'McKinney' };
+const mapsUrl =
+  'https://www.google.com/maps/search/?api=1&query=Noodle%20House%20McKinney%20TX';
+const partner = {
+  id: 'rest-1',
+  name: 'Noodle House',
+  cuisine: 'Chinese',
+  neighborhood: 'McKinney',
+  directions: { mapsUrl },
+};
 
 function stream(events: DiscoverEvent[]): DiscoverEvent[] {
   return events;
@@ -67,7 +75,12 @@ function jsonError(status: number, error: string): Response {
   });
 }
 
-function postedBodies(): { message?: string; priceRange?: string; vibe?: string }[] {
+function postedBodies(): {
+  message?: string;
+  priceRange?: string;
+  vibe?: string;
+  excludeRestaurantIds?: string[];
+}[] {
   return vi
     .mocked(fetch)
     .mock.calls.map((call) => {
@@ -76,6 +89,7 @@ function postedBodies(): { message?: string; priceRange?: string; vibe?: string 
         message?: string;
         priceRange?: string;
         vibe?: string;
+        excludeRestaurantIds?: string[];
       };
     });
 }
@@ -208,6 +222,9 @@ describe('DiscoverFlow', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1400);
     });
+    const link = screen.getByRole('link', { name: "Let's go" });
+    expect(link.getAttribute('href')).toBe(mapsUrl);
+    expect(link.getAttribute('target')).toBe('_blank');
     fireEvent.click(screen.getByRole('button', { name: 'Cheaper' }));
     await flush();
     await act(async () => {
@@ -217,10 +234,13 @@ describe('DiscoverFlow', () => {
     await flush();
     const bodies = postedBodies();
     expect(bodies[0]?.message).toBe('spicy noodles');
+    expect(bodies[0]?.excludeRestaurantIds).toBeUndefined();
     expect(bodies[1]?.message).toBe('spicy noodles');
     expect(bodies[1]?.priceRange).toBe('$');
+    expect(bodies[1]?.excludeRestaurantIds).toBeUndefined();
     expect(bodies[2]?.message).toBe('spicy noodles');
     expect(bodies[2]?.priceRange).toBeUndefined();
+    expect(bodies[2]?.excludeRestaurantIds).toEqual(['rest-1']);
   });
 
   it('shows arrived steps immediately when reduced motion is on', async () => {

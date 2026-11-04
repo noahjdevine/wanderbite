@@ -170,18 +170,23 @@ describe('discover screen reducer', () => {
     expect(dietaryButtonLabel([])).toBe('Dietary: none set');
   });
 
-  it('links directions only from an address or maps URL and omits Closer', () => {
+  it('links directions from partner.directions and omits Closer', () => {
     expect(directionsHref(partner)).toBeNull();
-    expect(
-      directionsHref({ ...partner, address: '100 Main St' } as PartnerLite),
-    ).toContain('maps/search');
+    const mapsUrl = 'https://www.google.com/maps/search/?api=1&query=Noodle%20House%20McKinney%20TX';
+    expect(directionsHref({ ...partner, directions: { mapsUrl } })).toBe(mapsUrl);
+    expect(directionsHref({ ...partner, directions: { address: '100 Main St' } })).toContain(
+      'maps/search',
+    );
+    expect(directionsHref({ ...partner, directions: { address: '100 Main St' } })).toContain(
+      'McKinney',
+    );
+    expect(directionsHref({ ...partner, directions: { mapsUrl: 'http://example.com' } })).toBeNull();
     expect(
       directionsHref({
         ...partner,
-        mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Noodle',
-      } as PartnerLite),
-    ).toContain('google.com/maps');
-    expect(directionsHref({ ...partner, mapsUrl: 'http://example.com' } as PartnerLite)).toBeNull();
+        directions: { mapsUrl: 'http://example.com', address: '100 Main St' },
+      }),
+    ).toContain('McKinney');
     expect(closerChipIncluded(partner)).toBe(false);
     expect(closerChipIncluded({ ...partner, lat: 33.2, lon: -96.6 } as PartnerLite)).toBe(false);
   });

@@ -80,6 +80,10 @@ import {
 } from '@/lib/discover/fallback-reason';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
 import type { DiscoverEvent } from '@/lib/discover/events';
+import {
+  applyRestaurantExclusion,
+  canonicalFilterWithExcludedRestaurants,
+} from '@/lib/discover/exclude-restaurants';
 import { listedDiscoverRestaurants, type DiscoverRestaurant } from '@/lib/discover/stages';
 import { recipeQaEnabled } from '@/lib/recipes/flag';
 import { discoveryRecipeQaIntent } from '@/lib/recipes/qa-intent';
@@ -250,6 +254,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       timeOfDay?: string;
       dietaryQuick?: unknown;
       excludedCuisines?: unknown;
+      excludeRestaurantIds?: unknown;
       priceRange?: string;
       preferredCuisine?: string;
       idempotencyKey?: string;
@@ -292,6 +297,10 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
         ? body.preferredCuisine
         : undefined;
     const bodyExcluded = boundStringArray(body.excludedCuisines, ROULETTE_MAX_EXCLUDED);
+    const excludeRestaurantIds = boundStringArray(
+      body.excludeRestaurantIds,
+      ROULETTE_MAX_EXCLUDED,
+    );
     const vibeRaw =
       typeof body.vibe === 'string' ? clipChars(body.vibe.trim(), ROULETTE_MAX_STRING_CHARS) : '';
     const timeRaw =
@@ -461,6 +470,8 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       }
     }
 
+    restaurants = applyRestaurantExclusion(restaurants, excludeRestaurantIds);
+
     const byId = new Map(restaurants.map((r) => [r.id, r]));
     const poolIds = new Set(byId.keys());
 
@@ -536,14 +547,17 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
 
     let promptRows = shuffleArray(restaurants).slice(0, ROULETTE_MAX_RESTAURANTS_IN_PROMPT);
     const requestNonce = randomUUID();
-    const filterCanonical = canonicalFilterString({
-      dietary: dietaryFlags,
-      excluded: excludedCuisines,
-      vibe,
-      timeOfDay,
-      priceRange,
-      preferredCuisine,
-    });
+    const filterCanonical = canonicalFilterWithExcludedRestaurants(
+      canonicalFilterString({
+        dietary: dietaryFlags,
+        excluded: excludedCuisines,
+        vibe,
+        timeOfDay,
+        priceRange,
+        preferredCuisine,
+      }),
+      excludeRestaurantIds,
+    );
 
     const dietaryLine =
       dietaryFlags.length > 0

@@ -87,7 +87,11 @@ export function DiscoverFlow({
   );
 
   const run = useCallback(
-    async (next: DiscoverDraft, replaceOrigin: boolean) => {
+    async (
+      next: DiscoverDraft,
+      replaceOrigin: boolean,
+      excludeRestaurantIds?: readonly string[],
+    ) => {
       if (inFlight.current) return;
       const withExclusions: DiscoverDraft = {
         ...next,
@@ -120,11 +124,12 @@ export function DiscoverFlow({
       setPhase('thinking');
 
       try {
-        const result = await postDiscoverAsk(
-          draftToSpinBody(withExclusions),
-          crypto.randomUUID(),
-          controller.signal,
-        );
+        const spin = draftToSpinBody(withExclusions);
+        const body =
+          excludeRestaurantIds && excludeRestaurantIds.length > 0
+            ? { ...spin, excludeRestaurantIds: [...excludeRestaurantIds] }
+            : spin;
+        const result = await postDiscoverAsk(body, crypto.randomUUID(), controller.signal);
         if (requestId.current !== id) return;
         if (result.kind === 'error') {
           setErrorMessage(result.message);
@@ -181,9 +186,11 @@ export function DiscoverFlow({
     setErrorMessage(null);
   }
 
-  function resubmit(refine: DiscoverRefine) {
+  function resubmit(refine: DiscoverRefine, excludeRestaurantId?: string) {
     const origin = originDraft ?? draft;
-    void run(refineDiscoverDraft(origin, refine), false);
+    const excludeRestaurantIds =
+      refine === 'another' && excludeRestaurantId ? [excludeRestaurantId] : undefined;
+    void run(refineDiscoverDraft(origin, refine), false, excludeRestaurantIds);
   }
 
   const outcome = outcomeFromEvents(events);
@@ -248,7 +255,11 @@ export function DiscoverFlow({
             setRefineOpen(true);
             backToAsk();
           }}
-          onAnother={() => resubmit('another')}
+          onAnother={() => {
+            const shownId =
+              outcome.kind === 'fallback' ? outcome.event.alternative.id : outcome.event.partner.id;
+            resubmit('another', shownId);
+          }}
           onCheaper={() => resubmit('cheaper')}
           onNewVibe={() => resubmit('new-vibe')}
         />
