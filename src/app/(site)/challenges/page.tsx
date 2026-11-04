@@ -10,7 +10,6 @@ import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
-import { IncompleteProfileNotice } from '@/components/account/incomplete-profile-notice';
 import {
   loadCarriedCreditsForUser,
   loadCreditsSwapRemaining,
@@ -185,33 +184,29 @@ export default async function ChallengesPage() {
   });
 
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen bg-wb-cream">
       <Suspense fallback={null}>
         <SubscriptionSuccessToast />
       </Suspense>
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-        <h1 className="mb-8 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-          Culinary Adventure Awaits
-        </h1>
-        {gate.profileComplete ? null : <IncompleteProfileNotice />}
-        <DashboardClient
-          launchEligible={area === 'eligible'}
-          currentChallenge={currentChallenge}
-          streak={presentedProgress.streak}
-          progressUnavailable={presentedProgress.progressUnavailable}
-          earnedBadges={presentedProgress.earnedBadges}
-          showFirstBiteLocked={presentedProgress.showFirstBiteLocked}
-          nextBadge={presentedProgress.nextBadge}
-          biteNotes={biteNotesForDash}
-          memoryReturnTo="/challenges"
-          creditHold={creditHold}
-          creditsSwapRemaining={creditsSwapRemaining}
-          carriedCredits={carriedCredits}
-          monthlyReveal={monthlyReveal}
-          recipeSections={recipeSections}
-          activitySuggestions={activitySuggestions}
-        />
-      </div>
+      <DashboardClient
+        appearance="golden"
+        showIncompleteProfile={!gate.profileComplete}
+        launchEligible={area === 'eligible'}
+        currentChallenge={currentChallenge}
+        streak={presentedProgress.streak}
+        progressUnavailable={presentedProgress.progressUnavailable}
+        earnedBadges={presentedProgress.earnedBadges}
+        showFirstBiteLocked={presentedProgress.showFirstBiteLocked}
+        nextBadge={presentedProgress.nextBadge}
+        biteNotes={biteNotesForDash}
+        memoryReturnTo="/challenges"
+        creditHold={creditHold}
+        creditsSwapRemaining={creditsSwapRemaining}
+        carriedCredits={carriedCredits}
+        monthlyReveal={monthlyReveal}
+        recipeSections={recipeSections}
+        activitySuggestions={activitySuggestions}
+      />
     </main>
   );
 }

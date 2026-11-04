@@ -139,7 +139,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
       : row.expires_at;
 
   return (
-    <main className="min-h-screen bg-background">
+    <main className="min-h-screen bg-wb-cream">
       <ShowRedemptionCode
         redemptionId={row.id}
         challengeItemId={row.challenge_item_id}
