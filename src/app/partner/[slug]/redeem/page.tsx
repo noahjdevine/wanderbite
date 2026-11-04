@@ -40,16 +40,11 @@ export default async function PartnerRedeemPage({ params, searchParams }: PagePr
 
   if (error || !row) {
     return (
-      <div className="mx-auto max-w-md px-6 py-16 text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">Portal not found</h1>
-        <p className="mt-3 text-sm text-muted-foreground">
+      <div className="wb-partner-narrow wb-partner-center">
+        <h1 className="wb-partner-title">Portal not found</h1>
+        <p className="wb-partner-lede">
           Contact{' '}
-          <a
-            href="mailto:support@wanderbite.com"
-            className="font-medium text-primary underline-offset-4 hover:underline"
-          >
-            support@wanderbite.com
-          </a>{' '}
+          <a href="mailto:support@wanderbite.com">support@wanderbite.com</a>{' '}
           for your partner link.
         </p>
       </div>
@@ -61,7 +56,7 @@ export default async function PartnerRedeemPage({ params, searchParams }: PagePr
 
   if (!session.ok || session.restaurantId !== restaurant.id) {
     return (
-      <div className="mx-auto max-w-md px-6 py-12">
+      <div className="wb-partner-narrow">
         <PartnerSlugLogin
           restaurantId={restaurant.id}
           restaurantName={restaurant.name}

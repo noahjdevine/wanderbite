@@ -3,8 +3,6 @@
 import { useActionState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
 import { loginPartnerFromForm } from '@/app/actions/partner-auth';
 import { persistAndStripPartnerRedeemCode } from '@/lib/pending-redeem-storage';
 import { PartnerPinField } from '@/components/partner/partner-pin-field';
@@ -16,6 +14,8 @@ type PartnerSlugLoginProps = {
   redirectSlug?: string;
   initialCode?: string | null;
 };
+
+const PIN_ERROR_ID = 'partner-slug-pin-error';
 
 function pinErrorCopy(error: string): string {
   return /invalid pin/i.test(error)
@@ -32,6 +32,7 @@ export function PartnerSlugLogin({
 }: PartnerSlugLoginProps) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(loginPartnerFromForm, null);
+  const invalid = Boolean(state && !state.ok);
   const nextPath =
     mode === 'redeem' && redirectSlug
       ? `/partner/${redirectSlug}/redeem`
@@ -60,53 +61,52 @@ export function PartnerSlugLogin({
   }, [state, mode, redirectSlug, router]);
 
   return (
-    <Card>
-      <CardHeader className="space-y-1 pb-2 text-center">
-        <p className="text-lg font-semibold tracking-tight text-foreground">
-          Welcome, {restaurantName}
-        </p>
-        <p className="text-sm text-muted-foreground">
+    <div className="wb-partner-card">
+      <header className="wb-partner-center">
+        <h1 className="wb-partner-title">Welcome, {restaurantName}</h1>
+        <p className="wb-partner-section-copy">
           {mode === 'redeem'
             ? 'Sign in to verify guest codes (bookmark this page for your host stand).'
             : 'Enter your PIN to access your Wanderbite partner dashboard'}
         </p>
-      </CardHeader>
-      <CardContent>
-        <form action={formAction} className="space-y-4">
-          <input type="hidden" name="restaurantId" value={restaurantId} />
-          {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
-          <div>
-            <label htmlFor="partner-slug-pin" className="mb-1 block text-sm font-medium">
-              PIN
-            </label>
-            <PartnerPinField
-              id="partner-slug-pin"
-              name="pin"
-              disabled={pending}
-              placeholder="Enter your PIN"
-            />
-          </div>
-          <label className="flex cursor-pointer items-start gap-2 text-sm text-muted-foreground">
-            <input
-              type="checkbox"
-              name="rememberDevice"
-              value="true"
-              defaultChecked={mode === 'redeem'}
-              className="mt-0.5"
-              disabled={pending}
-            />
-            <span>Keep me signed in on this device (recommended for host iPad)</span>
+      </header>
+      <form action={formAction} className="wb-partner-form wb-partner-follow">
+        <input type="hidden" name="restaurantId" value={restaurantId} />
+        {nextPath ? <input type="hidden" name="next" value={nextPath} /> : null}
+        <div>
+          <label htmlFor="partner-slug-pin" className="wb-partner-label">
+            PIN
           </label>
-          {state && !state.ok ? (
-            <p className="text-sm text-destructive" role="alert">
-              {pinErrorCopy(state.error)}
-            </p>
-          ) : null}
-          <Button type="submit" className="w-full" disabled={pending}>
-            {pending ? 'Logging in…' : 'Log In'}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+          <PartnerPinField
+            id="partner-slug-pin"
+            name="pin"
+            disabled={pending}
+            placeholder="Enter your PIN"
+            className="wb-partner-field"
+            describedBy={invalid ? PIN_ERROR_ID : undefined}
+            invalid={invalid}
+          />
+        </div>
+        <label className="wb-partner-check-row">
+          <input
+            type="checkbox"
+            name="rememberDevice"
+            value="true"
+            defaultChecked={mode === 'redeem'}
+            className="wb-partner-check"
+            disabled={pending}
+          />
+          <span>Keep me signed in on this device (recommended for host iPad)</span>
+        </label>
+        {state && !state.ok ? (
+          <p id={PIN_ERROR_ID} className="wb-partner-alert wb-partner-alert-error" role="alert" aria-live="assertive">
+            {pinErrorCopy(state.error)}
+          </p>
+        ) : null}
+        <button type="submit" className="wb-cta wb-partner-cta wb-partner-cta-block" disabled={pending}>
+          {pending ? 'Logging in…' : 'Log In'}
+        </button>
+      </form>
+    </div>
   );
 }

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
@@ -95,60 +94,48 @@ export function PartnerRedeemClient({
   }
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-lg flex-col justify-center px-4 py-10">
-      <div className="mb-8 text-center">
-        <p className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-          Redeem mode
-        </p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{restaurantName}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+    <div className="wb-partner-redeem">
+      <div className="wb-partner-redeem-head">
+        <p className="wb-partner-eyebrow">Redeem mode</p>
+        <h1 className="wb-partner-title wb-partner-follow">{restaurantName}</h1>
+        <p className="wb-partner-redeem-copy">
           Scan the guest&apos;s QR code or type their Wanderbite code. Then apply the discount on
           the check in your POS.
         </p>
       </div>
 
       {state.status === 'success' && (
-        <div
-          className="mb-6 flex flex-col items-center gap-2 rounded-xl border-2 border-green-600 bg-green-50 p-6 text-center dark:border-green-500 dark:bg-green-950/40"
-          role="status"
-        >
-          <CheckCircle2 className="size-10 text-green-600 dark:text-green-400" aria-hidden />
-          <p className="text-lg font-semibold text-green-900 dark:text-green-100">Verified</p>
-          <p className="text-sm text-green-800 dark:text-green-200">
-            Apply the Wanderbite discount on the guest&apos;s check.
-          </p>
-          {state.email && (
-            <p className="text-xs text-green-700 dark:text-green-300">Guest: {state.email}</p>
-          )}
-          <p className="text-xs text-green-700 dark:text-green-300">{state.verifiedAt}</p>
-          <Button
-            type="button"
-            variant="outline"
-            className="mt-2"
-            onClick={() => setState({ status: 'idle' })}
-          >
+        <div className="wb-partner-alert wb-partner-alert-ok wb-partner-result" role="status" aria-live="polite">
+          <CheckCircle2 className="size-10" aria-hidden />
+          <p className="wb-partner-alert-title">Verified</p>
+          <p>Apply the Wanderbite discount on the guest&apos;s check.</p>
+          {state.email && <p>Guest: {state.email}</p>}
+          <p>{state.verifiedAt}</p>
+          <button type="button" className="wb-cta-secondary wb-cta-secondary-cream wb-partner-secondary" onClick={() => setState({ status: 'idle' })}>
             Redeem another code
-          </Button>
+          </button>
         </div>
       )}
 
       {state.status === 'error' && (
         <div
-          className="mb-6 flex flex-col items-center gap-2 rounded-xl border-2 border-destructive/50 bg-destructive/10 p-6 text-center"
+          id="partner-redeem-error"
+          className="wb-partner-alert wb-partner-alert-error wb-partner-result"
           role="alert"
+          aria-live="assertive"
         >
-          <XCircle className="size-10 text-destructive" aria-hidden />
-          <p className="font-medium text-destructive">{state.message}</p>
-          <Button type="button" variant="outline" size="sm" onClick={() => setState({ status: 'idle' })}>
+          <XCircle className="size-10" aria-hidden />
+          <p className="wb-partner-alert-title">{state.message}</p>
+          <button type="button" className="wb-cta-secondary wb-cta-secondary-cream wb-partner-secondary" onClick={() => setState({ status: 'idle' })}>
             Try again
-          </Button>
+          </button>
         </div>
       )}
 
       {(state.status === 'idle' || state.status === 'verifying' || state.status === 'error') && (
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="wb-partner-form">
           <div>
-            <label htmlFor="partner-redeem-code" className="mb-2 block text-sm font-medium">
+            <label htmlFor="partner-redeem-code" className="wb-partner-label">
               Customer code
             </label>
             <input
@@ -160,28 +147,32 @@ export function PartnerRedeemClient({
               autoComplete="off"
               autoFocus
               spellCheck={false}
-              className="w-full rounded-xl border-2 border-input bg-background px-4 py-4 text-center font-mono text-2xl font-bold tracking-widest focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="wb-partner-code"
               disabled={state.status === 'verifying'}
+              aria-invalid={state.status === 'error' || undefined}
+              aria-describedby={state.status === 'error' ? 'partner-redeem-error' : undefined}
             />
           </div>
-          <Button type="submit" className="h-12 w-full text-base" disabled={state.status === 'verifying' || !code.trim()}>
+          <button
+            type="submit"
+            className="wb-cta wb-partner-cta wb-partner-cta-block"
+            disabled={state.status === 'verifying' || !code.trim()}
+          >
             {state.status === 'verifying' ? (
               <>
-                <Loader2 className="mr-2 size-5 animate-spin" aria-hidden />
+                <Loader2 className="mr-2 size-5 animate-spin motion-reduce:animate-none" aria-hidden />
                 Verifying…
               </>
             ) : (
               'Verify code'
             )}
-          </Button>
+          </button>
         </form>
       )}
 
-      <div className="mt-10 flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
-        <Link href={`/partner/${slug}`} className="font-medium text-primary underline-offset-4 hover:underline">
-          Full dashboard
-        </Link>
-        <button type="button" onClick={handleLogout} className="hover:text-foreground">
+      <div className="wb-partner-redeem-links">
+        <Link href={`/partner/${slug}`}>Full dashboard</Link>
+        <button type="button" onClick={handleLogout} className="wb-partner-text-button">
           Log out
         </button>
       </div>

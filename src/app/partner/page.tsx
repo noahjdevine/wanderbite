@@ -8,27 +8,15 @@ export const metadata = {
 
 export default function PartnerFallbackPage() {
   return (
-    <div className="mx-auto max-w-md px-6 py-16 text-center">
-      <h1 className="text-xl font-semibold tracking-tight text-foreground">
-        Partner Portal
-      </h1>
-      <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+    <div className="wb-partner-narrow wb-partner-center">
+      <h1 className="wb-partner-title">Partner Portal</h1>
+      <p className="wb-partner-lede">
         Looking for your partner portal? Contact{' '}
-        <a
-          href="mailto:support@wanderbite.com"
-          className="font-medium text-primary underline-offset-4 hover:underline"
-        >
-          support@wanderbite.com
-        </a>{' '}
+        <a href="mailto:support@wanderbite.com">support@wanderbite.com</a>{' '}
         and we&apos;ll send you your unique login link.
       </p>
-      <p className="mt-6 text-xs text-muted-foreground">
-        <Link
-          href="https://wanderbite.vercel.app"
-          className="text-primary underline-offset-4 hover:underline"
-        >
-          Wanderbite home
-        </Link>
+      <p className="wb-partner-fine">
+        <Link href="https://wanderbite.vercel.app">Wanderbite home</Link>
       </p>
     </div>
   );
