@@ -99,6 +99,12 @@ describe('How it Works', () => {
       expect(button.getAttribute('aria-expanded')).toBe('true');
       fireEvent.click(button);
       expect(button.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.keyDown(button, { key: 'Enter' });
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.keyDown(button, { key: 'Enter', repeat: true });
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      fireEvent.keyDown(button, { key: ' ', repeat: true });
+      expect(button.getAttribute('aria-expanded')).toBe('true');
     }
   });
 
@@ -140,5 +146,18 @@ describe('PricingFaq default tone', () => {
     fireEvent.click(button);
     expect(button.getAttribute('aria-expanded')).toBe('true');
     expect(screen.getByText('Yes, one click in your profile.')).toBeTruthy();
+  });
+
+  it('toggles once when Enter repeats and leaves Space to click', () => {
+    render(<PricingFaq />);
+    const button = screen.getByRole('button', { name: 'Can I cancel anytime?' });
+    expect(fireEvent.keyDown(button, { key: 'Enter' })).toBe(false);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(fireEvent.keyDown(button, { key: 'Enter', repeat: true })).toBe(false);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(fireEvent.keyDown(button, { key: ' ', repeat: true })).toBe(true);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-expanded')).toBe('false');
   });
 });
