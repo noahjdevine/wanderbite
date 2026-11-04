@@ -163,7 +163,10 @@ values
   ('authenticated', 'user_profiles', 'DELETE'),
   -- G15: the account owner can insert and update their own topic row. No delete.
   ('authenticated', 'email_topic_preferences', 'INSERT'),
-  ('authenticated', 'email_topic_preferences', 'UPDATE');
+  ('authenticated', 'email_topic_preferences', 'UPDATE'),
+  -- E05: the account owner can save and unsave a published recipe. No update.
+  ('authenticated', 'saved_recipes', 'INSERT'),
+  ('authenticated', 'saved_recipes', 'DELETE');
 
 create temporary table g8_expected_column_writes (
   grantee text not null,

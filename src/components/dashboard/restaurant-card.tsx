@@ -41,6 +41,8 @@ import {
   challengeCardExpired,
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
+import { RecipeCards } from '@/components/recipes/recipe-cards';
+import { RECIPES_SECTION_HEADING, type RecipeCardModel } from '@/lib/recipes/display';
 
 function formatOffer(discountCents: number, minSpendCents: number): string {
   const dollars = discountCents / 100;
@@ -295,6 +297,9 @@ export type RestaurantCardProps = {
   /** Monthly reveal only. Flag-off cards omit these. */
   showRevealDetails?: boolean;
   revealReason?: string | null;
+  /** Published recipes for this restaurant. Omitted when the recipes flag is off. */
+  recipes?: RecipeCardModel[];
+  recipeExclusionLine?: string | null;
 };
 
 export function RestaurantCard({
@@ -310,6 +315,8 @@ export function RestaurantCard({
   storedDeadline = null,
   showRevealDetails = false,
   revealReason = null,
+  recipes = [],
+  recipeExclusionLine = null,
 }: RestaurantCardProps) {
   const [nowMs] = useState(() => Date.now());
   const isExpired = challengeCardExpired({
@@ -439,6 +446,12 @@ export function RestaurantCard({
         {isRedeemed && item.redemptionId && (
           <BiteNotesInline redemptionId={item.redemptionId} saved={biteNote} />
         )}
+        <RecipeCards
+          headingId={`recipes-${item.restaurant.id}`}
+          heading={RECIPES_SECTION_HEADING}
+          exclusionLine={recipeExclusionLine}
+          recipes={recipes}
+        />
       </CardContent>
       {isAssigned && (
         <CardFooter className="flex flex-col gap-2 pt-0">

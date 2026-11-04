@@ -22,6 +22,9 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Lock } from 'lucide-react';
+import { RecipeCards } from '@/components/recipes/recipe-cards';
+import { SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
+import { loadSavedRecipes } from '@/lib/recipes/load';
 
 const SAVINGS_PER_REDEMPTION_CENTS = 1000;
 const CURRENT_STREAK_MOCK = 1;
@@ -96,6 +99,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
     return sum + SAVINGS_PER_REDEMPTION_CENTS;
   }, 0);
   const totalSavingsDollars = totalSavingsCents / 100;
+  const savedRecipes = await loadSavedRecipes();
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
@@ -228,6 +232,27 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
           )}
         </CardContent>
       </Card>
+
+      {savedRecipes.enabled ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{SAVED_RECIPES_HEADING}</CardTitle>
+            <CardDescription>
+              Recipes you saved from a visit. Saving a recipe does not change credits or visits.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <RecipeCards
+              headingId="saved-recipes"
+              heading={SAVED_RECIPES_HEADING}
+              exclusionLine={savedRecipes.exclusionLine}
+              recipes={savedRecipes.recipes}
+              emptyLabel="You have not saved a recipe yet."
+              showHeading={false}
+            />
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>

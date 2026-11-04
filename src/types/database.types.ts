@@ -1037,6 +1037,119 @@ export type Database = {
           },
         ]
       }
+      recipes: {
+        Row: {
+          checked_at: string | null
+          created_at: string
+          dietary_tags: string[]
+          est_minutes: number
+          id: string
+          ingredients: Json
+          is_demo: boolean
+          recipe_type: string
+          restaurant_id: string | null
+          rights_basis: string | null
+          servings: number
+          slug: string
+          source_name: string | null
+          source_url: string | null
+          steps: Json
+          substitutions: Json
+          title: string
+          updated_at: string
+          version: number
+          visibility: string
+        }
+        Insert: {
+          checked_at?: string | null
+          created_at?: string
+          dietary_tags?: string[]
+          est_minutes: number
+          id?: string
+          ingredients: Json
+          is_demo?: boolean
+          recipe_type: string
+          restaurant_id?: string | null
+          rights_basis?: string | null
+          servings: number
+          slug: string
+          source_name?: string | null
+          source_url?: string | null
+          steps: Json
+          substitutions?: Json
+          title: string
+          updated_at?: string
+          version?: number
+          visibility?: string
+        }
+        Update: {
+          checked_at?: string | null
+          created_at?: string
+          dietary_tags?: string[]
+          est_minutes?: number
+          id?: string
+          ingredients?: Json
+          is_demo?: boolean
+          recipe_type?: string
+          restaurant_id?: string | null
+          rights_basis?: string | null
+          servings?: number
+          slug?: string
+          source_name?: string | null
+          source_url?: string | null
+          steps?: Json
+          substitutions?: Json
+          title?: string
+          updated_at?: string
+          version?: number
+          visibility?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_recipes: {
+        Row: {
+          recipe_id: string
+          recipe_version: number
+          saved_at: string
+          user_id: string
+        }
+        Insert: {
+          recipe_id: string
+          recipe_version: number
+          saved_at?: string
+          user_id: string
+        }
+        Update: {
+          recipe_id?: string
+          recipe_version?: number
+          saved_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_recipes_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saved_recipes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       redemptions: {
         Row: {
           challenge_item_id: string | null
