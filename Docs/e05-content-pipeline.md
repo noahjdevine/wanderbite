@@ -61,7 +61,17 @@ WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --rollback fact <u
 WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --rollback recipe <uuid>
 ```
 
-`--resolve` marks an open row `approved` or `rejected`. It does not publish. The admin screen that edits a row is E05-B3.
+`--resolve` marks an open row `approved` or `rejected`. It does not publish. The admin screen that can publish a description is E05-B3.
+
+## Admin review
+
+`/admin/content` is an operator page behind `assertAdmin` (role plus current session `aal2`). A signed-in member, or an admin who has not finished MFA, is refused before any pipeline read or write. The queue lists open `content_exceptions`, newest source attempt first, filtered by reason. Each row shows the restaurant, the source URL, the reason, before, after, a short evidence excerpt, last attempted and last verified in America/Chicago, and the linked recipe and fact version. Evidence and after text render as plain text. This view does not send that text to a model.
+
+Approve of a description conflict on an inspired-by public-menu recipe calls `apply_recipe_description_fact` once. `recipes.version` bumps, the prior fact stays, and `menu_wording` and `visibility` are not changed. Approving again returns "Already resolved." and writes nothing. Approve of `missing_source`, `injection_suspected`, `sensitive`, or `validation_failed` only marks the row reviewed and publishes no recipe. Edit publishes the operator's paraphrase through the same RPC when it is non-empty, at most 400 characters, and not a copy of the menu. Reject marks the row rejected and writes no recipe or fact. Rollback on a recipe's history calls `rollback_recipe_to_previous` and does not call `rollback_content_fact`. Each of those actions writes one `admin_audit_log` row. Sources can be paused or resumed. There is no form to add a URL.
+
+## Scheduled refresh
+
+`GET /api/cron/content-refresh` uses the same bearer cron auth as the other cron routes. Unless `E05_CONTENT_REFRESH_CRON_ENABLED` is exactly `true`, it returns `{ status: 'disabled', skipped: true }` and writes no attempt. When the flag is on, `runLeasedCron` holds job `content-refresh` for the America/Chicago date. A second overlapping call gets `lease-held` and does no work. The run calls the existing refresh with apply semantics, at most 5 sources and 15 attempts, and reserves the G13-A maintenance budget. A denied or exhausted budget records the attempt, skips the model, and leaves published descriptions as they were. A byte-identical page records `unchanged` and does not call the model. A failed fetch advances `last_attempted_at` and does not advance `last_verified_at`. Per-source outcomes are `cron_run_items` rows. `vercel.json` schedules this path at `0 9 * * *` UTC. Unsetting the flag stops the scheduled refresh without a code deploy.
 
 Rollback inserts the previous value as a new version and supersedes the current row. It does not delete history and it does not change `saved_recipes.recipe_version`.
 

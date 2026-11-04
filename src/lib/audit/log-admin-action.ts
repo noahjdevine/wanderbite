@@ -11,7 +11,13 @@ export type AdminAuditAction =
   | 'restaurant.slugs_generated'
   | 'restaurant.import'
   | 'restaurant.pin_set'
-  | 'offer.draft_save';
+  | 'offer.draft_save'
+  | 'content.exception_approve'
+  | 'content.exception_edit'
+  | 'content.exception_reject'
+  | 'content.recipe_rollback'
+  | 'content.source_pause'
+  | 'content.source_resume';
 
 export async function logAdminAction(params: {
   actorUserId: string;

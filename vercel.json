@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/rollover-credits",
       "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/content-refresh",
+      "schedule": "0 9 * * *"
     }
   ]
 }

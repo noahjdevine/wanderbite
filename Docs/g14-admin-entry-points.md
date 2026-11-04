@@ -10,6 +10,8 @@ Protected by `assertAdmin` (current user, `user_profiles.role = 'admin'`, and th
 | `src/app/(site)/admin/actions.ts` | `addRestaurant`, `generateMissingSlugs`, `deleteRestaurant`, `setRestaurantPin` |
 | `src/app/(site)/admin/actions-import.ts` | `attachGoogleMetadataToLatestRestaurantByName`, `searchRestaurantsFromGoogle`, `getRestaurantDetailsFromGoogle` |
 | `src/app/(site)/admin/actions-places.ts` | `enrichSingleRestaurant`, `enrichAllRestaurants` |
+| `src/app/(site)/admin/content/page.tsx` | Open content exceptions, source status, and recipe description history. An AAL1 admin sees enrollment or a challenge instead, and this page does not load those rows. |
+| `src/app/(site)/admin/content-actions.ts` | `approveContentException`, `editContentException`, `rejectContentException`, `rollbackContentRecipe`, `setContentSourceStatus` |
 
 `src/app/(site)/admin/mfa-actions.ts` is role-checked only. It enrolls or challenges the current admin and cannot read the dashboard or call the mutations above.
 
@@ -28,5 +30,6 @@ No sensitive export endpoint exists in this checkout. `src/` has no CSV download
 - `src/app/api/cron/issue-monthly-challenges/route.ts`
 - `src/app/api/cron/end-of-month-reminder/route.ts`
 - `src/app/api/cron/refresh-restaurant-photos/route.ts`
+- `src/app/api/cron/content-refresh/route.ts`
 
 None of those export admin users or audit data. Future offer, content, and export entry points must use the same `assertAdmin` guard.
