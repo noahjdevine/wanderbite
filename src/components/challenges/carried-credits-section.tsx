@@ -3,6 +3,7 @@
 import type { BiteNoteSummary } from '@/app/actions/bite-notes';
 import { CarriedCreditCard } from '@/components/challenges/carried-credit-card';
 import type { CarriedCreditView } from '@/lib/challenges/carried-credits';
+import type { ActivitySuggestions } from '@/lib/activities/types';
 import type { RecipeSections } from '@/lib/recipes/display';
 
 type CarriedCreditsSectionProps = {
@@ -15,6 +16,7 @@ type CarriedCreditsSectionProps = {
   biteNoteByRedemptionId: Map<string, BiteNoteSummary>;
   launchEligible: boolean;
   recipeSections?: RecipeSections;
+  activitySuggestions?: ActivitySuggestions;
 };
 
 export function CarriedCreditsSection({
@@ -27,6 +29,7 @@ export function CarriedCreditsSection({
   biteNoteByRedemptionId,
   launchEligible,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
+  activitySuggestions = { byRestaurantId: {} },
 }: CarriedCreditsSectionProps) {
   if (credits.length === 0) return null;
   const swapCopy = swapsRemaining === 0 ? '0 swaps left' : '1 swap left';
@@ -61,6 +64,11 @@ export function CarriedCreditsSection({
                   : []
               }
               recipeExclusionLine={recipeSections.exclusionLine}
+              activities={
+                credit.item
+                  ? activitySuggestions.byRestaurantId[credit.item.restaurant.id] ?? []
+                  : []
+              }
             />
           );
         })}

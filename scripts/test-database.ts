@@ -148,6 +148,8 @@ async function main() {
   process.stdout.write('PASS: E05 recipe constraints, published read, owner saves, and no side-effect writes.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e05-content-pipeline.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E05-B2 content pipeline RLS, version history, and saved recipe resolution.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-activities.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E06 activities constraints, grants, and active non-expired reads.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-credit-safe-swaps.sql'), 'utf8')) + '\n');
   await runE02CreditSafeSwaps({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 credit-safe swap issuance overlap.\n');

@@ -42,6 +42,8 @@ import {
   challengeCardExpired,
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
+import { NearbyIdeas } from '@/components/activities/nearby-ideas';
+import type { ActivitySuggestion } from '@/lib/activities/types';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { RECIPES_SECTION_HEADING, type RecipeCardModel } from '@/lib/recipes/display';
 
@@ -301,6 +303,8 @@ export type RestaurantCardProps = {
   /** Published recipes for this restaurant. Omitted when the recipes flag is off. */
   recipes?: RecipeCardModel[];
   recipeExclusionLine?: string | null;
+  /** Empty when E06_ACTIVITIES_ENABLED is not exactly true, or nothing qualifies. */
+  activities?: ActivitySuggestion[];
 };
 
 export function RestaurantCard({
@@ -318,6 +322,7 @@ export function RestaurantCard({
   revealReason = null,
   recipes = [],
   recipeExclusionLine = null,
+  activities = [],
 }: RestaurantCardProps) {
   const [nowMs] = useState(() => Date.now());
   const isExpired = challengeCardExpired({
@@ -416,6 +421,7 @@ export function RestaurantCard({
           </p>
         ) : null}
         {revealReason ? <p className="text-sm text-foreground">{revealReason}</p> : null}
+        <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
         {item.socialProof &&
           item.socialProof.totalRatings >= 3 &&
           item.socialProof.avgRating != null && (

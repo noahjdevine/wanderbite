@@ -11,6 +11,7 @@ import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import { loadCreditsSwapRemaining } from '@/lib/challenges/carried-credits';
 import { memberGenerateBlocked } from '@/lib/challenges/load-monthly-reveal';
+import { loadActivitySuggestions } from '@/lib/activities/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +29,7 @@ export default async function DashboardPage() {
   const admin = getSupabaseAdmin();
   const { data: profile, error: profileError } = await admin
     .from('user_profiles')
-    .select('id, role, subscription_status, username, address, address_street, address_city, address_state, address_zip, workflow_version')
+    .select('id, role, subscription_status, username, address, address_street, address_city, address_state, address_zip, workflow_version, distance_band')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -55,6 +56,7 @@ export default async function DashboardPage() {
     address_state: string | null;
     address_zip: string | null;
     workflow_version: string;
+    distance_band: string | null;
   };
 
   const gate = profileGate({
@@ -98,12 +100,18 @@ export default async function DashboardPage() {
     );
   }
 
-  const [progress, blockMemberGenerate, recipeSections, biteNotesRes] = await Promise.all([
-    getMemberProgress(typedProfile.id),
-    memberGenerateBlocked(),
-    loadRecipeSections((currentChallenge?.items ?? []).map((item) => item.restaurant.id)),
-    getBiteNotes(),
-  ]);
+  const activityRestaurants = (currentChallenge?.items ?? []).map((item) => item.restaurant);
+  const [progress, blockMemberGenerate, recipeSections, activitySuggestions, biteNotesRes] =
+    await Promise.all([
+      getMemberProgress(typedProfile.id),
+      memberGenerateBlocked(),
+      loadRecipeSections(activityRestaurants.map((restaurant) => restaurant.id)),
+      loadActivitySuggestions({
+        restaurants: activityRestaurants,
+        distanceBand: typedProfile.distance_band,
+      }),
+      getBiteNotes(),
+    ]);
   const presentedProgress = presentMemberProgress(progress);
   const biteNotesForDash =
     biteNotesRes.ok
@@ -137,6 +145,7 @@ export default async function DashboardPage() {
           creditsSwapRemaining={creditsSwapRemaining}
           blockMemberGenerate={blockMemberGenerate}
           recipeSections={recipeSections}
+          activitySuggestions={activitySuggestions}
         />
       </div>
     </main>
