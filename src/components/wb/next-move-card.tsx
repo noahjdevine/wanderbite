@@ -19,7 +19,7 @@ export function NextMoveCard({ sentence, meta, actionHref, actionLabel }: NextMo
           <h2 className="m-0 text-[13px] font-bold tracking-[1.2px] text-wb-muted">YOUR NEXT MOVE</h2>
         </div>
         <p className="font-display m-0 text-[30px] leading-[1.05] text-wb-ink">{sentence}</p>
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-[13px] text-wb-muted">{meta}</span>
           <CtaButton href={actionHref} className="min-h-11 px-[18px] text-sm">
             {actionLabel}

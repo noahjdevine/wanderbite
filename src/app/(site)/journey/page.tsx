@@ -9,6 +9,10 @@ import { parseMyJourneyView } from '@/lib/my-journey-views';
 
 export const dynamic = 'force-dynamic';
 
+export const metadata = {
+  title: 'Progress',
+};
+
 type JourneyPageProps = {
   searchParams: Promise<{ view?: string | string[] }>;
 };

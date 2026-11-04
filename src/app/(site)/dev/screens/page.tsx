@@ -1,5 +1,6 @@
 import { notFound } from 'next/navigation';
 import { isComponentGalleryEnabled } from '@/lib/dev/component-gallery';
+import { ProgressPreview } from './progress-preview';
 import { ScreenPreview } from './screen-preview';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +17,7 @@ export default async function DevScreensPage({
 }) {
   if (!isComponentGalleryEnabled()) notFound();
   const params = await searchParams;
+  if (params.screen === 'progress') return <ProgressPreview />;
   const screen = params.screen === 'redeem' ? 'redeem' : 'challenges';
   return <ScreenPreview screen={screen} />;
 }

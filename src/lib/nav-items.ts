@@ -45,7 +45,7 @@ export const MEMBER_NAV_ITEMS: NavItem[] = [
   { href: '/challenges', label: 'Challenges', icon: Target },
   {
     href: '/journey',
-    label: 'My Journey',
+    label: 'Progress',
     icon: Map,
     activePaths: ['/journey', '/journal', '/passport'],
   },

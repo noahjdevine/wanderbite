@@ -3,7 +3,7 @@ export const MY_JOURNEY_VIEWS = ['journey', 'journal', 'passport'] as const;
 export type MyJourneyView = (typeof MY_JOURNEY_VIEWS)[number];
 
 export const MY_JOURNEY_VIEW_LABELS: Record<MyJourneyView, string> = {
-  journey: 'Journey',
+  journey: 'Progress',
   journal: 'Journal',
   passport: 'Passport',
 };
