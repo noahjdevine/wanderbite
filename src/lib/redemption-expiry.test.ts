@@ -103,7 +103,7 @@ describe('redemption code lifetime', () => {
 
   it('keeps the migration from rewriting stored deadlines', () => {
     const sql = readFileSync(
-      path.join(ROOT, 'supabase/migrations/20261104034332_redemption_code_ttl.sql'),
+      path.join(ROOT, 'supabase/migrations/20261104050000_redemption_code_ttl.sql'),
       'utf8',
     );
     expect(sql).toMatch(/least\(p_expires_at, source\.redemption_deadline\)/);
