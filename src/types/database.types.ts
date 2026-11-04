@@ -1041,16 +1041,20 @@ export type Database = {
         Row: {
           checked_at: string | null
           created_at: string
+          description: string | null
           dietary_tags: string[]
           est_minutes: number
+          menu_wording: string | null
           id: string
           ingredients: Json
           is_demo: boolean
           recipe_type: string
           restaurant_id: string | null
+          retrieved_at: string | null
           rights_basis: string | null
           servings: number
           slug: string
+          source_kind: string | null
           source_name: string | null
           source_url: string | null
           steps: Json
@@ -1063,16 +1067,20 @@ export type Database = {
         Insert: {
           checked_at?: string | null
           created_at?: string
+          description?: string | null
           dietary_tags?: string[]
           est_minutes: number
+          menu_wording?: string | null
           id?: string
           ingredients: Json
           is_demo?: boolean
           recipe_type: string
           restaurant_id?: string | null
+          retrieved_at?: string | null
           rights_basis?: string | null
           servings: number
           slug: string
+          source_kind?: string | null
           source_name?: string | null
           source_url?: string | null
           steps: Json
@@ -1085,16 +1093,20 @@ export type Database = {
         Update: {
           checked_at?: string | null
           created_at?: string
+          description?: string | null
           dietary_tags?: string[]
           est_minutes?: number
+          menu_wording?: string | null
           id?: string
           ingredients?: Json
           is_demo?: boolean
           recipe_type?: string
           restaurant_id?: string | null
+          retrieved_at?: string | null
           rights_basis?: string | null
           servings?: number
           slug?: string
+          source_kind?: string | null
           source_name?: string | null
           source_url?: string | null
           steps?: Json

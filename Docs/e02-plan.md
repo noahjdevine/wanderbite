@@ -75,11 +75,11 @@ Revealed-pair display (flag on): offer terms come from the bound offer version v
 
 **E05-A1 (pending merge, this PR).** Recipe content model and saved recipes. Flag `E05_RECIPES_ENABLED` stays unset; only the exact string `true` turns cards on. A signed-in member then sees “Recipes inspired by this visit” on a challenge restaurant card and on the matching passport visit, and saved recipes on `/journey`. Demo rows live in `scripts/fixtures/e05-demo-recipes.ts` and `scripts/seed.ts` (`inspired_by`, `is_demo`, “Demo content”). They are not restaurant-approved claims. Saving a recipe does not write a credit, verified visit, badge, or drawing entry. Checked-at is shown in America/Chicago. **Master E02 is open. Master E04 is open.**
 
-Migration `20261104013000_e05_recipes.sql` is **not applied to hosted**. Do not run `npm run types:db` against hosted for this slice. After Noah approves, the hosted command is `npx supabase db push --linked --yes`. Until then the tables are unused on hosted and the flag stays off, so current pages match `main`.
+Migrations `20261104013000_e05_recipes.sql` and `20261104021500_e05_recipe_menu_provenance.sql` are **not applied to hosted**. Do not run `npm run types:db` against hosted for this slice. After Noah approves, the hosted command is `npx supabase db push --linked --yes`. Until then the tables are unused on hosted and the flag stays off, so current pages match `main`.
 
 **E05-A2: open.** Assistant recipe questions. Journal-entry linking is not in A1; leave it for A2.
 
-**E05-B: open.** Maintenance pipeline. No URL ingestion in A1.
+**E05-B: open.** Later, generate inspired-by home recipes from a restaurant’s public online menu (dish name, description, and listed ingredients). The A1 model can hold that row: `recipe_type = inspired_by`, `source_kind = public_menu`, `source_url` for the menu, `retrieved_at`, `menu_wording = paraphrase`, and a paraphrased `description`. The card still says “An at-home take, not the restaurant's recipe.” `menu_wording` has no verbatim value, so a menu description is stored only as a paraphrase. No scraping or URL ingestion in this PR. The maintenance pipeline stays open.
 
 **D2=B.** Outstanding hosted measurement, not an E04 deferred item. Last recorded `real_supply_result=FAIL 0/192` on test supply (2026-11-02 run; `result=PASS (all supply) 192/192` includes test versions and is not a gate result). This doc does not predict the next measurement.
 

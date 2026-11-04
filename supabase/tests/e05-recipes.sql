@@ -383,5 +383,100 @@ insert into public.recipes (
 );
 reset role;
 
+do $$
+declare
+  ingredients jsonb := '[{"name":"Demo beans","quantity":"1","unit":"cup"}]'::jsonb;
+  steps jsonb := '[{"order":1,"text":"Stir the demo beans."}]'::jsonb;
+begin
+  begin
+    insert into public.recipes (
+      slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps,
+      substitutions, rights_basis, visibility, source_kind, description, menu_wording, retrieved_at
+    ) values (
+      'e05-menu-missing-url', 'Menu take', 'inspired_by',
+      'e0500000-0000-4000-8000-000000000010',
+      2, 20, ingredients, steps, '[]'::jsonb, 'original', 'draft',
+      'public_menu', 'A home skillet of beans with smoked paprika.', 'paraphrase', now()
+    );
+    raise exception 'FAIL: public_menu without source_url was accepted';
+  exception when check_violation then null; end;
+
+  begin
+    insert into public.recipes (
+      slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps,
+      substitutions, rights_basis, visibility, source_kind, source_url, description, menu_wording
+    ) values (
+      'e05-menu-missing-retrieved', 'Menu take', 'inspired_by',
+      'e0500000-0000-4000-8000-000000000010',
+      2, 20, ingredients, steps, '[]'::jsonb, 'original', 'draft',
+      'public_menu', 'https://example.com/e05-menu', 'A home skillet of beans with smoked paprika.', 'paraphrase'
+    );
+    raise exception 'FAIL: public_menu without retrieved_at was accepted';
+  exception when check_violation then null; end;
+
+  begin
+    insert into public.recipes (
+      slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps,
+      substitutions, rights_basis, visibility, source_kind, source_url, description,
+      menu_wording, retrieved_at
+    ) values (
+      'e05-menu-verbatim', 'Menu take', 'inspired_by',
+      'e0500000-0000-4000-8000-000000000010',
+      2, 20, ingredients, steps, '[]'::jsonb, 'original', 'draft',
+      'public_menu', 'https://example.com/e05-menu', 'Copied menu sentence.',
+      'verbatim', now()
+    );
+    raise exception 'FAIL: verbatim menu wording was accepted';
+  exception when check_violation then null; end;
+
+  begin
+    insert into public.recipes (
+      slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps,
+      substitutions, source_url, rights_basis, visibility, source_kind, description,
+      menu_wording, retrieved_at
+    ) values (
+      'e05-menu-approved', 'Menu take', 'restaurant_approved',
+      'e0500000-0000-4000-8000-000000000010',
+      2, 20, ingredients, steps, '[]'::jsonb,
+      'https://example.com/e05-menu', 'restaurant_permission', 'draft',
+      'public_menu', 'A home skillet of beans with smoked paprika.', 'paraphrase', now()
+    );
+    raise exception 'FAIL: public_menu restaurant_approved row was accepted';
+  exception when check_violation then null; end;
+end $$;
+
+insert into public.recipes (
+  slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps,
+  substitutions, rights_basis, visibility, source_kind, source_url, source_name,
+  description, menu_wording, retrieved_at, is_demo
+) values (
+  'e05-public-menu',
+  'Demo menu skillet',
+  'inspired_by',
+  'e0500000-0000-4000-8000-000000000010',
+  2, 25,
+  '[{"name":"Demo beans","quantity":"1","unit":"cup"}]'::jsonb,
+  '[{"order":1,"text":"Stir the demo beans."}]'::jsonb,
+  '[]'::jsonb,
+  'original',
+  'published',
+  'public_menu',
+  'https://example.com/e05-menu',
+  'Example menu',
+  'A home skillet of beans with smoked paprika.',
+  'paraphrase',
+  '2026-01-15T18:00:00Z',
+  false
+);
+
+do $$ begin
+  if (select recipe_type from public.recipes where slug = 'e05-public-menu') <> 'inspired_by'
+    or (select source_kind from public.recipes where slug = 'e05-public-menu') <> 'public_menu'
+    or (select menu_wording from public.recipes where slug = 'e05-public-menu') <> 'paraphrase'
+    or (select rights_basis from public.recipes where slug = 'e05-public-menu') <> 'original' then
+    raise exception 'FAIL: public_menu row was not stored as an inspired-by paraphrase';
+  end if;
+end $$;
+
 rollback;
 select 'PASS: E05 recipe constraints, published read, owner saves, and no side-effect writes; fixtures rolled back';

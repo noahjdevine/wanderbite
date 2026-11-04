@@ -57,6 +57,18 @@ function RecipeCard({ recipe }: { recipe: RecipeCardModel }) {
       {recipe.uncertaintyLine ? (
         <p className="text-xs text-muted-foreground">{recipe.uncertaintyLine}</p>
       ) : null}
+      {recipe.description ? (
+        <p className="text-xs text-muted-foreground">{recipe.description}</p>
+      ) : null}
+      {recipe.provenanceLabel ? (
+        <p className="text-xs text-muted-foreground">{recipe.provenanceLabel}</p>
+      ) : null}
+      {recipe.retrievedAtLabel ? (
+        <p className="text-xs text-muted-foreground">Menu retrieved {recipe.retrievedAtLabel}</p>
+      ) : null}
+      {recipe.paraphraseLine ? (
+        <p className="text-xs text-muted-foreground">{recipe.paraphraseLine}</p>
+      ) : null}
       {recipe.dietaryWarning ? (
         <p className="text-xs text-foreground" role="note">
           {recipe.dietaryWarning}

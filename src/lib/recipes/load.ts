@@ -6,6 +6,8 @@ import { createClient } from '@/lib/supabase/server';
 import {
   inspiredByUncertainty,
   isRecipeType,
+  menuParaphraseLine,
+  publicMenuProvenance,
   listedDietaryExclusions,
   recipeDietaryWarning,
   recipeTypeLabel,
@@ -43,8 +45,12 @@ type RecipeRow = {
   steps: Json;
   substitutions: Json;
   dietary_tags: string[];
+  description: string | null;
   source_url: string | null;
   source_name: string | null;
+  source_kind: string | null;
+  retrieved_at: string | null;
+  menu_wording: string | null;
   rights_basis: string | null;
   visibility: string;
   checked_at: string | null;
@@ -53,7 +59,7 @@ type RecipeRow = {
 };
 
 const RECIPE_COLUMNS =
-  'id, slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps, substitutions, dietary_tags, source_url, source_name, rights_basis, visibility, checked_at, version, is_demo';
+  'id, slug, title, recipe_type, restaurant_id, servings, est_minutes, ingredients, steps, substitutions, dietary_tags, description, source_url, source_name, source_kind, retrieved_at, menu_wording, rights_basis, visibility, checked_at, version, is_demo';
 
 function asRecord(value: Json): Record<string, Json | undefined> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -140,8 +146,13 @@ export function toRecipeCard(
     steps,
     substitutions,
     dietaryTags,
+    description: row.description,
     sourceUrl: row.source_url,
     sourceName: row.source_name,
+    sourceKind: row.source_kind,
+    provenanceLabel: publicMenuProvenance(row.source_kind),
+    retrievedAtLabel: row.retrieved_at ? formatCheckedAtChicago(row.retrieved_at) : null,
+    paraphraseLine: menuParaphraseLine(row.menu_wording),
     rightsBasis: row.rights_basis,
     checkedAtLabel: formatCheckedAtChicago(row.checked_at),
     version: row.version,

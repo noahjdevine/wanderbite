@@ -11,6 +11,15 @@ export type RecipeType = keyof typeof RECIPE_TYPE_LABELS;
 export const INSPIRED_BY_UNCERTAINTY =
   "An at-home take, not the restaurant's recipe";
 
+export const PUBLIC_MENU_SOURCE_KIND = 'public_menu';
+
+export const MENU_WORDING_PARAPHRASE = 'paraphrase';
+
+export const PUBLIC_MENU_PROVENANCE = 'Public menu';
+
+export const MENU_PARAPHRASE_LINE =
+  'The dish description is a paraphrase of the public menu, not the menu text.';
+
 export const DEMO_CONTENT_LABEL = 'Demo content';
 
 export const RECIPES_SECTION_HEADING = 'Recipes inspired by this visit';
@@ -48,8 +57,13 @@ export type RecipeCardModel = {
   steps: RecipeStep[];
   substitutions: RecipeSubstitution[];
   dietaryTags: string[];
+  description: string | null;
   sourceUrl: string | null;
   sourceName: string | null;
+  sourceKind: string | null;
+  provenanceLabel: string | null;
+  retrievedAtLabel: string | null;
+  paraphraseLine: string | null;
   rightsBasis: string | null;
   checkedAtLabel: string;
   version: number;
@@ -110,6 +124,14 @@ export function recipeTypeLabel(recipeType: RecipeType): string {
 
 export function inspiredByUncertainty(recipeType: RecipeType): string | null {
   return recipeType === 'inspired_by' ? INSPIRED_BY_UNCERTAINTY : null;
+}
+
+export function publicMenuProvenance(sourceKind: string | null | undefined): string | null {
+  return sourceKind === PUBLIC_MENU_SOURCE_KIND ? PUBLIC_MENU_PROVENANCE : null;
+}
+
+export function menuParaphraseLine(menuWording: string | null | undefined): string | null {
+  return menuWording === MENU_WORDING_PARAPHRASE ? MENU_PARAPHRASE_LINE : null;
 }
 
 export function listedDietaryExclusions(

@@ -35,8 +35,13 @@ function card(overrides: Partial<RecipeCardModel> = {}): RecipeCardModel {
     steps: [{ order: 1, text: 'Stir the demo beans.' }],
     substitutions: [{ insteadOf: 'Demo beans', use: 'Demo lentils' }],
     dietaryTags: ['beans'],
+    description: null,
     sourceUrl: null,
     sourceName: 'Wanderbite demo collection',
+    sourceKind: null,
+    provenanceLabel: null,
+    retrievedAtLabel: null,
+    paraphraseLine: null,
     rightsBasis: 'original',
     checkedAtLabel: 'Jan 15, 2026, 12:00 PM CST',
     version: 1,
@@ -103,6 +108,32 @@ describe('recipe cards', () => {
     expect(text).toContain('Your listed dietary exclusions: vegan.');
     expect(text).toContain('This does not check allergens.');
     expect(text.toLowerCase()).not.toMatch(/safe/);
+  });
+
+  it('shows a public-menu recipe as a paraphrase, not the restaurant recipe', async () => {
+    const view = await render(
+      <RecipeCards
+        headingId="recipes-menu"
+        heading={RECIPES_SECTION_HEADING}
+        exclusionLine={null}
+        recipes={[card({
+          description: 'A home skillet of beans with smoked paprika.',
+          sourceUrl: 'https://example.com/e05-menu',
+          sourceName: 'Example menu',
+          sourceKind: 'public_menu',
+          provenanceLabel: 'Public menu',
+          retrievedAtLabel: 'Jan 15, 2026, 12:00 PM CST',
+          paraphraseLine: 'The dish description is a paraphrase of the public menu, not the menu text.',
+        })]}
+      />,
+    );
+    const text = view.textContent ?? '';
+    expect(text).toContain("An at-home take, not the restaurant's recipe");
+    expect(text).toContain('Public menu');
+    expect(text).toContain('Menu retrieved Jan 15, 2026, 12:00 PM CST');
+    expect(text).toContain('paraphrase of the public menu');
+    expect(text).toContain('A home skillet of beans with smoked paprika.');
+    expect(text.toLowerCase()).not.toMatch(/verbatim/);
   });
 
   it('renders nothing when the restaurant has no published recipes', async () => {

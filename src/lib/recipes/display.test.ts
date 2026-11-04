@@ -6,7 +6,10 @@ import {
   DEMO_CONTENT_LABEL,
   formatCheckedAtChicago,
   INSPIRED_BY_UNCERTAINTY,
+  inspiredByUncertainty,
   listedDietaryExclusions,
+  menuParaphraseLine,
+  publicMenuProvenance,
   RECIPE_TYPE_LABELS,
   recipeDietaryWarning,
 } from '@/lib/recipes/display';
@@ -18,6 +21,18 @@ describe('recipe labels and checked_at', () => {
     expect(RECIPE_TYPE_LABELS.inspired_by).toBe('Inspired-by home recipe');
     expect(INSPIRED_BY_UNCERTAINTY).toBe("An at-home take, not the restaurant's recipe");
     expect(DEMO_CONTENT_LABEL).toBe('Demo content');
+  });
+
+  it('labels a public-menu inspired-by recipe as a paraphrase, not the restaurant recipe', () => {
+    expect(publicMenuProvenance('public_menu')).toBe('Public menu');
+    expect(publicMenuProvenance(null)).toBeNull();
+    expect(menuParaphraseLine('paraphrase')).toBe(
+      'The dish description is a paraphrase of the public menu, not the menu text.',
+    );
+    expect(menuParaphraseLine('verbatim')).toBeNull();
+    expect(inspiredByUncertainty('inspired_by')).toBe(
+      "An at-home take, not the restaurant's recipe",
+    );
   });
 
   it('formats checked_at in America/Chicago for winter and summer instants', () => {
