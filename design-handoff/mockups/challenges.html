@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your November adventures — Wanderbite mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Outfit:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#6d28d9}a:hover{color:#4c1d95}
+@keyframes wbAurora{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(-30px,24px) scale(1.18)}}
+@keyframes wbAurora2{0%,100%{transform:translate(0,0) scale(1.1)}50%{transform:translate(40px,-20px) scale(.9)}}
+@keyframes wbDrift{0%{transform:scale(1.06) translate(0,0)}50%{transform:scale(1.16) translate(-3%,-2%)}100%{transform:scale(1.06) translate(0,0)}}
+@keyframes wbBokeh{0%,100%{transform:translate(0,0);opacity:.5}50%{transform:translate(10px,-14px);opacity:1}}
+@keyframes wbPulse{0%,100%{box-shadow:0 0 0 0 rgba(219,39,119,.45)}50%{box-shadow:0 0 0 8px rgba(219,39,119,0)}}
+@keyframes wbOrb{0%,100%{transform:scale(1)}50%{transform:scale(1.08)}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important}}
+</style>
+<style>html{background:#0b0616}body{display:flex;justify-content:center;padding:32px 0}body>div{box-shadow:0 30px 80px rgba(0,0,0,.6);border-radius:28px}</style>
+</head>
+<body>
+<div style="position: relative; width: 390px; height: 1580px; overflow: hidden; background: #faf6ef; font-family: 'Outfit', system-ui, sans-serif; color: #1f1530">
+
+  <!-- Cinematic top zone -->
+  <header style="position: relative; overflow: hidden; background: #120a24; color: #ffffff; padding: 14px 20px 64px">
+    <div aria-hidden="true" style="position: absolute; left: -90px; top: -80px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(139,92,246,0.55) 0%, rgba(139,92,246,0) 70%); animation: wbAurora 12s ease-in-out infinite"></div>
+    <div aria-hidden="true" style="position: absolute; right: -110px; top: 40px; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(251,113,133,0.42) 0%, rgba(251,113,133,0) 70%); animation: wbAurora2 14s ease-in-out infinite"></div>
+
+    <div style="position: relative; display: flex; align-items: center; justify-content: space-between; height: 44px">
+      <span style="font-family: 'Instrument Serif', serif; font-size: 26px">Wanderbite</span>
+      <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.28); display: flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 20px">N</span>
+    </div>
+
+    <div style="position: relative; margin-top: 34px; display: flex; flex-direction: column; gap: 12px">
+      <span style="align-self: flex-start; font-size: 12px; font-weight: 600; color: #4a0d24; background: #ffc9d6; padding: 6px 11px; border-radius: 999px; transform: rotate(-2deg)">27 days left this month</span>
+      <h1 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 52px; line-height: 0.95; letter-spacing: -1px">Your <span style="font-style: italic; color: #ffc9d6">November</span> adventures</h1>
+    </div>
+
+    <div style="position: relative; margin-top: 22px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+      <div style="border-radius: 18px; padding: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); backdrop-filter: blur(14px); display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Instrument Serif', serif; font-size: 30px; line-height: 1">0<span style="font-size: 18px; color: rgba(255,255,255,0.65)">/2</span></span>
+        <span style="font-size: 12px; color: rgba(255,255,255,0.75)">verified</span>
+      </div>
+      <div style="border-radius: 18px; padding: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); backdrop-filter: blur(14px); display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Instrument Serif', serif; font-size: 30px; line-height: 1">1</span>
+        <span style="font-size: 12px; color: rgba(255,255,255,0.75)">code issued</span>
+      </div>
+      <div style="border-radius: 18px; padding: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18); backdrop-filter: blur(14px); display: flex; flex-direction: column; gap: 2px">
+        <span style="font-family: 'Instrument Serif', serif; font-size: 30px; line-height: 1">0</span>
+        <span style="font-size: 12px; color: rgba(255,255,255,0.75)">swaps left</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Paper zone -->
+  <main style="position: relative; margin-top: -30px; border-radius: 32px 32px 0 0; background: #faf6ef; padding: 26px 16px 120px; display: flex; flex-direction: column; gap: 22px">
+
+    <!-- Ticket 1: Ready -->
+    <article aria-labelledby="t1" style="position: relative; border-radius: 28px; background: #ffffff; box-shadow: 0 18px 40px rgba(42,20,66,0.12), 0 1px 2px rgba(42,20,66,0.06)">
+      <div style="position: relative; height: 210px; border-radius: 28px 28px 0 0; overflow: hidden">
+        <div aria-hidden="true" style="position: absolute; inset: -6%; background: radial-gradient(circle at 35% 40%, rgba(253,186,116,0.8) 0%, rgba(253,186,116,0) 38%), radial-gradient(circle at 75% 65%, rgba(244,114,182,0.55) 0%, rgba(244,114,182,0) 42%), linear-gradient(155deg, #6b3a2a 0%, #3a1d4f 60%, #1d1033 100%); animation: wbDrift 18s ease-in-out infinite"></div>
+        <div aria-hidden="true" style="position: absolute; left: 68%; top: 22%; width: 50px; height: 50px; border-radius: 50%; background: rgba(254,215,170,0.6); filter: blur(9px); animation: wbBokeh 7s ease-in-out infinite"></div>
+        <span style="position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #ffffff; background: rgba(18,10,36,0.55); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.25); padding: 6px 10px; border-radius: 999px">
+          <span aria-hidden="true" style="width: 8px; height: 8px; border-radius: 50%; background: #f472b6; animation: wbPulse 2s ease-in-out infinite"></span>Ready to visit
+        </span>
+        <span style="position: absolute; right: 12px; bottom: 12px; font-size: 10px; letter-spacing: 1px; font-weight: 600; color: rgba(255,255,255,0.85); border: 1px dashed rgba(255,255,255,0.45); padding: 4px 8px; border-radius: 999px">PHOTO · partner interior</span>
+        <span style="position: absolute; left: 12px; bottom: 12px; font-size: 11px; color: rgba(255,255,255,0.85)">Photo: Andrew Rodriguez</span>
+      </div>
+      <!-- perforation -->
+      <div aria-hidden="true" style="position: relative; height: 0">
+        <span style="position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; background: #faf6ef"></span>
+        <span style="position: absolute; right: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; background: #faf6ef"></span>
+      </div>
+      <div style="padding: 20px 20px 20px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 12px">
+          <div style="display: flex; flex-direction: column; gap: 4px">
+            <h2 id="t1" style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 36px; line-height: 1">The Common Table</h2>
+            <span style="font-size: 14px; color: #6b6275">McKinney</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border-radius: 16px; background: #f4efe6; border: 1.5px dashed #e3d9c6">
+          <span style="font-family: 'Instrument Serif', serif; font-size: 26px; line-height: 1; color: #2a1442">$10 off</span>
+          <span style="font-size: 13px; color: #6b6275">when you spend $40+</span>
+        </div>
+        <!-- status track -->
+        <ol aria-label="Status: ready to visit" style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #db2777"></span><span style="font-size: 11px; font-weight: 700; color: #9d174d">Ready</span></li>
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #ebe4d6"></span><span style="font-size: 11px; color: #6b6275">Code</span></li>
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #ebe4d6"></span><span style="font-size: 11px; color: #6b6275">Verified</span></li>
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #ebe4d6"></span><span style="font-size: 11px; color: #6b6275">Memory</span></li>
+        </ol>
+        <a href="#" style="height: 52px; border-radius: 999px; background: linear-gradient(135deg, #8b5cf6 0%, #db2777 100%); color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 10px 22px rgba(219,39,119,0.28)">I'm here — get my code</a>
+        <span style="font-size: 12px; color: #6b6275; text-align: center">You've used this month's swap.</span>
+      </div>
+    </article>
+
+    <!-- Ticket 2: Code issued -->
+    <article aria-labelledby="t2" style="position: relative; border-radius: 28px; background: #ffffff; box-shadow: 0 18px 40px rgba(42,20,66,0.12), 0 1px 2px rgba(42,20,66,0.06)">
+      <div style="position: relative; height: 170px; border-radius: 28px 28px 0 0; overflow: hidden">
+        <div aria-hidden="true" style="position: absolute; inset: -6%; background: radial-gradient(circle at 40% 45%, rgba(253,224,171,0.75) 0%, rgba(253,224,171,0) 36%), radial-gradient(circle at 70% 60%, rgba(45,212,191,0.45) 0%, rgba(45,212,191,0) 42%), linear-gradient(155deg, #1f4b4a 0%, #2a1442 65%, #120a24 100%); animation: wbDrift 20s ease-in-out infinite 2s"></div>
+        <span style="position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 700; color: #451a03; background: #fde68a; padding: 6px 10px; border-radius: 999px">Code issued · awaiting verification</span>
+        <span style="position: absolute; right: 12px; bottom: 12px; font-size: 10px; letter-spacing: 1px; font-weight: 600; color: rgba(255,255,255,0.85); border: 1px dashed rgba(255,255,255,0.45); padding: 4px 8px; border-radius: 999px">PHOTO · sushi bar</span>
+      </div>
+      <div aria-hidden="true" style="position: relative; height: 0">
+        <span style="position: absolute; left: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; background: #faf6ef"></span>
+        <span style="position: absolute; right: -12px; top: -12px; width: 24px; height: 24px; border-radius: 50%; background: #faf6ef"></span>
+      </div>
+      <div style="padding: 20px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; flex-direction: column; gap: 4px">
+          <h2 id="t2" style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 36px; line-height: 1">Zen Sushi &amp; Grill</h2>
+          <span style="font-size: 14px; color: #6b6275">Stonebridge · $10 off $40+</span>
+        </div>
+        <ol aria-label="Status: code issued, awaiting verification" style="list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px">
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #db2777"></span><span style="font-size: 11px; color: #6b6275">Ready</span></li>
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #db2777"></span><span style="font-size: 11px; font-weight: 700; color: #9d174d">Code</span></li>
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #ebe4d6"></span><span style="font-size: 11px; color: #6b6275">Verified</span></li>
+          <li style="display: flex; flex-direction: column; gap: 6px"><span style="height: 4px; border-radius: 2px; background: #ebe4d6"></span><span style="font-size: 11px; color: #6b6275">Memory</span></li>
+        </ol>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 16px; background: #f4efe6">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b6275" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>
+          <span style="flex: 1; font-size: 13px; color: #3f3550">Memory saved</span>
+          <span style="font-size: 11px; font-weight: 700; color: #1e3a8a; background: #dbeafe; padding: 4px 8px; border-radius: 999px">Public</span>
+        </div>
+        <a href="#" style="height: 52px; border-radius: 999px; background: #1f1530; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; display: flex; align-items: center; justify-content: center; gap: 8px">
+          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"></rect><rect x="14" y="3" width="7" height="7" rx="1"></rect><rect x="3" y="14" width="7" height="7" rx="1"></rect><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3"></path></svg>
+          Show code to your server
+        </a>
+      </div>
+    </article>
+
+    <!-- Bea -->
+    <div style="display: flex; gap: 12px; align-items: flex-start; padding: 4px 4px 0">
+      <span aria-hidden="true" style="width: 34px; height: 34px; border-radius: 50%; background: radial-gradient(circle at 32% 30%, #ffffff 0%, #fbcfe8 14%, #a78bfa 48%, #6d28d9 78%, #3b0764 100%); box-shadow: 0 0 18px rgba(167,139,250,0.6); flex-shrink: 0; animation: wbOrb 3.5s ease-in-out infinite"></span>
+      <div style="display: flex; flex-direction: column; gap: 8px">
+        <p style="margin: 0; font-family: 'Instrument Serif', serif; font-style: italic; font-size: 21px; line-height: 1.28; color: #2a1442">“The Common Table would make a lovely slow Sunday. Want a nudge before the month runs out?”</p>
+        <div style="display: flex; gap: 8px">
+          <button style="font-family: inherit; height: 36px; padding: 0 14px; border-radius: 999px; border: none; background: #2a1442; color: #ffffff; font-size: 13px; font-weight: 600; cursor: pointer">Yes, remind me</button>
+          <button style="font-family: inherit; height: 36px; padding: 0 14px; border-radius: 999px; border: 1.5px solid #d9cfe6; background: transparent; color: #2a1442; font-size: 13px; font-weight: 600; cursor: pointer">Not now</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Floating glass tab bar -->
+  <nav aria-label="Main" style="position: absolute; left: 16px; right: 16px; bottom: 18px; height: 64px; border-radius: 32px; background: rgba(18,10,36,0.86); border: 1px solid rgba(255,255,255,0.14); backdrop-filter: blur(20px); box-shadow: 0 16px 36px rgba(18,10,36,0.35); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center">
+    <a href="discover-1-ask.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z"></path></svg>Discover</a>
+    <a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 700; color: #ffc9d6">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 17v2M13 11v2"></path></svg>Challenges</a>
+    <a href="progress.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>Progress</a>
+    <a href="passport.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>Passport</a>
+  </nav>
+</div>
+</body>
+</html>

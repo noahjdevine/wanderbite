@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ask Bea — Wanderbite mockup</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Outfit:wght@400;500;600;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#ffffff}a:hover{color:#fbcfe8}
+@keyframes wbDrift{0%{transform:scale(1.06) translate(0,0)}50%{transform:scale(1.18) translate(-3%,-2%)}100%{transform:scale(1.06) translate(0,0)}}
+@keyframes wbBokeh{0%,100%{transform:translate(0,0);opacity:.5}50%{transform:translate(12px,-20px);opacity:1}}
+@keyframes wbSpin{to{transform:rotate(360deg)}}
+@keyframes wbCycle{0%{opacity:0;transform:translateY(6px)}4%,30%{opacity:1;transform:translateY(0)}34%,100%{opacity:0;transform:translateY(-6px)}}
+@keyframes wbOrb{0%,100%{transform:scale(1);box-shadow:0 0 24px rgba(167,139,250,.7)}50%{transform:scale(1.08);box-shadow:0 0 40px rgba(251,113,133,.85)}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important}}
+</style>
+<style>html{background:#0b0616}body{display:flex;justify-content:center;padding:32px 0}body>div{box-shadow:0 30px 80px rgba(0,0,0,.6);border-radius:28px}</style>
+</head>
+<body>
+<div style="position: relative; width: 390px; height: 844px; overflow: hidden; background: #120a24; font-family: 'Outfit', system-ui, sans-serif; color: #ffffff">
+
+  <!-- Photo layer -->
+  <div aria-hidden="true" style="position: absolute; inset: 0 0 auto 0; height: 560px; overflow: hidden">
+    <div style="position: absolute; inset: -6%; background: radial-gradient(circle at 60% 38%, rgba(251,146,60,0.6) 0%, rgba(251,146,60,0) 34%), radial-gradient(circle at 30% 60%, rgba(244,114,182,0.5) 0%, rgba(244,114,182,0) 38%), radial-gradient(circle at 75% 72%, rgba(250,204,21,0.3) 0%, rgba(250,204,21,0) 30%), linear-gradient(170deg, #42204f 0%, #1d1033 70%, #120a24 100%); animation: wbDrift 20s ease-in-out infinite"></div>
+    <div style="position: absolute; left: 62%; top: 22%; width: 70px; height: 70px; border-radius: 50%; background: rgba(253,186,116,0.6); filter: blur(12px); animation: wbBokeh 8s ease-in-out infinite"></div>
+    <div style="position: absolute; left: 18%; top: 36%; width: 44px; height: 44px; border-radius: 50%; background: rgba(251,207,232,0.6); filter: blur(9px); animation: wbBokeh 7s ease-in-out infinite 1s"></div>
+    <div style="position: absolute; left: 78%; top: 52%; width: 90px; height: 90px; border-radius: 50%; background: rgba(251,113,133,0.45); filter: blur(18px); animation: wbBokeh 10s ease-in-out infinite 2s"></div>
+    <div style="position: absolute; left: 40%; top: 14%; width: 26px; height: 26px; border-radius: 50%; background: rgba(254,240,138,0.75); filter: blur(6px); animation: wbBokeh 6s ease-in-out infinite .5s"></div>
+    <div style="position: absolute; inset: 0; background: linear-gradient(180deg, rgba(18,10,36,0.55) 0%, rgba(18,10,36,0.05) 30%, rgba(18,10,36,0.4) 65%, #120a24 100%)"></div>
+  </div>
+  <span style="position: absolute; right: 16px; top: 72px; font-size: 10px; letter-spacing: 1.2px; font-weight: 600; color: rgba(255,255,255,0.75); border: 1px dashed rgba(255,255,255,0.4); padding: 5px 9px; border-radius: 999px">PHOTO · couple at a candlelit table</span>
+
+  <!-- Top bar -->
+  <div style="position: relative; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 0; height: 48px">
+    <span style="font-family: 'Instrument Serif', serif; font-size: 26px">Wanderbite</span>
+    <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 50%; background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 20px">N</span>
+  </div>
+
+  <!-- Headline -->
+  <div style="position: absolute; left: 22px; right: 22px; top: 230px; display: flex; flex-direction: column; gap: 14px">
+    <span style="align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: #4a0d24; background: #ffc9d6; padding: 7px 12px; border-radius: 999px; transform: rotate(-3deg)">Good evening, Noah</span>
+    <h1 style="margin: 0; font-family: 'Instrument Serif', serif; font-weight: 400; font-size: 58px; line-height: 0.95; letter-spacing: -1px">Where should we eat <span style="font-style: italic; color: #ffc9d6">tonight?</span></h1>
+  </div>
+
+  <!-- Bea + prompt -->
+  <div style="position: absolute; left: 16px; right: 16px; top: 520px; display: flex; flex-direction: column; gap: 14px">
+    <div style="display: flex; align-items: center; gap: 10px">
+      <span aria-hidden="true" style="width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 32% 30%, #ffffff 0%, #fbcfe8 14%, #a78bfa 48%, #6d28d9 78%, #3b0764 100%); animation: wbOrb 3.5s ease-in-out infinite"></span>
+      <span style="font-size: 14px; color: rgba(255,255,255,0.85)"><strong style="font-weight: 600; color: #ffffff">Bea</strong> · your Wanderbite concierge</span>
+    </div>
+
+    <div style="position: relative; border-radius: 24px; padding: 1.5px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.5)">
+      <div aria-hidden="true" style="position: absolute; left: 50%; top: 50%; width: 700px; height: 700px; margin: -350px 0 0 -350px; background: conic-gradient(from 0deg, rgba(255,255,255,0.14) 0deg, rgba(255,255,255,0.14) 200deg, #fb7185 260deg, #a78bfa 310deg, rgba(255,255,255,0.14) 360deg); animation: wbSpin 6s linear infinite"></div>
+      <div style="position: relative; border-radius: 22.5px; background: rgba(30,17,56,0.88); backdrop-filter: blur(22px); padding: 16px 16px 12px; display: flex; flex-direction: column; gap: 12px">
+        <label for="ap" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Tell Bea what you're craving</label>
+        <div style="position: relative; height: 48px">
+          <textarea id="ap" style="position: absolute; inset: 0; width: 100%; resize: none; background: transparent; border: none; outline: none; color: #ffffff; font-family: inherit; font-size: 17px"></textarea>
+          <span aria-hidden="true" style="position: absolute; left: 0; top: 2px; font-size: 17px; color: rgba(255,255,255,0.6); opacity: 0; animation: wbCycle 12s infinite 0s">a quiet date night, Japanese…</span>
+          <span aria-hidden="true" style="position: absolute; left: 0; top: 2px; font-size: 17px; color: rgba(255,255,255,0.6); opacity: 0; animation: wbCycle 12s infinite 4s">tacos on a patio, kids in tow…</span>
+          <span aria-hidden="true" style="position: absolute; left: 0; top: 2px; font-size: 17px; color: rgba(255,255,255,0.6); opacity: 0; animation: wbCycle 12s infinite 8s">cozy spot for a rainy Tuesday…</span>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between">
+          <button style="font-family: inherit; display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.85); font-size: 13px; cursor: pointer">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22c5.5 0 10-4.5 10-10S17.5 2 12 2 2 6.5 2 12s4.5 10 10 10z"></path><path d="m9 12 2 2 4-4"></path></svg>
+            Dietary: none set
+          </button>
+          <div style="display: flex; gap: 8px">
+            <button aria-label="Speak your request" style="width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.22); background: rgba(255,255,255,0.08); color: #ffffff; display: flex; align-items: center; justify-content: center; cursor: pointer">
+              <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="12" rx="3"></rect><path d="M5 10a7 7 0 0 0 14 0"></path><path d="M12 17v5"></path></svg>
+            </button>
+            <a href="discover-2-thinking.html" aria-label="Ask Bea" style="width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, #8b5cf6 0%, #db2777 100%); color: #ffffff; display: flex; align-items: center; justify-content: center; text-decoration: none">
+              <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"></path><path d="m5 12 7-7 7 7"></path></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 8px; overflow: hidden">
+      <a href="discover-2-thinking.html" style="flex-shrink: 0; text-decoration: none; font-size: 14px; font-weight: 500; padding: 10px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18)">Date night</a>
+      <a href="discover-2-thinking.html" style="flex-shrink: 0; text-decoration: none; font-size: 14px; font-weight: 500; padding: 10px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18)">Quick bite</a>
+      <a href="discover-2-thinking.html" style="flex-shrink: 0; text-decoration: none; font-size: 14px; font-weight: 500; padding: 10px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18)">Surprise me</a>
+      <a href="discover-2-thinking.html" style="flex-shrink: 0; text-decoration: none; font-size: 14px; font-weight: 500; padding: 10px 14px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.18)">Comfort food</a>
+    </div>
+  </div>
+
+  <!-- Glass tab bar -->
+  <nav aria-label="Main" style="position: absolute; left: 16px; right: 16px; bottom: 18px; height: 64px; border-radius: 32px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); backdrop-filter: blur(20px); display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: center">
+    <a href="#" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 700; color: #ffc9d6">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="m16.24 7.76-2.12 6.36-6.36 2.12 2.12-6.36z"></path></svg>Discover</a>
+    <a href="challenges.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"></path><path d="M13 5v2M13 17v2M13 11v2"></path></svg>Challenges</a>
+    <a href="progress.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"></path><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"></path><path d="M4 22h16"></path><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"></path></svg>Progress</a>
+    <a href="passport.html" style="display: flex; flex-direction: column; align-items: center; gap: 3px; text-decoration: none; font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.75)">
+      <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"></path></svg>Passport</a>
+  </nav>
+</div>
+</body>
+</html>

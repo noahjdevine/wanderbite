@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Outfit } from "next/font/google";
+import { Instrument_Serif, Outfit } from "next/font/google";
 import { PostHogProvider } from "@/components/providers/posthog-provider";
 import { RecoveryRedirect } from "@/components/auth/recovery-redirect";
 import { Toaster } from "@/components/ui/sonner";
@@ -8,6 +8,16 @@ import "./globals.css";
 const outfit = Outfit({
   variable: "--font-outfit",
   subsets: ["latin"],
+});
+
+/** Display face for Golden Hour. Not applied to body, so current pages stay on Outfit. */
+const instrumentSerif = Instrument_Serif({
+  weight: "400",
+  style: ["normal", "italic"],
+  subsets: ["latin"],
+  variable: "--font-instrument",
+  display: "swap",
+  adjustFontFallback: true,
 });
 
 export const viewport: Viewport = {
@@ -54,7 +64,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={instrumentSerif.variable}>
       <body className={`${outfit.variable} font-sans antialiased`}>
         <PostHogProvider>
           <RecoveryRedirect />

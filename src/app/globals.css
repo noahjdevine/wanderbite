@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./styles/wanderbite-theme.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -8,7 +9,31 @@
   --color-foreground: var(--foreground);
   --color-brand-light: var(--brand-light);
   --font-sans: var(--font-outfit);
+  --font-display: var(--font-instrument), Georgia, serif;
   --font-mono: ui-monospace, monospace;
+  --color-wb-night: var(--wb-night);
+  --color-wb-night-2: var(--wb-night-2);
+  --color-wb-plum: var(--wb-plum);
+  --color-wb-cream: var(--wb-cream);
+  --color-wb-paper: var(--wb-paper);
+  --color-wb-violet: var(--wb-violet);
+  --color-wb-violet-2: var(--wb-violet-2);
+  --color-wb-lavender: var(--wb-lavender);
+  --color-wb-lavender-2: var(--wb-lavender-2);
+  --color-wb-rose: var(--wb-rose);
+  --color-wb-pink: var(--wb-pink);
+  --color-wb-pink-ink: var(--wb-pink-ink);
+  --color-wb-blush: var(--wb-blush);
+  --color-wb-blush-ink: var(--wb-blush-ink);
+  --color-wb-ink: var(--wb-ink);
+  --color-wb-muted: var(--wb-muted);
+  --color-wb-line: var(--wb-line);
+  --color-wb-ok-fg: var(--wb-ok-fg);
+  --color-wb-ok-bg: var(--wb-ok-bg);
+  --color-wb-wait-fg: var(--wb-wait-fg);
+  --color-wb-wait-bg: var(--wb-wait-bg);
+  --color-wb-pub-fg: var(--wb-pub-fg);
+  --color-wb-pub-bg: var(--wb-pub-bg);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

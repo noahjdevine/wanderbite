@@ -1,0 +1,45 @@
+---
+description: Wanderbite "Golden Hour" design system and Bea AI rules. Apply to all UI work.
+globs: ["app/**/*.tsx", "components/**/*.tsx", "app/**/*.css", "styles/**/*.css", "src/app/**/*.tsx", "src/components/**/*.tsx", "src/app/**/*.css", "src/app/styles/**/*.css"]
+alwaysApply: false
+---
+
+# Wanderbite design rules
+
+Source of truth: `design-handoff/DESIGN_SPEC.md`, `design-handoff/BEA_AI_SPEC.md`, the mockups in `design-handoff/mockups/`.
+
+## Look
+- Fonts: `font-display` = Instrument Serif (headlines, big numbers, restaurant names, Bea's italic voice). `font-sans` = Outfit (all UI). No other fonts.
+- One italic accent word per headline: blush `#ffc9d6` on dark, `#be185d` on cream.
+- Colors only from the `--wb-*` tokens in `wanderbite-theme.css`. Brand violet `#7c3aed`, rose `#fb7185`, night `#120a24`, cream `#faf6ef`.
+- Primary CTA = `.wb-cta` gradient (`#8b5cf6 → #db2777`). Secondary on dark = glass outline; on cream = plum `#2a1442` or outlined.
+- Public/Discover pages: dark, full-bleed photo, glass panels.
+- Member pages: dark cinematic header + cream sheet (`.wb-sheet`, -30px overlap, 32px top radius). Content mostly unboxed; cards only for objects (tickets, memories, next-move).
+- Mobile nav: floating dark glass tab bar (Discover, Challenges, Progress, Passport).
+- Radii: pills 999px, cards 22–28px, sheet 32px. Touch targets ≥ 44px.
+
+## Motion
+- One signature motion per screen + quiet ambient loops (drift, aurora, glow border). Use the keyframes/utilities in `wanderbite-theme.css`; Motion (framer-motion) for page transitions, reveals and the stamp slam.
+- Always respect `prefers-reduced-motion`.
+- Never animate a claim the system isn't actually making. No animation on the redemption QR.
+
+## Photos
+- `next/image`, fixed aspect frames, `object-fit: cover`, dark overlays for legibility. Keep Google Places attribution inside the frame. Decode HTML entities in credits.
+
+## Honesty and data
+- Never show hardcoded/mock progress values. Read progress from `getMemberProgress()`.
+- Statuses: ready → code_issued → verified → note_added (+ expired, swapped). An issued code is not a visit.
+- Label estimates ("saved so far (estimated)"). Show "pending"/"can't confirm" when true.
+- Notes are private by default; show a Private/Public badge + toggle wherever a note is shown.
+- Don't show discounts that aren't currently available. Checkout status copy must match reality.
+- Canonical URL is `https://wanderbite.co`.
+
+## Bea (AI)
+- Discover streams `DiscoverEvent`s (see BEA_AI_SPEC.md §4). Render thinking steps only as they arrive; skip the memory step for guests/no history.
+- Dietary constraints are hard filters, including in fallback. Keep the allergy notice.
+- Results show matched / unknown / unmet constraints honestly.
+- Render the avatar ONLY through `<Bea />` from `components/bea/Bea.tsx` (`state`: idle | thinking | found, `food`). Never import BeaAvatar or BeaAvatarRive directly. Never create or edit `.riv` files; the Rive animation comes from a human motion designer (`RIVE_BRIEF.md`).
+
+## Accessibility
+- Real `<button>`/`<a>`/`<label>`; `aria-label` on icon-only buttons; decorative SVGs `aria-hidden`.
+- Contrast ≥ 4.5:1. Status never by color alone. Visible focus rings. `aria-live="polite"` on thinking steps and verification status.

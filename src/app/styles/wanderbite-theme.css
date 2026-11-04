@@ -1,0 +1,482 @@
+/* ==========================================================================
+   Wanderbite "Golden Hour" theme — tokens, keyframes, utilities
+   Import from app/globals.css. Works alongside shadcn/ui variables.
+   Fonts: load via next/font and expose --font-display (Instrument Serif)
+   and --font-sans (Outfit) on <html>.
+   ========================================================================== */
+
+:root {
+  /* Surfaces */
+  --wb-night: #120a24;
+  --wb-night-2: #1d1033;
+  --wb-plum: #2a1442;
+  --wb-cream: #faf6ef;
+  --wb-paper: #fffdf8;
+
+  /* Brand */
+  --wb-violet: #7c3aed;
+  --wb-violet-2: #8b5cf6;
+  --wb-lavender: #c4b5fd;
+  --wb-lavender-2: #ddd6fe;
+  --wb-rose: #fb7185;
+  --wb-pink: #db2777;
+  --wb-pink-ink: #be185d;
+  --wb-blush: #ffc9d6;
+  --wb-blush-ink: #4a0d24;
+
+  /* Text on cream */
+  --wb-ink: #1f1530;
+  --wb-muted: #6b6275;
+  --wb-line: #e6dccb;
+
+  /* Status */
+  --wb-ok-fg: #14532d;   --wb-ok-bg: #dcfce7;
+  --wb-wait-fg: #78350f; --wb-wait-bg: #fef3c7;
+  --wb-pub-fg: #1e3a8a;  --wb-pub-bg: #dbeafe;
+  /* Pending chips sitting on photography (DESIGN_SPEC §2). */
+  --wb-photo-wait-fg: #451a03;
+  --wb-photo-wait-bg: #fde68a;
+
+  /* Cuisine inks */
+  --wb-ink-pizza: #c2410c;
+  --wb-ink-sushi: #0f766e;
+  --wb-ink-american: #6d28d9;
+
+  /* Effects */
+  --wb-cta-gradient: linear-gradient(135deg, #8b5cf6 0%, #db2777 100%);
+  --wb-orb-gradient: radial-gradient(circle at 32% 30%, #ffffff 0%, #fbcfe8 14%, #a78bfa 48%, #6d28d9 78%, #3b0764 100%);
+  --wb-shadow-card: 0 18px 40px rgba(42, 20, 66, 0.12), 0 1px 2px rgba(42, 20, 66, 0.06);
+  --wb-shadow-float: 0 30px 70px rgba(0, 0, 0, 0.5);
+
+  /* Radii */
+  --wb-r-tile: 16px;
+  --wb-r-card: 26px;
+  --wb-r-sheet: 32px;
+
+  /* --font-display and --font-sans are owned by next/font + Tailwind.
+     Defining them here would replace the loaded faces and the current
+     body font. See src/app/layout.tsx and src/app/globals.css. */
+}
+
+/* ---------- Typography ---------- */
+.wb-display { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.02em; line-height: 0.95; }
+.wb-display em, .wb-accent { font-style: italic; color: var(--wb-blush); }
+.wb-on-cream .wb-display em, .wb-on-cream .wb-accent { color: var(--wb-pink-ink); }
+.wb-voice { font-family: var(--font-display); font-style: italic; line-height: 1.28; }
+.wb-eyebrow { font-family: var(--font-sans); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* ---------- Surfaces ---------- */
+.wb-dark { background: var(--wb-night); color: #fff; }
+.wb-sheet {
+  position: relative;
+  margin-top: -30px;
+  border-radius: var(--wb-r-sheet) var(--wb-r-sheet) 0 0;
+  background: var(--wb-cream);
+  color: var(--wb-ink);
+}
+
+.wb-glass {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(20px) saturate(140%);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+.wb-glass-card {
+  background: rgba(36, 21, 64, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(24px) saturate(140%);
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3), var(--wb-shadow-float);
+}
+.wb-card { background: #fff; border-radius: var(--wb-r-card); box-shadow: var(--wb-shadow-card); }
+
+/* Rotating glow border: <div class="wb-glow"><div class="wb-glow__inner">…</div></div> */
+.wb-glow { position: relative; padding: 1.5px; overflow: hidden; border-radius: 26px; isolation: isolate; }
+.wb-glow::before {
+  content: "";
+  position: absolute; left: 50%; top: 50%;
+  width: 200%; aspect-ratio: 1; translate: -50% -50%;
+  background: conic-gradient(from 0deg, var(--wb-glow-base, rgba(255,255,255,0.14)) 0deg,
+    var(--wb-glow-base, rgba(255,255,255,0.14)) 200deg, #fb7185 260deg, #a78bfa 310deg,
+    var(--wb-glow-base, rgba(255,255,255,0.14)) 360deg);
+  animation: wb-spin var(--wb-glow-speed, 6.5s) linear infinite;
+  z-index: -1;
+}
+.wb-glow__inner { position: relative; border-radius: calc(26px - 1.5px); background: rgba(30, 17, 56, 0.88); backdrop-filter: blur(22px); }
+.wb-glow--cream { --wb-glow-base: #efe7da; }
+.wb-glow--cream .wb-glow__inner { background: #fff; backdrop-filter: none; }
+
+/* ---------- Controls ---------- */
+.wb-cta {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: 48px; padding: 0 22px; border-radius: 999px; border: 0;
+  background: var(--wb-cta-gradient); color: #fff;   font-weight: 600;
+  text-decoration: none;
+  box-shadow: 0 10px 22px rgba(219, 39, 119, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.wb-cta:hover { transform: translateY(-1px); box-shadow: 0 14px 28px rgba(219, 39, 119, 0.35); }
+.wb-pill-label {
+  display: inline-flex; align-items: center; gap: 8px;
+  width: fit-content;
+  padding: 6px 12px; border-radius: 999px;
+  background: var(--wb-blush); color: var(--wb-blush-ink);
+  font-size: 13px; font-weight: 600; transform: rotate(-2deg);
+}
+.wb-chip-glass {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 0 14px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.18); color: #fff;
+}
+.wb-orb { border-radius: 50%; background: var(--wb-orb-gradient); box-shadow: 0 0 24px rgba(167, 139, 250, 0.6); }
+
+/* Focus */
+.wb-dark :focus-visible { outline: 2px solid var(--wb-blush); outline-offset: 2px; }
+.wb-sheet :focus-visible { outline: 2px solid var(--wb-violet); outline-offset: 2px; }
+
+/* ---------- Ambient motion utilities ---------- */
+.wb-drift { animation: wb-drift 20s ease-in-out infinite; }
+.wb-aurora { animation: wb-aurora 13s ease-in-out infinite; }
+.wb-aurora-2 { animation: wb-aurora-2 15s ease-in-out infinite; }
+.wb-bokeh { animation: wb-bokeh 8s ease-in-out infinite; }
+.wb-float { animation: wb-float 7s ease-in-out infinite; }
+.wb-marquee { animation: wb-marquee 38s linear infinite; }
+.wb-reveal { animation: wb-rise 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.wb-stamp-slam { animation: wb-stamp 1s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes wb-spin { to { transform: rotate(360deg); } }
+@keyframes wb-drift {
+  0%, 100% { transform: scale(1.06) translate(0, 0); }
+  50% { transform: scale(1.16) translate(-3%, -2%); }
+}
+@keyframes wb-aurora {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-30px, 24px) scale(1.18); }
+}
+@keyframes wb-aurora-2 {
+  0%, 100% { transform: translate(0, 0) scale(1.1); }
+  50% { transform: translate(40px, -20px) scale(0.9); }
+}
+@keyframes wb-bokeh {
+  0%, 100% { transform: translate(0, 0); opacity: 0.5; }
+  50% { transform: translate(12px, -18px); opacity: 1; }
+}
+@keyframes wb-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-14px); }
+}
+@keyframes wb-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@keyframes wb-rise {
+  from { opacity: 0; transform: translateY(46px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes wb-stamp {
+  0% { opacity: 0; transform: scale(1.7) rotate(-18deg); }
+  60% { opacity: 1; transform: scale(0.94) rotate(6deg); }
+  100% { opacity: 1; transform: scale(1) rotate(5deg); }
+}
+@keyframes wb-placeholder-cycle {
+  0% { opacity: 0; transform: translateY(6px); }
+  4%, 30% { opacity: 1; transform: translateY(0); }
+  34%, 100% { opacity: 0; transform: translateY(-6px); }
+}
+
+/* ---------- Bea avatar keyframes (used by BeaAvatar.tsx) ---------- */
+@keyframes bea-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+@keyframes bea-blink { 0%, 44%, 50%, 100% { transform: scaleY(1); } 47% { transform: scaleY(0.1); } }
+@keyframes bea-move {
+  0%, 14% { transform: translateX(0) rotate(0deg); }
+  28%, 70% { transform: translateX(-30px) rotate(-8deg); }
+  86%, 100% { transform: translateX(0) rotate(0deg); }
+}
+@keyframes bea-mouth {
+  0%, 20% { transform: scale(1, 1); }
+  29% { transform: scale(1.35, 2.5); }
+  34% { transform: scale(1.1, 0.45); }
+  40% { transform: scale(1, 1.3); }
+  46% { transform: scale(1, 0.6); }
+  52% { transform: scale(1, 1.15); }
+  58%, 100% { transform: scale(1, 1); }
+}
+@keyframes bea-bite { 0%, 32% { transform: scale(0); } 35%, 92% { transform: scale(1); } 97%, 100% { transform: scale(0); } }
+@keyframes bea-squint {
+  0%, 33% { transform: scaleY(1); } 36%, 54% { transform: scaleY(0.22); }
+  58%, 82% { transform: scaleY(1); } 85% { transform: scaleY(0.1); } 88%, 100% { transform: scaleY(1); }
+}
+@keyframes bea-squash {
+  0%, 33%, 100% { transform: translateY(0) scale(1, 1); }
+  37% { transform: translateY(2px) scale(1.05, 0.95); }
+  44% { transform: translateY(-4px) scale(0.97, 1.03); }
+  52% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes bea-crumb {
+  0%, 34% { opacity: 0; transform: translate(0, 0); }
+  38% { opacity: 1; }
+  62%, 100% { opacity: 0; transform: translate(var(--dx), var(--dy)); }
+}
+@keyframes bea-heart {
+  0% { opacity: 0; transform: translateY(0) scale(0.5); }
+  25% { opacity: 1; transform: translateY(-6px) scale(1); }
+  100% { opacity: 0; transform: translateY(-22px) scale(0.9); }
+}
+
+/* Scoped so existing member pages keep their current motion.
+   Golden Hour loops and Bea still stop under reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  .wb-glow::before,
+  .wb-drift,
+  .wb-aurora,
+  .wb-aurora-2,
+  .wb-bokeh,
+  .wb-float,
+  .wb-marquee,
+  .wb-reveal,
+  .wb-stamp-slam,
+  .wb-pending-ring,
+  .wb-shine,
+  .wb-cta,
+  .wb-cta-secondary,
+  .wb-cta-plum,
+  .bea-avatar,
+  .bea-avatar * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* ---------- Phase 0 component classes (DESIGN_SPEC §8) ---------- */
+.wb-cta-secondary,
+.wb-cta-plum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+.wb-cta-secondary:hover,
+.wb-cta-plum:hover { transform: translateY(-1px); }
+.wb-cta-secondary-dark {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  color: #fff;
+}
+.wb-cta-secondary-cream {
+  background: transparent;
+  border: 1.5px solid #d9cfe6;
+  color: var(--wb-plum);
+}
+.wb-cta-plum {
+  background: var(--wb-plum);
+  border: 0;
+  color: #fff;
+}
+.wb-cta-icon {
+  width: 48px;
+  min-height: 48px;
+  padding: 0;
+  border-radius: 999px;
+}
+
+.wb-chip-tinted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: #ede9fe;
+  color: #5b21b6;
+  font-size: 13px;
+  font-weight: 600;
+}
+.wb-chip-matched {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(110, 231, 183, 0.14);
+  color: #a7f3d0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.wb-chip-unknown {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 32px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(253, 230, 138, 0.14);
+  color: #fde68a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.wb-stat-tile {
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #fff;
+}
+.wb-open-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--wb-plum);
+}
+.wb-tabbar {
+  height: 64px;
+  border-radius: 32px;
+  background: rgba(18, 10, 36, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 16px 36px rgba(18, 10, 36, 0.35);
+  display: grid;
+  align-items: center;
+}
+.wb-status-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--wb-line);
+}
+.wb-status-bar[data-on="true"] { background: var(--wb-pink); }
+
+.wb-pending-ring { animation: wb-dash 30s linear infinite; }
+.wb-shine { animation: wb-shine 4s ease-in-out infinite; }
+
+@keyframes wb-dash { to { transform: rotate(360deg); } }
+@keyframes wb-shine {
+  0%, 62% { transform: translateX(-140%); }
+  100% { transform: translateX(240%); }
+}
+
+/* ---------- Bea motion (RIVE_BRIEF, CSS stand-in) ---------- */
+@keyframes bea-idle {
+  0%, 100% { transform: translateY(0) scale(1, 1); }
+  50% { transform: translateY(-3px) scale(1.018, 0.982); }
+}
+@keyframes bea-blink-idle {
+  0%, 42%, 48%, 86%, 90%, 94%, 100% { transform: scaleY(1); }
+  45%, 88%, 92% { transform: scaleY(0.08); }
+}
+@keyframes bea-hop {
+  0% { transform: translateY(0) scale(1, 1); }
+  16% { transform: translateY(2px) scale(1.05, 0.95); }
+  42% { transform: translateY(-12px) scale(0.96, 1.06); }
+  64% { transform: translateY(0) scale(1.03, 0.97); }
+  100% { transform: translateY(0) scale(1, 1); }
+}
+@keyframes bea-found-out {
+  0%, 58% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes bea-found-in {
+  0%, 58% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.bea-avatar .bea-body,
+.bea-avatar .bea-eye,
+.bea-avatar .bea-mouth-think,
+.bea-avatar .bea-food-motion,
+.bea-avatar .bea-bite,
+.bea-avatar .bea-crumb,
+.bea-avatar .bea-heart,
+.bea-avatar .bea-found-eyes,
+.bea-avatar .bea-mouth-found {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.bea-avatar .bea-body { transform-origin: 50% 100%; }
+.bea-avatar .bea-food-motion { transform-origin: 0% 50%; }
+.bea-food,
+.bea-heart,
+.bea-mouth-idle,
+.bea-mouth-think,
+.bea-mouth-found,
+.bea-found-eyes,
+.bea-idle-eyes {
+  transition: opacity 0.4s ease;
+}
+
+.bea-avatar[data-state="idle"] .bea-body,
+.bea-avatar[data-state="found"] .bea-body {
+  animation: bea-idle 3.6s ease-in-out infinite;
+}
+.bea-avatar[data-state="found"] .bea-body {
+  animation: bea-hop 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) both, bea-idle 3.6s ease-in-out 1.5s infinite;
+}
+.bea-avatar[data-state="thinking"] .bea-body {
+  animation: bea-squash 4.2s ease-in-out infinite;
+}
+
+.bea-avatar[data-state="idle"] .bea-eye,
+.bea-avatar[data-face-only="true"][data-state="idle"] .bea-eye {
+  animation: bea-blink-idle 8s ease-in-out infinite;
+}
+.bea-avatar[data-state="found"] .bea-idle-eyes {
+  opacity: 0;
+  animation: bea-found-in 1.5s ease both;
+}
+.bea-avatar[data-state="found"] .bea-eye {
+  animation: bea-blink-idle 8s ease-in-out 1.5s infinite;
+}
+.bea-avatar[data-state="thinking"] .bea-eye {
+  transform: scaleY(0.22);
+  animation: bea-squint 4.2s infinite;
+}
+
+.bea-avatar[data-state="thinking"] .bea-mouth-idle { opacity: 0; }
+.bea-avatar[data-state="found"] .bea-mouth-idle {
+  opacity: 0;
+  animation: bea-found-in 1.5s ease both;
+}
+.bea-mouth-think,
+.bea-mouth-found,
+.bea-found-eyes { opacity: 0; }
+.bea-avatar[data-state="thinking"] .bea-mouth-think {
+  opacity: 1;
+  transform: scale(1.05, 0.75);
+  animation: bea-mouth 4.2s infinite;
+}
+.bea-avatar[data-state="found"] .bea-mouth-found,
+.bea-avatar[data-state="found"] .bea-found-eyes {
+  opacity: 1;
+  animation: bea-found-out 1.5s ease both;
+}
+
+.bea-food { opacity: 0; }
+.bea-avatar[data-state="thinking"] .bea-food { opacity: 1; }
+.bea-food-motion { transform: translateX(-30px) rotate(-8deg); }
+.bea-avatar[data-state="thinking"] .bea-food-motion {
+  animation: bea-move 4.2s ease-in-out infinite;
+}
+.bea-bite { transform: scale(1); }
+.bea-avatar[data-state="thinking"] .bea-bite {
+  animation: bea-bite 4.2s infinite;
+}
+.bea-crumb { opacity: 0; }
+.bea-avatar[data-state="thinking"] .bea-crumb {
+  animation: bea-crumb 4.2s infinite;
+}
+
+.bea-heart { opacity: 0; }
+.bea-avatar[data-state="found"] .bea-heart {
+  opacity: 1;
+  animation: bea-heart 1.5s ease-out both;
+}
