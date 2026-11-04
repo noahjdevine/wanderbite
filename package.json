@@ -34,7 +34,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
-    "happy-dom": "^20.10.6",
+    "happy-dom": "^21.0.4",
     "lucide-react": "^0.563.0",
     "maplibre-gl": "6.8.0",
     "next": "16.4.3",
