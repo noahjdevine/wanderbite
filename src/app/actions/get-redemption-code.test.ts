@@ -82,7 +82,8 @@ describe('getRedemptionCode', () => {
     });
   });
 
-  it('does not return a code for a verified redemption', async () => {
+  it('returns verified_at for the member’s own verified redemption and no code', async () => {
+    const verifiedAt = '2026-11-04T18:05:00.000Z';
     maybeSingle.mockResolvedValue({
       data: {
         status: 'verified',
@@ -90,10 +91,30 @@ describe('getRedemptionCode', () => {
         code_iv: 'iv',
         user_id: 'user-1',
         expires_at: new Date(Date.now() + 60_000).toISOString(),
+        verified_at: verifiedAt,
       },
       error: null,
     });
     const { getRedemptionCode } = await import('@/app/actions/get-redemption-code');
-    await expect(getRedemptionCode('red-1')).resolves.toEqual({ state: 'unavailable' });
+    await expect(getRedemptionCode('red-1')).resolves.toEqual({
+      state: 'verified',
+      verifiedAt,
+    });
+  });
+
+  it('returns no status for someone else’s redemption id', async () => {
+    maybeSingle.mockResolvedValue({
+      data: {
+        status: 'verified',
+        encrypted_code: 'cipher',
+        code_iv: 'iv',
+        user_id: 'user-2',
+        expires_at: new Date(Date.now() + 60_000).toISOString(),
+        verified_at: '2026-11-04T18:05:00.000Z',
+      },
+      error: null,
+    });
+    const { getRedemptionCode } = await import('@/app/actions/get-redemption-code');
+    await expect(getRedemptionCode('red-other')).resolves.toEqual({ state: 'unavailable' });
   });
 });

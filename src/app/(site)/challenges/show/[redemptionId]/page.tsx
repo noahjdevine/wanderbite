@@ -124,15 +124,23 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
 
   const now = new Date();
   const codeResult = row.status === 'verified' ? null : await getRedemptionCode(redemptionId);
-  if (row.status !== 'verified' && (!codeResult || codeResult.state === 'unavailable')) {
+  if (
+    row.status !== 'verified'
+    && codeResult?.state !== 'verified'
+    && (!codeResult || codeResult.state === 'unavailable')
+  ) {
     redirect('/challenges');
   }
 
-  const verifiedAt = row.verified_at
-    ? format(new Date(row.verified_at), 'PPp')
-    : null;
-  const phase =
+  const verifiedIso =
     row.status === 'verified'
+      ? row.verified_at
+      : codeResult?.state === 'verified'
+        ? codeResult.verifiedAt
+        : null;
+  const verifiedAt = verifiedIso ? format(new Date(verifiedIso), 'PPp') : null;
+  const phase =
+    row.status === 'verified' || codeResult?.state === 'verified'
       ? 'verified'
       : codeResult?.state === 'issued'
         ? 'issued'
@@ -158,7 +166,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
         minSpendLabel={minSpendLabel}
         status={phase}
         verifiedAt={verifiedAt}
-        verifiedAtIso={row.verified_at}
+        verifiedAtIso={verifiedIso}
         cuisineTags={rest.cuisine_tags}
         neighborhood={rest.neighborhood}
         itemStatus={itemStatus}
