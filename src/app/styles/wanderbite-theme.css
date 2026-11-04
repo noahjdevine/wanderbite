@@ -260,6 +260,7 @@
   .wb-stamp-slam,
   .wb-pending-ring,
   .wb-shine,
+  .wb-xp-fill,
   .wb-cta,
   .wb-cta-secondary,
   .wb-cta-plum,
@@ -385,6 +386,11 @@
 
 .wb-pending-ring { animation: wb-dash 30s linear infinite; }
 .wb-shine { animation: wb-shine 4s ease-in-out infinite; }
+.wb-xp-fill { animation: wb-xp-fill 1.4s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes wb-xp-fill {
+  from { width: 0; }
+}
 
 @keyframes wb-dash { to { transform: rotate(360deg); } }
 @keyframes wb-shine {

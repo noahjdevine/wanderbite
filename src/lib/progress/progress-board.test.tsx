@@ -1,0 +1,492 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { MyJourneyHub } from '@/components/journey/my-journey-hub';
+import { ProgressUnavailable, ProgressView } from '@/components/journey/progress-view';
+import { chicagoMonthStart } from '@/lib/cron-period';
+import { MEMBER_NAV_ITEMS } from '@/lib/nav-items';
+import {
+  MY_JOURNEY_VIEW_LABELS,
+  myJourneyHref,
+  parseMyJourneyView,
+} from '@/lib/my-journey-views';
+import type { MemberBadge, MemberProgress } from '@/lib/progress/get-member-progress';
+import { levelFromXp, PROGRESS_UNAVAILABLE_MESSAGE, XP_LEVELS } from '@/lib/progress/rules';
+import { previousChicagoMonth } from '@/lib/streaks';
+import {
+  assembleProgressAdventures,
+  buildProgressModel,
+  buildStreakMonths,
+  headerLabelFor,
+  nextChicagoMonth,
+  noPairCta,
+  selectNextMove,
+  type NoPairCta,
+  type ProgressAdventure,
+} from '@/lib/progress/progress-board';
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: vi.fn() }),
+}));
+
+const NOW = new Date('2026-11-04T00:00:00.000Z');
+const ROOT = path.resolve(__dirname, '../../..');
+
+const GENERATE = noPairCta({
+  launchEligible: true,
+  creditsWaiting: false,
+  generateBlocked: false,
+});
+
+afterEach(() => {
+  cleanup();
+});
+
+describe('selectNextMove', () => {
+  it('points a waiting code at that code before a memory, a ready challenge, or no pair', () => {
+    const move = selectNextMove({
+      now: NOW,
+      hasPair: false,
+      xp: 0,
+      nextLevelName: 'The Explorer',
+      nextLevelXp: 300,
+      noPair: GENERATE,
+      adventures: [
+        adventure({ id: 'ready', visitStatus: 'ready', restaurantName: 'The Common Table', slotNumber: 1 }),
+        adventure({
+          id: 'memory',
+          redemptionId: 'memory',
+          visitStatus: 'verified',
+          restaurantName: 'The Yard',
+          occurredAt: '2026-04-26T18:00:00.000Z',
+        }),
+        adventure({
+          id: 'later-code',
+          redemptionId: 'later-code',
+          visitStatus: 'code_issued',
+          restaurantName: 'Later',
+          expiresAt: '2026-11-04T02:00:00.000Z',
+        }),
+        adventure({
+          id: 'sooner-code',
+          redemptionId: 'sooner-code',
+          visitStatus: 'code_issued',
+          restaurantName: 'Zen Sushi & Grill',
+          expiresAt: '2026-11-04T01:00:00.000Z',
+        }),
+      ],
+    });
+
+    expect(move.kind).toBe('code_issued');
+    expect(move.actionHref).toBe('/challenges/show/sooner-code');
+    expect(move.actionLabel).toBe('Show code');
+    expect(move.sentence).toContain('Zen Sushi & Grill');
+  });
+
+  it('asks for a new code when the issued code has expired and nothing is still issued', () => {
+    const move = selectNextMove({
+      now: NOW,
+      hasPair: true,
+      xp: 0,
+      nextLevelName: null,
+      nextLevelXp: null,
+      noPair: GENERATE,
+      adventures: [
+        adventure({
+          id: 'expired',
+          redemptionId: 'expired',
+          visitStatus: 'code_expired',
+          restaurantName: 'Zen Sushi & Grill',
+        }),
+      ],
+    });
+    expect(move.kind).toBe('code_expired');
+    expect(move.actionHref).toBe('/challenges/show/expired');
+    expect(move.actionLabel).toBe('Get a new code');
+  });
+
+  it('opens the latest verified visit that has no note', () => {
+    const move = selectNextMove({
+      now: NOW,
+      hasPair: true,
+      xp: 200,
+      nextLevelName: 'The Explorer',
+      nextLevelXp: 300,
+      noPair: GENERATE,
+      adventures: [
+        adventure({
+          id: 'older',
+          redemptionId: 'older',
+          visitStatus: 'verified',
+          restaurantName: 'Older',
+          occurredAt: '2026-02-02T18:00:00.000Z',
+        }),
+        adventure({
+          id: 'newer',
+          redemptionId: 'newer',
+          visitStatus: 'verified',
+          restaurantName: 'Cadillac Pizza Pub',
+          occurredAt: '2026-04-26T18:00:00.000Z',
+        }),
+        adventure({ id: 'noted', redemptionId: 'noted', visitStatus: 'note_added', restaurantName: 'Noted' }),
+      ],
+    });
+    expect(move.kind).toBe('add_memory');
+    expect(move.actionLabel).toBe('Add memory');
+    expect(move.actionHref).toContain('/journal/notes/newer');
+    expect(decodeURIComponent(move.actionHref)).toContain('return=/journey');
+    expect(move.sentence).toContain('Cadillac Pizza Pub');
+  });
+
+  it('opens Challenges for the lowest ready slot and names the next level when 100 XP reaches it', () => {
+    const move = selectNextMove({
+      now: NOW,
+      hasPair: true,
+      xp: 200,
+      nextLevelName: 'The Explorer',
+      nextLevelXp: 300,
+      noPair: GENERATE,
+      adventures: [
+        adventure({ id: 'b', visitStatus: 'ready', restaurantName: 'Second', slotNumber: 2 }),
+        adventure({ id: 'a', visitStatus: 'ready', restaurantName: 'The Common Table', slotNumber: 1 }),
+      ],
+    });
+    expect(move.kind).toBe('ready');
+    expect(move.actionHref).toBe('/challenges');
+    expect(move.actionLabel).toBe('Open challenge');
+    expect(move.sentence).toContain('The Common Table');
+    expect(move.accent).toBe('The Explorer.');
+    expect(move.meta).toContain('+100 XP');
+  });
+
+  it('uses the existing Challenges CTA when there is no pair', () => {
+    for (const cta of [
+      noPairCta({ launchEligible: false, creditsWaiting: false, generateBlocked: false }),
+      noPairCta({ launchEligible: true, creditsWaiting: true, generateBlocked: false }),
+      noPairCta({ launchEligible: true, creditsWaiting: false, generateBlocked: true }),
+      GENERATE,
+    ] satisfies NoPairCta[]) {
+      const move = selectNextMove({
+        now: NOW,
+        hasPair: false,
+        xp: 0,
+        nextLevelName: null,
+        nextLevelXp: null,
+        noPair: cta,
+        adventures: [],
+      });
+      expect(move.kind).toBe('no_pair');
+      expect(move.actionHref).toBe(cta.actionHref);
+      expect(move.actionLabel).toBe(cta.actionLabel);
+      expect(move.sentence).toBe(cta.sentence);
+    }
+    expect(GENERATE.actionLabel).toBe('Generate Challenge');
+  });
+
+  it('sends a finished pair to Discover', () => {
+    const move = selectNextMove({
+      now: NOW,
+      hasPair: true,
+      xp: 200,
+      nextLevelName: 'The Explorer',
+      nextLevelXp: 300,
+      noPair: GENERATE,
+      adventures: [
+        adventure({ id: 'noted', redemptionId: 'noted', visitStatus: 'note_added', restaurantName: 'The Yard' }),
+      ],
+    });
+    expect(move.kind).toBe('caught_up');
+    expect(move.actionHref).toBe('/roulette');
+  });
+});
+
+describe('Chicago month window', () => {
+  it('keeps 11:30 PM Chicago on the last day inside that month', () => {
+    const lastNight = new Date('2026-11-01T04:30:00.000Z');
+    expect(chicagoMonthStart(lastNight)).toBe('2026-10-01');
+    const months = buildStreakMonths({
+      now: lastNight,
+      verifiedAt: [lastNight.toISOString()],
+    });
+    expect(months.map((month) => month.label)).toEqual(['May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct']);
+    expect(months.at(-1)).toMatchObject({
+      key: '2026-10-01',
+      verified: true,
+      current: true,
+      pending: false,
+    });
+    expect(nextChicagoMonth('2026-10-01')).toBe('2026-11-01');
+    expect(previousChicagoMonth(nextChicagoMonth('2026-12-01'))).toBe('2026-12-01');
+    expect(nextChicagoMonth(previousChicagoMonth('2026-01-01'))).toBe('2026-01-01');
+  });
+});
+
+describe('Progress page', () => {
+  it('shows tier edges and hides the next target at max level', () => {
+    expect(panel(0)).toMatch(/300 to The Explorer/);
+    expect(panel(299)).toMatch(/1 to The Explorer/);
+    expect(panel(300)).toMatch(/Level 1 · The Explorer/);
+    expect(panel(300)).toMatch(/700 to The Tastemaker/);
+    expect(panel(999)).toMatch(/1 to The Tastemaker/);
+    expect(panel(1000)).toMatch(/Level 2 · The Tastemaker/);
+    expect(panel(1000)).toMatch(/500 to The Connoisseur/);
+    expect(panel(2500)).toMatch(/Max level/);
+    expect(panel(2500)).not.toMatch(/to The/);
+    expect(panel(2600)).toMatch(/Max level/);
+    expect(panel(2600)).not.toMatch(/to The/);
+    expect(screen.getByText('100 XP for every verified visit')).toBeTruthy();
+  });
+
+  it('labels savings estimated only when the read says so', () => {
+    render(<ProgressView model={readyModel({ xp: 0 })} showSectionTabs={false} />);
+    expect(screen.getByText(/\(estimated\)/)).toBeTruthy();
+    cleanup();
+    render(
+      <ProgressView
+        model={readyModel({ xp: 0, savings: { amount: 20, isEstimate: false } })}
+        showSectionTabs={false}
+      />,
+    );
+    expect(screen.queryByText(/estimated/i)).toBeNull();
+    expect(screen.getByText('$20')).toBeTruthy();
+  });
+
+  it('shows the unavailable message and a retry link instead of zeros', () => {
+    render(<ProgressUnavailable headerLabel="Noah" showSectionTabs={false} />);
+    expect(screen.getByText(PROGRESS_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Retry' }).getAttribute('href')).toBe('/journey');
+    expect(screen.queryByText('0')).toBeNull();
+    expect(screen.queryByText('$0')).toBeNull();
+    expect(screen.queryByText(/verified visits/)).toBeNull();
+  });
+
+  it('shows an empty visit list without sample restaurants', () => {
+    render(<ProgressView model={readyModel({ xp: 0 })} showSectionTabs={false} />);
+    expect(screen.getByText('No visits yet. A verified visit will show up here.')).toBeTruthy();
+    expect(screen.queryByText('The Common Table')).toBeNull();
+    expect(screen.getAllByText('0').length).toBeGreaterThan(0);
+  });
+
+  it('shows one medallion per id, with earned dates and locked progress', () => {
+    const badges: MemberBadge[] = [
+      badge('first_bite', 'First Bite', '2026-02-02T18:00:00.000Z', 1, 1),
+      badge('first_bite', 'First Bite copy', '2026-02-02T18:00:00.000Z', 1, 1),
+      badge('hat_trick', 'Hat Trick', null, 2, 3),
+    ];
+    render(<ProgressView model={readyModel({ xp: 200, badges })} showSectionTabs={false} />);
+    expect(screen.getAllByText('First Bite')).toHaveLength(1);
+    expect(screen.queryByText('First Bite copy')).toBeNull();
+    expect(screen.getByText('Earned on Feb 2, 2026')).toBeTruthy();
+    expect(screen.getByText('2 of 3')).toBeTruthy();
+    expect(screen.getByText('1 of 2')).toBeTruthy();
+  });
+
+  it('opens the level road from the keyboard button', () => {
+    render(<ProgressView model={readyModel({ xp: 1000 })} showSectionTabs={false} />);
+    const button = screen.getByRole('button', { name: /Road to Local Legend/ });
+    expect(button.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(button);
+    expect(button.getAttribute('aria-expanded')).toBe('true');
+    for (const tier of XP_LEVELS) {
+      expect(screen.getAllByText(`${tier.minXp} XP`).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(new RegExp(tier.name)).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('keeps a pending code out of the visit count and links the next move to it', () => {
+    const issued = assembleProgressAdventures({
+      now: NOW,
+      noteRedemptionIds: new Set(),
+      restaurants: [
+        {
+          id: 'rest-zen',
+          name: 'Zen Sushi & Grill',
+          neighborhood: 'Stonebridge',
+          imageUrl: null,
+          googlePlaceId: null,
+        },
+      ],
+      items: [
+        {
+          id: 'item-zen',
+          status: 'redeemed',
+          redemptionDeadline: '2026-12-01T00:00:00.000Z',
+          slotNumber: 1,
+          restaurantId: 'rest-zen',
+        },
+      ],
+      redemptions: [
+        {
+          id: 'red-zen',
+          status: 'issued',
+          verifiedAt: null,
+          expiresAt: '2026-11-04T00:15:00.000Z',
+          createdAt: '2026-11-03T23:00:00.000Z',
+          restaurantId: 'rest-zen',
+          challengeItemId: 'item-zen',
+        },
+      ],
+    });
+    expect(issued.map((row) => row.visitStatus)).toEqual(['code_issued']);
+    const model = buildProgressModel({
+      progress: baseProgress({ xp: 0, verifiedVisits: 0, pendingVisits: 1 }),
+      headerLabel: 'Noah',
+      now: NOW,
+      activity: { ok: true, hasPair: true, adventures: issued, noPair: GENERATE },
+    });
+    render(<ProgressView model={model} showSectionTabs={false} />);
+    expect(screen.getByRole('link', { name: 'Show code' }).getAttribute('href')).toBe(
+      '/challenges/show/red-zen',
+    );
+    expect(screen.getByText('Code issued')).toBeTruthy();
+    expect(screen.getByText(/\+1 pending/)).toBeTruthy();
+    const visits = screen.getAllByText('0');
+    expect(visits.length).toBeGreaterThan(0);
+  });
+
+  it('links Add memory back to /journey', () => {
+    const model = buildProgressModel({
+      progress: baseProgress({ xp: 100, verifiedVisits: 1 }),
+      headerLabel: 'Noah',
+      now: NOW,
+      activity: {
+        ok: true,
+        hasPair: true,
+        noPair: GENERATE,
+        adventures: [
+          adventure({
+            id: '33333333-3333-4333-8333-333333333333',
+            redemptionId: '33333333-3333-4333-8333-333333333333',
+            visitStatus: 'verified',
+            restaurantName: 'Cadillac Pizza Pub',
+            occurredAt: '2026-02-02T18:00:00.000Z',
+            verifiedAt: '2026-02-02T18:00:00.000Z',
+          }),
+        ],
+      },
+    });
+    render(<ProgressView model={model} showSectionTabs={false} />);
+    const links = screen.getAllByRole('link', { name: 'Add memory' });
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      const href = link.getAttribute('href') ?? '';
+      expect(href).toContain('/journal/notes/33333333-3333-4333-8333-333333333333');
+      expect(decodeURIComponent(href)).toContain('return=/journey');
+    }
+  });
+});
+
+describe('Progress label', () => {
+  it('renames the nav and hub tab and keeps the journey URLs', () => {
+    expect(MEMBER_NAV_ITEMS.find((item) => item.href === '/journey')?.label).toBe('Progress');
+    expect(MY_JOURNEY_VIEW_LABELS.journey).toBe('Progress');
+    expect(MY_JOURNEY_VIEW_LABELS.journal).toBe('Journal');
+    expect(MY_JOURNEY_VIEW_LABELS.passport).toBe('Passport');
+    expect(parseMyJourneyView(undefined)).toBe('journey');
+    expect(parseMyJourneyView('journal')).toBe('journal');
+    expect(parseMyJourneyView('passport')).toBe('passport');
+    expect(parseMyJourneyView('progress')).toBe('journey');
+    expect(myJourneyHref('journey')).toBe('/journey');
+    expect(myJourneyHref('journal')).toBe('/journey?view=journal');
+    expect(myJourneyHref('passport')).toBe('/journey?view=passport');
+
+    render(
+      <MyJourneyHub activeView="passport">
+        <p>Passport body</p>
+      </MyJourneyHub>,
+    );
+    expect(screen.getByRole('heading', { name: 'Progress' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Progress' }).getAttribute('aria-selected')).toBe('false');
+    expect(screen.getByRole('tab', { name: 'Passport' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByText('Passport body')).toBeTruthy();
+
+    const page = readFileSync(path.join(ROOT, 'src/app/(site)/journey/page.tsx'), 'utf8');
+    expect(page).toContain('view === \'journey\' ? \'/journey\' : `/journey?view=${view}`');
+    expect(page).toContain('redirect(`/signin?redirectTo=${encodeURIComponent(redirectTo)}`)');
+    expect(page).toContain('<PassportContent');
+    expect(page).toContain('<JournalContent');
+
+    const css = readFileSync(path.join(ROOT, 'src/app/styles/wanderbite-theme.css'), 'utf8');
+    const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
+    expect(reduced).toContain('.wb-spin');
+    expect(reduced).toContain('.wb-shine');
+    expect(reduced).toContain('.wb-xp-fill');
+    expect(reduced).toContain('.wb-aurora');
+  });
+
+  it('never uses an email as the greeting name', () => {
+    expect(headerLabelFor('ada@example.com')).toBe('Welcome back');
+    expect(headerLabelFor('Noah Devine')).toBe('Noah');
+  });
+});
+
+function panel(xp: number): string {
+  cleanup();
+  const view = render(<ProgressView model={readyModel({ xp })} showSectionTabs={false} />);
+  return view.container.textContent ?? '';
+}
+
+function readyModel(
+  overrides: Partial<Exclude<MemberProgress, { error: 'progress_unavailable' }>> = {},
+) {
+  return buildProgressModel({
+    progress: baseProgress(overrides),
+    headerLabel: 'Noah',
+    now: NOW,
+    activity: { ok: true, hasPair: true, adventures: [], noPair: GENERATE },
+  });
+}
+
+function baseProgress(
+  overrides: Partial<Exclude<MemberProgress, { error: 'progress_unavailable' }>> = {},
+): Exclude<MemberProgress, { error: 'progress_unavailable' }> {
+  const xp = overrides.xp ?? 0;
+  const level = levelFromXp(xp);
+  return {
+    verifiedVisits: 0,
+    pendingVisits: 0,
+    uniqueRestaurants: 0,
+    neighborhoods: 0,
+    currentMonthlyStreak: 0,
+    longestStreak: 0,
+    totalMonthsActive: 0,
+    xp,
+    level: level.level,
+    nextLevel: level.nextLevel,
+    badges: [],
+    savings: { amount: 0, isEstimate: true },
+    ...overrides,
+  };
+}
+
+function badge(
+  id: string,
+  name: string,
+  earnedAt: string | null,
+  current: number,
+  target: number,
+): MemberBadge {
+  return {
+    id,
+    name,
+    earnedAt,
+    progress: { current, target },
+    description: name,
+    icon: '★',
+  };
+}
+
+function adventure(overrides: Partial<ProgressAdventure> & Pick<ProgressAdventure, 'id' | 'visitStatus' | 'restaurantName'>): ProgressAdventure {
+  return {
+    redemptionId: null,
+    neighborhood: null,
+    imageUrl: '/images/restaurant-placeholder.jpg',
+    occurredAt: null,
+    verifiedAt: null,
+    expiresAt: null,
+    deadline: null,
+    slotNumber: null,
+    ...overrides,
+  };
+}

@@ -450,12 +450,14 @@ describe('getMemberProgress', () => {
 describe('progress page wiring', () => {
   it('reads Journey, Passport, and Challenges from getMemberProgress', () => {
     const journey = source('src/components/journey/journey-content.tsx');
+    const progressView = source('src/components/journey/progress-view.tsx');
     const passport = source('src/components/passport/passport-content.tsx');
     const challenges = source('src/app/(site)/challenges/page.tsx');
     const dashboard = source('src/app/(site)/dashboard/page.tsx');
     expect(journey).toContain('getMemberProgress');
-    expect(journey).toContain('PROGRESS_UNAVAILABLE_MESSAGE');
+    expect(progressView).toContain('PROGRESS_UNAVAILABLE_MESSAGE');
     expect(journey).not.toContain('CURRENT_STREAK_MOCK');
+    expect(progressView).not.toContain('CURRENT_STREAK_MOCK');
     expect(journey).not.toContain("select('id, email')");
     expect(passport).toContain('getMemberProgress');
     expect(passport).not.toContain('getStreakBadgeForLongest');
