@@ -39,6 +39,7 @@ import {
   reasonForSlot,
   type MonthlyRevealPanel,
 } from '@/lib/challenges/monthly-reveal-copy';
+import type { RecipeSections } from '@/lib/recipes/display';
 
 export type DashboardStreakStats = {
   currentStreak: number;
@@ -60,6 +61,8 @@ type DashboardClientProps = {
   monthlyReveal?: MonthlyRevealPanel;
   /** Dashboard hides Generate Challenge while monthly reveal is available. */
   blockMemberGenerate?: boolean;
+  /** Empty when E05_RECIPES_ENABLED is not exactly true. */
+  recipeSections?: RecipeSections;
 };
 
 export function DashboardClient({
@@ -72,6 +75,7 @@ export function DashboardClient({
   carriedCredits = [],
   monthlyReveal = { mode: 'off' },
   blockMemberGenerate = false,
+  recipeSections = { exclusionLine: null, byRestaurantId: {} },
 }: DashboardClientProps) {
   const router = useRouter();
   const pairHeadingRef = useRef<HTMLHeadingElement>(null);
@@ -284,6 +288,8 @@ export function DashboardClient({
                     ? reasonForSlot(revealReasons, item.challengeItem.restaurant_id)
                     : null
                 }
+                recipes={recipeSections.byRestaurantId[item.restaurant.id] ?? []}
+                recipeExclusionLine={recipeSections.exclusionLine}
               />
             ))}
           </div>
@@ -348,6 +354,7 @@ export function DashboardClient({
         onRedeem={handleRedeem}
         biteNoteByRedemptionId={biteNoteByRedemptionId}
         launchEligible={launchEligible}
+        recipeSections={recipeSections}
       />
     </div>
   );

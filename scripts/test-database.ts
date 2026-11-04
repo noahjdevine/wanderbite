@@ -142,6 +142,8 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e04-reveal.sql'), 'utf8')) + '\n');
   await runE04RevealConcurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E04 reveal RLS, atomic commit, retry, and generator race.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e05-recipes.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E05 recipe constraints, published read, owner saves, and no side-effect writes.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-credit-safe-swaps.sql'), 'utf8')) + '\n');
   await runE02CreditSafeSwaps({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 credit-safe swap issuance overlap.\n');

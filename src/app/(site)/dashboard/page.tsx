@@ -11,6 +11,7 @@ import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import { loadCreditsSwapRemaining } from '@/lib/challenges/carried-credits';
 import { memberGenerateBlocked } from '@/lib/challenges/load-monthly-reveal';
+import { loadRecipeSections } from '@/lib/recipes/load';
 
 export const dynamic = 'force-dynamic';
 
@@ -100,6 +101,10 @@ export default async function DashboardPage() {
   const streak = await calculateStreak(typedProfile.id);
   const blockMemberGenerate = await memberGenerateBlocked();
 
+  const recipeSections = await loadRecipeSections(
+    (currentChallenge?.items ?? []).map((item) => item.restaurant.id),
+  );
+
   const biteNotesRes = await getBiteNotes();
   const biteNotesForDash =
     biteNotesRes.ok
@@ -128,6 +133,7 @@ export default async function DashboardPage() {
           biteNotes={biteNotesForDash}
           creditsSwapRemaining={creditsSwapRemaining}
           blockMemberGenerate={blockMemberGenerate}
+          recipeSections={recipeSections}
         />
       </div>
     </main>

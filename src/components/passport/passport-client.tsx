@@ -25,6 +25,8 @@ import {
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
+import { RecipeCards } from '@/components/recipes/recipe-cards';
+import { RECIPES_SECTION_HEADING, type RecipeSections } from '@/lib/recipes/display';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -106,6 +108,7 @@ export type PassportClientProps = {
   longestStreak: number;
   totalMonthsActive: number;
   badgeLabel: string | null;
+  recipeSections?: RecipeSections;
 };
 
 function biteNoteForVisit(
@@ -239,6 +242,7 @@ export function PassportClient({
   longestStreak,
   totalMonthsActive: _totalMonthsActive,
   badgeLabel,
+  recipeSections = { exclusionLine: null, byRestaurantId: {} },
 }: PassportClientProps) {
   const [popupVisitId, setPopupVisitId] = useState<string | null>(null);
 
@@ -605,6 +609,12 @@ export function PassportClient({
                 <p className="text-xs text-muted-foreground">
                   {format(new Date(v.verifiedAt), 'MMM d, yyyy')}
                 </p>
+                <RecipeCards
+                  headingId={`passport-recipes-${v.id}`}
+                  heading={RECIPES_SECTION_HEADING}
+                  exclusionLine={recipeSections.exclusionLine}
+                  recipes={recipeSections.byRestaurantId[v.restaurant.id] ?? []}
+                />
               </CardContent>
             </Card>
           ))}

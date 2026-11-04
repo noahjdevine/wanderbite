@@ -215,6 +215,21 @@ export async function evaluatePartnerLoginLimit(
   );
 }
 
+/** 30 recipe saves or unsaves per 5 minutes per user UUID. */
+export const recipeSaveLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(30, '5 m'),
+      prefix: 'wanderbite:recipe-save',
+    })
+  : null;
+
+export async function evaluateRecipeSaveLimit(
+  userId: string,
+): Promise<FailClosedLimitResult> {
+  return evaluateLimiter(recipeSaveLimiter, userId);
+}
+
 /** 3 new QR issuances per 5 minutes per user UUID. */
 export const redemptionIssueLimiter = aiRedis
   ? new Ratelimit({

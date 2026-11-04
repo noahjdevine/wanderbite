@@ -18,6 +18,7 @@ import {
 } from '@/lib/challenges/carried-credits';
 import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-reveal';
+import { loadRecipeSections } from '@/lib/recipes/load';
 
 export const dynamic = 'force-dynamic';
 
@@ -157,6 +158,14 @@ export default async function ChallengesPage() {
     carriedCredits = carried.credits;
   }
 
+  const recipeRestaurantIds = [
+    ...(currentChallenge?.items ?? []).map((item) => item.restaurant.id),
+    ...carriedCredits.flatMap((credit) =>
+      credit.item ? [credit.item.restaurant.id] : [],
+    ),
+  ];
+  const recipeSections = await loadRecipeSections(recipeRestaurantIds);
+
   const monthlyReveal = await loadMonthlyRevealForChallenges({
     userId: typedProfile.id,
     cycleMonth: currentChallenge?.cycle.cycle_month ?? null,
@@ -186,6 +195,7 @@ export default async function ChallengesPage() {
           creditsSwapRemaining={creditsSwapRemaining}
           carriedCredits={carriedCredits}
           monthlyReveal={monthlyReveal}
+          recipeSections={recipeSections}
         />
       </div>
     </main>

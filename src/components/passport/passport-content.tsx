@@ -5,6 +5,7 @@ import { getBiteNotes } from '@/app/actions/bite-notes';
 import { getRestaurantRatings } from '@/app/actions/restaurant-ratings';
 import { calculateStreak, getStreakBadgeForLongest } from '@/lib/streaks';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
+import { loadRecipeSections } from '@/lib/recipes/load';
 import {
   PassportClient,
   type PassportBiteNoteEntry,
@@ -141,6 +142,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
 
   const ratingsByRestaurantId: PassportRestaurantRatings =
     Object.fromEntries(ratingMap);
+  const recipeSections = await loadRecipeSections(uniqueRestaurantIds);
 
   return (
     <PassportClient
@@ -152,6 +154,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
       longestStreak={streak.longestStreak}
       totalMonthsActive={streak.totalMonthsActive}
       badgeLabel={badgeLabel}
+      recipeSections={recipeSections}
     />
   );
 }

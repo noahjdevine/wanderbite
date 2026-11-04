@@ -2,6 +2,7 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import path from 'path';
+import { DEMO_RECIPE_SEEDS, DEMO_RECIPE_SOURCE_NAME } from './fixtures/e05-demo-recipes';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
@@ -74,6 +75,8 @@ async function seed() {
     },
   ];
 
+  const venueIds = new Map<string, string>();
+
   for (const r of restaurants) {
     console.log(`...Adding Restaurant: ${r.name}`);
 
@@ -113,6 +116,34 @@ async function seed() {
     });
 
     if (offerError) throw new Error(`restaurant_offers: ${r.name}: ${offerError.message}`);
+    venueIds.set(r.name, venue.id);
+  }
+
+  for (const recipe of DEMO_RECIPE_SEEDS) {
+    const restaurantId = venueIds.get(recipe.restaurantName);
+    if (!restaurantId) {
+      throw new Error(`demo recipe restaurant missing: ${recipe.restaurantName}`);
+    }
+    const { error: recipeError } = await supabase.from('recipes').insert({
+      slug: recipe.slug,
+      title: recipe.title,
+      recipe_type: 'inspired_by',
+      restaurant_id: restaurantId,
+      servings: recipe.servings,
+      est_minutes: recipe.estMinutes,
+      ingredients: recipe.ingredients,
+      steps: recipe.steps,
+      substitutions: recipe.substitutions,
+      dietary_tags: recipe.dietaryTags,
+      source_url: null,
+      source_name: DEMO_RECIPE_SOURCE_NAME,
+      rights_basis: 'original',
+      visibility: 'published',
+      checked_at: recipe.checkedAt,
+      version: 1,
+      is_demo: true,
+    });
+    if (recipeError) throw new Error(`recipes: ${recipe.slug}: ${recipeError.message}`);
   }
 
   console.log('✅ Seed Complete! Database is populated.');
