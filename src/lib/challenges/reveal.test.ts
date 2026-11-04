@@ -31,7 +31,7 @@ vi.mock('@/lib/supabase-admin', () => ({
 vi.mock('@/lib/challenges/ai-rank', () => ({
   aiRankingEnabled: () =>
     process.env.E04_AI_RANKING_ENABLED === 'true' && process.env.E04_MONTHLY_REVEAL_ENABLED === 'true',
-  REVEAL_AI_SOURCE_VERSION: 'e04.ai.gpt-4.1-mini',
+  REVEAL_AI_SOURCE_VERSION: 'e04.ai.claude-haiku-4-5-20251001',
   rankMonthlyReveal: (request: unknown) => rank(request),
 }));
 
@@ -229,7 +229,7 @@ describe('revealMonthlyChallengeForUser returns the saved row', () => {
     });
     rank.mockResolvedValue({
       source: 'ai_ranked',
-      sourceVersion: 'e04.ai.gpt-4.1-mini',
+      sourceVersion: 'e04.ai.claude-haiku-4-5-20251001',
       picks: [
         { restaurantId: 'gamma', reason: 'Gamma matches the note' },
         { restaurantId: 'beta', reason: 'Beta is the second pick' },
@@ -261,7 +261,7 @@ describe('revealMonthlyChallengeForUser returns the saved row', () => {
     expect(rpc).toHaveBeenCalledTimes(1);
     const firstArgs = rpc.mock.calls[0]?.[1] as { p_selection_source: string; p_source_version: string };
     expect(firstArgs.p_selection_source).toBe('ai_ranked');
-    expect(firstArgs.p_source_version).toBe('e04.ai.gpt-4.1-mini');
+    expect(firstArgs.p_source_version).toBe('e04.ai.claude-haiku-4-5-20251001');
     expect(rank).toHaveBeenCalledTimes(1);
 
     rpc.mockReset();

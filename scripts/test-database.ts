@@ -98,6 +98,17 @@ async function main() {
   process.stdout.write(`PASS: ${migrations.length} migrations; ${Object.keys(SCHEMA_CONTRACT).length} table Row/Insert/Update contracts.\n`);
   assert.equal(sql('select public.credit_floor_cents();'), '1000', 'credit_floor_cents parity');
   process.stdout.write('PASS: credit_floor_cents() = 1000.\n');
+  const haikuQuote = sql(`
+    select public.ai_quote_max_cost(
+      'claude-haiku-4-5-20251001',
+      (select price_version_id from public.ai_current_versions()),
+      'anthropic',
+      '{"input":1000,"output":300}'::jsonb
+    );
+  `);
+  const haikuQuoteAmount = Number(haikuQuote);
+  assert.ok(Number.isFinite(haikuQuoteAmount) && haikuQuoteAmount > 0, `haiku quote was ${haikuQuote}`);
+  process.stdout.write(`PASS: current price version quotes claude-haiku-4-5-20251001 input/output at ${haikuQuoteAmount} microdollars.\n`);
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g1-acceptance.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g2-rls.sql'), 'utf8')) + '\n');
