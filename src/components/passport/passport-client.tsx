@@ -5,7 +5,9 @@ import Map, { Marker, NavigationControl, Popup } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { pluralize, pluralNoun } from '@/lib/format/text';
 import { PROGRESS_UNAVAILABLE_MESSAGE } from '@/lib/progress/rules';
+import { publicShareUrl } from '@/lib/public-site';
 import { shareOrCopy } from '@/lib/share';
 import { BookMarked, Flame, Share2, Star, StarHalf } from 'lucide-react';
 import type { BiteNoteRow } from '@/app/actions/bite-notes';
@@ -262,11 +264,7 @@ export function PassportClient({
 }: PassportClientProps) {
   const [popupVisitId, setPopupVisitId] = useState<string | null>(null);
 
-  const streakPhrase = useMemo(
-    () =>
-      currentStreak === 1 ? '1 month streak' : `${currentStreak} months streak`,
-    [currentStreak]
-  );
+  const streakPhrase = `${pluralize(currentStreak, 'month')} streak`;
 
   const mapMarkers: MapMarker[] = useMemo(() => {
     const seen = new Set<string>();
@@ -310,9 +308,9 @@ export function PassportClient({
       text: progressUnavailable
         ? 'My Wanderbite Food Passport'
         : neighborhoods == null
-          ? `I've explored ${uniqueRestaurants} restaurants with Wanderbite 🍽️🔥 ${currentStreak} month streak and counting.`
-          : `I've explored ${uniqueRestaurants} restaurants across ${neighborhoods} neighborhoods with Wanderbite 🍽️🔥 ${currentStreak} month streak and counting.`,
-      url: 'https://wanderbite.com',
+          ? `I've explored ${pluralize(uniqueRestaurants, 'restaurant')} with Wanderbite 🍽️🔥 ${pluralize(currentStreak, 'month')} streak and counting.`
+          : `I've explored ${pluralize(uniqueRestaurants, 'restaurant')} across ${pluralize(neighborhoods, 'neighborhood')} with Wanderbite 🍽️🔥 ${pluralize(currentStreak, 'month')} streak and counting.`,
+      url: publicShareUrl(),
     });
     if (outcome === 'copied') {
       toast.success('Link copied to clipboard!');
@@ -377,18 +375,17 @@ export function PassportClient({
   ) : (
     <div className="space-y-1.5">
       <div className="rounded-lg border bg-muted/30 px-4 py-3 text-center text-sm font-medium leading-relaxed text-foreground md:text-left">
-        <span className="text-[#E85D26]">{uniqueRestaurants}</span> restaurants
-        visited ·{' '}
+        <span className="text-[#E85D26]">{uniqueRestaurants}</span>{' '}
+        {pluralNoun(uniqueRestaurants, 'restaurant')} visited ·{' '}
         <span className="text-[#E85D26]">{neighborhoods == null ? '—' : neighborhoods}</span>{' '}
-        neighborhoods ·{' '}
+        {neighborhoods == null ? 'neighborhoods' : pluralNoun(neighborhoods, 'neighborhood')} ·{' '}
         <span className="text-[#E85D26]">{streakPhrase}</span>
         {' · '}
         <span className="text-[#E85D26]">{badgeSummary}</span>
       </div>
       {longestStreak >= 1 ? (
         <p className="text-center text-xs text-muted-foreground md:text-left">
-          Longest streak: {longestStreak}{' '}
-          {longestStreak === 1 ? 'month' : 'months'}
+          Longest streak: {pluralize(longestStreak, 'month')}
         </p>
       ) : null}
     </div>
@@ -498,13 +495,17 @@ export function PassportClient({
                   <p className="font-semibold text-foreground">
                     {popupVisit.restaurant.name}
                   </p>
-                  <div className="flex flex-wrap gap-1">
-                    {(popupVisit.restaurant.cuisine_tags ?? []).map((tag) => (
-                      <Badge key={tag} variant="secondary" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))}
-                  </div>
+                  {(popupVisit.restaurant.cuisine_tags ?? []).some((tag) => tag.trim()) ? (
+                    <div className="flex flex-wrap gap-1">
+                      {(popupVisit.restaurant.cuisine_tags ?? [])
+                        .filter((tag) => tag.trim())
+                        .map((tag) => (
+                          <Badge key={tag} variant="secondary" className="text-xs">
+                            {tag}
+                          </Badge>
+                        ))}
+                    </div>
+                  ) : null}
                   {popupVisit.restaurant.neighborhood && (
                     <p className="text-muted-foreground">
                       {popupVisit.restaurant.neighborhood}
@@ -576,17 +577,17 @@ export function PassportClient({
                 )}
               </CardHeader>
               <CardContent className="space-y-2 pt-0">
-                <div className="flex flex-wrap gap-1">
-                  {(v.restaurant.cuisine_tags ?? []).length ? (
-                    (v.restaurant.cuisine_tags ?? []).map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-xs">
-                        {tag}
-                      </Badge>
-                    ))
-                  ) : (
-                    <span className="text-xs text-muted-foreground">No tags</span>
-                  )}
-                </div>
+                {(v.restaurant.cuisine_tags ?? []).some((tag) => tag.trim()) ? (
+                  <div className="flex flex-wrap gap-1">
+                    {(v.restaurant.cuisine_tags ?? [])
+                      .filter((tag) => tag.trim())
+                      .map((tag) => (
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
+                      ))}
+                  </div>
+                ) : null}
                 {(() => {
                   const mine = biteNoteForVisit(v, biteNotesByRestaurantId);
                   const community = ratingsByRestaurantId[v.restaurant.id];

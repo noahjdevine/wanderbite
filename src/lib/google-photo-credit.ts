@@ -1,3 +1,5 @@
+import { decodeEntities } from '@/lib/format/text';
+
 export type PhotoCredit = {
   name: string;
   href: string;
@@ -26,10 +28,9 @@ function safeCreditHref(raw: string): string | null {
 
 function creditFromHtml(html: string): PhotoCredit | null {
   const hrefMatch = html.match(/href\s*=\s*["']([^"']+)["']/i);
-  const name = html
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  const name = decodeEntities(
+    html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim(),
+  ).trim();
   if (!hrefMatch || !name || name.length > 200) return null;
   const href = safeCreditHref(hrefMatch[1] ?? '');
   if (!href) return null;

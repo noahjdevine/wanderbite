@@ -5,6 +5,7 @@ import {
   isSafePhotoCredit,
   type PhotoCredit,
 } from '@/lib/google-photo-credit';
+import { decodeEntities } from '@/lib/format/text';
 import {
   RESTAURANT_IMAGE_PLACEHOLDER,
   safeManualImagePath,
@@ -120,7 +121,7 @@ export function RestaurantPhoto({
               rel="noopener noreferrer"
               className="underline"
             >
-              {credit.name}
+              {decodeEntities(credit.name)}
             </a>
           ))}
         </p>

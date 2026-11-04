@@ -18,12 +18,12 @@ import { AccountMenu } from '@/components/layout/account-menu';
 import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
 
 export function MobileNav() {
-  const { user, loading } = useSupabaseUser();
+  const { signedIn, loading } = useSupabaseUser();
   const pathname = usePathname();
   const router = useRouter();
   const [drawerState, setDrawerState] = useState({ pathname, open: false });
 
-  const items = user ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
+  const items = signedIn ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
 
   const drawerOpen =
     drawerState.pathname === pathname ? drawerState.open : false;
@@ -58,14 +58,14 @@ export function MobileNav() {
   }
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/20 bg-white/90 backdrop-blur-md md:hidden">
+    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/20 bg-white/90 backdrop-blur-md xl:hidden">
       <div className="flex h-14 items-center gap-2 px-4">
         <WanderbiteLogoLink compact />
 
         <div className="flex flex-1 items-center justify-end gap-2">
           {loading ? (
             <div className="h-8 w-20 animate-pulse rounded-md bg-muted" />
-          ) : user ? (
+          ) : signedIn ? (
             <AccountMenu variant="icon" />
           ) : (
             <Button size="sm" className="shrink-0 text-xs sm:text-sm" asChild>
@@ -126,7 +126,7 @@ export function MobileNav() {
 
             <hr className="my-4 border-border" />
 
-            {user ? (
+            {signedIn ? (
               <button
                 type="button"
                 onClick={handleSignOut}

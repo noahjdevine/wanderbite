@@ -199,25 +199,29 @@ export function CarriedCreditCard({
               </p>
             ) : (
               <ul className="max-h-80 space-y-2 overflow-y-auto">
-                {candidates.map((candidate) => (
-                  <li key={candidate.id}>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="h-auto w-full flex-col items-start gap-1 py-3 text-left"
-                      disabled={assigningId != null}
-                      onClick={() => void handleAssign(candidate.id)}
-                    >
-                      <span className="font-medium">{candidate.name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {candidate.cuisineTags.join(', ') || 'No tags'} · {offerLine(candidate)}
-                      </span>
-                      {assigningId === candidate.id ? (
-                        <span className="text-xs">Assigning…</span>
-                      ) : null}
-                    </Button>
-                  </li>
-                ))}
+                {candidates.map((candidate) => {
+                  const tagLine = candidate.cuisineTags.filter((tag) => tag.trim()).join(', ');
+                  return (
+                    <li key={candidate.id}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-auto w-full flex-col items-start gap-1 py-3 text-left"
+                        disabled={assigningId != null}
+                        onClick={() => void handleAssign(candidate.id)}
+                      >
+                        <span className="font-medium">{candidate.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {tagLine ? `${tagLine} · ` : null}
+                          {offerLine(candidate)}
+                        </span>
+                        {assigningId === candidate.id ? (
+                          <span className="text-xs">Assigning…</span>
+                        ) : null}
+                      </Button>
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </DialogContent>

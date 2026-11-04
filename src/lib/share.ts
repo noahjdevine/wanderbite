@@ -1,3 +1,5 @@
+import { PUBLIC_SITE_ORIGIN } from '@/lib/public-site';
+
 type ShareOrCopyArgs = {
   title: string;
   text: string;
@@ -12,7 +14,7 @@ type ShareOrCopyArgs = {
 export async function shareOrCopy({
   title,
   text,
-  url = 'https://wanderbite.com',
+  url = PUBLIC_SITE_ORIGIN,
 }: ShareOrCopyArgs): Promise<'shared' | 'copied' | 'error'> {
   const data: ShareData = { title, text, url };
   try {
