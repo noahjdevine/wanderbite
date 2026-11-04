@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   AI_RANK_TIMEOUT_MS,
-  OPENAI_RANK_MODEL,
+  REVEAL_RANK_MODEL,
+  parseAnthropicRankBody,
   REVEAL_AI_SOURCE_VERSION,
   aiRankingEnabled,
-  parseOpenAiRankBody,
   rankCandidatePayload,
   rankMonthlyReveal,
   rankingProviderAllowed,
@@ -67,8 +67,8 @@ describe('reveal AI ranking', () => {
     expect(aiRankingEnabled(undefined)).toBe(false);
     expect(aiRankingEnabled('TRUE')).toBe(false);
     expect(aiRankingEnabled('true')).toBe(true);
-    expect(OPENAI_RANK_MODEL).toBe('gpt-4.1-mini');
-    expect(REVEAL_AI_SOURCE_VERSION).toBe('e04.ai.gpt-4.1-mini');
+    expect(REVEAL_RANK_MODEL).toBe('claude-haiku-4-5-20251001');
+    expect(REVEAL_AI_SOURCE_VERSION).toBe('e04.ai.claude-haiku-4-5-20251001');
     expect(AI_RANK_TIMEOUT_MS).toBe(8_000);
   });
 
@@ -113,7 +113,7 @@ describe('reveal AI ranking', () => {
     const client = vi.fn(async () => picks('gamma', 'alpha'));
     const ranked = await rankMonthlyReveal({ brief, candidates, client });
     expect(ranked?.source).toBe('ai_ranked');
-    expect(ranked?.sourceVersion).toBe('e04.ai.gpt-4.1-mini');
+    expect(ranked?.sourceVersion).toBe('e04.ai.claude-haiku-4-5-20251001');
     expect(ranked?.picks.map((pick) => pick.restaurantId)).toEqual(['gamma', 'alpha']);
     expect(client).toHaveBeenCalledTimes(1);
   });
@@ -126,10 +126,12 @@ describe('reveal AI ranking', () => {
     expect(await rankMonthlyReveal({ brief, candidates, client: unknown })).toBeNull();
     const bad = vi.fn(async () => '{');
     expect(await rankMonthlyReveal({ brief, candidates, client: bad })).toBeNull();
-    const hung = vi.fn(() => new Promise(() => {}));
-    expect(await rankMonthlyReveal({ brief, candidates, client: hung, timeoutMs: 20 })).toBeNull();
+    const failed = vi.fn(async () => {
+      throw new Error('timeout');
+    });
+    expect(await rankMonthlyReveal({ brief, candidates, client: failed })).toBeNull();
     expect(unknown).toHaveBeenCalledTimes(1);
-    expect(hung).toHaveBeenCalledTimes(1);
+    expect(failed).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls.at(-1)?.[0])).not.toContain('Hutchins');
     expect(String(warn.mock.calls.at(-1)?.[0])).not.toContain('ignore rules');
     warn.mockRestore();
@@ -155,13 +157,13 @@ describe('reveal AI ranking', () => {
 
   it('reads a schema-valid chat completion and drops a provider error body', () => {
     const body = JSON.stringify({
-      choices: [{ message: { content: JSON.stringify(picks('beta', 'gamma')) } }],
-      usage: { prompt_tokens: 100, completion_tokens: 40 },
+      content: [{ type: 'text', text: JSON.stringify(picks('beta', 'gamma')) }],
+      usage: { input_tokens: 100, output_tokens: 40 },
     });
-    const parsed = parseOpenAiRankBody(body, ['alpha', 'beta', 'gamma']);
+    const parsed = parseAnthropicRankBody(body, ['alpha', 'beta', 'gamma']);
     expect(parsed.picks?.map((pick) => pick.restaurantId)).toEqual(['beta', 'gamma']);
-    expect(parsed.usage).toEqual({ input: 100, output: 40 });
-    expect(parseOpenAiRankBody('nope', ['alpha']).picks).toBeNull();
+    expect(parsed.usage).toEqual({ input: 100, output: 40, cache_read: 0 });
+    expect(parseAnthropicRankBody('nope', ['alpha']).picks).toBeNull();
   });
 
   it('refuses the provider when the kill switch, key, or headroom is missing', () => {
