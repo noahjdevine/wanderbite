@@ -1,0 +1,14 @@
+{
+  "sources": [
+    {
+      "restaurant_slug": "hutchins-bbq",
+      "menu_url": "https://hutchinsbbq.com/mckinney-menu/",
+      "notes": "McKinney public menu page. Slug is slugify of Hutchins BBQ. Confirm restaurants.slug before any local --apply. Hosted apply or publish needs Noah's OK."
+    },
+    {
+      "restaurant_slug": "ricks-chophouse",
+      "menu_url": "https://www.rickschophouse.com/dinner",
+      "notes": "Dinner menu only. One registry URL, not a crawl of lunch or brunch. Slug is slugify of Rick's Chophouse. Confirm restaurants.slug before any local --apply. Hosted apply or publish needs Noah's OK."
+    }
+  ]
+}

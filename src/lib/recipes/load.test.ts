@@ -156,6 +156,21 @@ describe('recipe loader', () => {
       null,
     );
     expect(card).toBeNull();
+    const menuDraft = toRecipeCard(
+      row({
+        visibility: 'draft',
+        source_kind: 'public_menu',
+        source_url: 'https://example.com/menu',
+        description: 'A home skillet of beans with smoked paprika.',
+        menu_wording: 'paraphrase',
+        retrieved_at: '2026-01-15T18:00:00.000Z',
+        is_demo: false,
+      }) as unknown as Parameters<typeof toRecipeCard>[0],
+      new Set(),
+      null,
+      null,
+    );
+    expect(menuDraft).toBeNull();
     const broken = toRecipeCard(
       row({ ingredients: { name: 'nope' } as unknown as Json }) as unknown as Parameters<typeof toRecipeCard>[0],
       new Set(),

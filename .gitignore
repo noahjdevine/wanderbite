@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Noah-run hosted catalog for the E02 supply gate. Never commit.
 /.supply-gate/
+
+# Operator dry-run output for E05-B menu recipe drafts. Never commit.
+/.menu-recipes/
