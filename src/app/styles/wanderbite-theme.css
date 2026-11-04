@@ -256,6 +256,7 @@
   .wb-cta,
   .wb-cta-secondary,
   .wb-cta-plum,
+  .wb-auth-spinner,
   .bea-avatar,
   .bea-avatar *,
   .bea-body,
@@ -1440,4 +1441,261 @@
     animation: none !important;
     transition: none !important;
   }
+}
+
+/* ---------- Auth pages (night glass card) ---------- */
+.wb-auth-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: calc(100dvh - 3.5rem);
+  padding: 1.5rem 1rem;
+  overflow-x: clip;
+  background: var(--wb-night);
+  color: #fff;
+  color-scheme: dark;
+  font-family: var(--font-sans), Outfit, sans-serif;
+}
+@media (min-width: 1280px) {
+  .wb-auth-page { min-height: calc(100dvh - 4rem); }
+}
+.wb-auth-glow {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.wb-auth-glow-a,
+.wb-auth-glow-b {
+  position: absolute;
+  width: 280px;
+  height: 280px;
+  border-radius: 999px;
+  filter: blur(40px);
+  opacity: 0.45;
+}
+.wb-auth-glow-a {
+  top: 8%;
+  left: 8%;
+  background: rgba(124, 58, 237, 0.55);
+}
+.wb-auth-glow-b {
+  right: 6%;
+  bottom: 10%;
+  background: rgba(219, 39, 119, 0.4);
+}
+.wb-auth-card {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 26rem);
+  margin: auto;
+  border-radius: 26px;
+  padding: 1.75rem 1.25rem 1.5rem;
+}
+.wb-auth-title {
+  margin: 0;
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 400;
+  font-size: 34px;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  color: #fff;
+  text-wrap: balance;
+}
+.wb-auth-lead,
+.wb-auth-notice,
+.wb-auth-muted {
+  color: var(--wb-lavender-2);
+}
+.wb-auth-lead {
+  margin: 0.75rem 0 0;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+.wb-auth-notice,
+.wb-auth-muted {
+  margin: 0.75rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+.wb-auth-muted { margin: 0; }
+.wb-auth-body { margin-top: 1.25rem; }
+.wb-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.wb-auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.wb-auth-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+}
+.wb-auth-label {
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.wb-auth-input {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.38);
+  background: rgba(18, 10, 36, 0.55);
+  color: #fff;
+  padding: 0.625rem 0.75rem;
+  font-family: inherit;
+  font-size: 16px;
+  line-height: 1.4;
+}
+.wb-auth-input--secret { padding-right: 3rem; }
+.wb-auth-input::placeholder {
+  color: var(--wb-lavender-2);
+  opacity: 1;
+}
+.wb-auth-input:disabled { opacity: 0.65; }
+.wb-auth-input[aria-invalid="true"] { border-color: #fb7185; }
+.wb-auth-input:-webkit-autofill,
+.wb-auth-input:-webkit-autofill:hover,
+.wb-auth-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  caret-color: #fff;
+  box-shadow: 0 0 0 1000px #241540 inset;
+}
+.wb-auth-error {
+  margin: 0;
+  color: #ffe4e6;
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.wb-auth-ok {
+  margin: 0;
+  color: #bbf7d0;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.wb-auth-link {
+  color: var(--wb-lavender-2);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.wb-auth-link:hover { color: var(--wb-blush); }
+.wb-auth-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%);
+  color: #fff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 10px 22px rgba(219, 39, 119, 0.28);
+}
+.wb-auth-submit:hover { color: #fff; }
+.wb-auth-submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.wb-auth-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 0 22px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+.wb-auth-secondary:hover { color: #fff; background: rgba(255, 255, 255, 0.14); }
+.wb-auth-toggle {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--wb-lavender-2);
+  cursor: pointer;
+  transform: translateY(-50%);
+}
+.wb-auth-toggle:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.wb-auth-toggle:disabled { cursor: not-allowed; opacity: 0.6; }
+.wb-auth-check {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: 0.1rem;
+  flex-shrink: 0;
+  accent-color: var(--wb-lavender-2);
+}
+.wb-auth-mail {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin: 0 0 0.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--wb-blush);
+}
+.wb-auth-email { color: #fff; font-weight: 600; }
+.wb-auth-page .wb-auth-alert {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+.wb-auth-page .wb-auth-alert-error {
+  border-color: rgba(251, 113, 133, 0.55);
+  background: #3b1020;
+  color: #ffe4e6;
+}
+.wb-auth-page .wb-auth-alert-ok {
+  border-color: transparent;
+  background: var(--wb-ok-bg);
+  color: var(--wb-ok-fg);
+}
+.wb-auth-page .wb-auth-alert [data-slot="alert-title"],
+.wb-auth-page .wb-auth-alert [data-slot="alert-description"] {
+  color: inherit;
+}
+.wb-auth-page :focus-visible {
+  outline: 2px solid var(--wb-blush);
+  outline-offset: 2px;
+}
+@media (min-width: 768px) {
+  .wb-auth-title { font-size: 40px; }
+  .wb-auth-card { padding: 2rem 1.5rem 1.75rem; }
 }
