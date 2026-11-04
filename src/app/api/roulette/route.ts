@@ -70,6 +70,15 @@ import {
   mergeExcludedCuisines,
   parseModelRestaurantId,
 } from '@/lib/discovery-turn';
+import {
+  fallbackReasonForReplayMiss,
+  logDiscoverAiPick,
+  logDiscoverFallback,
+  modelPickFallbackReason,
+  prerequisiteFallbackReason,
+  type DiscoverFallbackReason,
+  type DiscoverMemberType,
+} from '@/lib/discover/fallback-reason';
 import { recipeQaEnabled } from '@/lib/recipes/flag';
 import { discoveryRecipeQaIntent } from '@/lib/recipes/qa-intent';
 import { loadVisitCatalogNames, runRecipeQaTurn } from '@/lib/recipes/qa-turn';
@@ -361,6 +370,8 @@ export async function POST(request: NextRequest) {
       subjectKey = guestId ? `guest:${guestId}` : `guest:anon`;
     }
 
+    const memberType: DiscoverMemberType = userId ? 'member' : 'guest';
+
     const errorResponse = (error: string, status: number) =>
       withGuestCookie(NextResponse.json({ error }, { status }), guestCookieToSet);
 
@@ -418,7 +429,18 @@ export async function POST(request: NextRequest) {
     const respond = (payload: RouletteJson, status = 200) =>
       withGuestCookie(NextResponse.json(payload, { status }), guestCookieToSet);
 
-    const randomFallback = () => {
+    const discoverBase = (requestId: string) => ({
+      requestId,
+      memberType,
+      poolSize: restaurants.length,
+      dietaryFilterCount: dietaryFlags.length,
+    });
+
+    const randomFallback = (reason: DiscoverFallbackReason, requestId: string = clientUuid) => {
+      logDiscoverFallback({
+        reason,
+        ...discoverBase(requestId),
+      });
       const chosen = pickRandom(restaurants);
       return respond(toRouletteJson(chosen, 'random_fallback'));
     };
@@ -426,21 +448,22 @@ export async function POST(request: NextRequest) {
     const clientIp = trustedClientIpFromHeaders(request.headers);
     const ipHash = clientIp ? hashClientIp(clientIp) : null;
     const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-    const prerequisites =
-      !isWanderbiteAiDisabled() &&
-      Boolean(apiKey) &&
-      hasGuestSigningSecret() &&
-      hasIpHashSecret() &&
-      Boolean(ipHash) &&
-      (userId !== null || guestId !== null);
+    const prerequisiteReason = prerequisiteFallbackReason({
+      aiDisabled: isWanderbiteAiDisabled(),
+      hasApiKey: Boolean(apiKey),
+      hasGuestSigningSecret: hasGuestSigningSecret(),
+      hasIpHashSecret: hasIpHashSecret(),
+      hasIpHash: Boolean(ipHash),
+      hasSubject: userId !== null || guestId !== null,
+    });
 
-    if (!prerequisites || !ipHash) {
-      return randomFallback();
+    if (prerequisiteReason || !ipHash) {
+      return randomFallback(prerequisiteReason ?? 'missing_identity');
     }
 
     const redisOk = await allowBillableRoulette(subjectKey, ipHash);
     if (!redisOk) {
-      return randomFallback();
+      return randomFallback('rate_limited');
     }
 
     try {
@@ -522,7 +545,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
     const messageMac = discoveryReplayMac('message', acceptedMessage);
     const filterMac = discoveryReplayMac('filter', filterCanonical);
     if (!messageMac || !filterMac) {
-      return randomFallback();
+      return randomFallback('missing_config');
     }
 
     const usageUnits = rouletteQuoteUsageUnits(systemPrompt, userPrompt);
@@ -554,13 +577,31 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
         return errorResponse(DISCOVERY_REPLAY_MISMATCH_ERROR, 409);
       }
       if (decision.outcome === 'ai' || decision.outcome === 'legacy') {
-        const chosen = byId.get(decision.restaurantId);
-        if (chosen) {
+        const replayRestaurant = byId.get(decision.restaurantId);
+        if (replayRestaurant) {
           const mode: RouletteSelectionMode = decision.outcome === 'ai' ? 'ai' : 'random_fallback';
-          return respond(toRouletteJson(chosen, mode));
+          if (mode === 'ai') {
+            logDiscoverAiPick({
+              requestId: reserved.request_id,
+              poolSize: restaurants.length,
+            });
+          } else {
+            logDiscoverFallback({
+              reason: 'replay_fallback',
+              ...discoverBase(reserved.request_id),
+            });
+          }
+          return respond(toRouletteJson(replayRestaurant, mode));
         }
+        return randomFallback('invalid_pick', reserved.request_id);
       }
-      return randomFallback();
+      return randomFallback(
+        fallbackReasonForReplayMiss({
+          denyReason: reserved.deny_reason,
+          payload: loaded?.result_payload,
+        }),
+        reserved.request_id,
+      );
     };
 
     if (!reserved.acquired) {
@@ -574,6 +615,8 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
 
     let usage: Record<string, number> | null = null;
     let claudeText = '';
+    let providerFailed = false;
+    let providerStatus: number | undefined;
     const anthropicController = new AbortController();
     const anthropicTimeout = setTimeout(() => anthropicController.abort(), ANTHROPIC_TIMEOUT_MS);
     try {
@@ -597,6 +640,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       const providerRequestId = anthropicRequestIdFromHeaders(anthropicRes.headers);
       const anthropicRaw = await anthropicRes.text();
       if (!anthropicRes.ok) {
+        providerStatus = anthropicRes.status;
         console.error('[roulette] anthropic', anthropicRes.status, providerRequestId);
         throw new Error('anthropic_failed');
       }
@@ -609,6 +653,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       }
       claudeText = extractAnthropicText(anthropicRaw);
     } catch (err) {
+      providerFailed = true;
       if (err instanceof Error && err.name === 'AbortError') {
         console.warn('[roulette] anthropic timeout — using template fallback');
       }
@@ -619,6 +664,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
 
     const parsedId = claudeText ? parseModelRestaurantId(claudeText) : null;
     const pickValid = isIdInPromptRows(parsedId, promptIds);
+    const modelReason = modelPickFallbackReason({ providerFailed, parsedId, pickValid });
     const chosen = pickValid && parsedId ? promptRows.find((row) => row.id === parsedId) : undefined;
     const selectionMode: RouletteSelectionMode = chosen ? 'ai' : 'random_fallback';
     const cardRestaurant = chosen ?? pickRandom(restaurants);
@@ -644,6 +690,20 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       );
     } catch {
       // Replay can still fall back if the payload does not persist.
+    }
+    // Log only with the card that is returned. A ledger throw is a 500, not a pick.
+    if (selectionMode === 'ai') {
+      logDiscoverAiPick({
+        requestId: reserved.request_id,
+        poolSize: restaurants.length,
+      });
+    } else {
+      const reason = modelReason ?? 'invalid_pick';
+      logDiscoverFallback({
+        reason,
+        ...discoverBase(reserved.request_id),
+        ...(reason === 'provider_error' && providerStatus !== undefined ? { providerStatus } : {}),
+      });
     }
     return respond(payload);
   } catch (err) {
