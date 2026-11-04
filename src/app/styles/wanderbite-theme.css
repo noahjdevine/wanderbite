@@ -181,6 +181,21 @@
   4%, 30% { opacity: 1; transform: translateY(0); }
   34%, 100% { opacity: 0; transform: translateY(-6px); }
 }
+.wb-placeholder-cycle {
+  opacity: 0;
+  animation: wb-placeholder-cycle 12s infinite;
+}
+@keyframes wb-draw {
+  0% { stroke-dashoffset: 600; }
+  40%, 100% { stroke-dashoffset: 0; }
+}
+.wb-draw {
+  stroke-dasharray: 600;
+  animation: wb-draw 6s ease-in-out infinite alternate;
+}
+.wb-hero-prompt:focus-within {
+  box-shadow: inset 0 0 0 2px var(--wb-blush);
+}
 
 /* ---------- Bea avatar keyframes (used by BeaAvatar.tsx) ---------- */
 @keyframes bea-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
@@ -231,6 +246,8 @@
   .wb-bokeh,
   .wb-float,
   .wb-marquee,
+  .wb-placeholder-cycle,
+  .wb-draw,
   .wb-reveal,
   .wb-stamp-slam,
   .wb-pending-ring,
@@ -243,6 +260,8 @@
     animation: none !important;
     transition: none !important;
   }
+  .wb-placeholder-cycle { opacity: 0 !important; transform: none !important; }
+  .wb-placeholder-cycle[data-static="true"] { opacity: 1 !important; }
 }
 
 /* ---------- Phase 0 component classes (DESIGN_SPEC §8) ---------- */

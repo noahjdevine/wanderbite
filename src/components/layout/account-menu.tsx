@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ChevronDown, User as UserIcon } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,9 +16,10 @@ import {
 type AccountMenuProps = {
   /** Compact icon-only trigger for mobile top bar. */
   variant?: 'default' | 'icon';
+  className?: string;
 };
 
-export function AccountMenu({ variant = 'default' }: AccountMenuProps) {
+export function AccountMenu({ variant = 'default', className }: AccountMenuProps) {
   const router = useRouter();
 
   async function handleSignOut() {
@@ -33,7 +35,7 @@ export function AccountMenu({ variant = 'default' }: AccountMenuProps) {
         <Button
           variant="outline"
           size={variant === 'icon' ? 'icon-sm' : 'sm'}
-          className={variant === 'icon' ? 'px-2' : 'gap-1.5 px-2'}
+          className={cn(variant === 'icon' ? 'px-2' : 'gap-1.5 px-2', className)}
           aria-label="Account menu"
         >
           <UserIcon className="size-4" />
