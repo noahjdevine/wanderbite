@@ -30,12 +30,21 @@ export const REVEAL_RANK_MODEL = ANTHROPIC_HAIKU_SNAPSHOT;
 export const REVEAL_RANK_PROVIDER = ANTHROPIC_PROVIDER;
 export const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 export const AI_RANK_TIMEOUT_MS = 8_000;
+/** Separate from the reveal deadline. Settlement after dispatch still waits, but not forever. */
+export const AI_RANK_SETTLE_BOUND_MS = 2_000;
+const LEDGER_CLOSE_EXCEEDED = '[challenges] reveal ranking settlement exceeded its bound';
 
 let timeoutOverrideMs: number | null = null;
+let settleBoundOverrideMs: number | null = null;
 
 /** Tests shorten the shared deadline. Production leaves this unset. */
 export function useRankTimeoutForTests(ms: number | null): void {
   timeoutOverrideMs = ms;
+}
+
+/** Tests shorten the post-dispatch settlement wait. Production leaves this unset. */
+export function useSettleBoundForTests(ms: number | null): void {
+  settleBoundOverrideMs = ms;
 }
 export const AI_RANK_REASON_CAP = 180;
 export const REVEAL_AI_SOURCE_VERSION = `e04.ai.${REVEAL_RANK_MODEL}`;
@@ -203,12 +212,68 @@ async function accountRanking(args: {
 
 type Deadline = { at: number };
 
+const LEDGER_WAIT = Symbol('ledger-wait');
+
 function remainingMs(deadline: Deadline): number {
   return deadline.at - Date.now();
 }
 
 function deadlinePassed(deadline: Deadline): boolean {
   return remainingMs(deadline) <= 0;
+}
+
+function settleBoundMs(): number {
+  return settleBoundOverrideMs ?? AI_RANK_SETTLE_BOUND_MS;
+}
+
+/**
+ * Pre-dispatch ledger calls stop at the reveal deadline. The underlying RPC is
+ * not cancelled; a reserve that returns later is failed before dispatch.
+ */
+async function withinDeadline<T>(work: Promise<T>, deadline: Deadline): Promise<T | typeof LEDGER_WAIT> {
+  const wait = remainingMs(deadline);
+  if (wait <= 0) return LEDGER_WAIT;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<typeof LEDGER_WAIT>((resolve) => {
+        timer = setTimeout(() => resolve(LEDGER_WAIT), wait);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** Await a ledger close. After the short bound, log and continue. No user id or brief. */
+async function awaitLedgerClose(work: Promise<void>): Promise<void> {
+  const bound = settleBoundMs();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let exceeded = false;
+  try {
+    await Promise.race([
+      work,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(() => {
+          exceeded = true;
+          resolve();
+        }, bound);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+  if (exceeded) console.warn(LEDGER_CLOSE_EXCEEDED);
+}
+
+function closeLateReserve(pending: Promise<{ acquired: boolean; request_id: string }>): void {
+  void pending.then((row) => {
+    if (!row?.acquired || !row.request_id) return;
+    return rpcAiFailBeforeDispatch(row.request_id);
+  }).catch(() => {
+    console.warn('[challenges] reveal ranking ledger close failed');
+  });
 }
 
 async function defaultRankClient(
@@ -224,31 +289,34 @@ async function defaultRankClient(
   let dispatched = false;
   const close = async (pickValid: boolean, usage: Record<string, number> | null) => {
     if (!requestId) return;
-    await accountRanking({ requestId, dispatched, pickValid, usage });
+    await awaitLedgerClose(accountRanking({ requestId, dispatched, pickValid, usage }));
   };
   try {
     const prompts = rankPrompts(request);
     const usageUnits = rouletteQuoteUsageUnits(prompts.systemPrompt, prompts.userPrompt);
-    const versions = await rpcAiCurrentVersions();
-    if (deadlinePassed(deadline)) return null;
-    const quoteMicrodollars = await rpcAiQuoteMaxCost({
+    const versionsResult = await withinDeadline(rpcAiCurrentVersions(), deadline);
+    if (versionsResult === LEDGER_WAIT || deadlinePassed(deadline)) return null;
+    const versions = versionsResult;
+    const quoteResult = await withinDeadline(rpcAiQuoteMaxCost({
       modelId: REVEAL_RANK_MODEL,
       priceVersionId: versions.price_version_id,
       provider: REVEAL_RANK_PROVIDER,
       usageUnits,
-    });
-    if (deadlinePassed(deadline)) return null;
-    const headroom = await rpcAiOpsHeadroom();
+    }), deadline);
+    if (quoteResult === LEDGER_WAIT || deadlinePassed(deadline)) return null;
+    const quoteMicrodollars = quoteResult;
+    const headroomResult = await withinDeadline(rpcAiOpsHeadroom(), deadline);
+    if (headroomResult === LEDGER_WAIT) return null;
     if (!rankingProviderAllowed({
       aiDisabled: false,
       hasApiKey: true,
-      headroomRemaining: globalHeadroomRemaining(headroom),
+      headroomRemaining: globalHeadroomRemaining(headroomResult),
       quoteMicrodollars,
     })) {
       return null;
     }
     if (deadlinePassed(deadline)) return null;
-    const reserved = await rpcAiReserve({
+    const reservePromise = rpcAiReserve({
       accountTier: 'paid',
       configVersionId: versions.config_version_id,
       featureClass: 'optional',
@@ -259,6 +327,12 @@ async function defaultRankClient(
       usageUnits,
       userId,
     });
+    const reservedResult = await withinDeadline(reservePromise, deadline);
+    if (reservedResult === LEDGER_WAIT) {
+      closeLateReserve(reservePromise);
+      return null;
+    }
+    const reserved = reservedResult;
     if (!reserved.acquired) return null;
     requestId = reserved.request_id;
     if (deadlinePassed(deadline)) {
@@ -320,8 +394,9 @@ async function defaultRankClient(
 /**
  * One model call. A null result means the caller keeps the deterministic pair.
  * The brief is sent only as note data. It is not logged.
- * The production client uses one deadline for reserve and fetch, and closes the
- * reservation before it returns.
+ * The production client caps each pre-dispatch ledger RPC at the reveal
+ * deadline, then closes a dispatched reservation before it returns. That close
+ * waits up to its own short bound.
  */
 export async function rankMonthlyReveal(args: {
   brief: StoredRevealBrief;

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const ledger = vi.hoisted(() => ({
   events: [] as string[],
@@ -75,7 +75,7 @@ vi.mock('@/lib/supabase-admin', () => ({
   }),
 }));
 
-import { rankMonthlyReveal, useRankTimeoutForTests } from '@/lib/challenges/ai-rank';
+import { rankMonthlyReveal, useRankTimeoutForTests, useSettleBoundForTests } from '@/lib/challenges/ai-rank';
 import { revealMonthlyChallengeForUser } from '@/lib/challenges/reveal';
 
 const brief = {
@@ -146,11 +146,16 @@ describe('reveal ranking deadline', () => {
       return new Response('', { status: 500 });
     }));
     useRankTimeoutForTests(null);
+    useSettleBoundForTests(null);
     process.env.E04_MONTHLY_REVEAL_ENABLED = 'true';
     process.env.E04_AI_RANKING_ENABLED = 'true';
     process.env.ANTHROPIC_API_KEY = 'test-key';
     delete process.env.WANDERBITE_AI_DISABLED;
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('makes no model or ledger calls when the flags are unset', async () => {
@@ -166,14 +171,49 @@ describe('reveal ranking deadline', () => {
 
   it('makes no fetch when the deadline passes before dispatch', async () => {
     ledger.reserve.mockImplementation(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+      await new Promise((resolve) => setTimeout(resolve, 250));
       return { acquired: true, request_id: 'req-slow' };
     });
-    const ranked = await rankMonthlyReveal({ brief, candidates, timeoutMs: 15 });
+    const started = Date.now();
+    const ranked = await rankMonthlyReveal({ brief, candidates, timeoutMs: 40 });
+    expect(Date.now() - started).toBeLessThan(200);
     expect(ranked).toBeNull();
     expect(ledger.fetchCalls).toBe(0);
     expect(ledger.dispatch).not.toHaveBeenCalled();
-    expect(ledger.failBefore).toHaveBeenCalledWith('req-slow');
+    await vi.waitFor(() => {
+      expect(ledger.failBefore).toHaveBeenCalledWith('req-slow');
+    });
+  });
+
+  it('returns within the deadline when a pre-dispatch ledger RPC never resolves', async () => {
+    ledger.versions.mockImplementation(() => new Promise(() => {}));
+    const started = Date.now();
+    const ranked = await rankMonthlyReveal({ brief, candidates, timeoutMs: 40 });
+    expect(Date.now() - started).toBeLessThan(200);
+    expect(ranked).toBeNull();
+    expect(ledger.quote).not.toHaveBeenCalled();
+    expect(ledger.reserve).not.toHaveBeenCalled();
+    expect(ledger.dispatch).not.toHaveBeenCalled();
+    expect(ledger.fetchCalls).toBe(0);
+  });
+
+  it('logs and still reveals when settlement after dispatch exceeds its bound', async () => {
+    useRankTimeoutForTests(30);
+    useSettleBoundForTests(40);
+    ledger.assumed.mockImplementation(() => new Promise(() => {}));
+    const started = Date.now();
+    const result = await revealMonthlyChallengeForUser('user-1', {
+      surpriseMe: true,
+      summary: 'private brief',
+    });
+    expect(Date.now() - started).toBeLessThan(250);
+    expect(ledger.dispatch).toHaveBeenCalled();
+    expect(ledger.fetchCalls).toBe(1);
+    expect(result).toMatchObject({ ok: true, selectionSource: 'deterministic_fallback' });
+    const logged = vi.mocked(console.warn).mock.calls.map((call) => JSON.stringify(call)).join('\n');
+    expect(logged).toContain('reveal ranking settlement exceeded its bound');
+    expect(logged).not.toContain('user-1');
+    expect(logged).not.toContain('private brief');
   });
 
   it('closes the reservation before returning and the reveal commits the deterministic pair', async () => {
