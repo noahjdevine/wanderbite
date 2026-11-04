@@ -1,12 +1,14 @@
 import path from 'node:path';
 import {
   paraphraseUpdates,
+  planBaseline,
   planMenuChanges,
+  type BaselineWrite,
   type RecipeFactUpdate,
   type RecipeSnapshot,
 } from '@/lib/content-pipeline/change-detect';
 import { newExceptions, type ExceptionDraft, type OpenExceptionKey } from '@/lib/content-pipeline/exceptions';
-import { descriptionFactValue, type DescriptionFact } from '@/lib/content-pipeline/facts';
+import { type DescriptionFact, type DescriptionFactValue } from '@/lib/content-pipeline/facts';
 import { classifyMenuFailure, retryableFailure, type FetchOutcome } from '@/lib/content-pipeline/fetch';
 import { contentHash } from '@/lib/content-pipeline/hash';
 import { activeMenuSource } from '@/lib/content-pipeline/registry';
@@ -55,14 +57,13 @@ export type SourcePatch = {
   lastContentHash?: string;
 };
 
-export type FactInsert = {
+export type ApplyDescriptionFact = {
   sourceId: string;
-  subjectId: string;
-  version: number;
-  value: ReturnType<typeof descriptionFactValue>;
+  recipeId: string;
+  supersedeFactId: string | null;
+  value: DescriptionFactValue;
   evidenceExcerpt: string;
-  extractedAt: string;
-  verifiedAt: string;
+  retrievedAt: string | null;
 };
 
 export type RecipePatch = {
@@ -74,10 +75,8 @@ export type RecipePatch = {
 export type RefreshEffects = {
   recordAttempt: (attempt: AttemptWrite) => Promise<void>;
   updateSource: (sourceId: string, patch: SourcePatch) => Promise<void>;
-  supersedeFact: (factId: string) => Promise<void>;
-  insertFact: (fact: FactInsert) => Promise<void>;
+  applyDescriptionFact: (row: ApplyDescriptionFact) => Promise<void>;
   openException: (exception: ExceptionDraft) => Promise<void>;
-  updateRecipe: (recipeId: string, patch: RecipePatch) => Promise<void>;
 };
 
 export type MaintenanceReservation =
@@ -95,6 +94,7 @@ export type RefreshSourceResult = {
   modelCalls: number;
   modelNeeded: number;
   updates: RecipeFactUpdate[];
+  baselines: BaselineWrite[];
   exceptions: ExceptionDraft[];
   verified: boolean;
 };
@@ -164,6 +164,7 @@ export async function refreshContentSource(args: {
     modelCalls: 0,
     modelNeeded: 0,
     updates: [],
+    baselines: [],
     exceptions: [],
     verified: false,
   });
@@ -230,6 +231,13 @@ export async function refreshContentSource(args: {
     return empty(null);
   }
 
+  const baseline = planBaseline({
+    sourceId: args.source.id,
+    sourceUrl: args.source.url,
+    dishes,
+    facts: args.facts,
+    recipes: args.recipes,
+  });
   const plan = planMenuChanges({
     sourceId: args.source.id,
     dishes,
@@ -240,7 +248,8 @@ export async function refreshContentSource(args: {
     return {
       ...empty(null),
       modelNeeded: plan.candidates.length,
-      exceptions: plan.exceptions,
+      baselines: baseline.writes,
+      exceptions: [...baseline.exceptions, ...plan.exceptions],
     };
   }
 
@@ -271,7 +280,14 @@ export async function refreshContentSource(args: {
         validated = false;
       } else {
         modelCalls = 1;
-        const model = await args.callModel(prompt);
+        let model: { text: string; usage: { input: number; output: number } | null } | null = null;
+        try {
+          model = await args.callModel(prompt);
+        } catch {
+          if (reservation?.ok) await reservation.release();
+          validated = false;
+        }
+        if (model && validated) {
         if (reservation?.ok) {
           if (model.usage) await reservation.settle(model.usage);
           else await reservation.release();
@@ -298,11 +314,16 @@ export async function refreshContentSource(args: {
           updates = paraphrased.updates;
           modelExceptions = paraphrased.exceptions;
         }
+        }
       }
     }
   }
 
-  const exceptions = newExceptions(args.openExceptions ?? [], [...plan.exceptions, ...modelExceptions]);
+  const exceptions = newExceptions(args.openExceptions ?? [], [
+    ...baseline.exceptions,
+    ...plan.exceptions,
+    ...modelExceptions,
+  ]);
   if (!validated) {
     await note(args.apply, args.effects, attempt({
       sourceId: args.source.id,
@@ -312,29 +333,48 @@ export async function refreshContentSource(args: {
       contentHash: hash,
     }), { lastAttemptedAt: at }, attempts);
     if (args.apply && args.effects) {
-      for (const row of newExceptions(args.openExceptions ?? [], plan.exceptions)) {
+      for (const row of newExceptions(args.openExceptions ?? [], [...baseline.exceptions, ...plan.exceptions])) {
         await args.effects.openException(row);
       }
+      for (const write of baseline.writes) {
+        await args.effects.applyDescriptionFact({
+          sourceId: args.source.id,
+          recipeId: write.recipeId,
+          supersedeFactId: null,
+          value: write.value,
+          evidenceExcerpt: write.evidenceExcerpt,
+          retrievedAt: null,
+        });
+      }
     }
-    return { ...empty(null), modelCalls, modelNeeded: plan.candidates.length, exceptions: plan.exceptions };
+    return {
+      ...empty(null),
+      modelCalls,
+      modelNeeded: plan.candidates.length,
+      baselines: baseline.writes,
+      exceptions: [...baseline.exceptions, ...plan.exceptions],
+    };
   }
 
   if (args.apply && args.effects) {
     for (const row of exceptions) await args.effects.openException(row);
+    for (const write of baseline.writes) {
+      await args.effects.applyDescriptionFact({
+        sourceId: args.source.id,
+        recipeId: write.recipeId,
+        supersedeFactId: null,
+        value: write.value,
+        evidenceExcerpt: write.evidenceExcerpt,
+        retrievedAt: null,
+      });
+    }
     for (const update of updates) {
-      await args.effects.supersedeFact(update.factId);
-      await args.effects.insertFact({
+      await args.effects.applyDescriptionFact({
         sourceId: update.sourceId,
-        subjectId: update.subjectId,
-        version: update.version,
+        recipeId: update.recipeId,
+        supersedeFactId: update.factId,
         value: update.value,
         evidenceExcerpt: update.evidenceExcerpt,
-        extractedAt: at,
-        verifiedAt: at,
-      });
-      await args.effects.updateRecipe(update.recipeId, {
-        description: update.description,
-        version: update.version,
         retrievedAt,
       });
     }
@@ -353,6 +393,7 @@ export async function refreshContentSource(args: {
     modelCalls,
     modelNeeded: 0,
     updates,
+    baselines: baseline.writes,
     exceptions,
     verified: true,
   };

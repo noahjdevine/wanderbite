@@ -31,6 +31,10 @@ Fetch reuses the #88 robots check, allowlist, 10s timeout, 1 MB cap, and `Wander
 
 A byte-identical page records `source_fetch_attempts.outcome = unchanged`, advances `last_attempted_at` and `last_verified_at`, and does not call the model. A timeout, HTTP error, robots disallow, oversize body, or refused redirect records that outcome, advances `last_attempted_at`, and does not advance `last_verified_at`. Timeout and HTTP errors retry at most twice, with 250ms backoff doubling each time. One run checks at most 5 sources and 15 attempts.
 
+The first refresh of a source that already has inspired-by `public_menu` recipes writes their baseline facts automatically. A separate command would be easy to skip, and this refresh is the one that stores the page hash. Skipping the facts there would make the next identical fetch look unchanged and leave the #88 rows untracked.
+
+On `--apply`, each matched recipe with no current description fact gets one `source_facts` row. `version` is `recipes.version`, not a fresh 1, so a member who saved that recipe before the fact existed still resolves. The fact text is the recipe's current description. The menu description, price, and ingredients are what later checks compare. There is no model call and the recipe row does not change. A recipe whose normalized title does not match one extracted dish, including a #88 title that ends with the dish name, opens `missing_source`. Dishes with no recipe are ignored. Running it again does not insert a second current fact.
+
 When the hash changes, deterministic rules run before any publish:
 
 - A changed dish description may update the matching inspired-by draft or published row once. `recipes.version` bumps. The prior `source_facts` row stays `superseded`, so `saved_recipes.recipe_version` still resolves that text.
@@ -40,6 +44,8 @@ When the hash changes, deterministic rules run before any publish:
 - Text that tells the model to ignore instructions, publish all, or mark `restaurant_approved` opens reason `injection_suspected`. The recipe stays `inspired_by` and draft. Menu text sent to the model stays inside `BEGIN_UNTRUSTED_MENU_DATA`.
 
 Re-running the same bytes records `unchanged` and does not create another fact version.
+
+A description change supersedes the old fact, inserts the new one, and bumps `recipes.version` in one database call (`apply_recipe_description_fact`). A failure leaves the current fact and the recipe version as they were. `rollback_content_fact` refuses a recipe description and tells the operator to use `rollback_recipe_to_previous`, which bumps the fact and the recipe together. If the model call throws after the maintenance reservation is dispatched, the run marks that reservation assumed spent.
 
 ## Model budget
 

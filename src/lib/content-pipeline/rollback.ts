@@ -31,6 +31,8 @@ function currentFact(facts: readonly DescriptionFact[], factId: string): Descrip
 }
 
 export function planFactRollback(facts: readonly DescriptionFact[], factId: string): FactRollback | { error: string } {
+  const named = facts.find((fact) => fact.id === factId);
+  if (named) return { error: 'use rollback_recipe_to_previous' };
   const current = currentFact(facts, factId);
   if (!current) return { error: 'no current fact' };
   const previous = series(facts, current)
@@ -53,11 +55,25 @@ export function planRecipeRollback(
   factId: string,
   recipeVersion: number,
 ): RecipeRollback | { error: string } {
-  const planned = planFactRollback(facts, factId);
-  if ('error' in planned) return planned;
-  const description = planned.value.text.trim();
+  const current = currentFact(facts, factId);
+  if (!current) return { error: 'no current fact' };
+  if (current.version !== recipeVersion) return { error: 'description fact version does not match recipe version' };
+  const previous = series(facts, current)
+    .filter((fact) => fact.version < current.version)
+    .at(-1);
+  if (!previous) return { error: 'no previous fact version' };
+  const description = previous.text.trim();
   if (!description || description.length > 400) return { error: 'previous description is not restorable' };
-  return { ...planned, recipeVersion: recipeVersion + 1, description };
+  return {
+    supersedeId: current.id,
+    version: recipeVersion + 1,
+    value: descriptionFactValue(previous),
+    evidenceExcerpt: previous.evidenceExcerpt,
+    subjectId: current.subjectId,
+    sourceId: current.sourceId,
+    recipeVersion: recipeVersion + 1,
+    description,
+  };
 }
 
 /** The saved row keeps its recipe_version. That version still names a stored fact. */

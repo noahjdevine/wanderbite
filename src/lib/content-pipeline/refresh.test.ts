@@ -7,7 +7,7 @@ import type { ExceptionDraft } from '@/lib/content-pipeline/exceptions';
 import { formatContentInstant, type DescriptionFact } from '@/lib/content-pipeline/facts';
 import { contentHash } from '@/lib/content-pipeline/hash';
 import { seedSourcesFromRegistry } from '@/lib/content-pipeline/registry';
-import { planRecipeRollback, resolveSavedDescription } from '@/lib/content-pipeline/rollback';
+import { planFactRollback, planRecipeRollback, resolveSavedDescription } from '@/lib/content-pipeline/rollback';
 import {
   contentRefreshAllowed,
   maintenanceIdempotencyKey,
@@ -17,7 +17,6 @@ import {
   MAINTENANCE_FEATURE_CLASS,
   type AttemptWrite,
   type ContentSourceRecord,
-  type FactInsert,
   type RecipePatch,
   type RefreshEffects,
   type SourcePatch,
@@ -36,6 +35,7 @@ const RECIPE_ID = '22222222-2222-4222-8222-222222222222';
 const FACT_ID = '33333333-3333-4333-8333-333333333333';
 const GARDEN_RECIPE_ID = '44444444-4444-4444-8444-444444444444';
 const GARDEN_FACT_ID = '55555555-5555-4555-8555-555555555555';
+const GHOST_RECIPE_ID = '66666666-6666-4666-8666-666666666666';
 const FIXTURES = path.join(process.cwd(), 'src/lib/content-pipeline/__fixtures__');
 
 function fixture(name: string): string {
@@ -182,16 +182,35 @@ function memory(initial: {
         if (patch.lastVerifiedAt) state.source.lastVerifiedAt = patch.lastVerifiedAt;
         if (patch.lastContentHash) state.source.lastContentHash = patch.lastContentHash;
       },
-      supersedeFact: async (id) => {
-        const row = state.facts.find((item) => item.id === id);
-        if (row) row.status = 'superseded';
-      },
-      insertFact: async (row: FactInsert) => {
+      applyDescriptionFact: async (row) => {
+        const recipe = state.recipes.find((item) => item.id === row.recipeId);
+        if (!recipe) throw new Error('recipe missing');
+        if (!row.supersedeFactId) {
+          if (state.facts.some((item) => item.subjectId === row.recipeId && item.status === 'current')) return;
+          state.facts.push({
+            id: `fact-${state.facts.length + 1}`,
+            sourceId: row.sourceId,
+            subjectId: row.recipeId,
+            version: recipe.version,
+            status: 'current',
+            dish: row.value.dish,
+            text: row.value.text,
+            menuDescription: row.value.menu_description,
+            ingredients: row.value.ingredients,
+            price: row.value.price,
+            evidenceExcerpt: row.evidenceExcerpt,
+          });
+          return;
+        }
+        const current = state.facts.find((item) => item.id === row.supersedeFactId && item.status === 'current');
+        if (!current || current.version !== recipe.version) throw new Error('fact version');
+        const nextVersion = recipe.version + 1;
+        current.status = 'superseded';
         state.facts.push({
           id: `fact-${state.facts.length + 1}`,
           sourceId: row.sourceId,
-          subjectId: row.subjectId,
-          version: row.version,
+          subjectId: row.recipeId,
+          version: nextVersion,
           status: 'current',
           dish: row.value.dish,
           text: row.value.text,
@@ -200,16 +219,19 @@ function memory(initial: {
           price: row.value.price,
           evidenceExcerpt: row.evidenceExcerpt,
         });
+        recipe.description = row.value.text;
+        recipe.version = nextVersion;
+        state.recipePatches.push({
+          id: row.recipeId,
+          patch: {
+            description: row.value.text,
+            version: nextVersion,
+            retrievedAt: row.retrievedAt ?? '',
+          },
+        });
       },
       openException: async (row) => {
         state.exceptions.push(row);
-      },
-      updateRecipe: async (id, patch) => {
-        state.recipePatches.push({ id, patch });
-        const row = state.recipes.find((item) => item.id === id);
-        if (!row) return;
-        row.description = patch.description;
-        row.version = patch.version;
       },
     },
   };
@@ -449,6 +471,108 @@ describe('content pipeline', () => {
     expect(state.recipes[0]).toMatchObject({ recipeType: 'inspired_by', visibility: 'draft' });
   });
 
+  it('baselines matched recipes with no facts, then a change updates once and a removal opens an exception', async () => {
+    const state = memory({
+      source: source({ lastContentHash: null }),
+      facts: [],
+      recipes: [
+        recipe({ title: 'Home Skillet Beans', version: 1 }),
+        recipe({
+          id: GHOST_RECIPE_ID,
+          title: 'Home Ghost Plate',
+          description: 'A plate that left the menu.',
+          version: 1,
+        }),
+      ],
+    });
+    const first = await run(state, BASELINE);
+    expect(first.calls).toHaveLength(0);
+    expect(first.reserves).toHaveLength(0);
+    expect(first.result.modelCalls).toBe(0);
+    const current = state.facts.filter((row) => row.status === 'current');
+    expect(current).toHaveLength(1);
+    expect(current[0]).toMatchObject({
+      subjectId: RECIPE_ID,
+      version: 1,
+      text: 'A home pot of beans warmed with paprika and garlic.',
+      menuDescription: SKILLET_MENU,
+    });
+    expect(state.recipes[0]?.version).toBe(1);
+    expect(state.recipePatches).toHaveLength(0);
+    expect(state.exceptions.some((row) => row.reason === 'missing_source' && row.subjectId === GHOST_RECIPE_ID)).toBe(true);
+
+    const again = await run(state, BASELINE);
+    expect(again.result.attempts.map((row) => row.outcome)).toEqual(['unchanged']);
+    expect(again.calls).toHaveLength(0);
+    expect(state.facts.filter((row) => row.status === 'current')).toHaveLength(1);
+
+    const changed = await run(state, CHANGED);
+    expect(changed.result.modelCalls).toBe(1);
+    expect(changed.calls).toHaveLength(1);
+    expect(state.recipePatches).toHaveLength(1);
+    expect(state.recipes[0]?.version).toBe(2);
+    expect(state.facts.filter((row) => row.version === 2 && row.status === 'current')).toHaveLength(1);
+
+    const repeat = await run(state, CHANGED);
+    expect(repeat.result.modelCalls).toBe(0);
+    expect(state.facts.filter((row) => row.version === 2)).toHaveLength(1);
+
+    const missing = await run(state, MISSING);
+    expect(missing.calls).toHaveLength(0);
+    expect(state.exceptions.some((row) => row.reason === 'missing_source' && row.subjectId === RECIPE_ID)).toBe(true);
+    expect(state.recipes[0]?.version).toBe(2);
+    expect(state.recipes[0]?.description).toBe(PARAPHRASE);
+  });
+
+  it('stores a baseline fact at the recipe version when that version is already above 1', async () => {
+    const description = 'A home pot of beans warmed with paprika and garlic.';
+    const state = memory({
+      source: source({ lastContentHash: null }),
+      facts: [],
+      recipes: [recipe({ title: 'Home Skillet Beans', version: 3, description })],
+    });
+    const { calls } = await run(state, BASELINE);
+    expect(calls).toHaveLength(0);
+    expect(state.facts.filter((row) => row.status === 'current')).toEqual([
+      expect.objectContaining({ version: 3, text: description, subjectId: RECIPE_ID }),
+    ]);
+    expect(state.recipes[0]?.version).toBe(3);
+    expect(resolveSavedDescription(state.facts, 3)).toBe(description);
+  });
+
+  it('marks a maintenance reservation spent when the model call throws', async () => {
+    const state = memory({});
+    let released = 0;
+    const result = await refreshContentSource({
+      source: state.source,
+      facts: state.facts,
+      recipes: state.recipes,
+      apply: true,
+      now: () => NOW,
+      sleep: async () => undefined,
+      maxRetries: 0,
+      fetchImpl: fetchHtml(CHANGED),
+      callModel: async () => {
+        throw new Error('model down');
+      },
+      reserveModel: async () => ({
+        ok: true,
+        settle: async () => undefined,
+        release: async () => {
+          released += 1;
+        },
+      }),
+      effects: state.effects,
+    });
+    expect(released).toBe(1);
+    expect(result.modelCalls).toBe(1);
+    expect(result.verified).toBe(false);
+    expect(result.attempts.map((row) => row.outcome)).toEqual(['parse_error']);
+    expect(state.recipePatches).toHaveLength(0);
+    expect(state.facts.filter((row) => row.status === 'current')).toHaveLength(1);
+    expect(state.source.lastVerifiedAt).toBeNull();
+  });
+
   it('refuses a source that is not active', async () => {
     const state = memory({ source: source({ status: 'paused' }) });
     const { result, calls } = await run(state, CHANGED);
@@ -487,6 +611,7 @@ describe('content pipeline', () => {
     expect(planned.version).toBe(3);
     expect(planned.supersedeId).toBe('fact-2');
     expect(rows).toHaveLength(2);
+    expect(planFactRollback(rows, 'fact-2')).toEqual({ error: 'use rollback_recipe_to_previous' });
   });
 
   it('extracts the changed, missing, conflicting, and injected fixtures', () => {

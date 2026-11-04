@@ -40,6 +40,18 @@ export type MenuPlan = {
   candidates: DescribeCandidate[];
 };
 
+export type BaselineWrite = {
+  recipeId: string;
+  version: number;
+  value: DescriptionFactValue;
+  evidenceExcerpt: string;
+};
+
+export type BaselinePlan = {
+  writes: BaselineWrite[];
+  exceptions: ExceptionDraft[];
+};
+
 export type RecipeFactUpdate = {
   recipeId: string;
   factId: string;
@@ -66,6 +78,14 @@ export function hoursSuspected(text: string): boolean {
 
 export function dietaryClaim(text: string): boolean {
   return claimsAllergenSafe(text) || DIETARY_CLAIM_RE.test(text);
+}
+
+/** Menu dish name, or a #88 title that ends with that dish name ("Home Skillet Beans"). */
+export function recipeMatchesDish(title: string, dishName: string): boolean {
+  const titleKey = normalizeMenuTitle(title);
+  const dishKey = normalizeMenuTitle(dishName);
+  if (!titleKey || !dishKey) return false;
+  return titleKey === dishKey || titleKey.endsWith(` ${dishKey}`);
 }
 
 export function normalizeIngredients(items: readonly string[]): string[] {
@@ -107,6 +127,77 @@ function exception(args: {
     after: args.after,
     evidenceExcerpt: evidenceExcerpt(args.evidence),
   };
+}
+
+function tracksMenuRecipe(recipe: RecipeSnapshot, sourceUrl: string): boolean {
+  return recipe.recipeType === 'inspired_by'
+    && recipe.sourceKind === 'public_menu'
+    && recipe.sourceUrl === sourceUrl;
+}
+
+/**
+ * First observation of an existing inspired-by menu recipe. No model call and
+ * no recipe write. The fact version is the recipe's current version so a save
+ * made before the fact still resolves. Unmatched dishes are ignored.
+ */
+export function planBaseline(args: {
+  sourceId: string;
+  sourceUrl: string;
+  dishes: readonly ExtractedDish[];
+  facts: readonly DescriptionFact[];
+  recipes: readonly RecipeSnapshot[];
+}): BaselinePlan {
+  const writes: BaselineWrite[] = [];
+  const exceptions: ExceptionDraft[] = [];
+  const current = args.facts.filter((fact) => fact.status === 'current');
+  for (const recipe of args.recipes) {
+    if (!tracksMenuRecipe(recipe, args.sourceUrl)) continue;
+    if (current.some((fact) => fact.subjectId === recipe.id)) continue;
+    const description = recipe.description?.trim() ?? '';
+    if (!description) {
+      exceptions.push(exception({
+        sourceId: args.sourceId,
+        subjectId: recipe.id,
+        field: 'description',
+        reason: 'validation_failed',
+        before: null,
+        after: null,
+        evidence: recipe.title,
+      }));
+      continue;
+    }
+    const matches = args.dishes
+      .filter((dish) => recipeMatchesDish(recipe.title, dish.name))
+      .sort((left, right) => normalizeMenuTitle(right.name).length - normalizeMenuTitle(left.name).length);
+    const dish = matches[0];
+    const next = matches[1];
+    if (!dish || (next && normalizeMenuTitle(next.name).length === normalizeMenuTitle(dish.name).length)) {
+      exceptions.push(exception({
+        sourceId: args.sourceId,
+        subjectId: recipe.id,
+        field: 'description',
+        reason: 'missing_source',
+        before: { text: description, title: recipe.title },
+        after: null,
+        evidence: recipe.title,
+      }));
+      continue;
+    }
+    const joined = [dish.name, dish.description, ...dish.ingredients].join(' ');
+    writes.push({
+      recipeId: recipe.id,
+      version: recipe.version,
+      evidenceExcerpt: evidenceExcerpt(dish.description || dish.name),
+      value: {
+        dish: dish.name,
+        text: description,
+        menu_description: dish.description,
+        ingredients: normalizeIngredients(dish.ingredients),
+        price: extractPrice(joined),
+      },
+    });
+  }
+  return { writes, exceptions };
 }
 
 /**

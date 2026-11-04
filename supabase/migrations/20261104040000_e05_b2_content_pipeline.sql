@@ -244,6 +244,9 @@ begin
   if v_current.id is null then
     raise exception 'fact not found' using errcode = 'P0002';
   end if;
+  if v_current.subject_type = 'recipe' and v_current.field = 'description' then
+    raise exception 'use rollback_recipe_to_previous' using errcode = '22023';
+  end if;
   if v_current.status is distinct from 'current' then
     select * into v_current
     from public.source_facts
@@ -309,7 +312,6 @@ declare
   v_recipe public.recipes;
   v_current public.source_facts;
   v_prev public.source_facts;
-  v_next integer;
   v_text text;
   v_version integer;
 begin
@@ -341,16 +343,14 @@ begin
   if v_prev.id is null then
     raise exception 'no previous description fact' using errcode = 'P0002';
   end if;
+  if v_current.version <> v_recipe.version then
+    raise exception 'description fact version does not match recipe version' using errcode = '22023';
+  end if;
   v_text := btrim(v_prev.value ->> 'text');
   if v_text is null or v_text = '' or char_length(v_text) > 400 then
     raise exception 'previous description is not restorable' using errcode = '22023';
   end if;
-  select coalesce(max(version), 0) + 1 into v_next
-  from public.source_facts
-  where source_id = v_current.source_id
-    and subject_type = v_current.subject_type
-    and subject_id is not distinct from v_current.subject_id
-    and field = v_current.field;
+  v_version := v_recipe.version + 1;
   update public.source_facts set status = 'superseded' where id = v_current.id;
   insert into public.source_facts (
     source_id, subject_type, subject_id, field, value, evidence_excerpt,
@@ -362,16 +362,124 @@ begin
     'description',
     v_prev.value,
     v_prev.evidence_excerpt,
-    v_next,
+    v_version,
     'current',
     pg_catalog.now()
   );
-  v_version := v_recipe.version + 1;
   update public.recipes
   set description = v_text,
       version = v_version
   where id = p_recipe_id;
   return v_version;
+end;
+$$;
+
+create or replace function public.apply_recipe_description_fact(
+  p_source_id uuid,
+  p_recipe_id uuid,
+  p_value jsonb,
+  p_evidence_excerpt text,
+  p_retrieved_at timestamptz default null,
+  p_supersede_fact_id uuid default null
+) returns uuid
+language plpgsql
+security invoker
+set search_path to pg_catalog, public
+as $$
+declare
+  v_recipe public.recipes;
+  v_fact public.source_facts;
+  v_text text;
+  v_version integer;
+  v_id uuid;
+begin
+  select * into v_recipe from public.recipes where id = p_recipe_id for update;
+  if v_recipe.id is null then
+    raise exception 'recipe not found' using errcode = 'P0002';
+  end if;
+  if v_recipe.recipe_type is distinct from 'inspired_by'
+    or v_recipe.source_kind is distinct from 'public_menu' then
+    raise exception 'only an inspired_by public_menu recipe can take a description fact'
+      using errcode = '22023';
+  end if;
+  v_text := btrim(p_value ->> 'text');
+  if v_text is null or v_text = '' or char_length(v_text) > 400 then
+    raise exception 'description text is not storable' using errcode = '22023';
+  end if;
+
+  if p_supersede_fact_id is null then
+    if exists (
+      select 1
+      from public.source_facts
+      where source_id = p_source_id
+        and subject_type = 'recipe'
+        and subject_id = p_recipe_id
+        and field = 'description'
+        and status = 'current'
+    ) then
+      raise exception 'current description fact already exists' using errcode = '23505';
+    end if;
+    if v_text is distinct from btrim(v_recipe.description) then
+      raise exception 'baseline text must be the current recipe description' using errcode = '22023';
+    end if;
+    insert into public.source_facts (
+      source_id, subject_type, subject_id, field, value, evidence_excerpt,
+      version, status, verified_at
+    ) values (
+      p_source_id,
+      'recipe',
+      p_recipe_id,
+      'description',
+      p_value,
+      p_evidence_excerpt,
+      v_recipe.version,
+      'current',
+      pg_catalog.now()
+    )
+    returning id into v_id;
+    return v_id;
+  end if;
+
+  select * into v_fact
+  from public.source_facts
+  where id = p_supersede_fact_id
+  for update;
+  if v_fact.id is null then
+    raise exception 'fact not found' using errcode = 'P0002';
+  end if;
+  if v_fact.status is distinct from 'current'
+    or v_fact.field is distinct from 'description'
+    or v_fact.subject_type is distinct from 'recipe'
+    or v_fact.subject_id is distinct from p_recipe_id
+    or v_fact.source_id is distinct from p_source_id then
+    raise exception 'supersede fact is not the current description' using errcode = '22023';
+  end if;
+  if v_fact.version <> v_recipe.version then
+    raise exception 'description fact version does not match recipe version' using errcode = '22023';
+  end if;
+  v_version := v_recipe.version + 1;
+  update public.source_facts set status = 'superseded' where id = v_fact.id;
+  insert into public.source_facts (
+    source_id, subject_type, subject_id, field, value, evidence_excerpt,
+    version, status, verified_at
+  ) values (
+    p_source_id,
+    'recipe',
+    p_recipe_id,
+    'description',
+    p_value,
+    p_evidence_excerpt,
+    v_version,
+    'current',
+    pg_catalog.now()
+  )
+  returning id into v_id;
+  update public.recipes
+  set description = v_text,
+      version = v_version,
+      retrieved_at = coalesce(p_retrieved_at, retrieved_at)
+  where id = p_recipe_id;
+  return v_id;
 end;
 $$;
 
@@ -400,14 +508,19 @@ $$;
 
 revoke all on function public.rollback_content_fact(uuid) from public, anon, authenticated, service_role;
 revoke all on function public.rollback_recipe_to_previous(uuid) from public, anon, authenticated, service_role;
+revoke all on function public.apply_recipe_description_fact(uuid, uuid, jsonb, text, timestamptz, uuid) from public, anon, authenticated, service_role;
 revoke all on function public.resolve_saved_recipe_description(uuid, uuid) from public, anon, authenticated, service_role;
 
 grant execute on function public.rollback_content_fact(uuid) to service_role;
 grant execute on function public.rollback_recipe_to_previous(uuid) to service_role;
+grant execute on function public.apply_recipe_description_fact(uuid, uuid, jsonb, text, timestamptz, uuid) to service_role;
 grant execute on function public.resolve_saved_recipe_description(uuid, uuid) to service_role;
 
 comment on function public.rollback_content_fact(uuid) is
-  'Restores the previous fact value as a new version. Does not delete history.';
+  'Restores the previous fact value as a new version. Refuses recipe description facts; use rollback_recipe_to_previous so the recipe version stays coupled.';
+
+comment on function public.apply_recipe_description_fact(uuid, uuid, jsonb, text, timestamptz, uuid) is
+  'Writes one description fact. A null supersede id baselines at recipes.version and does not change the recipe. Otherwise supersedes, inserts the next version, and bumps the recipe in this same call.';
 
 comment on function public.rollback_recipe_to_previous(uuid) is
   'Restores the previous description onto the recipe as recipes.version + 1 and records a new fact version. Does not delete history or rewrite saved_recipes.';

@@ -3820,6 +3820,17 @@ export type Database = {
           source_item_id: string
         }[]
       }
+      apply_recipe_description_fact: {
+        Args: {
+          p_evidence_excerpt: string
+          p_recipe_id: string
+          p_retrieved_at?: string
+          p_source_id: string
+          p_supersede_fact_id?: string
+          p_value: Json
+        }
+        Returns: string
+      }
       resolve_saved_recipe_description: {
         Args: { p_recipe_id: string; p_user_id: string }
         Returns: string

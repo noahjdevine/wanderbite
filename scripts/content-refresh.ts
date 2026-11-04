@@ -269,7 +269,7 @@ async function refresh(
   for (const result of summary.results) {
     const outcomes = result.attempts.map((row) => row.outcome).join(',') || 'none';
     process.stdout.write(
-      `source=${result.sourceId} refused=${result.refused ?? ''} attempts=${outcomes} model_calls=${result.modelCalls} model_needed=${result.modelNeeded} updates=${result.updates.length} exceptions=${result.exceptions.length} verified=${result.verified}\n`,
+      `source=${result.sourceId} refused=${result.refused ?? ''} attempts=${outcomes} model_calls=${result.modelCalls} model_needed=${result.modelNeeded} baselines=${result.baselines.length} updates=${result.updates.length} exceptions=${result.exceptions.length} verified=${result.verified}\n`,
     );
   }
   for (const skip of summary.skips) process.stdout.write(`skip: ${skip}\n`);
@@ -291,25 +291,31 @@ async function loadSourceContext(supabase: SupabaseClient<Database>, sourceId: s
     const parsed = readDescriptionFact(row);
     return parsed ? [parsed] : [];
   });
-  const recipeIds = [...new Set(facts.map((row) => row.subjectId))];
-  let recipes: RecipeSnapshot[] = [];
-  if (recipeIds.length > 0) {
-    const { data, error } = await supabase
-      .from('recipes')
-      .select('id, title, description, version, visibility, recipe_type, source_kind, source_url')
-      .in('id', recipeIds);
-    if (error) fail('recipe load failed');
-    recipes = (data ?? []).map((row) => ({
-      id: row.id,
-      title: row.title,
-      description: row.description,
-      version: row.version,
-      visibility: row.visibility,
-      recipeType: row.recipe_type,
-      sourceKind: row.source_kind,
-      sourceUrl: row.source_url,
-    }));
-  }
+  const { data: sourceRow, error: sourceError } = await supabase
+    .from('content_sources')
+    .select('id, url, restaurant_id')
+    .eq('id', sourceId)
+    .single();
+  if (sourceError || !sourceRow) fail('content source load failed');
+  let recipeQuery = supabase
+    .from('recipes')
+    .select('id, title, description, version, visibility, recipe_type, source_kind, source_url')
+    .eq('recipe_type', 'inspired_by')
+    .eq('source_kind', 'public_menu')
+    .eq('source_url', sourceRow.url);
+  if (sourceRow.restaurant_id) recipeQuery = recipeQuery.eq('restaurant_id', sourceRow.restaurant_id);
+  const { data: recipeRows, error: recipeError } = await recipeQuery;
+  if (recipeError) fail('recipe load failed');
+  const recipes: RecipeSnapshot[] = (recipeRows ?? []).map((row) => ({
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    version: row.version,
+    visibility: row.visibility,
+    recipeType: row.recipe_type,
+    sourceKind: row.source_kind,
+    sourceUrl: row.source_url,
+  }));
   const { data: openRows, error: openError } = await supabase
     .from('content_exceptions')
     .select('subject_id, field, reason')
@@ -345,24 +351,16 @@ function dbEffects(supabase: SupabaseClient<Database>): RefreshEffects {
       const { error } = await supabase.from('content_sources').update(update).eq('id', sourceId);
       if (error) fail('source update failed');
     },
-    supersedeFact: async (factId) => {
-      const { error } = await supabase.from('source_facts').update({ status: 'superseded' }).eq('id', factId);
-      if (error) fail('fact supersede failed');
-    },
-    insertFact: async (row) => {
-      const { error } = await supabase.from('source_facts').insert({
-        source_id: row.sourceId,
-        subject_type: 'recipe',
-        subject_id: row.subjectId,
-        field: 'description',
-        value: row.value as unknown as Json,
-        evidence_excerpt: row.evidenceExcerpt,
-        version: row.version,
-        status: 'current',
-        extracted_at: row.extractedAt,
-        verified_at: row.verifiedAt,
+    applyDescriptionFact: async (row) => {
+      const { error } = await supabase.rpc('apply_recipe_description_fact', {
+        p_source_id: row.sourceId,
+        p_recipe_id: row.recipeId,
+        p_value: row.value as unknown as Json,
+        p_evidence_excerpt: row.evidenceExcerpt,
+        p_retrieved_at: row.retrievedAt ?? undefined,
+        p_supersede_fact_id: row.supersedeFactId ?? undefined,
       });
-      if (error) fail('fact insert failed');
+      if (error) fail('description fact apply failed');
     },
     openException: async (row) => {
       const { error } = await supabase.from('content_exceptions').insert({
@@ -377,19 +375,6 @@ function dbEffects(supabase: SupabaseClient<Database>): RefreshEffects {
         status: 'open',
       });
       if (error) fail('exception insert failed');
-    },
-    updateRecipe: async (recipeId, patch) => {
-      const { error } = await supabase
-        .from('recipes')
-        .update({
-          description: patch.description,
-          version: patch.version,
-          retrieved_at: patch.retrievedAt,
-        })
-        .eq('id', recipeId)
-        .eq('recipe_type', 'inspired_by')
-        .eq('source_kind', 'public_menu');
-      if (error) fail('recipe update failed');
     },
   };
 }

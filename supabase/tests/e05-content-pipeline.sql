@@ -59,8 +59,10 @@ do $$ begin
   if has_function_privilege('anon', 'public.rollback_recipe_to_previous(uuid)', 'EXECUTE')
     or has_function_privilege('authenticated', 'public.rollback_content_fact(uuid)', 'EXECUTE')
     or has_function_privilege('anon', 'public.resolve_saved_recipe_description(uuid, uuid)', 'EXECUTE')
+    or has_function_privilege('authenticated', 'public.apply_recipe_description_fact(uuid, uuid, jsonb, text, timestamptz, uuid)', 'EXECUTE')
     or not has_function_privilege('service_role', 'public.rollback_recipe_to_previous(uuid)', 'EXECUTE')
-    or not has_function_privilege('service_role', 'public.rollback_content_fact(uuid)', 'EXECUTE') then
+    or not has_function_privilege('service_role', 'public.rollback_content_fact(uuid)', 'EXECUTE')
+    or not has_function_privilege('service_role', 'public.apply_recipe_description_fact(uuid, uuid, jsonb, text, timestamptz, uuid)', 'EXECUTE') then
     raise exception 'FAIL: content pipeline function grants';
   end if;
 end $$;
@@ -171,6 +173,17 @@ do $$ begin
   begin
     perform public.rollback_recipe_to_previous('e05b2000-0000-4000-8000-000000000021');
     raise exception 'FAIL: member can roll back a recipe';
+  exception when insufficient_privilege then null; end;
+  begin
+    perform public.apply_recipe_description_fact(
+      'e05b2000-0000-4000-8000-000000000030',
+      'e05b2000-0000-4000-8000-000000000021',
+      '{"text":"member"}'::jsonb,
+      'member',
+      null,
+      null
+    );
+    raise exception 'FAIL: member can apply a description fact';
   exception when insufficient_privilege then null; end;
 end $$;
 reset role;
@@ -353,21 +366,136 @@ do $$ begin
   end if;
 end $$;
 
-select public.rollback_content_fact('e05b2000-0000-4000-8000-000000000042');
+do $$ begin
+  begin
+    perform public.rollback_content_fact('e05b2000-0000-4000-8000-000000000042');
+    raise exception 'FAIL: description fact rollback was accepted';
+  exception when sqlstate '22023' then null; end;
+  if (select count(*) from public.source_facts
+      where subject_id = 'e05b2000-0000-4000-8000-000000000021') <> 3
+    or (select version from public.recipes where id = 'e05b2000-0000-4000-8000-000000000021') <> 3
+    or (select status from public.source_facts where id = 'e05b2000-0000-4000-8000-000000000042')
+      is distinct from 'superseded' then
+    raise exception 'FAIL: refused description rollback changed history';
+  end if;
+end $$;
+
+insert into public.recipes (
+  id, slug, title, recipe_type, restaurant_id, servings, est_minutes,
+  ingredients, steps, substitutions, rights_basis, visibility, source_kind,
+  source_url, source_name, description, menu_wording, retrieved_at, version, is_demo
+) values (
+  'e05b2000-0000-4000-8000-000000000022',
+  'e05b2-versioned',
+  'Home Versioned Beans',
+  'inspired_by',
+  'e05b2000-0000-4000-8000-000000000010',
+  2, 25,
+  '[{"name":"White beans","quantity":"2","unit":"cup"}]'::jsonb,
+  '[{"order":1,"text":"Warm the beans with paprika and garlic."}]'::jsonb,
+  '[]'::jsonb,
+  'original',
+  'published',
+  'public_menu',
+  'https://example.com/e05b2-menu',
+  'Public menu',
+  'A saved pot of beans from before the fact existed.',
+  'paraphrase',
+  '2026-01-15T18:00:00Z',
+  3,
+  false
+);
+
+select set_config('request.jwt.claim.sub', 'e05b2000-0000-4000-8000-000000000001', true);
+set local role authenticated;
+insert into public.saved_recipes (user_id, recipe_id, recipe_version)
+values (
+  'e05b2000-0000-4000-8000-000000000001',
+  'e05b2000-0000-4000-8000-000000000022',
+  1
+);
+reset role;
+
+select public.apply_recipe_description_fact(
+  'e05b2000-0000-4000-8000-000000000030',
+  'e05b2000-0000-4000-8000-000000000022',
+  jsonb_build_object(
+    'dish', 'Versioned Beans',
+    'text', 'A saved pot of beans from before the fact existed.',
+    'menu_description', 'White beans simmered with smoked paprika.',
+    'ingredients', jsonb_build_array('white beans'),
+    'price', null
+  ),
+  'White beans simmered with smoked paprika.',
+  null,
+  null
+);
 
 do $$ begin
+  if (select recipe_version from public.saved_recipes
+      where recipe_id = 'e05b2000-0000-4000-8000-000000000022') <> 3 then
+    raise exception 'FAIL: save before a fact did not keep the recipe version';
+  end if;
+  if (select version from public.source_facts
+      where subject_id = 'e05b2000-0000-4000-8000-000000000022' and status = 'current') <> 3 then
+    raise exception 'FAIL: baseline fact did not use the recipe version';
+  end if;
+  if (select version from public.recipes where id = 'e05b2000-0000-4000-8000-000000000022') <> 3 then
+    raise exception 'FAIL: baseline changed the recipe version';
+  end if;
+  if public.resolve_saved_recipe_description(
+    'e05b2000-0000-4000-8000-000000000001',
+    'e05b2000-0000-4000-8000-000000000022'
+  ) is distinct from 'A saved pot of beans from before the fact existed.' then
+    raise exception 'FAIL: a save made before the fact did not resolve';
+  end if;
+  begin
+    perform public.apply_recipe_description_fact(
+      'e05b2000-0000-4000-8000-000000000030',
+      'e05b2000-0000-4000-8000-000000000022',
+      jsonb_build_object('text', 'A saved pot of beans from before the fact existed.'),
+      'again',
+      null,
+      null
+    );
+    raise exception 'FAIL: a second baseline was accepted';
+  exception when unique_violation then null; end;
   if (select count(*) from public.source_facts
-      where subject_id = 'e05b2000-0000-4000-8000-000000000021') <> 4 then
-    raise exception 'FAIL: fact rollback deleted history';
+      where subject_id = 'e05b2000-0000-4000-8000-000000000022') <> 1 then
+    raise exception 'FAIL: repeated baseline inserted another fact';
   end if;
-  if (select value ->> 'text' from public.source_facts
-      where subject_id = 'e05b2000-0000-4000-8000-000000000021'
-        and status = 'current')
-    is distinct from 'A weeknight skillet of beans with a smoky paprika finish.' then
-    raise exception 'FAIL: fact rollback did not restore the previous fact value';
+end $$;
+
+do $$
+declare
+  current_id uuid;
+  recipe_version integer;
+  fact_status text;
+begin
+  select id into current_id
+  from public.source_facts
+  where subject_id = 'e05b2000-0000-4000-8000-000000000022' and status = 'current';
+  begin
+    perform public.apply_recipe_description_fact(
+      'e05b2000-0000-4000-8000-000000000030',
+      'e05b2000-0000-4000-8000-000000000022',
+      jsonb_build_object('text', 'A weeknight skillet that should not land.'),
+      repeat('e', 241),
+      now(),
+      current_id
+    );
+    raise exception 'FAIL: overlong evidence was accepted';
+  exception when check_violation then null; end;
+  select version into recipe_version
+  from public.recipes
+  where id = 'e05b2000-0000-4000-8000-000000000022';
+  select status into fact_status from public.source_facts where id = current_id;
+  if recipe_version <> 3 or fact_status is distinct from 'current' then
+    raise exception 'FAIL: failed apply changed the recipe version or the current fact';
   end if;
-  if (select version from public.recipes where id = 'e05b2000-0000-4000-8000-000000000021') <> 3 then
-    raise exception 'FAIL: fact rollback rewrote the recipe version';
+  if (select count(*) from public.source_facts
+      where subject_id = 'e05b2000-0000-4000-8000-000000000022') <> 1 then
+    raise exception 'FAIL: failed apply left a partial fact';
   end if;
 end $$;
 
