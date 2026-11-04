@@ -17,6 +17,8 @@ Everything Cursor and Grok need to rebuild wanderbite.co in the new "Golden Hour
 | `cursor-rules/wanderbite-design.mdc` | A Cursor rules file so every edit follows the design system. |
 | `mockups/*.html` | Standalone HTML of every redesigned screen. Open them in a browser to see the motion. |
 
+`RIVE_BRIEF.md` and `code/BeaAvatarRive.tsx` are reference only. Bea's animation is built in code; do not add `@rive-app` or a `.riv` file.
+
 ### Mockups
 - `home-hero.html`: desktop home hero
 - `discover-1-ask.html`, `discover-2-thinking.html`, `discover-3-pick.html`: the Bea flow (phone)

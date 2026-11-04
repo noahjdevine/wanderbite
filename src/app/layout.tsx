@@ -10,7 +10,7 @@ const outfit = Outfit({
   subsets: ["latin"],
 });
 
-/** Display face for Golden Hour. Not applied to body, so current pages stay on Outfit. */
+/** Display face for Golden Hour. Not applied to body, and not preloaded, so pages that don't use it don't fetch it. */
 const instrumentSerif = Instrument_Serif({
   weight: "400",
   style: ["normal", "italic"],
@@ -18,6 +18,7 @@ const instrumentSerif = Instrument_Serif({
   variable: "--font-instrument",
   display: "swap",
   adjustFontFallback: true,
+  preload: false,
 });
 
 export const viewport: Viewport = {
