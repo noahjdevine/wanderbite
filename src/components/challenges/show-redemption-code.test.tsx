@@ -96,11 +96,17 @@ describe('ShowRedemptionCode', () => {
     try {
       const start = new Date('2026-11-05T01:00:00.000Z').getTime();
       vi.setSystemTime(start);
+      const expiresAt = new Date(start + 70_000).toISOString();
+      getRedemptionCode.mockResolvedValue({
+        state: 'issued',
+        code: 'WB-LIVE1',
+        expiresAt,
+      });
       const view = await render(
         <ShowRedemptionCode
           {...base}
           code="WB-LIVE1"
-          expiresAt={new Date(start + 70_000).toISOString()}
+          expiresAt={expiresAt}
           status="issued"
         />,
       );
@@ -119,7 +125,8 @@ describe('ShowRedemptionCode', () => {
       });
       expect(live()?.textContent).toBe('1 minute left');
       expect(countdown()?.textContent).not.toBe(atMinute);
-      expect(getRedemptionCode).not.toHaveBeenCalled();
+      expect(view.textContent).toContain('WB-LIVE1');
+      expect(getRedemptionCode).toHaveBeenCalled();
     } finally {
       vi.useRealTimers();
     }

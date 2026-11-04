@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { format } from 'date-fns';
 import QRCode from 'react-qr-code';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { redeemChallengeItem } from '@/app/actions/redeem-challenge';
@@ -20,6 +21,15 @@ import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/vis
 const ONE_MINUTE_LEFT = '1 minute left';
 const CODE_REISSUED = 'Code reissued';
 const ONE_MINUTE_MS = 60_000;
+/** While an issued code is on a visible tab, re-read verification on this cadence. */
+const ISSUED_STATUS_POLL_MS = 5_000;
+
+function verifiedStampClock(iso: string | null): { iso: string | null; label: string | null } {
+  if (!iso) return { iso: null, label: null };
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return { iso: null, label: null };
+  return { iso, label: format(at, 'PPp') };
+}
 
 function liveVisitStatus(args: {
   phase: ShowRedemptionCodeProps['status'];
@@ -123,18 +133,20 @@ export function ShowRedemptionCode({
   const [announcement, setAnnouncement] = useState(() =>
     openingAnnouncement(status, expiresAt, redemptionDeadline, itemStatus, hasNote, Date.now()),
   );
+  const [liveVerifiedAt, setLiveVerifiedAt] = useState<string | null>(verifiedAt ?? null);
+  const [liveVerifiedAtIso, setLiveVerifiedAtIso] = useState<string | null>(verifiedAtIso);
   const verifiedCandidate = useMemo(
     () =>
-      phase === 'verified' && verifiedAtIso
+      phase === 'verified' && liveVerifiedAtIso
         ? [
             {
               id: redemptionId,
               status: hasNote ? ('note_added' as const) : ('verified' as const),
-              verifiedAt: verifiedAtIso,
+              verifiedAt: liveVerifiedAtIso,
             },
           ]
         : [],
-    [hasNote, phase, redemptionId, verifiedAtIso],
+    [hasNote, liveVerifiedAtIso, phase, redemptionId],
   );
   const unlock = useStampUnlock(verifiedCandidate, false);
   const refreshing = useRef(false);
@@ -167,6 +179,16 @@ export function ShowRedemptionCode({
         if (changed) noteReissue(result.expiresAt);
         return;
       }
+      if (result.state === 'verified') {
+        const clock = verifiedStampClock(result.verifiedAt);
+        setLiveCode(null);
+        setLiveVerifiedAtIso(clock.iso);
+        setLiveVerifiedAt(clock.label);
+        setPhase('verified');
+        setError(null);
+        setAnnouncement('Already verified');
+        return;
+      }
       if (result.state === 'expired') {
         setLiveCode(null);
         setLiveExpiresAt(result.expiresAt);
@@ -179,7 +201,7 @@ export function ShowRedemptionCode({
               redemptionDeadline,
               itemStatus,
               hasNote,
-              verifiedAt,
+              verifiedAt: liveVerifiedAt,
               nowMs: Date.now(),
             }),
           ),
@@ -190,7 +212,7 @@ export function ShowRedemptionCode({
     } finally {
       refreshing.current = false;
     }
-  }, [hasNote, itemStatus, noteReissue, redemptionDeadline, redemptionId, verifiedAt]);
+  }, [hasNote, itemStatus, liveVerifiedAt, noteReissue, redemptionDeadline, redemptionId]);
 
   useEffect(() => {
     if (phase === 'verified') return;
@@ -223,6 +245,38 @@ export function ShowRedemptionCode({
     return () => window.clearInterval(timer);
   }, [phase, liveExpiresAt, refresh]);
 
+  useEffect(() => {
+    if (phase !== 'issued') return;
+
+    let timer: number | null = null;
+    const stop = () => {
+      if (timer == null) return;
+      window.clearInterval(timer);
+      timer = null;
+    };
+    const start = () => {
+      if (timer != null || document.visibilityState === 'hidden') return;
+      timer = window.setInterval(() => {
+        if (document.visibilityState === 'hidden') {
+          stop();
+          return;
+        }
+        void refresh();
+      }, ISSUED_STATUS_POLL_MS);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') start();
+      else stop();
+    };
+
+    start();
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [phase, refresh]);
+
   const remainingMs = liveExpiresAt ? new Date(liveExpiresAt).getTime() - nowMs : 0;
   const windowOpen = canReissue && visitWindowOpen(redemptionDeadline, new Date(nowMs));
   const liveStatus = liveVisitStatus({
@@ -231,7 +285,7 @@ export function ShowRedemptionCode({
     redemptionDeadline,
     itemStatus,
     hasNote,
-    verifiedAt,
+    verifiedAt: liveVerifiedAtIso ?? liveVerifiedAt,
     nowMs,
   });
   const statusLabel = visitStatusLabel(liveStatus);
@@ -284,12 +338,12 @@ export function ShowRedemptionCode({
       {phase === 'verified' ? (
         <div className="mt-8 w-full rounded-[28px] border border-[#86efac] bg-[#f0fdf4] p-6 text-center">
           <p className="font-display text-[32px] leading-none text-[#14532d]">Already verified</p>
-          {verifiedAt ? <p className="mt-2 text-sm text-[#14532d]">{verifiedAt}</p> : null}
+          {liveVerifiedAt ? <p className="mt-2 text-sm text-[#14532d]">{liveVerifiedAt}</p> : null}
           <div className="mt-4 flex justify-center">
             <Stamp
               name={restaurantName}
-              date={chicagoVisitDate(verifiedAtIso)?.short || verifiedAt || 'Verified'}
-              accessibleDate={chicagoVisitDate(verifiedAtIso)?.long || verifiedAt || undefined}
+              date={chicagoVisitDate(liveVerifiedAtIso)?.short || liveVerifiedAt || 'Verified'}
+              accessibleDate={chicagoVisitDate(liveVerifiedAtIso)?.long || liveVerifiedAt || undefined}
               neighborhood={neighborhood?.trim() ?? ''}
               inkColor={cuisineInk(cuisineTags).color}
               rotation={stampRotationDegrees(redemptionId)}

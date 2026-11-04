@@ -20,6 +20,7 @@ export type RedemptionClock = {
 export type RedemptionCodeResult =
   | { state: 'issued'; code: string; expiresAt: string }
   | { state: 'expired'; expiresAt: string | null }
+  | { state: 'verified'; verifiedAt: string | null }
   | { state: 'unavailable' };
 
 /** Code expiry from `from`. A duration, so the process timezone does not move it. */
