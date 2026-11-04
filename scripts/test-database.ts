@@ -116,6 +116,8 @@ async function main() {
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g6-verify.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/redemption-code-ttl.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: redemption code cap, reissue, and verified refusal.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/bite-notes-public-verified.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: public bite notes require a verified redemption.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g8-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-c-grants.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g9-ledger.sql'), 'utf8')) + '\n');
