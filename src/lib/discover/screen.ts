@@ -1,5 +1,11 @@
+import {
+  discoverMapsSearchUrl,
+  googleMapsSearchUrl,
+  httpsGoogleMapsUrl,
+} from '@/lib/discover/directions';
 import type { DiscoverEvent, DiscoverFood, DiscoverOffer, PartnerLite } from '@/lib/discover/events';
 import { dietaryConstraintLabel } from '@/lib/discover/stages';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
 import type { CuisineId } from '@/lib/cuisines';
 import { formatCents } from '@/lib/offers/sealed-base';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
@@ -77,8 +83,6 @@ export const DISCOVER_QUICK_CHIPS: readonly QuickChip[] = [
 ];
 
 const PRICE_ORDER: readonly RoulettePriceRange[] = ['$', '$$', '$$$', '$$$$'];
-
-const MAPS_HOSTS = new Set(['google.com', 'www.google.com', 'maps.google.com']);
 
 /** Same sentences as `src/lib/discovery-turn.ts`. Duplicated so the client bundle stays off `node:crypto`. */
 export const DISCOVER_MESSAGE_TOO_LONG = 'That message is too long. Keep it to 500 characters.';
@@ -261,32 +265,19 @@ export function offerChipLabel(offer: DiscoverOffer): string {
   return `${formatCents(offer.amountOff)} off ${formatCents(offer.minSpend)}+`;
 }
 
-function readOwnString(partner: object, key: string): string | null {
-  if (!Object.prototype.hasOwnProperty.call(partner, key)) return null;
-  const value = (partner as Record<string, unknown>)[key];
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
 /**
- * A directions link exists only when this card carries an address or an
- * https Google Maps URL. The live stream partner has neither.
+ * Let's go uses `partner.directions`. A valid https Google Maps URL wins.
+ * An address without a usable URL falls back to the same name-plus-city
+ * search the roulette page builds. Neither one leaves the link closed.
  */
 export function directionsHref(partner: PartnerLite): string | null {
-  const mapsUrl = readOwnString(partner, 'mapsUrl');
-  if (mapsUrl) {
-    try {
-      const url = new URL(mapsUrl);
-      if (url.protocol === 'https:' && MAPS_HOSTS.has(url.hostname)) return url.toString();
-    } catch {
-      // A bad maps URL does not block a real address on the same card.
-    }
-  }
-  const address = readOwnString(partner, 'address');
+  const mapsUrl = httpsGoogleMapsUrl(partner.directions?.mapsUrl);
+  if (mapsUrl) return mapsUrl;
+  const address = partner.directions?.address?.trim() ?? '';
   if (!address) return null;
-  const query = `${partner.name} ${address}`.trim();
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+  return (
+    discoverMapsSearchUrl(partner.name, LAUNCH_MARKET.cityQuery) ?? googleMapsSearchUrl(address)
+  );
 }
 
 function readOwnFinite(partner: object, key: string): number | null {

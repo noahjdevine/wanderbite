@@ -9,6 +9,10 @@ import {
 import { parseDiscoverSseStream } from '@/lib/discover/sse-client';
 import type { RouletteSpinPayload } from '@/lib/roulette-options';
 
+export type DiscoverAskPayload = RouletteSpinPayload & {
+  excludeRestaurantIds?: readonly string[];
+};
+
 export type DiscoverHttpResult =
   | { kind: 'events'; events: DiscoverEvent[] }
   | { kind: 'recipe'; qa: RecipeQaAnswerView }
@@ -69,7 +73,7 @@ export async function readDiscoverHttp(response: Response): Promise<DiscoverHttp
 }
 
 async function postOnce(
-  body: RouletteSpinPayload,
+  body: DiscoverAskPayload,
   idempotencyKey: string,
   signal: AbortSignal,
 ): Promise<DiscoverHttpResult> {
@@ -87,7 +91,7 @@ async function postOnce(
 
 /** POST /api/discover. One network retry reuses the same idempotency key. */
 export async function postDiscoverAsk(
-  body: RouletteSpinPayload,
+  body: DiscoverAskPayload,
   idempotencyKey: string,
   signal: AbortSignal,
 ): Promise<DiscoverHttpResult> {

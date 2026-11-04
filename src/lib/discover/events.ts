@@ -34,6 +34,13 @@ export type Constraint = {
   required: boolean;
 };
 
+export type PartnerDirections = {
+  /** Street line from `restaurants.address` when that value is non-blank. */
+  address?: string;
+  /** https Google Maps search. Same query as the roulette Get Directions link. */
+  mapsUrl?: string;
+};
+
 export type PartnerLite = {
   id: string;
   name: string;
@@ -41,6 +48,8 @@ export type PartnerLite = {
   neighborhood?: string;
   photoUrl?: string;
   photoCredit?: string;
+  /** Omitted when the row has neither a name nor a street address. */
+  directions?: PartnerDirections;
 };
 
 export type DiscoverOffer = {

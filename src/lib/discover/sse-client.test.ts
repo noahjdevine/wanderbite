@@ -58,4 +58,31 @@ describe('discover SSE client parser', () => {
     expect(parsed.error).toBeTruthy();
     expect(parsed.events).toEqual([]);
   });
+
+  it('keeps optional partner directions and rejects a non-string maps URL', () => {
+    const withDirections: DiscoverEvent[] = [
+      {
+        type: 'pick',
+        partner: {
+          id: 'rest-1',
+          name: 'Noodle House',
+          directions: {
+            address: '100 Main St',
+            mapsUrl: 'https://www.google.com/maps/search/?api=1&query=Noodle',
+          },
+        },
+        reason: 'Hot noodles.',
+        matched: [],
+        unknown: [],
+        unmet: [],
+        isNewToMember: false,
+        food: 'dumpling',
+      },
+    ];
+    expect(parseDiscoverSseStream(encodeDiscoverSse(withDirections)).events).toEqual(withDirections);
+    const bad = parseDiscoverSseStream(
+      'data: {"type":"pick","partner":{"id":"rest-1","name":"Noodle House","directions":{"mapsUrl":1}},"reason":"x","matched":[],"unknown":[],"unmet":[],"isNewToMember":false,"food":"dumpling"}\n\n',
+    );
+    expect(bad.error).toBeTruthy();
+  });
 });

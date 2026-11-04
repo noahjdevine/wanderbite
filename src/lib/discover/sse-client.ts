@@ -29,6 +29,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isDirections(value: unknown): boolean {
+  if (value == null) return true;
+  if (!isRecord(value)) return false;
+  if (value.address != null && typeof value.address !== 'string') return false;
+  if (value.mapsUrl != null && typeof value.mapsUrl !== 'string') return false;
+  return true;
+}
+
 function isPartner(value: unknown): value is PartnerLite {
   if (!isRecord(value)) return false;
   if (typeof value.id !== 'string' || typeof value.name !== 'string') return false;
@@ -36,6 +44,7 @@ function isPartner(value: unknown): value is PartnerLite {
   if (value.neighborhood != null && typeof value.neighborhood !== 'string') return false;
   if (value.photoUrl != null && typeof value.photoUrl !== 'string') return false;
   if (value.photoCredit != null && typeof value.photoCredit !== 'string') return false;
+  if (!isDirections(value.directions)) return false;
   return true;
 }
 

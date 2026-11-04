@@ -1,9 +1,11 @@
+import { partnerDirections } from '@/lib/discover/directions';
 import {
   fallbackAlternativeMessage,
   discoverStreamReason,
   filterStepLabel,
   PARSE_STEP_LABEL,
   type DiscoverEvent,
+  type PartnerLite,
 } from '@/lib/discover/events';
 import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
 import {
@@ -15,6 +17,14 @@ import {
   toPartnerLite,
   type DiscoverRestaurant,
 } from '@/lib/discover/stages';
+
+/** Directions stay on the chosen card. Filter samples do not carry addresses. */
+function streamedPartner(row: DiscoverRestaurant): PartnerLite {
+  const partner = toPartnerLite(row);
+  const directions = partnerDirections({ name: row.name, address: row.address });
+  if (!directions) return partner;
+  return { ...partner, directions };
+}
 
 export type DiscoverCardInput = {
   message: string;
@@ -69,7 +79,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     });
     events.push({
       type: 'pick',
-      partner: toPartnerLite(args.chosen),
+      partner: streamedPartner(args.chosen),
       reason: args.reason,
       matched: honesty.matched,
       unknown: honesty.unknown,
@@ -85,7 +95,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
   }
 
   const reason = args.fallbackReason ?? 'invalid_pick';
-  const alternative = toPartnerLite(args.chosen);
+  const alternative = streamedPartner(args.chosen);
   events.push({
     type: 'fallback',
     reason: discoverStreamReason(reason, args.providerTimedOut),
