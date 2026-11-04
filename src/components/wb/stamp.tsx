@@ -6,41 +6,60 @@ const INK: Record<CuisineInk, string> = {
   american: "var(--wb-ink-american)",
 };
 
-type StampProps = {
+type StampBase = {
   name: string;
   date: string;
   neighborhood: string;
   cuisine?: CuisineInk;
+  /** Overrides the named cuisine color. Used for tags outside pizza, sushi, and american. */
+  inkColor?: string;
   shape?: "round" | "rect";
   rotation?: number;
-  href: string;
   newest?: boolean;
+  /** When set, the accessible name is restaurant, date, and this status. */
+  statusLabel?: string;
+  /** Long date for the accessible name. The face still shows `date`. */
+  accessibleDate?: string;
+  pressed?: boolean;
+  elementId?: string;
 };
+
+type StampProps = StampBase &
+  ({ href: string; onSelect?: undefined } | { href?: undefined; onSelect: () => void });
 
 export function Stamp({
   name,
   date,
   neighborhood,
   cuisine = "pizza",
+  inkColor,
   shape = "round",
   rotation = -6,
-  href,
   newest = false,
+  statusLabel,
+  accessibleDate,
+  pressed = false,
+  elementId,
+  ...target
 }: StampProps) {
-  const ink = INK[cuisine];
-  const label = `${name}, stamped ${date}${newest ? ", newest stamp" : ""}`;
+  const ink = inkColor ?? INK[cuisine];
+  const spokenDate = accessibleDate ?? date;
+  const label = statusLabel
+    ? `${name}, ${spokenDate}, ${statusLabel}`
+    : `${name}, stamped ${date}${newest ? ", newest stamp" : ""}`;
 
   const face =
     shape === "rect" ? (
       <div
-        className="flex w-36 flex-col items-center gap-1.5 px-2 py-3 text-center"
+        className="flex h-[138px] w-[138px] flex-col items-center justify-center gap-1.5 px-2 py-3 text-center"
         style={{ border: `4px double ${ink}`, borderRadius: 10, color: ink }}
       >
         <span className="text-[9px] font-bold tracking-[2px]">WANDERBITE</span>
-        <span className="font-display text-[28px] leading-none">{name}</span>
+        <span className="font-display max-w-full truncate px-1 text-[26px] leading-none">{name}</span>
         <span className="w-full border-t border-dashed" style={{ borderColor: ink }} />
         <span className="text-[11px] font-bold tracking-[1.6px]">
-          {date} · {neighborhood}
+          {date}
+          {neighborhood ? ` · ${neighborhood}` : ""}
         </span>
       </div>
     ) : (
@@ -49,15 +68,35 @@ export function Stamp({
           className="flex h-full w-full flex-col items-center justify-center gap-1 rounded-full text-center"
           style={{ border: `1.5px dashed ${ink}`, color: ink }}
         >
-          <span className="px-3 text-[9px] font-bold tracking-[1.5px] uppercase">{name}</span>
+          <span className="line-clamp-2 px-3 text-[9px] font-bold tracking-[1.5px] uppercase">{name}</span>
           <span className="font-display text-[30px] leading-none">{date}</span>
-          <span className="text-[9px] font-bold tracking-[1.6px] uppercase">{neighborhood}</span>
+          {neighborhood ? (
+            <span className="px-3 text-[9px] font-bold tracking-[1.6px] uppercase">{neighborhood}</span>
+          ) : null}
         </div>
       </div>
     );
 
+  const style = { transform: `rotate(${rotation}deg)` };
+  const shared = {
+    "aria-label": label,
+    "data-ink": ink,
+    "data-rotation": rotation,
+    id: elementId,
+    className: "inline-block shrink-0 p-1 no-underline",
+    style,
+  };
+
+  if ("onSelect" in target && target.onSelect) {
+    return (
+      <button type="button" {...shared} aria-pressed={pressed} onClick={target.onSelect}>
+        {face}
+      </button>
+    );
+  }
+
   return (
-    <a href={href} aria-label={label} className="inline-block p-1 no-underline" style={{ transform: `rotate(${rotation}deg)` }}>
+    <a href={target.href} {...shared}>
       {face}
     </a>
   );
@@ -68,7 +107,8 @@ export function PendingStamp({ name }: { name: string }) {
     <div
       role="img"
       aria-label={`${name}, pending. Stamps once verified.`}
-      className="relative h-[138px] w-[138px]"
+      data-stamp-kind="pending"
+      className="relative h-[138px] w-[138px] shrink-0"
     >
       <span
         aria-hidden="true"
@@ -91,7 +131,7 @@ export function EmptyStampSlot({ href, challengeName }: { href: string; challeng
   return (
     <a
       href={href}
-      className="flex h-[138px] w-[138px] flex-col items-center justify-center gap-1 rounded-full border-2 border-dashed border-wb-line px-4 text-center no-underline"
+      className="flex h-[138px] w-[138px] shrink-0 flex-col items-center justify-center gap-1 rounded-full border-2 border-dashed border-wb-line px-4 text-center no-underline"
     >
       <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" className="text-wb-muted">
         <path d="M12 5v14M5 12h14" />
