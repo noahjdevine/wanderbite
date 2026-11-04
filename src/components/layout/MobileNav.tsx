@@ -24,6 +24,7 @@ export function MobileNav() {
   const [drawerState, setDrawerState] = useState({ pathname, open: false });
 
   const items = signedIn ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
+  const onDarkHero = pathname === '/';
 
   const drawerOpen =
     drawerState.pathname === pathname ? drawerState.open : false;
@@ -58,7 +59,12 @@ export function MobileNav() {
   }
 
   return (
-    <header className="fixed inset-x-0 top-0 z-50 border-b border-white/20 bg-white/90 backdrop-blur-md xl:hidden">
+    <header
+      className={cn(
+        'fixed inset-x-0 top-0 z-50 border-b backdrop-blur-md xl:hidden',
+        onDarkHero ? 'wb-dark border-white/15 bg-[rgba(18,10,36,0.86)] text-white' : 'border-white/20 bg-white/90',
+      )}
+    >
       <div className="flex h-14 items-center gap-2 px-4">
         <WanderbiteLogoLink compact />
 
@@ -66,7 +72,10 @@ export function MobileNav() {
           {loading ? (
             <div className="h-8 w-20 animate-pulse rounded-md bg-muted" />
           ) : signedIn ? (
-            <AccountMenu variant="icon" />
+            <AccountMenu
+              variant="icon"
+              className={onDarkHero ? 'border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white' : undefined}
+            />
           ) : (
             <Button size="sm" className="shrink-0 text-xs sm:text-sm" asChild>
               <Link href="/signup">Start Your Adventure</Link>
@@ -80,6 +89,7 @@ export function MobileNav() {
             aria-expanded={drawerOpen}
             aria-label={drawerOpen ? 'Close menu' : 'Open menu'}
             onClick={toggleDrawer}
+            className={onDarkHero ? 'border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white' : undefined}
           >
             {drawerOpen ? <X className="size-5" /> : <Menu className="size-5" />}
           </Button>

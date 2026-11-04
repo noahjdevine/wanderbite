@@ -64,7 +64,7 @@ function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   );
 }
 
-export function RouletteClient() {
+export function RouletteClient({ initialMessage = '' }: { initialMessage?: string }) {
   const askInFlightRef = useRef(false);
   const resultSectionRef = useRef<HTMLDivElement>(null);
 
@@ -75,7 +75,7 @@ export function RouletteClient() {
     getExcludedCuisinesSnapshot,
     getExcludedCuisinesServerSnapshot,
   );
-  const [message, setMessage] = useState('');
+  const [message, setMessage] = useState(initialMessage);
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 

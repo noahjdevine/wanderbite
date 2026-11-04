@@ -1,15 +1,10 @@
 import { UtensilsCrossed, Ticket, TrendingUp } from 'lucide-react';
 import { ClubSection } from '@/components/landing/club-section';
-import { HeroSlider } from '@/components/landing/hero-slider';
 
 export function LandingPage() {
   return (
-    <main className="min-h-screen bg-background">
-      <div id="landing-continue">
-        <HeroSlider />
-      </div>
-
-      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+    <main className="bg-background">
+      <div id="landing-continue" className="mx-auto max-w-7xl px-4 sm:px-6">
         {/* How it Works */}
         <section className="py-20" id="how-it-works">
           <h2 className="mb-12 text-center text-2xl font-semibold tracking-tight md:text-3xl">

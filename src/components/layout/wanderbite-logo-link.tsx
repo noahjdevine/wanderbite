@@ -10,6 +10,7 @@ type WanderbiteLogoLinkProps = {
 
 export function WanderbiteLogoLink({ compact }: WanderbiteLogoLinkProps) {
   const pathname = usePathname();
+  const onDarkHero = pathname === '/';
 
   return (
     <Link
@@ -39,7 +40,7 @@ export function WanderbiteLogoLink({ compact }: WanderbiteLogoLinkProps) {
         />
       </div>
       <span
-        className="font-semibold text-[#111111]"
+        className={onDarkHero ? 'font-semibold text-white' : 'font-semibold text-[#111111]'}
         style={{ fontSize: compact ? 14 : 16 }}
       >
         Wanderbite
