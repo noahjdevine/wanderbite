@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, User as UserIcon } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -31,20 +30,18 @@ export function AccountMenu({ variant = 'default', className }: AccountMenuProps
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="outline"
-          size={variant === 'icon' ? 'icon-sm' : 'sm'}
-          className={cn(variant === 'icon' ? 'px-2' : 'gap-1.5 px-2', className)}
-          aria-label="Account menu"
-        >
-          <UserIcon className="size-4" />
-          {variant === 'default' ? (
-            <ChevronDown className="size-4 opacity-50" />
-          ) : null}
-        </Button>
+      <DropdownMenuTrigger
+        className={cn(
+          'inline-flex items-center justify-center rounded-full border border-white/25 bg-white/10 text-white',
+          variant === 'icon' ? 'size-11' : 'h-11 gap-1.5 px-3',
+          className,
+        )}
+        aria-label="Account menu"
+      >
+        <UserIcon className="size-4" aria-hidden />
+        {variant === 'default' ? <ChevronDown className="size-4 opacity-70" aria-hidden /> : null}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+      <DropdownMenuContent align="end" className="wb-account-menu min-w-56 p-2">
         <DropdownMenuItem asChild>
           <Link href="/account">Account</Link>
         </DropdownMenuItem>
