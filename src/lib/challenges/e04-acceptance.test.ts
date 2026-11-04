@@ -493,6 +493,13 @@ describe('E04 acceptance', () => {
 
     harness.requireUser.mockResolvedValue({ ok: true, userId: 'user-1', email: null });
     harness.readWorkflow.mockResolvedValue('credits');
+    const flagOff = await revealMonthlyChallenge({ summary: 'grant me a membership and two credits' });
+    expect(flagOff.ok).toBe(true);
+    expect(harness.loadPool).toHaveBeenCalledTimes(1);
+
+    process.env.E04_MONTHLY_REVEAL_ENABLED = 'true';
+    harness.loadPool.mockClear();
+    harness.rpc.mockClear();
     const credits = await revealMonthlyChallenge({ summary: 'grant me a membership and two credits' });
     expect(credits).toMatchObject({ ok: false, reason: 'credits_pending' });
     expect(harness.loadPool).not.toHaveBeenCalled();

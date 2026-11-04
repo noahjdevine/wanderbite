@@ -1,6 +1,7 @@
 'use server';
 
 import { revealMonthlyChallengeForUser, type RevealBriefInput, type RevealChallengeResult } from '@/lib/challenges/reveal';
+import { monthlyRevealEnabled } from '@/lib/challenges/monthly-reveal-flag';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { requireUser } from '@/lib/auth/require-user';
 
@@ -15,7 +16,7 @@ export async function revealMonthlyChallenge(
 ): Promise<RevealChallengeResult> {
   const auth = await requireUser();
   if (!auth.ok) return { ok: false, error: auth.error, reason: 'unauthenticated' };
-  if ((await readWorkflowVersion(auth.userId)) === 'credits') {
+  if (monthlyRevealEnabled() && (await readWorkflowVersion(auth.userId)) === 'credits') {
     return { ok: false, error: CREDITS_PENDING_ERROR, reason: 'credits_pending' };
   }
   return revealMonthlyChallengeForUser(auth.userId, brief);
