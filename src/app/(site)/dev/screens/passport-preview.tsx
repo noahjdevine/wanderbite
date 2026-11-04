@@ -1,4 +1,5 @@
 import { PassportClient, type PassportVisit } from '@/components/passport/passport-client';
+import { PassportMapScreen } from '@/components/passport/passport-map-screen';
 import { PassportChrome } from '@/components/passport/passport-chrome';
 import { chicagoVisitDate } from '@/lib/passport/passport-board';
 import type { VisitStatus } from '@/lib/visits/visit-status';
@@ -19,6 +20,8 @@ function sampleVisit(input: {
   status: VisitStatus;
   verifiedAt: string;
   redemptionStatus: string;
+  lat?: number | null;
+  lon?: number | null;
 }): PassportVisit {
   const dated = chicagoVisitDate(input.verifiedAt);
   return {
@@ -33,8 +36,8 @@ function sampleVisit(input: {
       id: `rest-${input.id}`,
       name: input.name,
       address: null,
-      lat: null,
-      lon: null,
+      lat: input.lat ?? null,
+      lon: input.lon ?? null,
       cuisine_tags: input.cuisine,
       neighborhood: input.neighborhood,
       image_url: null,
@@ -110,6 +113,77 @@ export function PassportPreview() {
       verifiedVisits={2}
       pendingVisits={1}
       earnedBadges={[{ id: 'first_bite', name: 'First Bite', earnedOn: 'Earned on Feb 2, 2026' }]}
+      showFirstBiteLocked={false}
+      pageYear={pageYear}
+    />
+  );
+}
+
+const MISSING = '66666666-6666-4666-8666-666666666666';
+
+export function MapPreview() {
+  const pageYear = chicagoVisitDate(SAMPLE_NOW)?.year;
+  const visits = [
+    sampleVisit({
+      id: YARD,
+      name: 'The Yard',
+      neighborhood: 'Downtown',
+      cuisine: ['American'],
+      status: 'note_added',
+      verifiedAt: '2026-04-26T18:00:00.000Z',
+      redemptionStatus: 'verified',
+      lat: 33.1972,
+      lon: -96.6154,
+    }),
+    sampleVisit({
+      id: CADILLAC,
+      name: 'Cadillac Pizza Pub',
+      neighborhood: 'Stonebridge',
+      cuisine: ['Pizza'],
+      status: 'verified',
+      verifiedAt: '2026-11-01T04:30:00.000Z',
+      redemptionStatus: 'verified',
+      lat: 33.1584,
+      lon: -96.6988,
+    }),
+    sampleVisit({
+      id: ZEN,
+      name: 'Zen Sushi',
+      neighborhood: 'Craig Ranch',
+      cuisine: ['Sushi'],
+      status: 'code_issued',
+      verifiedAt: '',
+      redemptionStatus: 'issued',
+      lat: 33.21,
+      lon: -96.73,
+    }),
+    sampleVisit({
+      id: MISSING,
+      name: 'Hidden Grill',
+      neighborhood: 'Downtown',
+      cuisine: ['Mediterranean'],
+      status: 'verified',
+      verifiedAt: '2026-08-15T18:00:00.000Z',
+      redemptionStatus: 'verified',
+    }),
+  ];
+
+  return (
+    <PassportMapScreen
+      userDisplayName="Noah"
+      segment="map"
+      visits={visits}
+      ratingsByRestaurantId={{}}
+      biteNotesByRestaurantId={{}}
+      currentStreak={2}
+      longestStreak={2}
+      totalMonthsActive={2}
+      uniqueRestaurants={3}
+      neighborhoods={2}
+      partnerNeighborhoods={4}
+      verifiedVisits={3}
+      pendingVisits={1}
+      earnedBadges={[{ id: 'first_bite', name: 'First Bite', earnedOn: 'Earned on Apr 26, 2026' }]}
       showFirstBiteLocked={false}
       pageYear={pageYear}
     />

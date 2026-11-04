@@ -19,6 +19,7 @@ export async function generateMetadata({ searchParams }: JourneyPageProps): Prom
   const view = parseMyJourneyView(params.view);
   if (view === 'passport') return { title: 'Passport' };
   if (view === 'journal') return { title: 'Timeline' };
+  if (view === 'map') return { title: 'Map' };
   return { title: 'Progress' };
 }
 
@@ -58,7 +59,11 @@ export default async function JourneyPage({ searchParams }: JourneyPageProps) {
 
   return (
     <Suspense fallback={<HubViewFallback />}>
-      {view === 'journal' ? <JournalContent /> : <PassportContent userId={user.id} />}
+      {view === 'journal' ? (
+        <JournalContent />
+      ) : (
+        <PassportContent userId={user.id} segment={view === 'map' ? 'map' : 'stamps'} />
+      )}
     </Suspense>
   );
 }

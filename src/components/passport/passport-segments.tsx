@@ -17,9 +17,7 @@ export function PassportSegments({ active }: PassportSegmentsProps) {
   const router = useRouter();
 
   function go(segment: PassportSegmentId) {
-    const href = segmentHref(segment);
-    if (!href) return;
-    router.push(href);
+    router.push(segmentHref(segment));
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -50,37 +48,16 @@ export function PassportSegments({ active }: PassportSegmentsProps) {
       onKeyDown={onKeyDown}
     >
       {SEGMENTS.map((segment) => {
-        const href = segmentHref(segment.id);
         const selected = segment.id === active;
         const className = [
-          'flex min-h-11 flex-col items-center justify-center rounded-full px-2 text-sm font-semibold',
+          'flex min-h-11 items-center justify-center rounded-full px-2 text-sm font-semibold',
           selected ? 'bg-white text-wb-ink' : 'text-white/85',
-          href ? '' : 'cursor-not-allowed text-white/55',
         ].join(' ');
-        if (!href) {
-          return (
-            <button
-              key={segment.id}
-              id={`passport-segment-${segment.id}`}
-              type="button"
-              role="radio"
-              aria-checked={false}
-              aria-disabled="true"
-              aria-label="Map, coming later"
-              tabIndex={-1}
-              className={className}
-              onClick={(event) => event.preventDefault()}
-            >
-              <span>Map</span>
-              <span className="text-[10px] leading-none font-medium">Coming later</span>
-            </button>
-          );
-        }
         return (
           <a
             key={segment.id}
             id={`passport-segment-${segment.id}`}
-            href={href}
+            href={segmentHref(segment.id)}
             role="radio"
             aria-checked={selected}
             tabIndex={selected ? 0 : -1}

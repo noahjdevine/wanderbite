@@ -71,7 +71,7 @@ export function resolveNoteReturnTarget(
   const keys = [...url.searchParams.keys()];
   if (url.pathname === '/journey') {
     const view = url.searchParams.get('view');
-    const viewOk = view === 'journal' || view === 'passport';
+    const viewOk = view === 'journal' || view === 'passport' || view === 'map';
     if (
       keys.length > 1 ||
       (keys.length === 1 && (!viewOk || url.searchParams.getAll('view').length !== 1))

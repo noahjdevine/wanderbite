@@ -8,7 +8,15 @@ import { NEUTRAL_MEMBER_HEADER, memberHeaderLabel } from '@/lib/progress/rules';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { loadRecipeSections } from '@/lib/recipes/load';
 import { deriveVisitStatus } from '@/lib/visits/visit-status';
-import { chicagoVisitDate, stampKind } from '@/lib/passport/passport-board';
+import {
+  chicagoVisitDate,
+  MAP_SEGMENT_HREF,
+  PASSPORT_RETRY_HREF,
+  stampKind,
+  type PassportSegmentId,
+} from '@/lib/passport/passport-board';
+import { countDistinctNeighborhoods } from '@/lib/progress/neighborhoods';
+import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import {
   PassportClient,
   type PassportBiteNoteEntry,
@@ -49,9 +57,10 @@ type LoadedVisit = PassportVisit & {
 
 type PassportContentProps = {
   userId: string;
+  segment?: Extract<PassportSegmentId, 'stamps' | 'map'>;
 };
 
-export async function PassportContent({ userId }: PassportContentProps) {
+export async function PassportContent({ userId, segment = 'stamps' }: PassportContentProps) {
   const supabase = await createClient();
   const now = new Date();
   const progressPromise = getMemberProgress(userId, now);
@@ -96,7 +105,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
     return (
       <PassportChrome
         displayName={displayName}
-        segment="stamps"
+        segment={segment}
         progressUnavailable={presented.progressUnavailable}
         verifiedVisits={presented.verifiedVisits}
         uniqueRestaurants={presented.uniqueRestaurants}
@@ -107,6 +116,7 @@ export async function PassportContent({ userId }: PassportContentProps) {
         earnedBadges={presented.earnedBadges}
         showFirstBiteLocked={presented.showFirstBiteLocked}
         pageYear={pageYear}
+        retryHref={segment === 'map' ? MAP_SEGMENT_HREF : PASSPORT_RETRY_HREF}
       >
         <p className="m-0 text-sm text-wb-muted">Could not load your passport: {error.message}</p>
       </PassportChrome>
@@ -162,6 +172,26 @@ export async function PassportContent({ userId }: PassportContentProps) {
       visit.restaurant.image_url = safeManualImagePath(row.image_url);
       visit.restaurant.lat = row.lat;
       visit.restaurant.lon = row.lon;
+    }
+  }
+  let partnerNeighborhoods: number | null = null;
+  if (segment === 'map') {
+    // Active launch-market rows are the partner set. M is their distinct
+    // neighborhood values. lat and lon stay off this query.
+    const market = await requireLaunchMarketId(admin);
+    if (market.ok) {
+      const { data: neighborhoodRows, error: neighborhoodError } = await admin
+        .from('restaurants')
+        .select('neighborhood')
+        .eq('status', 'active')
+        .eq('market_id', market.marketId);
+      if (!neighborhoodError) {
+        partnerNeighborhoods = countDistinctNeighborhoods(
+          ((neighborhoodRows ?? []) as { neighborhood: string | null }[]).map(
+            (row) => row.neighborhood,
+          ),
+        );
+      }
     }
   }
   if (itemIds.length > 0) {
@@ -235,6 +265,32 @@ export async function PassportContent({ userId }: PassportContentProps) {
     return rest;
   });
 
+  if (segment === 'map') {
+    const { PassportMapScreen } = await import('@/components/passport/passport-map-screen');
+    return (
+      <PassportMapScreen
+        userDisplayName={displayName}
+        visits={shown}
+        ratingsByRestaurantId={ratingsByRestaurantId}
+        biteNotesByRestaurantId={biteNotesByRestaurantId}
+        currentStreak={presented.streak.currentStreak}
+        longestStreak={presented.streak.longestStreak}
+        totalMonthsActive={presented.streak.totalMonthsActive}
+        progressUnavailable={presented.progressUnavailable}
+        uniqueRestaurants={presented.uniqueRestaurants}
+        neighborhoods={presented.neighborhoods}
+        verifiedVisits={presented.verifiedVisits}
+        pendingVisits={presented.progressUnavailable ? 0 : pendingVisits}
+        earnedBadges={presented.earnedBadges}
+        showFirstBiteLocked={presented.showFirstBiteLocked}
+        pageYear={pageYear}
+        recipeSections={recipeSections}
+        segment="map"
+        partnerNeighborhoods={partnerNeighborhoods}
+      />
+    );
+  }
+
   return (
     <PassportClient
       userDisplayName={displayName}
@@ -253,6 +309,8 @@ export async function PassportContent({ userId }: PassportContentProps) {
       showFirstBiteLocked={presented.showFirstBiteLocked}
       pageYear={pageYear}
       recipeSections={recipeSections}
+      segment={segment}
+      partnerNeighborhoods={partnerNeighborhoods}
     />
   );
 }

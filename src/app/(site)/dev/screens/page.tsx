@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { isComponentGalleryEnabled } from '@/lib/dev/component-gallery';
-import { PassportPreview, TimelinePreview } from './passport-preview';
+import { MapPreview, PassportPreview, TimelinePreview } from './passport-preview';
 import { ProgressPreview } from './progress-preview';
 import { ScreenPreview } from './screen-preview';
 
@@ -21,6 +21,7 @@ export default async function DevScreensPage({
   if (params.screen === 'progress') return <ProgressPreview />;
   if (params.screen === 'passport') return <PassportPreview />;
   if (params.screen === 'timeline') return <TimelinePreview />;
+  if (params.screen === 'map') return <MapPreview />;
   const screen = params.screen === 'redeem' ? 'redeem' : 'challenges';
   return <ScreenPreview screen={screen} />;
 }
