@@ -861,6 +861,11 @@
 }
 .wb-footer-link:hover { color: var(--wb-blush); }
 
+/* How It Works pill. Light stop is --wb-violet: white 15px text on #8b5cf6 is under 4.5:1. */
+.wb-hiw-cta {
+  background: linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .wb-wordmark,
   .wb-nav-pill,
