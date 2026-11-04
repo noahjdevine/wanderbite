@@ -15,12 +15,12 @@ import { AccountMenu } from '@/components/layout/account-menu';
 import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
 
 export function Navbar() {
-  const { user, loading } = useSupabaseUser();
+  const { signedIn, loading } = useSupabaseUser();
   const pathname = usePathname();
-  const items = user ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
+  const items = signedIn ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
 
   return (
-    <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md md:flex">
+    <header className="sticky top-0 z-40 hidden w-full border-b border-white/20 bg-white/80 backdrop-blur-md xl:flex">
       <nav className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:gap-6 sm:px-6">
         <WanderbiteLogoLink />
 
@@ -51,7 +51,7 @@ export function Navbar() {
         <div className="flex shrink-0 items-center justify-end gap-2">
           {loading ? (
             <div className="h-9 w-24 animate-pulse rounded-md bg-muted" />
-          ) : user ? (
+          ) : signedIn ? (
             <AccountMenu />
           ) : (
             <>

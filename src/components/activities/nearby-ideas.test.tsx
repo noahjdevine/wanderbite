@@ -175,6 +175,37 @@ describe('nearby activity block', () => {
     expect(text).not.toContain('away');
   });
 
+  it('hides the tag row when a restaurant has no tags', async () => {
+    const tagged = await render(
+      <RestaurantCard
+        item={item()}
+        cycleCreatedAt="2026-11-01T18:00:00.000Z"
+        canSwap={false}
+        isSwapping={false}
+        isRedeeming={false}
+        onSwap={() => undefined}
+        onRedeem={() => undefined}
+      />,
+    );
+    expect(tagged.textContent).toContain('thai');
+
+    const bare = item();
+    bare.restaurant.cuisine_tags = [];
+    const empty = await render(
+      <RestaurantCard
+        item={bare}
+        cycleCreatedAt="2026-11-01T18:00:00.000Z"
+        canSwap={false}
+        isSwapping={false}
+        isRedeeming={false}
+        onSwap={() => undefined}
+        onRedeem={() => undefined}
+      />,
+    );
+    expect(empty.textContent).toContain('Alpha Kitchen');
+    expect(empty.textContent).not.toContain('No tags');
+  });
+
   it('places the block under the restaurant on the challenge card', async () => {
     const hidden = await render(
       <RestaurantCard

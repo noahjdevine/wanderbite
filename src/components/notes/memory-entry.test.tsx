@@ -306,6 +306,10 @@ describe('memory entry points', () => {
       />,
     );
     expect(action(verified)).toBe('Add memory');
+    expect(verified.textContent).toContain('1 restaurant');
+    expect(verified.textContent).toContain('1 neighborhood');
+    expect(verified.textContent).not.toContain('No tags');
+    expect(verified.textContent).not.toContain('1 restaurants');
     expect(verified.textContent).not.toContain('Add note');
     const addHref = verified.querySelector('[data-memory-action]')?.getAttribute('href') ?? '';
     expect(new URL(addHref, 'https://wanderbite.invalid').searchParams.get('return')).toBe(

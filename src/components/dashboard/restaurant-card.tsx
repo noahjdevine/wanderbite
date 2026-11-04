@@ -107,7 +107,7 @@ export function RestaurantCard({
     : useStoredDeadline && storedDeadline
       ? formatChicagoDeadline(storedDeadline)
       : '';
-  const tags = item.restaurant.cuisine_tags ?? [];
+  const tags = (item.restaurant.cuisine_tags ?? []).filter((tag) => tag.trim());
   const offerText = item.offer.available
     ? formatOffer(item.offer.discount_amount_cents, item.offer.min_spend_cents)
     : 'Offer unavailable';
@@ -152,17 +152,15 @@ export function RestaurantCard({
             <CardTitle>{item.restaurant.name}</CardTitle>
             {isExpired && <Badge variant="secondary">Expired</Badge>}
           </div>
-          <CardDescription className="flex flex-wrap gap-1.5">
-            {tags.length > 0 ? (
-              tags.map((tag) => (
+          {tags.length > 0 ? (
+            <CardDescription className="flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
                 <Badge key={tag} variant="secondary">
                   {tag}
                 </Badge>
-              ))
-            ) : (
-              <span className="text-muted-foreground">No tags</span>
-            )}
-          </CardDescription>
+              ))}
+            </CardDescription>
+          ) : null}
         </div>
         {mapsUrl && (
           <Button variant="ghost" size="icon" className="shrink-0" asChild>

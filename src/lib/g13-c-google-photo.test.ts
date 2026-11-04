@@ -64,6 +64,11 @@ describe('G13-C legacy photo credit', () => {
     expect(
       legacyPhotoCredit(['<a href="https://maps.google.com/maps/contrib/1">Ada</a>']),
     ).toEqual([{ name: 'Ada', href: 'https://maps.google.com/maps/contrib/1' }]);
+    expect(
+      legacyPhotoCredit([
+        '<a href="https://maps.google.com/maps/contrib/1">Tom &amp; Jane&#39;s</a>',
+      ]),
+    ).toEqual([{ name: "Tom & Jane's", href: 'https://maps.google.com/maps/contrib/1' }]);
     expect(legacyPhotoCredit(['<a href="https://evil.example/a">Ada</a>'])).toBe('unsafe');
     expect(legacyPhotoCredit(['Ada'])).toBe('unsafe');
   });
