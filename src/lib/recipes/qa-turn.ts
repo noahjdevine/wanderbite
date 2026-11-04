@@ -103,6 +103,28 @@ function toQaRecipe(
   };
 }
 
+export async function loadVisitCatalogNames(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+): Promise<string[]> {
+  try {
+    const market = await requireLaunchMarketId(admin);
+    if (!market.ok) return [];
+    const { data, error } = await admin
+      .from('restaurants')
+      .select('name')
+      .eq('status', 'active')
+      .eq('market_id', market.marketId);
+    if (error || !data) {
+      console.warn('[recipe-qa] catalog unavailable');
+      return [];
+    }
+    return data.map((row) => row.name);
+  } catch {
+    console.warn('[recipe-qa] catalog unavailable');
+    return [];
+  }
+}
+
 async function loadActiveRestaurants(): Promise<VisitCatalogRestaurant[]> {
   const admin = getSupabaseAdmin();
   const market = await requireLaunchMarketId(admin);
@@ -464,6 +486,10 @@ export async function runRecipeQaTurn(
     }),
     notice,
   });
+
+  if (promptBytes(prompts.systemPrompt, prompts.userPrompt) > ROULETTE_MAX_PROMPT_BYTES) {
+    return finish(null, RECIPE_QA_UNAVAILABLE_NOTICE);
+  }
 
   if (!(await deps.allowModel())) {
     return finish(null, RECIPE_QA_UNAVAILABLE_NOTICE);

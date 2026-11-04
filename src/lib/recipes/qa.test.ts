@@ -3,11 +3,13 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Json } from '@/types/database.types';
 import { formatCheckedAtChicago } from '@/lib/recipes/display';
+import { ROULETTE_MAX_PROMPT_BYTES } from '@/lib/ai-bounds';
 import { recipeQaEnabled } from '@/lib/recipes/flag';
 import {
   buildRecipeQaPrompts,
   composeRecipeQaAnswer,
   RECIPE_QA_BUDGET_NOTICE,
+  RECIPE_QA_UNAVAILABLE_NOTICE,
   UNTRUSTED_RECIPE_END,
   UNTRUSTED_RECIPE_START,
   type QaRecipe,
@@ -145,8 +147,13 @@ describe('recipe Q&A flag gate', () => {
 
     const route = readFileSync(path.join(ROOT, 'src/app/api/roulette/route.ts'), 'utf8');
     expect(route).toContain('discoveryRecipeQaIntent(acceptedMessage)');
-    expect(route).toContain('if (qaIntent)');
-    expect(route.indexOf('if (qaIntent)')).toBeLessThan(route.indexOf('runRecipeQaTurn('));
+    expect(route).toContain('if (qaIntent && profile)');
+    expect(route).not.toContain('recipeQaBypassesAllergyGate');
+    expect(route.indexOf('if (!messageGate.ok)')).toBeLessThan(
+      route.indexOf('discoveryRecipeQaIntent(acceptedMessage)'),
+    );
+    expect(route.indexOf('gateSignedInProfile(')).toBeLessThan(route.indexOf('runRecipeQaTurn('));
+    expect(route.indexOf('if (qaIntent && profile)')).toBeLessThan(route.indexOf('runRecipeQaTurn('));
     expect(route.indexOf('runRecipeQaTurn(')).toBeLessThan(
       route.indexOf('You choose one restaurant id for a discovery app'),
     );
@@ -157,12 +164,32 @@ describe('recipe Q&A flag gate', () => {
     expect(route).not.toContain('protected_core');
   });
 
-  it('classifies recipe and visit questions and leaves ordinary discovery alone', () => {
-    expect(classifyDiscoveryQaIntent('what is the exact recipe from Demo Grill')).toBe('exact_recipe');
-    expect(classifyDiscoveryQaIntent('how can I make something like this at home?')).toBe('recipe');
-    expect(classifyDiscoveryQaIntent('what can I swap for feta?')).toBe('recipe');
-    expect(classifyDiscoveryQaIntent('what should I know before going to Demo Grill?')).toBe('visit');
-    expect(classifyDiscoveryQaIntent('date night')).toBeNull();
+  it('keeps ordinary asks on Discover and requires an explicit recipe or visit cue', () => {
+    const names = ['Demo Grill'];
+    const cases: ReadonlyArray<{
+      message: string;
+      names?: readonly string[];
+      intent: 'exact_recipe' | 'recipe' | 'visit' | null;
+    }> = [
+      { message: 'what is the exact recipe from Demo Grill', intent: 'exact_recipe' },
+      { message: 'how can I make something like this at home?', intent: 'recipe' },
+      { message: 'what can I swap for feta?', intent: 'recipe' },
+      { message: 'can I cook this at home?', intent: 'recipe' },
+      { message: 'what should I know before going to Demo Grill?', intent: 'visit' },
+      { message: 'what are the hours at Demo Grill', names, intent: 'visit' },
+      { message: 'when I visit Demo Grill', intent: 'visit' },
+      { message: 'open late hours near me', intent: null },
+      { message: 'open late hours near me', names, intent: null },
+      { message: 'a fun adventure tonight', intent: null },
+      { message: 'a fun adventure tonight', names, intent: null },
+      { message: 'somewhere with fresh ingredients', intent: null },
+      { message: 'date night', intent: null },
+      { message: 'date night at Demo Grill', names, intent: null },
+      { message: 'quiet dinner', intent: null },
+    ];
+    for (const item of cases) {
+      expect(classifyDiscoveryQaIntent(item.message, item.names ?? []), item.message).toBe(item.intent);
+    }
   });
 });
 
@@ -361,6 +388,26 @@ describe('budget and visit facts', () => {
     expect(result.notice).toBe(RECIPE_QA_BUDGET_NOTICE);
     expect(result.recipes.length).toBe(1);
     expect(result.recipes[0]?.title).toBe('Demo skillet beans');
+  });
+
+  it('skips the model when the prompt stays over the byte cap after every recipe is dropped', async () => {
+    const callModel = vi.fn();
+    const reserve = vi.fn();
+    const allowModel = vi.fn(async () => true);
+    const result = await runRecipeQaTurn(
+      input(),
+      deps({
+        loadVisitLines: async () => ['x'.repeat(ROULETTE_MAX_PROMPT_BYTES)],
+        allowModel,
+        reserve,
+        callModel,
+      }),
+    );
+    expect(allowModel).not.toHaveBeenCalled();
+    expect(reserve).not.toHaveBeenCalled();
+    expect(callModel).not.toHaveBeenCalled();
+    expect(result.notice).toBe(RECIPE_QA_UNAVAILABLE_NOTICE);
+    expect(result.recipes).toEqual([]);
   });
 
   it('reads visit lines from catalog fields and the shared candidate check', () => {
