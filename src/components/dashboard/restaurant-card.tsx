@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
+import { REDEMPTION_CODE_LIFETIME_LABEL } from '@/lib/redemption-expiry';
 import {
   saveBiteNote,
   toggleNoteVisibility,
@@ -345,8 +346,9 @@ export function RestaurantCard({
   useEffect(() => {
     if (!isRedeemed || !item.redemptionId) return;
     let cancelled = false;
-    void getRedemptionCode(item.redemptionId).then((code) => {
-      if (!cancelled && code) setDisplayCode(code);
+    void getRedemptionCode(item.redemptionId).then((result) => {
+      if (cancelled) return;
+      setDisplayCode(result?.state === 'issued' ? result.code : null);
     });
     return () => {
       cancelled = true;
@@ -481,7 +483,7 @@ export function RestaurantCard({
               <AlertDialogHeader>
                 <AlertDialogTitle>Are you at the restaurant?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Once you redeem, you have 15 minutes to show this to your server.
+                  Once you redeem, you have {REDEMPTION_CODE_LIFETIME_LABEL} to show this to your server.
                   This cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>

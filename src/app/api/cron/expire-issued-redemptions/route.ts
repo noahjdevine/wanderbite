@@ -1,8 +1,8 @@
-import { subDays } from 'date-fns';
 import { NextResponse } from 'next/server';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { dailyRunKey } from '@/lib/cron-period';
 import { runLeasedCron, type CronLeaseContext } from '@/lib/cron-runs';
+import { REDEMPTION_TTL_MINUTES } from '@/lib/redemption-expiry';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
@@ -10,22 +10,24 @@ export const dynamic = 'force-dynamic';
 
 const JOB = 'expire-issued-redemptions';
 const LEASE_SECONDS = 10 * 60;
-const EXPIRY_DAYS = 35;
 const BATCH = 100;
 
 type ExpiryCheckpoint = {
-  cutoff: string;
+  asOf: string;
   snapshotComplete: boolean;
   lastId: string | null;
 };
 
-function readCheckpoint(value: Json | null, fallbackCutoff: string): ExpiryCheckpoint {
+function readCheckpoint(value: Json | null, fallbackAsOf: string): ExpiryCheckpoint {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return { cutoff: fallbackCutoff, snapshotComplete: false, lastId: null };
+    return { asOf: fallbackAsOf, snapshotComplete: false, lastId: null };
   }
-  const row = value as { cutoff?: unknown; snapshotComplete?: unknown; lastId?: unknown };
+  const row = value as { asOf?: unknown; snapshotComplete?: unknown; lastId?: unknown };
+  if (typeof row.asOf !== 'string') {
+    return { asOf: fallbackAsOf, snapshotComplete: false, lastId: null };
+  }
   return {
-    cutoff: typeof row.cutoff === 'string' ? row.cutoff : fallbackCutoff,
+    asOf: row.asOf,
     snapshotComplete: row.snapshotComplete === true,
     lastId: typeof row.lastId === 'string' ? row.lastId : null,
   };
@@ -42,7 +44,7 @@ async function snapshotIssued(ctx: CronLeaseContext, state: ExpiryCheckpoint): P
       .from('redemptions')
       .select('id')
       .eq('status', 'issued')
-      .lt('created_at', state.cutoff)
+      .lte('expires_at', state.asOf)
       .order('id', { ascending: true })
       .limit(BATCH);
     if (lastId) query = query.gt('id', lastId);
@@ -59,23 +61,6 @@ async function snapshotIssued(ctx: CronLeaseContext, state: ExpiryCheckpoint): P
     }
     for (const row of rows) {
       if (!(await ctx.renew())) return null;
-      const { data: redemption } = await admin
-        .from('redemptions')
-        .select('challenge_item_id')
-        .eq('id', row.id)
-        .maybeSingle();
-      const itemId = (redemption as { challenge_item_id: string | null } | null)?.challenge_item_id;
-      if (itemId) {
-        const { data: item } = await admin
-          .from('challenge_items')
-          .select('redemption_deadline')
-          .eq('id', itemId)
-          .maybeSingle();
-        if ((item as { redemption_deadline: string | null } | null)?.redemption_deadline) {
-          lastId = row.id;
-          continue;
-        }
-      }
       const recorded = await ctx.record(row.id, 'pending');
       if (!recorded) return null;
       lastId = row.id;
@@ -125,10 +110,9 @@ export async function GET(request: Request) {
           return;
         }
       }
-      const fallbackCutoff = subDays(new Date(), EXPIRY_DAYS).toISOString();
-      let initial = readCheckpoint(ctx.checkpoint, '');
-      if (!initial.cutoff) {
-        initial = { cutoff: fallbackCutoff, snapshotComplete: false, lastId: null };
+      const asOf = new Date().toISOString();
+      const initial = readCheckpoint(ctx.checkpoint, asOf);
+      if (initial.asOf === asOf && !initial.snapshotComplete && !initial.lastId) {
         if (!(await ctx.renew(initial))) return;
       }
       const state = await snapshotIssued(ctx, initial);
@@ -140,7 +124,7 @@ export async function GET(request: Request) {
         if (!(await ctx.renew())) return;
         const pending = await ctx.listPending(BATCH);
         if (pending.length === 0) {
-          await ctx.finishClear({ cutoff: state.cutoff, expiryDays: EXPIRY_DAYS });
+          await ctx.finishClear({ asOf: state.asOf, ttlMinutes: REDEMPTION_TTL_MINUTES });
           return;
         }
         const ids = pending.map((item) => item.itemKey);
@@ -149,7 +133,7 @@ export async function GET(request: Request) {
           .update({ status: 'expired' })
           .in('id', ids)
           .eq('status', 'issued')
-          .lt('created_at', state.cutoff);
+          .lte('expires_at', state.asOf);
         if (error) {
           await ctx.fail(error.message);
           return;

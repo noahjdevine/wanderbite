@@ -100,7 +100,11 @@ describe('G17-E cron routes stay on the approved contract', () => {
     expect(webhook).toContain('allowNewAttempt: true');
     expect(webhook).toContain('backlog');
     const expire = source('src/app/api/cron/expire-issued-redemptions/route.ts');
-    expect(expire).toContain('EXPIRY_DAYS = 35');
+    expect(expire).toContain('REDEMPTION_TTL_MINUTES');
+    expect(expire).toContain(".lte('expires_at'");
+    expect(expire).toContain('expire_version_bound_assignment');
+    expect(expire).not.toContain('EXPIRY_DAYS');
+    expect(expire).not.toContain("lt('created_at'");
     expect(expire).not.toContain('.range(');
     expect(expire).not.toContain('offset');
   });

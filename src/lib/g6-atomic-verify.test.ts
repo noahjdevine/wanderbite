@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { REDEMPTION_TTL_DAYS } from '@/lib/redemption-expiry';
+import { REDEMPTION_TTL_MINUTES } from '@/lib/redemption-expiry';
 
 const ROOT = path.resolve(__dirname, '../..');
 const MIGRATION = 'supabase/migrations/20260907174245_redemptions_verify_rpc.sql';
@@ -29,7 +29,7 @@ describe('G6 atomic redemption verify (source)', () => {
     expect(raw).toMatch(/duplicate issued redemptions for token_hash/);
     expect(sql).toMatch(/revoke all on function public\.verify_redemption\(text, uuid\)/i);
     expect(sql).toMatch(/grant execute on function public\.verify_redemption\(text, uuid\)\s+to service_role/i);
-    expect(REDEMPTION_TTL_DAYS).toBe(35);
+    expect(REDEMPTION_TTL_MINUTES).toBe(15);
   });
 
   it('verifies through the RPC and never updates redemptions by id', () => {
@@ -38,7 +38,7 @@ describe('G6 atomic redemption verify (source)', () => {
     expect(verify).not.toMatch(/\.update\(\{\s*status:\s*'verified'/);
     expect(verify).toMatch(/claimed\.length > 1/);
     expect(verify).toMatch(/enforcePartnerVerifyLimit/);
-    expect(source('src/app/actions/redeem-challenge.ts')).toMatch(/p_expires_at:\s*redemptionExpiresAt/);
+    expect(source('src/app/actions/redeem-challenge.ts')).toMatch(/p_expires_at:\s*requestedExpiry\.toISOString\(\)/);
     expect(source('src/lib/ratelimit.ts')).toMatch(/slidingWindow\(20, '5 m'\)/);
     expect(source('src/lib/ratelimit.ts')).toMatch(/slidingWindow\(60, '5 m'\)/);
   });

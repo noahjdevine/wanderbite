@@ -169,9 +169,10 @@ begin
     select 1 from public.redemptions
     where token_hash = 'eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee'
       and expires_at is not null
-      and expires_at > now() + interval '34 days'
+      and expires_at > now() + interval '14 minutes'
+      and expires_at <= now() + interval '15 minutes'
   ) then
-    raise exception 'FAIL: insert without expires_at did not receive the 35-day default';
+    raise exception 'FAIL: insert without expires_at did not receive the 15-minute default';
   end if;
 end $$;
 
