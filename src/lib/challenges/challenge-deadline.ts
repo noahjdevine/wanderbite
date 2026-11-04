@@ -12,6 +12,24 @@ export function cycleMonthForWorkflow(
   return format(startOfMonth(now), 'yyyy-MM-dd');
 }
 
+/**
+ * Flag off keeps the single workflow month. Flag on reads the Chicago month
+ * first so a version-backed reveal at 11:30pm CT on the last day stays visible
+ * when the process month has already rolled.
+ */
+export function currentChallengeMonthKeys(args: {
+  workflow: 'legacy' | 'credits';
+  revealEnabled: boolean;
+  now?: Date;
+}): string[] {
+  const now = args.now ?? new Date();
+  const workflowMonth = cycleMonthForWorkflow(args.workflow, now);
+  if (!args.revealEnabled) return [workflowMonth];
+  const chicago = chicagoMonthStart(now);
+  if (args.workflow === 'credits' || chicago === workflowMonth) return [workflowMonth];
+  return [chicago, workflowMonth];
+}
+
 /** Linked item deadline when set; otherwise the pending credit's expires_at. */
 export function effectiveDeadlineAt(
   credit: { expires_at: string },

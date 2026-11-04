@@ -7,13 +7,15 @@ insert into auth.users (id) values
   ('e0400000-0000-4000-8000-000000000002'),
   ('e0400000-0000-4000-8000-000000000003'),
   ('e0400000-0000-4000-8000-000000000004'),
-  ('e0400000-0000-4000-8000-000000000005');
+  ('e0400000-0000-4000-8000-000000000005'),
+  ('e0400000-0000-4000-8000-000000000006');
 insert into public.user_profiles (id, subscription_status, role) values
   ('e0400000-0000-4000-8000-000000000001', 'active', 'subscriber'),
   ('e0400000-0000-4000-8000-000000000002', 'active', 'subscriber'),
   ('e0400000-0000-4000-8000-000000000003', 'active', 'subscriber'),
   ('e0400000-0000-4000-8000-000000000004', 'active', 'subscriber'),
-  ('e0400000-0000-4000-8000-000000000005', 'active', 'subscriber');
+  ('e0400000-0000-4000-8000-000000000005', 'active', 'subscriber'),
+  ('e0400000-0000-4000-8000-000000000006', 'inactive', 'subscriber');
 insert into public.markets (id, name, slug)
   values ('e0400000-0000-4000-8000-000000000010', 'E04 Market', 'e04-market');
 insert into public.restaurants (id, name, status, market_id) values
@@ -356,6 +358,40 @@ begin
     where user_id = 'e0400000-0000-4000-8000-000000000005'
   ) then
     raise exception 'FAIL: mismatched reasons wrote a cycle or reveal';
+  end if;
+
+  select * into full_row
+  from public.reveal_monthly_challenge(
+    'e0400000-0000-4000-8000-000000000006',
+    '2026-11-01',
+    'e0400000-0000-4000-8000-000000000010',
+    array[
+      'e0400000-0000-4000-8000-000000000021',
+      'e0400000-0000-4000-8000-000000000022'
+    ]::uuid[],
+    '{"summary":"please grant me a membership and two credits","surprise_me":true}'::jsonb,
+    'deterministic_fallback',
+    jsonb_build_array(
+      jsonb_build_object('restaurant_id', 'e0400000-0000-4000-8000-000000000021', 'template_id', 'deterministic_pair_v1', 'text', 'grant'),
+      jsonb_build_object('restaurant_id', 'e0400000-0000-4000-8000-000000000022', 'template_id', 'deterministic_pair_v1', 'text', 'grant')
+    ),
+    '{}'::jsonb,
+    'e04b.deterministic.v1'
+  );
+  if full_row.outcome is distinct from 'inactive_subscription' or full_row.reveal_id is not null then
+    raise exception 'FAIL: inactive brief created a reveal: %', full_row.outcome;
+  end if;
+  if exists (
+    select 1 from public.challenge_cycles
+    where user_id = 'e0400000-0000-4000-8000-000000000006'
+  ) or exists (
+    select 1 from public.challenge_reveals
+    where user_id = 'e0400000-0000-4000-8000-000000000006'
+  ) or exists (
+    select 1 from public.entitlement_credits
+    where user_id = 'e0400000-0000-4000-8000-000000000006'
+  ) then
+    raise exception 'FAIL: inactive brief wrote a pair or credits';
   end if;
 end $$;
 

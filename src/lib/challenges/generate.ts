@@ -2,7 +2,8 @@
 import { randomInt } from 'node:crypto';
 import * as Sentry from '@sentry/nextjs';
 import { startOfMonth, subMonths, format } from 'date-fns';
-import { cycleMonthForWorkflow } from '@/lib/challenges/challenge-deadline';
+import { currentChallengeMonthKeys, cycleMonthForWorkflow } from '@/lib/challenges/challenge-deadline';
+import { monthlyRevealEnabled } from '@/lib/challenges/monthly-reveal-flag';
 import { readWorkflowVersion } from '@/lib/challenges/workflow';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
@@ -156,19 +157,29 @@ export async function getCurrentChallengeForUser(
 ): Promise<GeneratedChallenge | null> {
   const supabase = getSupabaseAdmin();
   const workflow = await readWorkflowVersion(userId);
-  const cycleMonthStr = cycleMonthForWorkflow(workflow);
-  const { data: cycle, error } = await supabase
-    .from('challenge_cycles')
-    .select('*')
-    .eq('user_id', userId)
-    .eq('cycle_month', cycleMonthStr)
-    .eq('status', 'active')
-    .maybeSingle();
-
-  if (error || !cycle) return null;
+  const now = new Date();
+  const months = monthlyRevealEnabled()
+    ? currentChallengeMonthKeys({ workflow, revealEnabled: true, now })
+    : [cycleMonthForWorkflow(workflow, now)];
+  let cycle: ChallengeCycleRow | null = null;
+  for (const cycleMonthStr of months) {
+    const { data, error } = await supabase
+      .from('challenge_cycles')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('cycle_month', cycleMonthStr)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (error) return null;
+    if (data) {
+      cycle = data as ChallengeCycleRow;
+      break;
+    }
+  }
+  if (!cycle) return null;
   const items = await loadChallengeItemsWithRestaurants(
     supabase,
-    (cycle as ChallengeCycleRow).id
+    cycle.id
   );
   const distanceMatch = await distanceMatchForUser(supabase, userId, items);
   return { cycle: cycle as ChallengeCycleRow, items, distanceMatch };
