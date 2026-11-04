@@ -1,7 +1,5 @@
 import Link from 'next/link';
 import { UtensilsCrossed, Ticket, TrendingUp, Star } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { PricingFaq } from '@/components/pricing/pricing-faq';
 
 export const revalidate = 86400;
@@ -14,145 +12,156 @@ const LEVEL_UP_TIERS = [
   { xp: 2500, title: 'The Local Legend' },
 ] as const;
 
+const STEPS = [
+  {
+    step: 'Step 1',
+    title: 'We Pick the Spot',
+    body: 'Get two curated restaurant challenges every month—no more endless scrolling.',
+    Icon: UtensilsCrossed,
+  },
+  {
+    step: 'Step 2',
+    title: 'You Get the Offer',
+    body: 'Each challenge shows its discount and minimum spend.',
+    Icon: Ticket,
+  },
+  {
+    step: 'Step 3',
+    title: 'Rate & Level Up',
+    body: 'Complete visits, earn badges, and level up as you explore.',
+    Icon: TrendingUp,
+  },
+] as const;
+
 /**
  * How it Works: public page for both logged-in and logged-out users.
  * Explains the product and includes FAQ (moved from pricing).
  */
 const HERO_BG_IMAGE = 'https://images.unsplash.com/photo-1559339352-11d035aa65de?w=1920&q=80';
+const TIER_BG_IMAGE =
+  'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2000&q=80';
+
+function PhotoScrim({ src }: { src: string }) {
+  return (
+    <div className="absolute inset-0" aria-hidden>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt="" className="h-full w-full object-cover" />
+      {/* 85% night clears 4.5:1 for white, lavender, and blush on a white photo. */}
+      <div className="absolute inset-0 bg-wb-night/85" />
+    </div>
+  );
+}
 
 export default function HowItWorksPage() {
   return (
-    <main className="min-h-screen bg-background relative">
-      {/* Background image: group enjoying restaurant */}
-      <div className="fixed inset-0 -z-10" aria-hidden>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={HERO_BG_IMAGE}
-          alt=""
-          className="h-full w-full object-cover opacity-[0.08]"
-        />
-        <div className="absolute inset-0 bg-background/80" />
-      </div>
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 relative">
-        <header className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            How Wanderbite Works
-          </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-muted-foreground">
-            Stop scrolling. Start eating.
-          </p>
-        </header>
-
-        {/* Curated quality */}
-        <section className="mx-auto mt-16 max-w-3xl">
-          <div className="flex flex-col items-center gap-4 rounded-2xl border border-primary/20 bg-primary/5 px-6 py-8 text-center sm:flex-row sm:gap-6 sm:text-left">
-            <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-              <Star className="size-7" />
-            </div>
-            <div>
-              <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                We only pick highly-rated, hand-curated local favorites.
-              </h2>
-              <p className="mt-2 text-muted-foreground">
-                No algorithm dump. Every spot is vetted for quality, variety, and the kind of experience we’d send our friends to.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Steps */}
-        <section className="mt-20">
-          <h2 className="mb-12 text-center text-2xl font-semibold tracking-tight md:text-3xl">
-            Three steps to better nights out
-          </h2>
-          <div className="grid gap-10 md:grid-cols-3">
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <UtensilsCrossed className="size-7" />
-              </div>
-              <span className="mb-2 text-sm font-medium text-muted-foreground">Step 1</span>
-              <h3 className="font-semibold">We Pick the Spot</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Get two curated restaurant challenges every month—no more endless scrolling.
-              </p>
-            </div>
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <Ticket className="size-7" />
-              </div>
-              <span className="mb-2 text-sm font-medium text-muted-foreground">Step 2</span>
-              <h3 className="font-semibold">You Get the Offer</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Each challenge shows its discount and minimum spend.
-              </p>
-            </div>
-            <div className="flex flex-col items-center text-center">
-              <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <TrendingUp className="size-7" />
-              </div>
-              <span className="mb-2 text-sm font-medium text-muted-foreground">Step 3</span>
-              <h3 className="font-semibold">Rate & Level Up</h3>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Complete visits, earn badges, and level up as you explore.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Level Up Your Palate — background: friends laughing at dinner */}
-        <section className="relative mt-20 min-h-[480px] overflow-hidden rounded-2xl">
-          <div className="absolute inset-0 z-0" aria-hidden>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?auto=format&fit=crop&w=2000&q=80"
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-            <div className="absolute inset-0 bg-black/60" />
-          </div>
-          <div className="relative z-10 px-4 py-12 sm:px-6 sm:py-16">
-            <h2 className="mb-4 text-center text-2xl font-semibold tracking-tight text-white md:text-3xl">
-              Level Up Your Palate
-            </h2>
-            <p className="mx-auto mb-12 max-w-2xl text-center text-white/90">
-              Earn XP for every restaurant you visit and every review you leave.
+    <main className="overflow-x-clip bg-wb-cream text-wb-ink">
+      <section className="wb-dark relative overflow-hidden bg-wb-night text-white">
+        <PhotoScrim src={HERO_BG_IMAGE} />
+        <div className="relative mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24 sm:pb-28">
+          <header className="mx-auto max-w-3xl text-center">
+            <h1 className="font-display text-[42px] leading-[0.95] text-white sm:text-[56px]">
+              How Wanderbite <em className="wb-accent">Works</em>
+            </h1>
+            <p className="mx-auto mt-4 max-w-2xl text-[17px] leading-normal text-wb-lavender-2">
+              Stop scrolling. Start eating.
             </p>
-            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {LEVEL_UP_TIERS.map((tier, index) => (
-                <Card key={tier.xp} className="flex flex-col bg-white/95 shadow-lg backdrop-blur-sm">
-                  <CardHeader className="pb-2 text-center">
+          </header>
+        </div>
+      </section>
+
+      <div className="wb-sheet">
+        <div className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="wb-on-cream pt-12 sm:pt-16">
+            <section className="mx-auto max-w-3xl" aria-labelledby="curated-heading">
+              <div className="wb-card flex flex-col items-center gap-4 px-6 py-8 text-center sm:flex-row sm:gap-6 sm:text-left">
+                <div className="flex size-14 shrink-0 items-center justify-center rounded-full bg-wb-blush text-wb-plum">
+                  <Star className="size-7" aria-hidden />
+                </div>
+                <div className="min-w-0">
+                  <h2
+                    id="curated-heading"
+                    className="font-display text-[28px] leading-snug text-wb-ink"
+                  >
+                    We only pick highly-rated, <em className="wb-accent">hand-curated</em> local
+                    favorites.
+                  </h2>
+                  <p className="mt-2 text-base leading-relaxed text-wb-muted">
+                    No algorithm dump. Every spot is vetted for quality, variety, and the kind of
+                    experience we’d send our friends to.
+                  </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="mt-16 sm:mt-20" aria-labelledby="steps-heading">
+              <h2
+                id="steps-heading"
+                className="mb-10 text-center font-display text-[32px] leading-none text-wb-ink md:text-[40px]"
+              >
+                Three steps to better <em className="wb-accent">nights</em> out
+              </h2>
+              <ol className="grid list-none gap-6 p-0 md:grid-cols-3">
+                {STEPS.map(({ step, title, body, Icon }) => (
+                  <li key={title} className="wb-card flex min-w-0 flex-col items-center px-5 py-6 text-center">
+                    <div className="mb-4 flex size-14 items-center justify-center rounded-full bg-wb-blush text-wb-plum">
+                      <Icon className="size-7" aria-hidden />
+                    </div>
+                    <span className="mb-2 text-[13px] font-semibold tracking-[0.08em] text-wb-muted">{step}</span>
+                    <h3 className="font-display text-[28px] leading-none text-wb-ink">{title}</h3>
+                    <p className="mt-2 text-sm leading-relaxed text-wb-muted">{body}</p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          </div>
+
+          <section
+            className="wb-dark relative mt-16 min-h-[480px] overflow-hidden rounded-[26px] text-white sm:mt-20"
+            aria-labelledby="level-up-heading"
+          >
+            <PhotoScrim src={TIER_BG_IMAGE} />
+            <div className="relative px-4 py-12 sm:px-6 sm:py-16">
+              <h2
+                id="level-up-heading"
+                className="mb-4 text-center font-display text-[32px] leading-none text-white md:text-[40px]"
+              >
+                Level Up Your <em className="wb-accent">Palate</em>
+              </h2>
+              <p className="mx-auto mb-12 max-w-2xl text-center text-base leading-relaxed text-wb-lavender-2">
+                Earn XP for every restaurant you visit and every review you leave.
+              </p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {LEVEL_UP_TIERS.map((tier, index) => (
+                  <div
+                    key={tier.xp}
+                    className="wb-card flex min-w-0 flex-col bg-white px-4 py-5 text-center text-wb-ink"
+                  >
                     <div className="flex items-center justify-center gap-2">
-                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">
+                      <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-wb-blush text-sm font-bold text-wb-blush-ink">
                         {index + 1}
                       </span>
-                      <span className="text-sm font-medium text-muted-foreground leading-none">
-                        {tier.xp} XP
-                      </span>
+                      <span className="text-sm font-medium leading-none text-wb-muted">{tier.xp} XP</span>
                     </div>
-                    <h3 className="font-bold leading-tight text-violet-600">{tier.title}</h3>
-                  </CardHeader>
-                  <CardContent className="pt-0 text-center">
-                    <p className="text-sm font-normal leading-snug text-muted-foreground">
-                      {tier.xp} XP milestone
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
+                    <h3 className="mt-3 font-display text-[26px] leading-tight text-wb-plum">{tier.title}</h3>
+                    <p className="mt-2 text-sm leading-snug text-wb-muted">{tier.xp} XP milestone</p>
+                  </div>
+                ))}
+              </div>
             </div>
+          </section>
+
+          <div className="wb-on-cream pb-16 sm:pb-20">
+            <section className="mt-16 text-center sm:mt-20">
+              <Link href="/pricing" className="wb-cta wb-hiw-cta max-w-full text-center text-[15px]">
+                See pricing & join the club
+              </Link>
+            </section>
+
+            <section className="mx-auto mt-16 max-w-2xl sm:mt-20">
+              <PricingFaq tone="golden" />
+            </section>
           </div>
-        </section>
-
-        {/* CTA */}
-        <section className="mt-20 text-center">
-          <Button size="lg" asChild>
-            <Link href="/pricing">See pricing & join the club</Link>
-          </Button>
-        </section>
-
-        {/* FAQ */}
-        <section className="mx-auto mt-24 max-w-2xl">
-          <PricingFaq />
-        </section>
+        </div>
       </div>
     </main>
   );
