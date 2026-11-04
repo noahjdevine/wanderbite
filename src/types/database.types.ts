@@ -1037,6 +1037,197 @@ export type Database = {
           },
         ]
       }
+      content_exceptions: {
+        Row: {
+          after: Json | null
+          before: Json | null
+          evidence_excerpt: string | null
+          field: string | null
+          id: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          source_id: string
+          status: string
+          subject_id: string | null
+          subject_type: string | null
+        }
+        Insert: {
+          after?: Json | null
+          before?: Json | null
+          evidence_excerpt?: string | null
+          field?: string | null
+          id?: string
+          reason: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id: string
+          status?: string
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Update: {
+          after?: Json | null
+          before?: Json | null
+          evidence_excerpt?: string | null
+          field?: string | null
+          id?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id?: string
+          status?: string
+          subject_id?: string | null
+          subject_type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_exceptions_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "content_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_sources: {
+        Row: {
+          approved_at: string
+          approved_by: string | null
+          id: string
+          kind: string
+          last_attempted_at: string | null
+          last_content_hash: string | null
+          last_verified_at: string | null
+          notes: string | null
+          restaurant_id: string | null
+          status: string
+          url: string
+        }
+        Insert: {
+          approved_at?: string
+          approved_by?: string | null
+          id?: string
+          kind: string
+          last_attempted_at?: string | null
+          last_content_hash?: string | null
+          last_verified_at?: string | null
+          notes?: string | null
+          restaurant_id?: string | null
+          status?: string
+          url: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string | null
+          id?: string
+          kind?: string
+          last_attempted_at?: string | null
+          last_content_hash?: string | null
+          last_verified_at?: string | null
+          notes?: string | null
+          restaurant_id?: string | null
+          status?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_sources_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_facts: {
+        Row: {
+          evidence_excerpt: string
+          extracted_at: string
+          field: string
+          id: string
+          source_id: string
+          status: string
+          subject_id: string | null
+          subject_type: string
+          value: Json
+          verified_at: string | null
+          version: number
+        }
+        Insert: {
+          evidence_excerpt: string
+          extracted_at?: string
+          field: string
+          id?: string
+          source_id: string
+          status: string
+          subject_id?: string | null
+          subject_type: string
+          value: Json
+          verified_at?: string | null
+          version: number
+        }
+        Update: {
+          evidence_excerpt?: string
+          extracted_at?: string
+          field?: string
+          id?: string
+          source_id?: string
+          status?: string
+          subject_id?: string | null
+          subject_type?: string
+          value?: Json
+          verified_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_facts_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "content_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_fetch_attempts: {
+        Row: {
+          attempted_at: string
+          content_hash: string | null
+          error_code: string | null
+          http_status: number | null
+          id: string
+          outcome: string
+          source_id: string
+        }
+        Insert: {
+          attempted_at?: string
+          content_hash?: string | null
+          error_code?: string | null
+          http_status?: number | null
+          id?: string
+          outcome: string
+          source_id: string
+        }
+        Update: {
+          attempted_at?: string
+          content_hash?: string | null
+          error_code?: string | null
+          http_status?: number | null
+          id?: string
+          outcome?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_fetch_attempts_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "content_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       recipes: {
         Row: {
           checked_at: string | null
@@ -3628,6 +3819,18 @@ export type Database = {
           restaurant_id: string
           source_item_id: string
         }[]
+      }
+      resolve_saved_recipe_description: {
+        Args: { p_recipe_id: string; p_user_id: string }
+        Returns: string
+      }
+      rollback_content_fact: {
+        Args: { p_fact_id: string }
+        Returns: string
+      }
+      rollback_recipe_to_previous: {
+        Args: { p_recipe_id: string }
+        Returns: number
       }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {
