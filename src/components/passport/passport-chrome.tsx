@@ -1,18 +1,15 @@
 'use client';
 
-import { useCallback } from 'react';
 import { Share2 } from 'lucide-react';
-import { toast } from 'sonner';
+import { PassportShareSheet, usePassportSharePreview } from '@/components/passport/passport-share-sheet';
 import { PassportSegments } from '@/components/passport/passport-segments';
 import { CtaButton } from '@/components/wb/cta-button';
 import { pluralNoun, pluralize } from '@/lib/format/text';
 import {
-  buildPassportShare,
   PASSPORT_RETRY_HREF,
   PASSPORT_UNAVAILABLE_MESSAGE,
   type PassportSegmentId,
 } from '@/lib/passport/passport-board';
-import { shareOrCopy } from '@/lib/share';
 
 export type PassportBadge = {
   id: string;
@@ -53,17 +50,12 @@ export function PassportChrome({
   retryHref = PASSPORT_RETRY_HREF,
   children,
 }: PassportChromeProps) {
-  const handleShare = useCallback(async () => {
-    const payload = buildPassportShare({
-      progressUnavailable,
-      uniqueRestaurants,
-      neighborhoods,
-      currentStreak,
-    });
-    const outcome = await shareOrCopy(payload);
-    if (outcome === 'copied') toast.success('Link copied to clipboard!');
-    else if (outcome === 'error') toast.error('Could not share. Try copying the link manually.');
-  }, [currentStreak, neighborhoods, progressUnavailable, uniqueRestaurants]);
+  const preview = usePassportSharePreview({
+    progressUnavailable,
+    uniqueRestaurants,
+    neighborhoods,
+    currentStreak,
+  });
 
   const badgeSummary =
     earnedBadges.length > 0
@@ -86,6 +78,7 @@ export function PassportChrome({
     );
 
   return (
+    <>
     <div className="overflow-x-clip bg-wb-cream text-wb-ink">
       <header className="wb-dark relative overflow-hidden">
         <div
@@ -102,7 +95,7 @@ export function PassportChrome({
           <div className="flex justify-end">
             <button
               type="button"
-              onClick={() => void handleShare()}
+              onClick={() => void preview.openPreview()}
               className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3.5 text-[13px] font-semibold text-white"
             >
               <Share2 className="size-4" aria-hidden />
@@ -155,5 +148,13 @@ export function PassportChrome({
         </div>
       </div>
     </div>
+    <PassportShareSheet
+      phase={preview.phase}
+      imageUrl={preview.imageUrl}
+      reducedMotion={preview.reducedMotion}
+      onCancel={preview.closePreview}
+      onShare={() => void preview.sharePreview()}
+    />
+    </>
   );
 }
