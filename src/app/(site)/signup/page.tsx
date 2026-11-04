@@ -6,8 +6,7 @@ import { Loader2, Check } from 'lucide-react';
 import { signUpFromForm } from '@/app/actions/credential-sign-up';
 import { signUpSchema } from '@/lib/validations/auth';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { AuthScreen } from '@/components/auth/auth-screen';
 import { PasswordField } from '@/components/auth/password-field';
 import { cn } from '@/lib/utils';
 import { SIGNUP_EARLY_ACCESS_MESSAGE } from '@/lib/checkout-copy';
@@ -141,198 +140,217 @@ export default function SignUpPage() {
     agreeToTerms: state.fieldErrors.agreeToTerms ?? fieldErrors.agreeToTerms,
   };
 
+  const ageErrorVisible =
+    (touched.confirmAge21 || state.fieldErrors.confirmAge21) && shown.confirmAge21
+      ? shown.confirmAge21
+      : null;
+  const termsErrorVisible =
+    (touched.agreeToTerms || state.fieldErrors.agreeToTerms) && shown.agreeToTerms
+      ? shown.agreeToTerms
+      : null;
+
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-sm border-violet-200/60 shadow-md">
-        <CardHeader className="space-y-1 text-center">
-          <CardTitle className="text-2xl font-bold tracking-tight">Start your food adventure.</CardTitle>
-          <CardDescription className="text-base">
-            Create your account in under a minute.
-          </CardDescription>
-          <p className="text-sm text-muted-foreground" role="status">
-            {SIGNUP_EARLY_ACCESS_MESSAGE}
+    <AuthScreen
+      title="Start your food adventure."
+      lede="Create your account in under a minute."
+      notice={
+        <p className="wb-auth-notice" role="status">
+          {SIGNUP_EARLY_ACCESS_MESSAGE}
+        </p>
+      }
+    >
+      <form action={formAction} onSubmit={onSubmit} className="wb-auth-form">
+        <div className="wb-auth-field">
+          <label htmlFor="signup-email" className="wb-auth-label">
+            Email
+          </label>
+          <input
+            id="signup-email"
+            name="email"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (touched.email) runFieldValidation('email');
+            }}
+            onBlur={() => {
+              setTouched((x) => ({ ...x, email: true }));
+              runFieldValidation('email', { email: true });
+            }}
+            placeholder="you@example.com"
+            autoComplete="email"
+            disabled={isLoading}
+            className="wb-auth-input"
+            aria-invalid={!!shown.email}
+            aria-describedby={shown.email ? 'signup-email-error' : undefined}
+          />
+          {shown.email ? (
+            <p id="signup-email-error" className="wb-auth-error" aria-live="polite">
+              {shown.email}
+            </p>
+          ) : null}
+        </div>
+
+        <PasswordField
+          id="signup-password"
+          name="password"
+          label="Password"
+          tone="night"
+          value={password}
+          onChange={(v) => {
+            setPassword(v);
+            if (touched.password) runFieldValidation('password');
+          }}
+          onBlur={() => {
+            setTouched((x) => ({ ...x, password: true }));
+            runFieldValidation('password', { password: true });
+          }}
+          disabled={isLoading}
+          autoComplete="new-password"
+          error={touched.password || state.fieldErrors.password ? shown.password : null}
+        />
+        {touched.password && password.length > 0 ? (
+          <ul className="wb-auth-muted flex list-none flex-col gap-1 p-0">
+            <li className="flex items-center gap-2">
+              <Check
+                className={cn('size-3.5', pwdLenOk ? 'text-wb-blush' : 'opacity-40')}
+                aria-hidden
+              />
+              At least 8 characters
+            </li>
+          </ul>
+        ) : null}
+
+        <PasswordField
+          id="signup-confirm"
+          name="confirmPassword"
+          label="Confirm password"
+          tone="night"
+          value={confirmPassword}
+          onChange={(v) => {
+            setConfirmPassword(v);
+            if (touched.confirmPassword) runFieldValidation('confirmPassword');
+          }}
+          onBlur={() => {
+            setTouched((x) => ({ ...x, confirmPassword: true }));
+            runFieldValidation('confirmPassword', { confirmPassword: true });
+          }}
+          disabled={isLoading}
+          autoComplete="new-password"
+          placeholder="Repeat password"
+          error={
+            shown.confirmPassword
+              ? shown.confirmPassword
+              : touched.confirmPassword && confirmPassword && !pwdMatchOk
+                ? "Passwords don't match."
+                : null
+          }
+        />
+        {touched.confirmPassword && confirmPassword.length > 0 && pwdMatchOk ? (
+          <p className="wb-auth-ok">Passwords match</p>
+        ) : null}
+
+        <p className="wb-auth-muted">
+          Terms and Privacy version {LEGAL_DOCUMENT_VERSION}.
+        </p>
+
+        <div className="flex items-start gap-3">
+          <input
+            id="signup-age"
+            name="confirmAge21"
+            type="checkbox"
+            value="true"
+            checked={confirmAge21}
+            onChange={(e) => {
+              setConfirmAge21(e.target.checked);
+              if (touched.confirmAge21) runFieldValidation('confirmAge21');
+            }}
+            onBlur={() => {
+              setTouched((x) => ({ ...x, confirmAge21: true }));
+              runFieldValidation('confirmAge21', { confirmAge21: true });
+            }}
+            disabled={isLoading}
+            className="wb-auth-check"
+            aria-invalid={ageErrorVisible ? true : undefined}
+            aria-describedby={ageErrorVisible ? 'signup-age-error' : undefined}
+          />
+          <label htmlFor="signup-age" className="wb-auth-muted">
+            I confirm I am 21 or older.
+          </label>
+        </div>
+        {ageErrorVisible ? (
+          <p id="signup-age-error" className="wb-auth-error" aria-live="polite">
+            {ageErrorVisible}
           </p>
-        </CardHeader>
-        <CardContent>
-          <form action={formAction} onSubmit={onSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label htmlFor="signup-email" className="text-sm font-medium">
-                Email
-              </label>
-              <input
-                id="signup-email"
-                name="email"
-                type="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value);
-                  if (touched.email) runFieldValidation('email');
-                }}
-                onBlur={() => {
-                  setTouched((x) => ({ ...x, email: true }));
-                  runFieldValidation('email', { email: true });
-                }}
-                placeholder="you@example.com"
-                autoComplete="email"
-                disabled={isLoading}
-                className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-base sm:text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-                aria-invalid={!!shown.email}
-              />
-              {shown.email ? <p className="text-sm text-destructive">{shown.email}</p> : null}
-            </div>
+        ) : null}
 
-            <PasswordField
-              id="signup-password"
-              name="password"
-              label="Password"
-              value={password}
-              onChange={(v) => {
-                setPassword(v);
-                if (touched.password) runFieldValidation('password');
-              }}
-              onBlur={() => {
-                setTouched((x) => ({ ...x, password: true }));
-                runFieldValidation('password', { password: true });
-              }}
-              disabled={isLoading}
-              autoComplete="new-password"
-              error={touched.password || state.fieldErrors.password ? shown.password : null}
-            />
-            {touched.password && password.length > 0 ? (
-              <ul className="space-y-1 text-xs text-muted-foreground">
-                <li className="flex items-center gap-2">
-                  <Check
-                    className={cn('size-3.5', pwdLenOk ? 'text-primary' : 'opacity-30')}
-                    aria-hidden
-                  />
-                  At least 8 characters
-                </li>
-              </ul>
-            ) : null}
+        <div className="flex items-start gap-3">
+          <input
+            id="signup-agree"
+            name="agreeToTerms"
+            type="checkbox"
+            value="true"
+            checked={agreeToTerms}
+            onChange={(e) => {
+              setAgreeToTerms(e.target.checked);
+              if (touched.agreeToTerms) runFieldValidation('agreeToTerms');
+            }}
+            onBlur={() => {
+              setTouched((x) => ({ ...x, agreeToTerms: true }));
+              runFieldValidation('agreeToTerms', { agreeToTerms: true });
+            }}
+            disabled={isLoading}
+            className="wb-auth-check"
+            aria-invalid={termsErrorVisible ? true : undefined}
+            aria-describedby={termsErrorVisible ? 'signup-terms-error' : undefined}
+          />
+          <label htmlFor="signup-agree" className="wb-auth-muted">
+            I agree to the{' '}
+            <Link href="/terms" className="wb-auth-link">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link href="/privacy" className="wb-auth-link">
+              Privacy Policy
+            </Link>
+            , and{' '}
+            <Link href="/rules" className="wb-auth-link">
+              Challenge rules
+            </Link>
+            .
+          </label>
+        </div>
+        {termsErrorVisible ? (
+          <p id="signup-terms-error" className="wb-auth-error" aria-live="polite">
+            {termsErrorVisible}
+          </p>
+        ) : null}
 
-            <PasswordField
-              id="signup-confirm"
-              name="confirmPassword"
-              label="Confirm password"
-              value={confirmPassword}
-              onChange={(v) => {
-                setConfirmPassword(v);
-                if (touched.confirmPassword) runFieldValidation('confirmPassword');
-              }}
-              onBlur={() => {
-                setTouched((x) => ({ ...x, confirmPassword: true }));
-                runFieldValidation('confirmPassword', { confirmPassword: true });
-              }}
-              disabled={isLoading}
-              autoComplete="new-password"
-              placeholder="Repeat password"
-              error={
-                shown.confirmPassword
-                  ? shown.confirmPassword
-                  : touched.confirmPassword && confirmPassword && !pwdMatchOk
-                    ? "Passwords don't match."
-                    : null
-              }
-            />
-            {touched.confirmPassword && confirmPassword.length > 0 && pwdMatchOk ? (
-              <p className="text-xs font-medium text-primary">Passwords match</p>
-            ) : null}
+        {state.error ? (
+          <Alert className="wb-auth-alert wb-auth-alert-error">
+            <AlertTitle>Something went wrong</AlertTitle>
+            <AlertDescription>{state.error}</AlertDescription>
+          </Alert>
+        ) : null}
 
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              Terms and Privacy version {LEGAL_DOCUMENT_VERSION}.
-            </p>
+        <button type="submit" className="wb-auth-submit" disabled={isLoading}>
+          {isLoading ? (
+            <>
+              <Loader2 className="size-4 animate-spin wb-auth-spinner" aria-hidden />
+              Creating your account…
+            </>
+          ) : (
+            'Create my account'
+          )}
+        </button>
 
-            <div className="flex items-start gap-3">
-              <input
-                id="signup-age"
-                name="confirmAge21"
-                type="checkbox"
-                value="true"
-                checked={confirmAge21}
-                onChange={(e) => {
-                  setConfirmAge21(e.target.checked);
-                  if (touched.confirmAge21) runFieldValidation('confirmAge21');
-                }}
-                onBlur={() => {
-                  setTouched((x) => ({ ...x, confirmAge21: true }));
-                  runFieldValidation('confirmAge21', { confirmAge21: true });
-                }}
-                disabled={isLoading}
-                className="mt-1 size-4 shrink-0 rounded border-input"
-              />
-              <label htmlFor="signup-age" className="text-sm leading-snug text-muted-foreground">
-                I confirm I am 21 or older.
-              </label>
-            </div>
-            {(touched.confirmAge21 || state.fieldErrors.confirmAge21) && shown.confirmAge21 ? (
-              <p className="text-sm text-destructive">{shown.confirmAge21}</p>
-            ) : null}
-
-            <div className="flex items-start gap-3">
-              <input
-                id="signup-agree"
-                name="agreeToTerms"
-                type="checkbox"
-                value="true"
-                checked={agreeToTerms}
-                onChange={(e) => {
-                  setAgreeToTerms(e.target.checked);
-                  if (touched.agreeToTerms) runFieldValidation('agreeToTerms');
-                }}
-                onBlur={() => {
-                  setTouched((x) => ({ ...x, agreeToTerms: true }));
-                  runFieldValidation('agreeToTerms', { agreeToTerms: true });
-                }}
-                disabled={isLoading}
-                className="mt-1 size-4 shrink-0 rounded border-input"
-              />
-              <label htmlFor="signup-agree" className="text-sm leading-snug text-muted-foreground">
-                I agree to the{' '}
-                <Link href="/terms" className="font-medium text-primary underline-offset-2 hover:underline">
-                  Terms of Service
-                </Link>{' '}
-                and{' '}
-                <Link href="/privacy" className="font-medium text-primary underline-offset-2 hover:underline">
-                  Privacy Policy
-                </Link>
-                , and{' '}
-                <Link href="/rules" className="font-medium text-primary underline-offset-2 hover:underline">
-                  Challenge rules
-                </Link>
-                .
-              </label>
-            </div>
-            {(touched.agreeToTerms || state.fieldErrors.agreeToTerms) && shown.agreeToTerms ? (
-              <p className="text-sm text-destructive">{shown.agreeToTerms}</p>
-            ) : null}
-
-            {state.error ? (
-              <Alert variant="destructive">
-                <AlertTitle>Something went wrong</AlertTitle>
-                <AlertDescription>{state.error}</AlertDescription>
-              </Alert>
-            ) : null}
-
-            <Button type="submit" className="h-11 w-full text-base font-semibold" disabled={isLoading}>
-              {isLoading ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" aria-hidden />
-                  Creating your account…
-                </>
-              ) : (
-                'Create my account'
-              )}
-            </Button>
-
-            <p className="text-center text-sm text-muted-foreground">
-              Already have an account?{' '}
-              <Link href="/signin" className="font-medium text-primary underline-offset-2 hover:underline">
-                Sign in
-              </Link>
-            </p>
-          </form>
-        </CardContent>
-      </Card>
-    </main>
+        <p className="wb-auth-muted text-center">
+          Already have an account?{' '}
+          <Link href="/signin" className="wb-auth-link">
+            Sign in
+          </Link>
+        </p>
+      </form>
+    </AuthScreen>
   );
 }
