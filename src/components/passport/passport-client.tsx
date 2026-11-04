@@ -16,11 +16,13 @@ import {
   passportIssuedOn,
   passportPageCount,
   passportPageItems,
+  PASSPORT_PAGE_SIZE,
   stampKind,
   stampRotationDegrees,
   type PassportSegmentId,
 } from '@/lib/passport/passport-board';
 import { RECIPES_SECTION_HEADING, type RecipeSections } from '@/lib/recipes/display';
+import { useStampUnlock } from '@/lib/passport/stamp-unlock';
 import { visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 import type { BiteNoteRow } from '@/app/actions/bite-notes';
 
@@ -182,8 +184,24 @@ export function PassportClient({
     return chips;
   }, [pending, stamps]);
 
+  const unlockCandidates = useMemo(
+    () =>
+      stamps.map((visit) => ({
+        id: visit.id,
+        status: visit.visitStatus,
+        verifiedAt: visit.verifiedAt || null,
+      })),
+    [stamps],
+  );
+  const unlock = useStampUnlock(unlockCandidates, true);
+  const announceVisit = unlock.announceId
+    ? stamps.find((visit) => visit.id === unlock.announceId) ?? null
+    : null;
+
   const empty = stamps.length === 0 && pending.length === 0;
   const issuedOn = passportIssuedOn(stamps.map((visit) => visit.verifiedAt));
+  const slamSlot =
+    unlock.slamId == null ? -1 : stamps.findIndex((visit) => visit.id === unlock.slamId);
   const slots = [
     ...stamps.map((visit, index) => ({ kind: 'stamp' as const, visit, index })),
     ...pending.map((visit) => ({ kind: 'pending' as const, visit })),
@@ -192,12 +210,18 @@ export function PassportClient({
   const pageCount = passportPageCount(slots.length);
   const [pageIndex, setPageIndex] = useState(0);
   const [turning, setTurning] = useState(false);
-  const safePage = Math.min(pageIndex, pageCount - 1);
+  const [dismissedSlam, setDismissedSlam] = useState<string | null>(null);
+  const slamPage =
+    unlock.slamId && unlock.slamId !== dismissedSlam && slamSlot >= 0
+      ? Math.floor(slamSlot / PASSPORT_PAGE_SIZE)
+      : null;
+  const safePage = Math.min(slamPage ?? pageIndex, pageCount - 1);
   const pageSlots = passportPageItems(slots, safePage);
 
   function showPage(next: number) {
     const clamped = Math.min(Math.max(next, 0), pageCount - 1);
     if (clamped === safePage) return;
+    if (unlock.slamId) setDismissedSlam(unlock.slamId);
     setTurning(true);
     setPageIndex(clamped);
   }
@@ -218,6 +242,9 @@ export function PassportClient({
       pageYear={pageYear}
     >
       <FocusVisitFromHash />
+      <p className="sr-only" aria-live="polite" data-stamp-announcement="">
+        {announceVisit ? `New stamp: ${announceVisit.restaurant.name}` : ''}
+      </p>
       <section aria-labelledby="passport-book" className="wb-passport-book">
         <div className="wb-passport-spread">
           <div className="wb-passport-cover">
@@ -269,6 +296,7 @@ export function PassportClient({
                         shape={slot.index === 0 ? 'rect' : 'round'}
                         rotation={rotation}
                         newest={slot.index === 0}
+                        playSlam={unlock.slamId === visit.id}
                         statusLabel={visitStatusLabel(visit.visitStatus)}
                         pressed={selected?.id === visit.id}
                         elementId={visitElementId(visit.id) ?? undefined}
