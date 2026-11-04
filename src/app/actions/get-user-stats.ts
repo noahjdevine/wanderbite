@@ -7,10 +7,18 @@ import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { levelFromXp, xpFromVerifiedVisits } from '@/lib/progress/rules';
 import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
 
+export type UserStatsHistoryNote = {
+  id: string;
+  note: string | null;
+  is_public: boolean;
+};
+
 export type UserStatsHistoryItem = {
+  redemptionId: string;
   restaurantName: string;
   date: string;
   visitStatus: VisitStatus;
+  note: UserStatsHistoryNote | null;
 };
 
 export type UserStatsBadge = {
@@ -60,18 +68,22 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
     }
 
     const list = redemptions ?? [];
-    const noteByRedemptionId = new Map<string, { note: string | null }>();
+    const noteByRedemptionId = new Map<string, UserStatsHistoryNote & { note: string | null }>();
     if (list.length > 0) {
       const { data: noteRows, error: noteError } = await supabase
         .from('bite_notes')
-        .select('redemption_id, note')
+        .select('id, redemption_id, note, is_public')
         .in(
           'redemption_id',
           list.map((row) => row.id),
         );
       if (noteError) return { ok: false, error: noteError.message };
       for (const row of noteRows ?? []) {
-        noteByRedemptionId.set(row.redemption_id, { note: row.note });
+        noteByRedemptionId.set(row.redemption_id, {
+          id: row.id,
+          note: row.note,
+          is_public: Boolean(row.is_public),
+        });
       }
     }
     const now = new Date();
@@ -98,9 +110,12 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
         : '—';
       const restaurantName =
         restaurantRel?.name ?? 'Unknown restaurant';
+      const memory = noteByRedemptionId.get(r.id) ?? null;
       return {
+        redemptionId: r.id,
         restaurantName,
         date,
+        note: memory,
         visitStatus: deriveVisitStatus({
           item: { status: 'redeemed', redemptionDeadline: null },
           redemption: {
@@ -108,7 +123,7 @@ export async function getUserStats(): Promise<GetUserStatsResult> {
             verifiedAt: r.verified_at,
             expiresAt: r.expires_at,
           },
-          note: noteByRedemptionId.get(r.id) ?? null,
+          note: memory ? { note: memory.note } : null,
           now,
         }),
       };

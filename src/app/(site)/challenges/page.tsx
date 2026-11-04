@@ -203,6 +203,7 @@ export default async function ChallengesPage() {
           showFirstBiteLocked={presentedProgress.showFirstBiteLocked}
           nextBadge={presentedProgress.nextBadge}
           biteNotes={biteNotesForDash}
+          memoryReturnTo="/challenges"
           creditHold={creditHold}
           creditsSwapRemaining={creditsSwapRemaining}
           carriedCredits={carriedCredits}

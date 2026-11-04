@@ -1,12 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { addDays } from 'date-fns';
-import { toast } from 'sonner';
-import { Loader2, MapPin, RefreshCw, Star, Ticket } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { Loader2, MapPin, RefreshCw, Ticket } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -30,11 +27,9 @@ import {
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { REDEMPTION_CODE_LIFETIME_LABEL } from '@/lib/redemption-expiry';
-import {
-  saveBiteNote,
-  toggleNoteVisibility,
-  type BiteNoteSummary,
-} from '@/app/actions/bite-notes';
+import type { BiteNoteSummary } from '@/app/actions/bite-notes';
+import { VisitNoteRead } from '@/components/notes/visit-note';
+import { memoryActionForStatus } from '@/lib/notes/note-rules';
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
 import { SocialProofRatingBlock } from '@/components/restaurant-social-proof';
@@ -54,238 +49,6 @@ function formatOffer(discountCents: number, minSpendCents: number): string {
   return `$${dollars} off when you spend $${minDollars}+`;
 }
 
-const BITE_NOTE_MAX = 280;
-
-function StarRow({
-  value,
-  onChange,
-  readOnly,
-}: {
-  value: number;
-  onChange?: (n: number) => void;
-  readOnly?: boolean;
-}) {
-  return (
-    <div className="flex items-center gap-0.5" role="img" aria-label={`${value} of 5 stars`}>
-      {[1, 2, 3, 4, 5].map((n) =>
-        readOnly ? (
-          <Star
-            key={n}
-            className={cn(
-              'size-6',
-              n <= value
-                ? 'fill-amber-400 text-amber-400'
-                : 'fill-transparent text-muted-foreground/40'
-            )}
-            aria-hidden
-          />
-        ) : (
-          <button
-            key={n}
-            type="button"
-            onClick={() => onChange?.(n)}
-            className="rounded p-0.5 transition-opacity hover:opacity-90"
-            aria-label={`${n} star${n === 1 ? '' : 's'}`}
-          >
-            <Star
-              className={cn(
-                'size-6',
-                n <= value
-                  ? 'fill-amber-400 text-amber-400'
-                  : 'fill-transparent text-muted-foreground/50'
-              )}
-            />
-          </button>
-        )
-      )}
-    </div>
-  );
-}
-
-function BiteNotesInline({
-  redemptionId,
-  saved,
-}: {
-  redemptionId: string;
-  saved: BiteNoteSummary | undefined;
-}) {
-  const router = useRouter();
-  const [showForm, setShowForm] = useState(false);
-  const [rating, setRating] = useState(saved?.rating ?? 5);
-  const [text, setText] = useState(saved?.note ?? '');
-  const [formIsPublic, setFormIsPublic] = useState(saved?.is_public ?? false);
-  const [publicLocal, setPublicLocal] = useState(Boolean(saved?.is_public));
-  const [visibilitySaving, setVisibilitySaving] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [savedPublicSnapshot, setSavedPublicSnapshot] = useState({
-    id: saved?.id,
-    isPublic: saved?.is_public,
-  });
-
-  const hasSaved = Boolean(saved);
-
-  if (
-    saved?.id !== savedPublicSnapshot.id ||
-    saved?.is_public !== savedPublicSnapshot.isPublic
-  ) {
-    setSavedPublicSnapshot({ id: saved?.id, isPublic: saved?.is_public });
-    setPublicLocal(Boolean(saved?.is_public));
-  }
-
-  function openEdit() {
-    setRating(saved?.rating ?? 5);
-    setText(saved?.note ?? '');
-    setFormIsPublic(saved?.is_public ?? false);
-    setShowForm(true);
-  }
-
-  async function handleVisibilityChange(next: boolean) {
-    if (!saved?.id) return;
-    setVisibilitySaving(true);
-    try {
-      const res = await toggleNoteVisibility(saved.id, next);
-      if (res.ok) {
-        setPublicLocal(next);
-        toast.success(next ? 'Your review is now public' : 'Your review is now private');
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    } finally {
-      setVisibilitySaving(false);
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      const res = await saveBiteNote(redemptionId, text, rating, formIsPublic);
-      if (res.ok) {
-        toast.success('Bite Note saved');
-        setShowForm(false);
-        router.refresh();
-      } else {
-        toast.error(res.error);
-      }
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="mt-3 rounded-lg border border-dashed border-muted-foreground/25 bg-muted/20 p-3">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Bite Notes
-      </p>
-      {hasSaved && !showForm && (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <StarRow value={saved!.rating} readOnly />
-            {saved!.is_public ? (
-              <Badge variant="secondary" className="text-xs">
-                Public review
-              </Badge>
-            ) : null}
-          </div>
-          {saved!.note ? (
-            <p className="whitespace-pre-wrap text-sm text-foreground">{saved!.note}</p>
-          ) : (
-            <p className="text-sm italic text-muted-foreground">No written note</p>
-          )}
-          {saved?.id ? (
-            <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-              <input
-                type="checkbox"
-                className="size-3.5 rounded border-input accent-[#E85D26]"
-                checked={publicLocal}
-                disabled={visibilitySaving}
-                onChange={(e) => void handleVisibilityChange(e.target.checked)}
-              />
-              <span>Share publicly as a review</span>
-            </label>
-          ) : null}
-          <Button type="button" variant="outline" size="sm" onClick={openEdit}>
-            Edit
-          </Button>
-        </div>
-      )}
-      {!hasSaved && !showForm && (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => {
-            setFormIsPublic(false);
-            setShowForm(true);
-          }}
-        >
-          Leave a Bite Note
-        </Button>
-      )}
-      {showForm && (
-        <div className="space-y-3">
-          <div>
-            <p className="mb-1 text-xs text-muted-foreground">Rating</p>
-            <StarRow value={rating} onChange={setRating} />
-          </div>
-          <div>
-            <label htmlFor={`bite-note-${redemptionId}`} className="mb-1 block text-xs text-muted-foreground">
-              How was it? (optional)
-            </label>
-            <textarea
-              id={`bite-note-${redemptionId}`}
-              value={text}
-              onChange={(e) => setText(e.target.value.slice(0, BITE_NOTE_MAX))}
-              rows={3}
-              maxLength={BITE_NOTE_MAX}
-              className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
-              placeholder="Quick memory from your visit…"
-            />
-            <p className="mt-1 text-right text-xs text-muted-foreground">
-              {text.length}/{BITE_NOTE_MAX}
-            </p>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-            <input
-              type="checkbox"
-              className="size-3.5 rounded border-input accent-[#E85D26]"
-              checked={formIsPublic}
-              onChange={(e) => setFormIsPublic(e.target.checked)}
-            />
-            <span>Share this note publicly as a review</span>
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" size="sm" disabled={saving} onClick={handleSave}>
-              {saving ? 'Saving…' : 'Save Note'}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={saving}
-              onClick={() => {
-                if (hasSaved) {
-                  setShowForm(false);
-                  setRating(saved!.rating);
-                  setText(saved!.note ?? '');
-                  setFormIsPublic(saved!.is_public);
-                } else {
-                  setShowForm(false);
-                  setRating(5);
-                  setText('');
-                  setFormIsPublic(false);
-                }
-              }}
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export type RestaurantCardProps = {
   item: GeneratedChallengeItem;
   cycleCreatedAt: string;
@@ -295,6 +58,8 @@ export type RestaurantCardProps = {
   onSwap: (challengeItemId: string) => void;
   onRedeem: (challengeItemId: string) => void;
   biteNote?: BiteNoteSummary;
+  /** Where Save and Cancel in the note editor return. Challenges is the default. */
+  memoryReturnTo?: string;
   /** Credits cards use the stored deadline. Legacy cards keep cycle + 30 days. */
   useStoredDeadline?: boolean;
   storedDeadline?: string | null;
@@ -317,6 +82,7 @@ export function RestaurantCard({
   onSwap,
   onRedeem,
   biteNote,
+  memoryReturnTo = '/challenges',
   useStoredDeadline = false,
   storedDeadline = null,
   showRevealDetails = false,
@@ -453,9 +219,21 @@ export function RestaurantCard({
             </p>
           </div>
         )}
-        {isRedeemed && item.redemptionId && (
-          <BiteNotesInline redemptionId={item.redemptionId} saved={biteNote} />
-        )}
+        {item.redemptionId &&
+        item.visitStatus &&
+        (memoryActionForStatus(item.visitStatus) ||
+          (item.visitStatus === 'note_added' && biteNote)) ? (
+          <VisitNoteRead
+            redemptionId={item.redemptionId}
+            status={item.visitStatus}
+            returnTo={memoryReturnTo}
+            note={
+              item.visitStatus === 'note_added' && biteNote
+                ? { id: biteNote.id, note: biteNote.note, is_public: biteNote.is_public }
+                : null
+            }
+          />
+        ) : null}
         <RecipeCards
           headingId={`recipes-${item.restaurant.id}`}
           heading={RECIPES_SECTION_HEADING}

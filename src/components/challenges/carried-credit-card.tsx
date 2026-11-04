@@ -45,6 +45,7 @@ type CarriedCreditCardProps = {
   onSwap: (challengeItemId: string) => void;
   onRedeem: (challengeItemId: string) => void;
   biteNote?: BiteNoteSummary;
+  memoryReturnTo?: string;
   recipes?: RecipeCardModel[];
   recipeExclusionLine?: string | null;
   activities?: ActivitySuggestion[];
@@ -64,6 +65,7 @@ export function CarriedCreditCard({
   onSwap,
   onRedeem,
   biteNote,
+  memoryReturnTo = '/challenges',
   recipes = [],
   recipeExclusionLine = null,
   activities = [],
@@ -143,6 +145,7 @@ export function CarriedCreditCard({
           onSwap={onSwap}
           onRedeem={onRedeem}
           biteNote={biteNote}
+          memoryReturnTo={memoryReturnTo}
           useStoredDeadline
           storedDeadline={credit.effectiveDeadline}
           recipes={recipes}

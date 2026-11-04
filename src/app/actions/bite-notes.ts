@@ -2,6 +2,11 @@
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { requireUser } from '@/lib/auth/require-user';
+import {
+  NOTE_MAX,
+  PUBLIC_REVIEW_REQUIRES_VERIFIED,
+  redemptionIsVerified,
+} from '@/lib/notes/note-rules';
 
 /** Minimal fields for dashboard cards (keyed by redemption). */
 export type BiteNoteSummary = {
@@ -40,12 +45,6 @@ export type ToggleNoteVisibilityResult = { ok: true } | { ok: false; error: stri
 
 export type SaveBiteNoteResult = { ok: true } | { ok: false; error: string };
 
-const NOTE_MAX = 280;
-
-/**
- * Upserts the user's bite note for a redemption (one per redemption).
- * Verifies the redemption belongs to the user before writing.
- */
 function maskAuthorLabel(username: string | null, email: string | null): string {
   const base =
     (username && username.trim()) ||
@@ -55,6 +54,11 @@ function maskAuthorLabel(username: string | null, email: string | null): string 
   return `${s}***`;
 }
 
+/**
+ * Upserts the user's bite note for a redemption (one per redemption).
+ * Verifies the redemption belongs to the user before writing.
+ * A public note also requires a verified redemption. Note text is not logged.
+ */
 export async function saveBiteNote(
   redemptionId: string,
   note: string,
@@ -75,16 +79,25 @@ export async function saveBiteNote(
   const admin = getSupabaseAdmin();
   const { data: redemption, error: redErr } = await admin
     .from('redemptions')
-    .select('id, user_id, restaurant_id')
+    .select('id, user_id, restaurant_id, status, verified_at')
     .eq('id', redemptionId)
     .maybeSingle();
 
   if (redErr || !redemption) {
     return { ok: false, error: 'Redemption not found.' };
   }
-  const r = redemption as { id: string; user_id: string; restaurant_id: string };
+  const r = redemption as {
+    id: string;
+    user_id: string;
+    restaurant_id: string;
+    status: string | null;
+    verified_at: string | null;
+  };
   if (r.user_id !== auth.userId) {
     return { ok: false, error: 'You can only add notes to your own visits.' };
+  }
+  if (isPublic && !redemptionIsVerified(r.status, r.verified_at)) {
+    return { ok: false, error: PUBLIC_REVIEW_REQUIRES_VERIFIED };
   }
 
   const now = new Date().toISOString();
@@ -107,10 +120,71 @@ export async function saveBiteNote(
   return { ok: true };
 }
 
+type PublicNoteRow = {
+  id: string;
+  rating: number;
+  note: string | null;
+  created_at: string;
+  user_profiles:
+    | { username: string | null; email: string | null }
+    | { username: string | null; email: string | null }[]
+    | null;
+};
+
+function toPublicReview(row: PublicNoteRow): PublicReview {
+  const rel = row.user_profiles;
+  const prof = Array.isArray(rel) ? rel[0] : rel;
+  return {
+    id: row.id,
+    rating: row.rating,
+    note: row.note,
+    created_at: row.created_at,
+    maskedAuthor: maskAuthorLabel(prof?.username ?? null, prof?.email ?? null),
+  };
+}
+
 export async function getPublicReviews(
   restaurantId: string
 ): Promise<GetPublicReviewsResult> {
   const admin = getSupabaseAdmin();
+  const { data: indexRows, error: indexError } = await admin
+    .from('bite_notes')
+    .select('id, redemption_id, created_at')
+    .eq('restaurant_id', restaurantId)
+    .eq('is_public', true)
+    .order('created_at', { ascending: false });
+
+  if (indexError) {
+    return { ok: false, error: indexError.message };
+  }
+
+  const index = (indexRows ?? []) as {
+    id: string;
+    redemption_id: string;
+    created_at: string;
+  }[];
+  if (index.length === 0) return { ok: true, data: [] };
+
+  const { data: redemptionRows, error: redemptionError } = await admin
+    .from('redemptions')
+    .select('id, status, verified_at')
+    .in('id', [...new Set(index.map((row) => row.redemption_id))]);
+
+  if (redemptionError) {
+    return { ok: false, error: redemptionError.message };
+  }
+
+  const verifiedIds = new Set(
+    (redemptionRows ?? [])
+      .filter((row) => redemptionIsVerified(row.status, row.verified_at))
+      .map((row) => row.id),
+  );
+  const noteIds = index
+    .filter((row) => verifiedIds.has(row.redemption_id))
+    .slice(0, 20)
+    .map((row) => row.id);
+  if (noteIds.length === 0) return { ok: true, data: [] };
+
   const { data: rows, error } = await admin
     .from('bite_notes')
     .select(
@@ -122,38 +196,18 @@ export async function getPublicReviews(
       user_profiles ( username, email )
     `
     )
-    .eq('restaurant_id', restaurantId)
-    .eq('is_public', true)
-    .order('created_at', { ascending: false })
-    .limit(20);
+    .in('id', noteIds);
 
   if (error) {
     return { ok: false, error: error.message };
   }
 
-  const data: PublicReview[] = (rows ?? []).map((row: unknown) => {
-    const x = row as {
-      id: string;
-      rating: number;
-      note: string | null;
-      created_at: string;
-      user_profiles:
-        | { username: string | null; email: string | null }
-        | { username: string | null; email: string | null }[]
-        | null;
-    };
-    const rel = x.user_profiles;
-    const prof = Array.isArray(rel) ? rel[0] : rel;
-    return {
-      id: x.id,
-      rating: x.rating,
-      note: x.note,
-      created_at: x.created_at,
-      maskedAuthor: maskAuthorLabel(
-        prof?.username ?? null,
-        prof?.email ?? null
-      ),
-    };
+  const byId = new Map(
+    ((rows ?? []) as unknown as PublicNoteRow[]).map((row) => [row.id, row]),
+  );
+  const data = noteIds.flatMap((id) => {
+    const row = byId.get(id);
+    return row ? [toPublicReview(row)] : [];
   });
 
   return { ok: true, data };
@@ -169,16 +223,34 @@ export async function toggleNoteVisibility(
   const admin = getSupabaseAdmin();
   const { data: row, error: selErr } = await admin
     .from('bite_notes')
-    .select('id, user_id')
+    .select('id, user_id, redemption_id')
     .eq('id', noteId)
     .maybeSingle();
 
   if (selErr || !row) {
     return { ok: false, error: 'Note not found.' };
   }
-  const n = row as { id: string; user_id: string };
+  const n = row as { id: string; user_id: string; redemption_id: string };
   if (n.user_id !== auth.userId) {
     return { ok: false, error: 'You can only change visibility on your own notes.' };
+  }
+
+  if (isPublic) {
+    const { data: redemption, error: redErr } = await admin
+      .from('redemptions')
+      .select('id, status, verified_at')
+      .eq('id', n.redemption_id)
+      .maybeSingle();
+    if (redErr || !redemption) {
+      return { ok: false, error: 'Redemption not found.' };
+    }
+    const redemptionRow = redemption as {
+      status: string | null;
+      verified_at: string | null;
+    };
+    if (!redemptionIsVerified(redemptionRow.status, redemptionRow.verified_at)) {
+      return { ok: false, error: PUBLIC_REVIEW_REQUIRES_VERIFIED };
+    }
   }
 
   const now = new Date().toISOString();

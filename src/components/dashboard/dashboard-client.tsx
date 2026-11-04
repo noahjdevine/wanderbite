@@ -26,6 +26,7 @@ import type { BiteNoteSummary } from '@/app/actions/bite-notes';
 import { AreaHoldNotice } from '@/components/area-hold-notice';
 import { distanceMatchCopy } from '@/lib/launch-market';
 import { RestaurantCard } from '@/components/dashboard/restaurant-card';
+import { FocusVisitFromHash } from '@/components/notes/focus-visit';
 import { CarriedCreditsSection } from '@/components/challenges/carried-credits-section';
 import { MonthlyCuration } from '@/components/challenges/monthly-curation';
 import type { CarriedCreditView } from '@/lib/challenges/carried-credits';
@@ -66,6 +67,8 @@ type DashboardClientProps = {
   showFirstBiteLocked?: boolean;
   nextBadge?: DashboardNextBadge | null;
   biteNotes: BiteNoteSummary[];
+  /** Editor return path. Challenges and the dashboard each pass their own. */
+  memoryReturnTo?: string;
   /** Set only for a credits-workflow account. Legacy accounts omit it. */
   creditHold?: { pendingCount: number } | null;
   /** Credits workflow only. Null keeps the legacy per-cycle swap count. */
@@ -90,6 +93,7 @@ export function DashboardClient({
   showFirstBiteLocked = false,
   nextBadge = null,
   biteNotes,
+  memoryReturnTo = '/challenges',
   creditHold = null,
   creditsSwapRemaining = null,
   carriedCredits = [],
@@ -195,6 +199,7 @@ export function DashboardClient({
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-8 p-6">
+      <FocusVisitFromHash />
       <Card className="overflow-hidden border-orange-200/80 bg-gradient-to-br from-orange-50/90 to-background dark:border-orange-900/40 dark:from-orange-950/25">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -316,6 +321,7 @@ export function DashboardClient({
                     ? biteNoteByRedemptionId.get(item.redemptionId)
                     : undefined
                 }
+                memoryReturnTo={memoryReturnTo}
                 useStoredDeadline={useStoredDeadline}
                 storedDeadline={item.challengeItem.redemption_deadline ?? null}
                 showRevealDetails={revealDetails}
@@ -390,6 +396,7 @@ export function DashboardClient({
         onSwap={handleSwap}
         onRedeem={handleRedeem}
         biteNoteByRedemptionId={biteNoteByRedemptionId}
+        memoryReturnTo={memoryReturnTo}
         launchEligible={launchEligible}
         recipeSections={recipeSections}
         activitySuggestions={activitySuggestions}
