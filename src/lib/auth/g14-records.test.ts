@@ -38,6 +38,7 @@ const API_ROUTES = [
   'src/app/api/cron/rollover-credits/route.ts',
   'src/app/api/cron/end-of-month-reminder/route.ts',
   'src/app/api/cron/refresh-restaurant-photos/route.ts',
+  'src/app/api/cron/content-refresh/route.ts',
 ];
 
 const EXPORTED_ACTIONS = [
@@ -50,6 +51,11 @@ const EXPORTED_ACTIONS = [
   'getRestaurantDetailsFromGoogle',
   'enrichSingleRestaurant',
   'enrichAllRestaurants',
+  'approveContentException',
+  'editContentException',
+  'rejectContentException',
+  'rollbackContentRecipe',
+  'setContentSourceStatus',
 ] as const;
 
 describe('G14 records', () => {

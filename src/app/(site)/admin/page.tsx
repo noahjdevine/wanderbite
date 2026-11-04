@@ -175,9 +175,14 @@ export default async function AdminPage() {
               Manage partner restaurants. Access restricted.
             </p>
           </div>
-          <Button variant="outline" size="sm" asChild>
-            <Link href="/">Back to app</Link>
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/admin/content">Content review</Link>
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/">Back to app</Link>
+            </Button>
+          </div>
         </div>
         <AdminClient restaurants={restaurants} users={users} auditEntries={auditEntries} />
       </div>

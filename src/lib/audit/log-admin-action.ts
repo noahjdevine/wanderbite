@@ -11,7 +11,13 @@ export type AdminAuditAction =
   | 'restaurant.slugs_generated'
   | 'restaurant.import'
   | 'restaurant.pin_set'
-  | 'offer.draft_save';
+  | 'offer.draft_save'
+  | 'content.exception_approve'
+  | 'content.exception_edit'
+  | 'content.exception_reject'
+  | 'content.recipe_rollback'
+  | 'content.source_pause'
+  | 'content.source_resume';
 
 export async function logAdminAction(params: {
   actorUserId: string;
@@ -19,7 +25,7 @@ export async function logAdminAction(params: {
   targetType: string;
   targetId?: string;
   metadata?: Record<string, unknown>;
-}): Promise<void> {
+}): Promise<boolean> {
   const admin = getSupabaseAdmin();
   const { error } = await admin.from('admin_audit_log').insert({
     actor_user_id: params.actorUserId,
@@ -31,5 +37,7 @@ export async function logAdminAction(params: {
 
   if (error) {
     console.error('[audit] failed to write admin_audit_log:', error.message);
+    return false;
   }
+  return true;
 }

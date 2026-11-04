@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 import { buildSecurityHeaderSources } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['happy-dom'],
   env: {
     NEXT_PUBLIC_POSTHOG_HOST: process.env.POSTHOG_HOST,
   },
