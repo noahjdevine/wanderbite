@@ -69,6 +69,7 @@ export function PricingFaq({ tone = 'default' }: PricingFaqProps) {
               onKeyDown={(event) => {
                 if (event.key !== 'Enter') return;
                 event.preventDefault();
+                if (event.repeat) return;
                 setOpenIndex(openIndex === index ? null : index);
               }}
               className={
