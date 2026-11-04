@@ -132,11 +132,13 @@ export async function PassportContent({ userId }: PassportContentProps) {
     for (const row of biteRes.data) {
       noteByRedemptionId.set(row.redemption_id, { note: row.note });
       const entry: PassportBiteNoteEntry = {
+        id: row.id,
         redemption_id: row.redemption_id,
         restaurant_id: row.restaurant_id,
         rating: row.rating,
         note: row.note,
         updated_at: row.updated_at,
+        is_public: row.is_public,
       };
       const list = biteNotesByRestaurantId[row.restaurant_id] ?? [];
       list.push(entry);

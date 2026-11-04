@@ -2,6 +2,8 @@ import { format } from 'date-fns';
 import Link from 'next/link';
 import { Star } from 'lucide-react';
 import { getBiteNotes, type BiteNoteRow } from '@/app/actions/bite-notes';
+import { FocusVisitFromHash } from '@/components/notes/focus-visit';
+import { VisitNoteRead } from '@/components/notes/visit-note';
 import {
   Card,
   CardContent,
@@ -9,9 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
+import { requireUser } from '@/lib/auth/require-user';
 import { JOURNAL_SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadJournalSavedRecipeLinks } from '@/lib/recipes/journal-links';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 import { cn } from '@/lib/utils';
 
@@ -93,38 +97,125 @@ async function statusByRedemption(notes: BiteNoteRow[], now: Date): Promise<Map<
   return statuses;
 }
 
+type OpenMemory = {
+  redemptionId: string;
+  restaurantName: string;
+  status: VisitStatus;
+};
+
+async function verifiedVisitsWithoutNotes(
+  userId: string,
+  notedIds: Set<string>,
+  now: Date,
+): Promise<{ ok: true; visits: OpenMemory[] } | { ok: false; error: string }> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from('redemptions')
+    .select('id, status, verified_at, expires_at, restaurants(name)')
+    .eq('user_id', userId)
+    .eq('status', 'verified');
+  if (error) return { ok: false, error: error.message };
+  const visits: OpenMemory[] = [];
+  for (const row of data ?? []) {
+    const redemption = row as {
+      id: string;
+      status: string | null;
+      verified_at: string | null;
+      expires_at: string | null;
+      restaurants: { name: string } | { name: string }[] | null;
+    };
+    if (notedIds.has(redemption.id) || !redemption.verified_at) continue;
+    const status = deriveVisitStatus({
+      item: { status: 'redeemed', redemptionDeadline: null },
+      redemption: {
+        status: redemption.status ?? '',
+        verifiedAt: redemption.verified_at,
+        expiresAt: redemption.expires_at,
+      },
+      note: null,
+      now,
+    });
+    if (status !== 'verified') continue;
+    visits.push({
+      redemptionId: redemption.id,
+      restaurantName: unwrapJoin(redemption.restaurants)?.name ?? 'Restaurant',
+      status,
+    });
+  }
+  return { ok: true, visits };
+}
+
+const JOURNAL_RETURN = '/journey?view=journal';
+
 export async function JournalContent() {
+  const auth = await requireUser();
+  if (!auth.ok) {
+    return <p className="text-destructive">{auth.error}</p>;
+  }
+
   const res = await getBiteNotes();
   if (!res.ok) {
     return <p className="text-destructive">{res.error}</p>;
   }
 
   const notes = res.data;
-  const statuses = await statusByRedemption(notes, new Date());
+  const now = new Date();
+  const [statuses, openMemories] = await Promise.all([
+    statusByRedemption(notes, now),
+    verifiedVisitsWithoutNotes(
+      auth.userId,
+      new Set(notes.map((note) => note.redemption_id)),
+      now,
+    ),
+  ]);
   const savedByRestaurant = await loadJournalSavedRecipeLinks(
     notes.map((note) => note.restaurant_id),
   );
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
+      <FocusVisitFromHash />
       <header className="space-y-2">
         <h2 className="text-2xl font-semibold tracking-tight">Journal</h2>
         <p className="text-muted-foreground">
-          Private Bite Notes from your Wanderbite visits — only you can see these.
+          Your dining memories. You choose which ones to share.
         </p>
       </header>
 
-      {notes.length === 0 ? (
+      {openMemories.ok && openMemories.visits.length > 0 ? (
+        <ul className="space-y-4">
+          {openMemories.visits.map((visit) => (
+            <li key={visit.redemptionId}>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">{visit.restaurantName}</CardTitle>
+                  <CardDescription>{visitStatusLabel(visit.status)}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <VisitNoteRead
+                    redemptionId={visit.redemptionId}
+                    status={visit.status}
+                    returnTo={JOURNAL_RETURN}
+                    note={null}
+                  />
+                </CardContent>
+              </Card>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {!openMemories.ok ? <p className="text-destructive">{openMemories.error}</p> : null}
+
+      {notes.length === 0 && (!openMemories.ok || openMemories.visits.length === 0) ? (
         <Card>
           <CardHeader>
             <CardTitle>No notes yet</CardTitle>
             <CardDescription>
-              After you redeem a challenge, leave a Bite Note from your dashboard to build your
-              food journal here.
+              After a visit is verified, you can add a memory for that visit.
             </CardDescription>
           </CardHeader>
         </Card>
-      ) : (
+      ) : notes.length > 0 ? (
         <ul className="space-y-4">
           {notes.map((n) => (
             <li key={n.id}>
@@ -145,13 +236,12 @@ export async function JournalContent() {
                   <p className="text-sm font-medium" data-visit-status={statuses.get(n.redemption_id)}>
                     {visitStatusLabel(statuses.get(n.redemption_id) ?? 'ready')}
                   </p>
-                  {n.note ? (
-                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">
-                      {n.note}
-                    </p>
-                  ) : (
-                    <p className="text-sm italic text-muted-foreground">No written note</p>
-                  )}
+                  <VisitNoteRead
+                    redemptionId={n.redemption_id}
+                    status={statuses.get(n.redemption_id) ?? 'ready'}
+                    returnTo={JOURNAL_RETURN}
+                    note={{ id: n.id, note: n.note, is_public: n.is_public }}
+                  />
                   {(savedByRestaurant[n.restaurant_id] ?? []).length > 0 ? (
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-foreground">
@@ -176,7 +266,7 @@ export async function JournalContent() {
             </li>
           ))}
         </ul>
-      )}
+      ) : null}
     </div>
   );
 }

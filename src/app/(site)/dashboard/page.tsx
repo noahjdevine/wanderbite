@@ -142,6 +142,7 @@ export default async function DashboardPage() {
           showFirstBiteLocked={presentedProgress.showFirstBiteLocked}
           nextBadge={presentedProgress.nextBadge}
           biteNotes={biteNotesForDash}
+          memoryReturnTo="/dashboard"
           creditsSwapRemaining={creditsSwapRemaining}
           blockMemberGenerate={blockMemberGenerate}
           recipeSections={recipeSections}

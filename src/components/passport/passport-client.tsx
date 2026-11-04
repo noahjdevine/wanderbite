@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useMemo, useState } from 'react';
-import Link from 'next/link';
 import Map, { Marker, NavigationControl, Popup } from 'react-map-gl/maplibre';
 import type { StyleSpecification } from 'maplibre-gl';
 import { format } from 'date-fns';
@@ -26,8 +25,12 @@ import {
 import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { RestaurantPhoto } from '@/components/restaurants/restaurant-photo';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
+import { FocusVisitFromHash } from '@/components/notes/focus-visit';
+import { MemoryEntryLink } from '@/components/notes/memory-entry';
+import { NotePrivacyControl } from '@/components/notes/note-privacy';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { RECIPES_SECTION_HEADING, type RecipeSections } from '@/lib/recipes/display';
+import { visitElementId } from '@/lib/notes/note-rules';
 import { visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -94,7 +97,7 @@ export type PassportRestaurantRatings = Record<
 /** One row per bite note; grouped under `restaurant_id` for passport lookups. */
 export type PassportBiteNoteEntry = Pick<
   BiteNoteRow,
-  'rating' | 'note' | 'restaurant_id' | 'redemption_id' | 'updated_at'
+  'id' | 'rating' | 'note' | 'restaurant_id' | 'redemption_id' | 'updated_at' | 'is_public'
 >;
 
 export type PassportBiteNotesByRestaurant = Record<
@@ -117,6 +120,8 @@ export type PassportClientProps = {
   showFirstBiteLocked: boolean;
   recipeSections?: RecipeSections;
 };
+
+const PASSPORT_RETURN = '/journey?view=passport';
 
 function biteNoteForVisit(
   visit: PassportVisit,
@@ -428,6 +433,7 @@ export function PassportClient({
 
   return (
     <div className="space-y-8">
+      <FocusVisitFromHash />
       <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-[#E85D26]">
@@ -512,8 +518,17 @@ export function PassportClient({
                           {truncateNote(popupBiteNote.note, 80)}
                         </p>
                       ) : null}
+                      <NotePrivacyControl
+                        noteId={popupBiteNote.id}
+                        isPublic={popupBiteNote.is_public}
+                      />
                     </div>
                   ) : null}
+                  <MemoryEntryLink
+                    status={popupVisit.visitStatus}
+                    redemptionId={popupVisit.id}
+                    returnTo={PASSPORT_RETURN}
+                  />
                   {popupShowCommunity && popupCommunity ? (
                     <div className="space-y-1 border-t border-border pt-2">
                       <p className="text-xs font-medium text-muted-foreground">
@@ -543,7 +558,12 @@ export function PassportClient({
         <h2 className="text-lg font-semibold tracking-tight">Your visits</h2>
         <div className="grid max-h-[520px] grid-cols-1 gap-4 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
           {visits.map((v) => (
-            <Card key={v.id} className="overflow-hidden">
+            <Card
+              key={v.id}
+              id={visitElementId(v.id) ?? undefined}
+              tabIndex={visitElementId(v.id) ? -1 : undefined}
+              className="scroll-mt-24 overflow-hidden outline-none"
+            >
               <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
                 <PassportVisitRestaurantPhoto restaurant={v.restaurant} />
               </div>
@@ -616,18 +636,18 @@ export function PassportClient({
                           {preview}
                         </p>
                       ) : null}
+                      {mine ? (
+                        <NotePrivacyControl noteId={mine.id} isPublic={mine.is_public} />
+                      ) : null}
                     </div>
                   );
                 })()}
                 <RestaurantReviews restaurantId={v.restaurant.id} className="pt-1" />
-                {!biteNoteForVisit(v, biteNotesByRestaurantId) ? (
-                  <Link
-                    href="/journey?view=journal"
-                    className="inline-block text-xs font-medium text-[#E85D26] underline-offset-2 hover:underline"
-                  >
-                    📝 Add note
-                  </Link>
-                ) : null}
+                <MemoryEntryLink
+                  status={v.visitStatus}
+                  redemptionId={v.id}
+                  returnTo={PASSPORT_RETURN}
+                />
                 <p className="text-sm font-medium text-foreground" data-visit-status={v.visitStatus}>
                   {visitStatusLabel(v.visitStatus)}
                 </p>

@@ -27,6 +27,8 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Lock } from 'lucide-react';
+import { FocusVisitFromHash } from '@/components/notes/focus-visit';
+import { VisitNoteRead } from '@/components/notes/visit-note';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadSavedRecipes } from '@/lib/recipes/load';
@@ -107,6 +109,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-8">
+      <FocusVisitFromHash />
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">{headerLabel}</CardTitle>
@@ -261,15 +264,24 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
                   <TableHead>Restaurant Name</TableHead>
                   <TableHead>Date Visited</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Memory</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {statsResult.data.history.map((row, i) => (
-                  <TableRow key={i}>
+                {statsResult.data.history.map((row) => (
+                  <TableRow key={row.redemptionId}>
                     <TableCell className="font-medium">{row.restaurantName}</TableCell>
                     <TableCell>{row.date}</TableCell>
                     <TableCell>
                       <Badge variant="secondary">{visitStatusLabel(row.visitStatus)}</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <VisitNoteRead
+                        redemptionId={row.redemptionId}
+                        status={row.visitStatus}
+                        returnTo="/journey"
+                        note={row.note}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

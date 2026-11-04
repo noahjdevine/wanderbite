@@ -14,6 +14,7 @@ type CarriedCreditsSectionProps = {
   onSwap: (challengeItemId: string) => void;
   onRedeem: (challengeItemId: string) => void;
   biteNoteByRedemptionId: Map<string, BiteNoteSummary>;
+  memoryReturnTo?: string;
   launchEligible: boolean;
   recipeSections?: RecipeSections;
   activitySuggestions?: ActivitySuggestions;
@@ -27,6 +28,7 @@ export function CarriedCreditsSection({
   onSwap,
   onRedeem,
   biteNoteByRedemptionId,
+  memoryReturnTo = '/challenges',
   launchEligible,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
   activitySuggestions = { byRestaurantId: {} },
@@ -58,6 +60,7 @@ export function CarriedCreditsSection({
               onSwap={onSwap}
               onRedeem={onRedeem}
               biteNote={redemptionId ? biteNoteByRedemptionId.get(redemptionId) : undefined}
+              memoryReturnTo={memoryReturnTo}
               recipes={
                 credit.item
                   ? recipeSections.byRestaurantId[credit.item.restaurant.id] ?? []
