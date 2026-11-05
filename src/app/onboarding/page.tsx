@@ -46,8 +46,12 @@ export default async function OnboardingPage() {
 
   if (profileResult.error) {
     return (
-      <main className="flex min-h-screen items-center justify-center p-6">
-        <p className="text-sm text-destructive">Unable to load your profile right now. Please try again.</p>
+      <main className="wb-onboarding-sheet">
+        <div className="wb-onboarding-body">
+          <p className="wb-onboarding-error" role="alert">
+            Unable to load your profile right now. Please try again.
+          </p>
+        </div>
       </main>
     );
   }

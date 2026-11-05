@@ -117,5 +117,7 @@ describe('shared form default output', () => {
     });
     expect(html.join('\n<!-- step -->\n')).toMatchSnapshot();
     expect(html.join('\n')).not.toContain('wb-account');
+    expect(html.join('\n')).toContain('wb-onboarding-band');
+    expect(html.join('\n')).toContain('Step 1 of 3');
   });
 });

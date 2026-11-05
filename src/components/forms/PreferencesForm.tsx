@@ -40,8 +40,8 @@ export function PreferencesForm({
   onSubmit: (values: PreferencesValues) => Promise<void> | void;
   submitLabel: string;
   isDirty?: boolean;
-  /** Account page wires the save error. The default markup matches onboarding. */
-  tone?: 'default' | 'account';
+  /** Account and onboarding wire the save error. Default markup is unchanged. */
+  tone?: 'default' | 'account' | 'onboarding';
 }) {
   const [values, setValues] = useState<PreferencesValues>(initialValues);
   const [saving, setSaving] = useState(false);
@@ -86,7 +86,8 @@ export function PreferencesForm({
     }
   }
 
-  const account = tone === 'account';
+  // Shared error wiring. Default stays off, so account and untouched callers match main.
+  const account = tone === 'account' || tone === 'onboarding';
 
   return (
     <form
