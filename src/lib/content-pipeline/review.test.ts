@@ -45,6 +45,21 @@ function unusedActivityOps() {
     publishActivityHoursNote: async () => {
       throw new Error('activity review was not used');
     },
+    ...unusedBriefingOps(),
+  };
+}
+
+function unusedBriefingOps() {
+  return {
+    loadBriefingDraft: async () => {
+      throw new Error('briefing review was not used');
+    },
+    loadBriefingMember: async () => null,
+    decideBriefingDraft: async () => false,
+    reopenBriefingDraft: async () => undefined,
+    publishBriefingFact: async () => {
+      throw new Error('briefing review was not used');
+    },
   };
 }
 
@@ -598,6 +613,7 @@ describe('activity review writes', () => {
         activity.version += 1;
         return 'next';
       },
+      ...unusedBriefingOps(),
       rollbackRecipe: async () => 0,
       loadSource: async () => null,
       setSourceStatus: async () => false,

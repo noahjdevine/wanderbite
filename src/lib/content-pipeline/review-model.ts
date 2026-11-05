@@ -2,9 +2,9 @@ import { EXCEPTION_REASONS, type ExceptionReason } from '@/lib/content-pipeline/
 
 export const NOTHING_PUBLISHED = 'Nothing was published.';
 
-export type ReviewSubjectLabel = 'Recipe' | 'Activity';
-export type ReviewEditKind = 'description' | 'hours_note' | 'summary' | 'note' | 'none';
-export type ReviewQueueKind = 'exception' | 'summary_draft';
+export type ReviewSubjectLabel = 'Recipe' | 'Activity' | 'Briefing';
+export type ReviewEditKind = 'description' | 'hours_note' | 'summary' | 'briefing' | 'note' | 'none';
+export type ReviewQueueKind = 'exception' | 'summary_draft' | 'briefing_draft';
 
 export type ExceptionView = {
   id: string;
@@ -27,6 +27,8 @@ export type ExceptionView = {
   approveKind: 'review_only' | 'blocked';
   approveBlock: string | null;
   canEdit: boolean;
+  /** True when the stored member fact is already active. Omitted means paused. */
+  keepActiveDefault?: boolean;
 };
 
 export type SourceView = {

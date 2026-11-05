@@ -1,4 +1,5 @@
 import { activitySourceDue, activityVerifiedAtMs } from '@/lib/content-pipeline/activity-schedule';
+import { restaurantPageDue } from '@/lib/content-pipeline/briefing-schedule';
 import { normalizeMenuUrl, type MenuSource } from '@/lib/recipes/menu-sources';
 
 export const FETCHED_SOURCE_KINDS = ['public_menu', 'venue_page', 'event_page'] as const;
@@ -39,6 +40,10 @@ export function isFetchedSourceKind(kind: string): kind is FetchedSourceKind {
 
 export function isActivitySourceKind(kind: string): kind is ActivitySourceKind {
   return (ACTIVITY_SOURCE_KINDS as readonly string[]).includes(kind);
+}
+
+export function isRestaurantPageKind(kind: string): boolean {
+  return kind === 'restaurant_page';
 }
 
 /** Venue and event pages use the same https rule as a public menu. */
@@ -94,7 +99,9 @@ export function loadActivitySourceRegistry(
 }
 
 export function activeFetchedSource(source: { status: string; kind: string; url: string }): string | null {
-  if (!isFetchedSourceKind(source.kind)) return `kind ${source.kind} is not fetched by this runner`;
+  if (!isFetchedSourceKind(source.kind) && !isRestaurantPageKind(source.kind)) {
+    return `kind ${source.kind} is not fetched by this runner`;
+  }
   if (source.status !== 'active') return `status ${source.status} is not active`;
   if (!normalizeMenuUrl(source.url)) return 'URL is not an https URL';
   return null;
@@ -137,25 +144,58 @@ export function selectDueActivitySources<T extends DueActivitySource>(
     .sort(compareDueActivitySources);
 }
 
+/** Active restaurant_page rows due after 7 elapsed days. Nulls first, then oldest verified. */
+export function selectDueRestaurantPages<T extends DueActivitySource>(
+  sources: readonly T[],
+  now: Date,
+): T[] {
+  return sources
+    .filter((source) => (source.status == null || source.status === 'active') && restaurantPageDue(source, now))
+    .slice()
+    .sort(compareDueActivitySources);
+}
+
+/**
+ * Keeps the existing URL order of menu and activity rows, then appends restaurant pages.
+ * A page cannot take a slot ahead of those rows.
+ */
+export function manualRefreshOrder<T extends { kind: string }>(sources: readonly T[]): T[] {
+  const primary: T[] = [];
+  const pages: T[] = [];
+  for (const source of sources) {
+    if (isRestaurantPageKind(source.kind)) pages.push(source);
+    else primary.push(source);
+  }
+  return [...primary, ...pages];
+}
+
 /**
  * One run starts at most `cap` sources.
  * Active public_menu rows keep their current share: they are taken first,
  * in the order given (URL order from the menu loader), up to the cap.
  * Due venue_page and event_page rows fill only the leftover slots.
  * They must already be in selectDueActivitySources order.
+ * Due restaurant_page rows fill only the slots left after those activity rows.
  * The 15-attempt cap and the one model call per source follow that same order.
  */
 export function allocateRefreshSources<T>(
   menuSources: readonly T[],
   activitySources: readonly T[],
   cap: number,
+  restaurantPages: readonly T[] = [],
 ): { selected: T[]; skipped: T[] } {
   const limit = Math.max(0, cap);
   const menus = menuSources.slice(0, limit);
   const room = limit - menus.length;
   const activities = activitySources.slice(0, room);
+  const pageRoom = room - activities.length;
+  const pages = restaurantPages.slice(0, pageRoom);
   return {
-    selected: [...menus, ...activities],
-    skipped: [...menuSources.slice(menus.length), ...activitySources.slice(activities.length)],
+    selected: [...menus, ...activities, ...pages],
+    skipped: [
+      ...menuSources.slice(menus.length),
+      ...activitySources.slice(activities.length),
+      ...restaurantPages.slice(pages.length),
+    ],
   };
 }

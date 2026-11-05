@@ -5,10 +5,13 @@ import { assertAdmin } from '@/lib/auth/assert-admin';
 import { contentReviewStore } from '@/lib/content-pipeline/review-db';
 import {
   approveActivitySummary as approveActivitySummaryDraft,
+  approveBriefingDraft as approveBriefingDraftAction,
   approveOpenException,
   editActivitySummary as editActivitySummaryDraft,
+  editBriefingDraft as editBriefingDraftAction,
   editOpenException,
   rejectActivitySummary as rejectActivitySummaryDraft,
+  rejectBriefingDraft as rejectBriefingDraftAction,
   rejectOpenException,
   rollbackRecipeDescription,
   setContentSourceRunning,
@@ -43,6 +46,7 @@ export async function approveContentException(exceptionId: string): Promise<Cont
 export async function editContentException(
   exceptionId: string,
   description: string,
+  keepActive?: boolean,
 ): Promise<ContentActionResult> {
   const auth = await gate();
   if (!auth.ok) return auth;
@@ -52,6 +56,7 @@ export async function editContentException(
     exceptionId: id,
     adminId: auth.userId,
     description,
+    keepActive,
   });
   if (result.ok) refresh();
   return result;
@@ -79,6 +84,51 @@ export async function editActivitySummary(factId: string, text: string): Promise
     factId: id,
     adminId: auth.userId,
     text,
+  });
+  if (result.ok) refresh();
+  return result;
+}
+
+export async function approveBriefingDraft(factId: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(factId);
+  if (!id) return { ok: false, error: 'Briefing draft not found.' };
+  const result = await approveBriefingDraftAction(contentReviewStore(), {
+    factId: id,
+    adminId: auth.userId,
+  });
+  if (result.ok) refresh();
+  return result;
+}
+
+export async function editBriefingDraft(
+  factId: string,
+  text: string,
+  keepActive?: boolean,
+): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(factId);
+  if (!id) return { ok: false, error: 'Briefing draft not found.' };
+  const result = await editBriefingDraftAction(contentReviewStore(), {
+    factId: id,
+    adminId: auth.userId,
+    text,
+    keepActive,
+  });
+  if (result.ok) refresh();
+  return result;
+}
+
+export async function rejectBriefingDraft(factId: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(factId);
+  if (!id) return { ok: false, error: 'Briefing draft not found.' };
+  const result = await rejectBriefingDraftAction(contentReviewStore(), {
+    factId: id,
+    adminId: auth.userId,
   });
   if (result.ok) refresh();
   return result;

@@ -13,7 +13,9 @@ import { classifyMenuFailure, retryableFailure, type FetchOutcome } from '@/lib/
 import { contentHash } from '@/lib/content-pipeline/hash';
 import type { ActivityFactDraft, ActivityFactSnapshot, ActivitySnapshot } from '@/lib/content-pipeline/activity-plan';
 import { runActivityRefresh } from '@/lib/content-pipeline/activity-refresh';
-import { activeFetchedSource, isActivitySourceKind } from '@/lib/content-pipeline/registry';
+import type { BriefingDraft, StoredBriefing } from '@/lib/content-pipeline/briefing-plan';
+import { runBriefingRefresh } from '@/lib/content-pipeline/briefing-refresh';
+import { activeFetchedSource, isActivitySourceKind, isRestaurantPageKind } from '@/lib/content-pipeline/registry';
 import { extractMenuDishes } from '@/lib/recipes/menu-extract';
 import { emptyRequestPacer, fetchAllowlistedMenu, type RequestPacer } from '@/lib/recipes/menu-fetch';
 import { buildMenuPrompt, estimateTokens, parseMenuModelText } from '@/lib/recipes/menu-generate';
@@ -42,6 +44,7 @@ export type ContentSourceRecord = {
   lastAttemptedAt: string | null;
   lastVerifiedAt: string | null;
   lastContentHash: string | null;
+  restaurantId?: string | null;
 };
 
 export type AttemptWrite = {
@@ -79,7 +82,18 @@ export type RefreshEffects = {
   updateSource: (sourceId: string, patch: SourcePatch) => Promise<void>;
   applyDescriptionFact: (row: ApplyDescriptionFact) => Promise<void>;
   applyActivityFact?: (row: ActivityFactDraft) => Promise<void>;
+  applyBriefingFact?: (row: BriefingDraft) => Promise<void>;
   openException: (exception: ExceptionDraft) => Promise<void>;
+};
+
+export type ContentSourceContext = {
+  facts: DescriptionFact[];
+  recipes: RecipeSnapshot[];
+  openExceptions: OpenExceptionKey[];
+  activities?: ActivitySnapshot[];
+  activityFacts?: ActivityFactSnapshot[];
+  briefings?: StoredBriefing[];
+  restaurantName?: string;
 };
 
 export type MaintenanceReservation =
@@ -139,6 +153,8 @@ export async function refreshContentSource(args: {
   recipes: readonly RecipeSnapshot[];
   activities?: readonly ActivitySnapshot[];
   activityFacts?: readonly ActivityFactSnapshot[];
+  briefings?: readonly StoredBriefing[];
+  restaurantName?: string;
   openExceptions?: readonly OpenExceptionKey[];
   apply: boolean;
   now?: () => Date;
@@ -234,6 +250,38 @@ export async function refreshContentSource(args: {
       apply: args.apply,
       activities: args.activities ?? [],
       facts: args.activityFacts ?? [],
+      openExceptions: args.openExceptions ?? [],
+      modelCallsUsed: args.modelCallsUsed ?? 0,
+      maxModelCalls: CONTENT_MAX_MODEL_CALLS,
+      callModel: args.callModel,
+      reserveModel: args.reserveModel,
+      effects: args.effects,
+      record: (row, patch) => note(args.apply, args.effects, row, patch, attempts),
+    });
+    return {
+      sourceId: args.source.id,
+      refused: null,
+      attempts,
+      modelCalls: outcome.modelCalls,
+      modelNeeded: outcome.modelNeeded,
+      updates: [],
+      baselines: [],
+      exceptions: outcome.exceptions,
+      verified: outcome.verified,
+    };
+  }
+
+  if (isRestaurantPageKind(args.source.kind)) {
+    const outcome = await runBriefingRefresh({
+      sourceId: args.source.id,
+      sourceUrl: args.source.url,
+      restaurantId: args.source.restaurantId ?? null,
+      restaurantName: args.restaurantName,
+      html,
+      hash,
+      at,
+      apply: args.apply,
+      stored: args.briefings ?? [],
       openExceptions: args.openExceptions ?? [],
       modelCallsUsed: args.modelCallsUsed ?? 0,
       maxModelCalls: CONTENT_MAX_MODEL_CALLS,
@@ -437,13 +485,7 @@ export async function refreshContentSource(args: {
 
 export async function refreshContentSources(args: {
   sources: readonly ContentSourceRecord[];
-  load: (source: ContentSourceRecord) => Promise<{
-    facts: DescriptionFact[];
-    recipes: RecipeSnapshot[];
-    openExceptions: OpenExceptionKey[];
-    activities?: ActivitySnapshot[];
-    activityFacts?: ActivityFactSnapshot[];
-  }>;
+  load: (source: ContentSourceRecord) => Promise<ContentSourceContext>;
   apply: boolean;
   now?: () => Date;
   sleep?: (ms: number) => Promise<void>;
@@ -472,6 +514,8 @@ export async function refreshContentSources(args: {
       recipes: loaded.recipes,
       activities: loaded.activities,
       activityFacts: loaded.activityFacts,
+      briefings: loaded.briefings,
+      restaurantName: loaded.restaurantName,
       openExceptions: loaded.openExceptions,
       apply: args.apply,
       now: args.now,
@@ -529,6 +573,7 @@ export type ContentRefreshArgs =
       rollbackId: string | null;
       fromFile: string | null;
       registryPath: string;
+      officialWebsites: boolean;
     };
 
 const UUID_RE =
@@ -551,6 +596,7 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
   let rollbackId: string | null = null;
   let fromFile: string | null = null;
   let registryPath = path.join('scripts', 'fixtures', 'e05-menu-sources.json');
+  let officialWebsites = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (!arg) continue;
@@ -629,6 +675,10 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
       fromFile = value;
       continue;
     }
+    if (arg === '--official-websites') {
+      officialWebsites = true;
+      continue;
+    }
     if (arg === '--registry') {
       const value = argv[index + 1];
       if (!value || value.startsWith('--')) return { error: '--registry needs a path' };
@@ -641,6 +691,7 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
   if (help) return { help: true };
   const commands = Number(sources) + Number(register) + Number(refresh) + Number(exceptions) + Number(resolve) + Number(rollback) + Number(expire);
   if (commands !== 1) return { error: 'Choose one of --sources, --register, --refresh, --exceptions, --resolve, --rollback, or --expire.' };
+  if (officialWebsites && !register) return { error: '--official-websites is only valid with --register' };
   if (fromFile && !refresh) return { error: '--from-file is only valid with --refresh' };
   if (fromFile && !sourceId) return { error: '--from-file needs one --source' };
   if (sourceId && !refresh) return { error: '--source is only valid with --refresh' };
@@ -668,6 +719,7 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
     rollbackId,
     fromFile,
     registryPath,
+    officialWebsites,
   };
 }
 

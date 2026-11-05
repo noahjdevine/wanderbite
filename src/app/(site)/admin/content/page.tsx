@@ -45,7 +45,7 @@ export default async function AdminContentPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-primary">Content review</h1>
             <p className="text-sm text-muted-foreground">
-              Approve, edit, or reject recipe exceptions and activity drafts. Members do not see this queue.
+              Approve, edit, or reject recipe exceptions, activity drafts, and briefing drafts. Members do not see this queue.
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>

@@ -8,7 +8,23 @@ This slice shows a short sourced "First visit" block on a revealed restaurant ch
 
 `restaurant_briefing_facts` has one row per restaurant and field. `body` is the fact text (1–400 characters). `source_url` is https only. `last_verified_at` is required. `status` is `active` or `paused`, and the default is `paused`. Client roles can select active rows and cannot insert, update, or delete. `service_role` writes. `is_sample` marks local fixtures. The UI shows "Sample" only when that column is true.
 
-`content_sources` is unchanged by the briefing page. E06-B1 can register a `venue_page` separately. This slice does not write `restaurant_briefing_facts` from that refresh.
+`content_sources` is unchanged by the briefing page. E06-B1 can register a `venue_page` separately. The member page does not write `restaurant_briefing_facts` from a refresh.
+
+## Targeted updates
+
+`npm run content:refresh -- --register --official-websites` creates one active `content_sources` row per https `restaurants.official_website`. `kind` is `restaurant_page` and `restaurant_id` is required. A null or non-https website is skipped. The command does not invent a URL. `--apply` is still required to write, with `WANDERBITE_CONTENT_REFRESH_APPLY=1`.
+
+Refresh uses the same robots check, allowlist, 10s timeout, 1 MB cap, and hash as the other kinds. A byte-identical page records `unchanged`, advances `last_verified_at`, and does not call the model. A changed page asks Haiku once, through the G13-A maintenance ledger (`feature_class = maintenance`, ops tier), using only the fetched page text. There is no web search and no Places call on this path. A fact is kept only when `filterSupportedFacts` can ground it in that page.
+
+Apply writes a `source_facts` row with `subject_type = briefing` and `status = pending_review`. It does not set `restaurant_briefing_facts.status` to `active`. A difference from a paused fact records before, after, and evidence on that draft and leaves the paused row as it was. A change to an active member-visible fact opens `content_exceptions` with reason `conflict` and does not write the fact. Removed evidence, sensitive claims, and injection-suspected text do the same: an exception opens and `restaurant_briefing_facts` stays unchanged.
+
+`/admin/content` lists those rows beside recipes and activities, labeled Briefing. Each row shows the restaurant, the field, the https source, Checked in America/Chicago, the current text, the proposed text, and the evidence as plain text. `--exceptions` lists briefing exceptions and pending drafts. `--resolve approve` or `reject` marks the row reviewed or rejected and publishes nothing.
+
+Edit is the only path that writes `restaurant_briefing_facts`, through `publish_briefing_fact`. A missing row or a paused row is saved as `paused`. An already-active row stays `active` only when the operator keeps it visible. Otherwise the edit saves `paused`. The prior text stays as an older `source_facts` version. `E06_BRIEFINGS_ENABLED` stays unset, so members see nothing new.
+
+The shared cron includes due `restaurant_page` rows when `E05_CONTENT_REFRESH_CRON_ENABLED` is exactly `true`. No separate flag is required. They fill only slots left after `public_menu`, and after activity sources when `E06_ACTIVITY_MAINTENANCE_CRON_ENABLED` is also exactly `true`. The cap stays 5 sources and 15 attempts. `vercel.json` is unchanged.
+
+Migration `20261105213000_e06_b4_briefing_updates.sql` is not applied to hosted. Do not run `supabase db push` or `npm run types:db` for it. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited. The migration is additive. Revert the PR to remove the code. The new kind, subject type, and functions are unused after that revert. No drop is required.
 
 ## Sample data
 

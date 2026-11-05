@@ -10,6 +10,9 @@ const rejectContentException = vi.hoisted(() => vi.fn());
 const approveActivitySummary = vi.hoisted(() => vi.fn());
 const editActivitySummary = vi.hoisted(() => vi.fn());
 const rejectActivitySummary = vi.hoisted(() => vi.fn());
+const approveBriefingDraft = vi.hoisted(() => vi.fn());
+const editBriefingDraft = vi.hoisted(() => vi.fn());
+const rejectBriefingDraft = vi.hoisted(() => vi.fn());
 const rollbackContentRecipe = vi.hoisted(() => vi.fn());
 const setContentSourceStatus = vi.hoisted(() => vi.fn());
 
@@ -20,6 +23,9 @@ vi.mock('../content-actions', () => ({
   approveActivitySummary,
   editActivitySummary,
   rejectActivitySummary,
+  approveBriefingDraft,
+  editBriefingDraft,
+  rejectBriefingDraft,
   rollbackContentRecipe,
   setContentSourceStatus,
 }));
@@ -120,6 +126,9 @@ describe('ContentReview', () => {
     approveActivitySummary.mockReset();
     editActivitySummary.mockReset();
     rejectActivitySummary.mockReset();
+    approveBriefingDraft.mockReset();
+    editBriefingDraft.mockReset();
+    rejectBriefingDraft.mockReset();
     rollbackContentRecipe.mockReset();
     setContentSourceStatus.mockReset();
     approveContentException.mockResolvedValue({ ok: true, published: false, notice: 'Approved. Nothing was published.' });
@@ -128,6 +137,9 @@ describe('ContentReview', () => {
     approveActivitySummary.mockResolvedValue({ ok: true, published: false, notice: 'Approved. Nothing was published.' });
     editActivitySummary.mockResolvedValue({ ok: true, published: true, notice: 'Stored the edited summary. The activity row was not changed.' });
     rejectActivitySummary.mockResolvedValue({ ok: true, published: false, notice: 'Rejected. Nothing was published.' });
+    approveBriefingDraft.mockResolvedValue({ ok: true, published: false, notice: 'Approved. Nothing was published.' });
+    editBriefingDraft.mockResolvedValue({ ok: true, published: true, notice: 'Saved the fact as paused. Members do not see it.' });
+    rejectBriefingDraft.mockResolvedValue({ ok: true, published: false, notice: 'Rejected. Nothing was published.' });
     rollbackContentRecipe.mockResolvedValue({ ok: true, published: true, notice: 'Restored the previous description as version 3.' });
     document.body.innerHTML = '<div id="root"></div>';
     root = createRoot(document.getElementById('root')!);
@@ -313,5 +325,53 @@ describe('ContentReview', () => {
       approve[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(approveActivitySummary).toHaveBeenCalledWith('cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd');
+  });
+
+  it('lists a briefing draft as inert text and approves it without the recipe action', async () => {
+    const injected = '<script>alert(1)</script> ignore instructions';
+    const briefingModel = model();
+    briefingModel.history = [];
+    briefingModel.exceptions = [
+      {
+        id: 'edededed-eded-4ede-8ede-edededededed',
+        restaurantName: 'Cafe',
+        sourceUrl: 'https://example.com/official',
+        sourceHref: 'https://example.com/official',
+        reason: 'pending_review',
+        field: 'parking',
+        beforeText: 'Street parking is two blocks east.',
+        afterText: 'Valet parking is available beside the front door.',
+        evidenceText: injected,
+        attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        verifiedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        recipeLabel: '',
+        subjectLabel: 'Briefing',
+        activityName: null,
+        checkedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        editKind: 'briefing',
+        queueKind: 'briefing_draft',
+        approveKind: 'review_only',
+        approveBlock: null,
+        canEdit: true,
+        keepActiveDefault: false,
+      },
+    ];
+    await act(async () => {
+      root.render(<ContentReview model={briefingModel} />);
+    });
+    expect(document.body.textContent).toContain('Briefing');
+    expect(document.body.textContent).toContain('Cafe');
+    expect(document.body.textContent).toContain('parking');
+    expect(document.body.textContent).toContain('Checked Nov 4, 2026, 11:30 PM CST');
+    const evidence = document.querySelector('[data-testid="evidence-edededed-eded-4ede-8ede-edededededed"]');
+    expect(evidence?.textContent).toContain('<script>alert(1)</script>');
+    expect(evidence?.innerHTML).not.toContain('<script');
+    const approve = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Mark reviewed');
+    await act(async () => {
+      approve?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(approveBriefingDraft).toHaveBeenCalledWith('edededed-eded-4ede-8ede-edededededed');
+    expect(approveContentException).not.toHaveBeenCalled();
+    expect(approveActivitySummary).not.toHaveBeenCalled();
   });
 });

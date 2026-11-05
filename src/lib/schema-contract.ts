@@ -299,7 +299,7 @@ export const SCHEMA_CONTRACT = {
     'content_hash',
     'error_code',
   ],
-  // status also allows reviewed (20261105201621). No new column. types:db was not run.
+  // status also allows reviewed (20261105204844). subject_type also allows briefing (20261105213000). No new column. types:db was not run.
   source_facts: [
     'id',
     'source_id',
