@@ -3964,7 +3964,7 @@ export type Database = {
         }
         Returns: string
       }
-      // Hand-edited for 20261105201621. npm run types:db was not run.
+      // Hand-edited for 20261105204844 (filename of 20261105201621) and 20261105213000. npm run types:db was not run.
       activity_operator_text: {
         Args: { p_kind: string; p_text: string }
         Returns: string
@@ -3989,6 +3989,43 @@ export type Database = {
           p_source_id: string
           p_text: string
         }
+        Returns: string
+      }
+      apply_briefing_field_fact: {
+        Args: {
+          p_evidence_excerpt: string
+          p_field: string
+          p_restaurant_id: string
+          p_source_id: string
+          p_value: Json
+        }
+        Returns: string
+      }
+      briefing_field_name: {
+        Args: { p_field: string }
+        Returns: string
+      }
+      briefing_operator_text: {
+        Args: { p_text: string }
+        Returns: string
+      }
+      decide_briefing_fact: {
+        Args: { p_decision: string; p_fact_id: string }
+        Returns: string
+      }
+      publish_briefing_fact: {
+        Args: {
+          p_evidence_excerpt: string
+          p_field: string
+          p_keep_active: boolean
+          p_restaurant_id: string
+          p_source_id: string
+          p_text: string
+        }
+        Returns: string
+      }
+      rollback_briefing_field_fact: {
+        Args: { p_fact_id: string }
         Returns: string
       }
       expire_dated_activities: {
