@@ -1,0 +1,15 @@
+{
+  "sources": [
+    {
+      "kind": "venue_page",
+      "url": "https://example.com/sample-square-walk",
+      "restaurant_slug": "hutchins-bbq",
+      "notes": "Fictional sample venue page for local register only. Not a partnership, booking, discount, credit, or offer."
+    },
+    {
+      "kind": "event_page",
+      "url": "https://example.com/sample-dated-fair",
+      "notes": "Fictional sample event page for local register only. Not a partnership, booking, discount, credit, or offer."
+    }
+  ]
+}

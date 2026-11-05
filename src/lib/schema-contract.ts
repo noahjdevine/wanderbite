@@ -19,6 +19,7 @@ export const SCHEMA_CONTRACT = {
     'id',
     'name',
     'category',
+    'content_source_id',
     'source_url',
     'lat',
     'lon',

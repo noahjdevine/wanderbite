@@ -48,6 +48,7 @@ export type Database = {
         Row: {
           booking_required: boolean
           category: string
+          content_source_id: string | null
           cost_category: string
           created_at: string
           hours_note: string | null
@@ -70,6 +71,7 @@ export type Database = {
         Insert: {
           booking_required?: boolean
           category: string
+          content_source_id?: string | null
           cost_category: string
           created_at?: string
           hours_note?: string | null
@@ -92,6 +94,7 @@ export type Database = {
         Update: {
           booking_required?: boolean
           category?: string
+          content_source_id?: string | null
           cost_category?: string
           created_at?: string
           hours_note?: string | null
@@ -111,7 +114,15 @@ export type Database = {
           weather_dependent?: boolean
           zip?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "activities_content_source_id_fkey"
+            columns: ["content_source_id"]
+            isOneToOne: false
+            referencedRelation: "content_sources"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       ai_bucket_balances: {
         Row: {
@@ -3939,6 +3950,24 @@ export type Database = {
           restaurant_id: string
           source_item_id: string
         }[]
+      }
+      apply_activity_field_fact: {
+        Args: {
+          p_activity_id: string
+          p_evidence_excerpt: string
+          p_field: string
+          p_source_id: string
+          p_value: Json
+        }
+        Returns: string
+      }
+      expire_dated_activities: {
+        Args: { p_today: string }
+        Returns: number
+      }
+      rollback_activity_field_fact: {
+        Args: { p_fact_id: string }
+        Returns: string
       }
       apply_recipe_description_fact: {
         Args: {

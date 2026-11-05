@@ -6,14 +6,17 @@ Operator-only. This does not change member pages. `E05_RECIPES_ENABLED` and `E05
 
 ## Registry
 
-`content_sources` holds approved URLs. `kind` may be `public_menu`, `venue_page`, or `event_page`. This runner fetches `public_menu` only. `status` is `active`, `paused`, or `retired`. A row that is missing or not active is refused.
+`content_sources` holds approved URLs. `kind` may be `public_menu`, `venue_page`, or `event_page`. This runner fetches all three. `public_menu` behavior is unchanged. `venue_page` and `event_page` are activity sources. `status` is `active`, `paused`, or `retired`. A row that is missing or not active is refused.
 
 The two #88 URLs are not inserted by SQL. Register them from `scripts/fixtures/e05-menu-sources.json`:
 
 ```bash
 npm run content:refresh -- --register
 WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --register --apply
+npm run content:refresh -- --register --registry scripts/fixtures/e06-activity-sources.json
 ```
+
+The activity fixture is fictional `example.com` pages. It does not insert activities and it is not a partnership.
 
 ## Refresh
 
@@ -23,13 +26,21 @@ Default `--refresh` is a dry-run. It does not write attempts, facts, exceptions,
 npm run content:refresh -- --sources
 npm run content:refresh -- --refresh
 npm run content:refresh -- --refresh --source <uuid>
+npm run content:refresh -- --expire
+WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --expire --apply
 npm run content:refresh -- --refresh --from-file .menu-recipes/menu.html --source <uuid>
 WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --refresh --apply
 ```
 
 Fetch reuses the #88 robots check, allowlist, 10s timeout, 1 MB cap, and `WanderbiteMenuDraftBot` user agent. Redirects are refused. Page HTML is not stored. The page is hashed with SHA-256.
 
-A byte-identical page records `source_fetch_attempts.outcome = unchanged`, advances `last_attempted_at` and `last_verified_at`, and does not call the model. A timeout, HTTP error, robots disallow, oversize body, or refused redirect records that outcome, advances `last_attempted_at`, and does not advance `last_verified_at`. Timeout and HTTP errors retry at most twice, with 250ms backoff doubling each time. One run checks at most 5 sources and 15 attempts.
+A byte-identical page records `source_fetch_attempts.outcome = unchanged`, advances `last_attempted_at` and `last_verified_at`, and does not call the model. That includes `venue_page` and `event_page`.
+
+A venue or event page does not insert an activity. Hours, price, and allergen text open `content_exceptions` (`sensitive` or `conflict`) and are not written onto the activity. A summary draft on `--apply` is a `pending_review` fact for an activity that already exists. It uses the same G13-A maintenance ledger. It cannot invent a partnership, booking, discount, credit, or offer. The activity row is not rewritten by that draft.
+
+`--expire` lists active activities whose `valid_until` is before today's America/Chicago date. Dry-run prints the rows and writes nothing. `--apply` sets `status` to `expired`. It does not delete rows and it does not change challenges, redemptions, or offers.
+
+A timeout, HTTP error, robots disallow, oversize body, or refused redirect records that outcome, advances `last_attempted_at`, and does not advance `last_verified_at`. Timeout and HTTP errors retry at most twice, with 250ms backoff doubling each time. One run checks at most 5 sources and 15 attempts.
 
 The first refresh of a source that already has inspired-by `public_menu` recipes writes their baseline facts automatically. A separate command would be easy to skip, and this refresh is the one that stores the page hash. Skipping the facts there would make the next identical fetch look unchanged and leave the #88 rows untracked.
 
@@ -49,7 +60,7 @@ A description change supersedes the old fact, inserts the new one, and bumps `re
 
 ## Model budget
 
-Apply calls Claude Haiku `claude-haiku-4-5-20251001` only when a description change still needs a paraphrase. Each call reserves G13-A maintenance (`ai_reserve`, `feature_class = maintenance`, `account_tier = ops`, no `user_id` and no `guest_id`), then dispatches and settles. That is the operating ledger. It is not a member AI budget. No new ledger table was added. One run reserves at most one call per source, and at most 5 sources.
+Apply calls Claude Haiku `claude-haiku-4-5-20251001` only when a description change still needs a paraphrase, or when an activity page still needs a summary draft. A dry-run does not call it. Each call reserves G13-A maintenance (`ai_reserve`, `feature_class = maintenance`, `account_tier = ops`, no `user_id` and no `guest_id`), then dispatches and settles. That is the operating ledger. It is not a member AI budget. No new ledger table was added. One run reserves at most one call per source, and at most 5 sources.
 
 ## Exceptions and rollback
 
@@ -79,7 +90,7 @@ Listed timestamps use America/Chicago. Stored timestamps are UTC.
 
 ## Hosted
 
-Local review uses a local database. The script refuses a hosted Supabase URL unless `WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1`. Writes also need `WANDERBITE_CONTENT_REFRESH_APPLY=1`. Migration `20261104040000_e05_b2_content_pipeline.sql` was applied to the hosted database on 2026-11-03 with Noah's OK, and its `schema_migrations` version is aligned. Do not run `npm run types:db` against hosted for this slice; the checked-in table types were hand-edited to match the migration.
+Local review uses a local database. The script refuses a hosted Supabase URL unless `WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1`. Writes also need `WANDERBITE_CONTENT_REFRESH_APPLY=1`. Do not point refresh or expire at hosted. Migration `20261104040000_e05_b2_content_pipeline.sql` was applied to the hosted database on 2026-11-03 with Noah's OK, and its `schema_migrations` version is aligned. Migration `20261105190005_e06_b1_activity_pipeline.sql` is not on hosted. Do not run `npm run types:db` against hosted for this slice; the checked-in table types were hand-edited to match the migration.
 
 ## Rollback of the PR
 

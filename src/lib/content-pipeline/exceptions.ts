@@ -16,7 +16,7 @@ export function isExceptionReason(value: string): value is ExceptionReason {
 
 export type ExceptionDraft = {
   sourceId: string;
-  subjectType: 'recipe';
+  subjectType: 'recipe' | 'activity';
   subjectId: string | null;
   field: string | null;
   reason: ExceptionReason;

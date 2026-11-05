@@ -2,7 +2,9 @@ import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { zipFromAddress } from '@/lib/catalog/import';
+import { haversineMiles } from '@/lib/launch-market';
 import {
+  ACTIVITY_NEARBY_CAP_MILES,
   activityBoundMiles,
   chicagoCalendarDate,
   matchActivities,
@@ -72,11 +74,14 @@ describe('activity matching', () => {
     expect(restaurantZip(null)).toBeNull();
   });
 
-  it('uses the saved distance band and 15 miles when it is missing', () => {
+  it('caps coordinate distance at 5 miles, including a missing band', () => {
+    expect(ACTIVITY_NEARBY_CAP_MILES).toBe(5);
     expect(activityBoundMiles('5_mi')).toBe(5);
-    expect(activityBoundMiles('40_mi')).toBe(40);
-    expect(activityBoundMiles(null)).toBe(15);
-    expect(activityBoundMiles('worth_trip')).toBe(15);
+    expect(activityBoundMiles('15_mi')).toBe(5);
+    expect(activityBoundMiles('25_mi')).toBe(5);
+    expect(activityBoundMiles('40_mi')).toBe(5);
+    expect(activityBoundMiles(null)).toBe(5);
+    expect(activityBoundMiles('worth_trip')).toBe(5);
   });
 
   it('returns at most two, closer coordinates first, then name and id', () => {
@@ -97,7 +102,31 @@ describe('activity matching', () => {
     const outside = activity({ id: '00000000-0000-4000-8000-000000000012', name: 'Outside', lat: 33.5 });
     expect(match([near, outside], place(), '5_mi').map((row) => row.name)).toEqual(['Near']);
     expect(match([outside], place(), '15_mi')).toEqual([]);
-    expect(match([outside], place(), '40_mi').map((row) => row.name)).toEqual(['Outside']);
+    expect(match([outside], place(), '40_mi')).toEqual([]);
+  });
+
+  it('drops a coordinate match beyond 6 miles on every band and keeps one at 4 miles', () => {
+    const milesPerDegree = 69.093;
+    const four = activity({
+      id: '00000000-0000-4000-8000-000000000061',
+      name: 'Four miles',
+      lat: ORIGIN.lat + 4 / milesPerDegree,
+      lon: ORIGIN.lon,
+    });
+    const six = activity({
+      id: '00000000-0000-4000-8000-000000000062',
+      name: 'Six miles',
+      lat: ORIGIN.lat + 6.2 / milesPerDegree,
+      lon: ORIGIN.lon,
+    });
+    const origin = { lat: ORIGIN.lat, lon: ORIGIN.lon };
+    expect(haversineMiles(origin, { lat: four.lat ?? 0, lon: four.lon ?? 0 })).toBeGreaterThan(3);
+    expect(haversineMiles(origin, { lat: four.lat ?? 0, lon: four.lon ?? 0 })).toBeLessThan(5);
+    expect(haversineMiles(origin, { lat: six.lat ?? 0, lon: six.lon ?? 0 })).toBeGreaterThan(6);
+    for (const band of ['5_mi', '15_mi', '25_mi', '40_mi', null]) {
+      expect(match([six], place(), band)).toEqual([]);
+    }
+    expect(match([four], place(), '15_mi').map((row) => row.name)).toEqual(['Four miles']);
   });
 
   it('uses same ZIP then an adjacent launch ZIP and does not call that a drive', () => {
