@@ -1429,6 +1429,21 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .wb-account,
+  .wb-account * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .wb-account button[type="submit"],
+  .wb-account button[type="submit"]:hover,
+  .wb-account [data-slot="button"],
+  .wb-account [data-slot="button"]:hover {
+    transform: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
   .wb-wordmark,
   .wb-nav-pill,
   .wb-nav-link,
@@ -1698,4 +1713,237 @@
 @media (min-width: 768px) {
   .wb-auth-title { font-size: 40px; }
   .wb-auth-card { padding: 2rem 1.5rem 1.75rem; }
+}
+
+/* ---------- Account page ----------
+   Scoped to .wb-account. Does not edit .wb-reading, .wb-partner-*, .wb-hiw-cta,
+   nav, footer, or Bea. .wb-account-menu is the header menu and is not this page.
+   Primary pill light stop is --wb-violet: white 16px text on #8b5cf6 is under 4.5:1,
+   and white on #7c3aed clears it. White on the pink stop #db2777 is about 4.6:1. */
+.wb-account {
+  background: var(--wb-cream);
+  color: var(--wb-ink);
+  overflow-x: clip;
+  font-family: var(--font-sans), Outfit, sans-serif;
+}
+.wb-account-band {
+  background: var(--wb-night);
+  color: #fff;
+}
+.wb-account-band-inner,
+.wb-account-body {
+  box-sizing: border-box;
+  width: min(100%, 48rem);
+  margin: 0 auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+.wb-account-band-inner {
+  padding-top: 2.5rem;
+  padding-bottom: 4.25rem;
+}
+.wb-account-band h1 {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(36px, 8vw, 56px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+  overflow-wrap: anywhere;
+}
+.wb-account-band p {
+  margin: 0.85rem 0 0;
+  max-width: 36rem;
+  color: var(--wb-lavender-2);
+  font-size: 17px;
+  line-height: 1.5;
+}
+.wb-account-sheet {
+  margin-top: -28px;
+  border-radius: var(--wb-r-sheet) var(--wb-r-sheet) 0 0;
+  background: var(--wb-cream);
+  color: var(--wb-ink);
+}
+.wb-account-body {
+  padding-top: 1.75rem;
+  padding-bottom: 4rem;
+}
+.wb-account-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+.wb-account-card {
+  min-width: 0;
+  background: #fff;
+  border-radius: var(--wb-r-card);
+  box-shadow: var(--wb-shadow-card);
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+.wb-account-card h2,
+.wb-account h3 {
+  margin: 0;
+  color: var(--wb-ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.wb-account-card h2 { font-size: 28px; }
+.wb-account h3 { font-size: 22px; }
+.wb-account-copy,
+.wb-account .text-muted-foreground {
+  color: var(--wb-muted);
+}
+.wb-account-copy {
+  margin: 0.4rem 0 0;
+  font-size: 15px;
+  line-height: 1.55;
+}
+.wb-account-fine {
+  margin: 0.35rem 0 0;
+  color: var(--wb-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.wb-account-block { margin-top: 1.25rem; min-width: 0; }
+.wb-account-meta-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.wb-account-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+  min-width: 0;
+  color: var(--wb-muted);
+  font-size: 14px;
+}
+.wb-account-meta span:last-child {
+  min-width: 0;
+  color: var(--wb-ink);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.wb-account legend,
+.wb-account form label,
+.wb-account-reminder {
+  color: var(--wb-ink);
+}
+.wb-account fieldset > .grid,
+.wb-account section > .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+.wb-account fieldset > .grid > label,
+.wb-account section > .grid > button,
+.wb-account form > label {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  height: auto;
+  border-color: var(--wb-line);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--wb-ink);
+  overflow-wrap: anywhere;
+}
+.wb-account fieldset > .grid > label:has(input:checked),
+.wb-account section > .grid > button[aria-pressed="true"],
+.wb-account form > label:has(input:checked) {
+  border-color: var(--wb-violet);
+  background: #f5f3ff;
+}
+.wb-account input:not([type="checkbox"]),
+.wb-account select {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 48px;
+  border: 2px solid var(--wb-night);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--wb-ink);
+  font: inherit;
+  font-size: 16px;
+}
+.wb-account input::placeholder { color: var(--wb-muted); }
+.wb-account input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--wb-violet);
+  flex: 0 0 auto;
+}
+.wb-account-reminder {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  min-height: 44px;
+  margin-top: 0.5rem;
+  font-size: 14px;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.wb-account button[type="submit"] {
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: 0 10px 22px rgba(219, 39, 119, 0.28);
+}
+.wb-account button[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.wb-account [data-slot="button"]:not([type="submit"]) {
+  width: 100%;
+  min-height: 52px;
+  border: 1.5px solid #d9cfe6;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--wb-plum);
+  font-size: 16px;
+  font-weight: 600;
+  box-shadow: none;
+}
+.wb-account a:not(.wb-cta) {
+  color: var(--wb-pink-ink);
+  font-weight: 600;
+  text-underline-offset: 0.18em;
+}
+.wb-account-error {
+  margin: 0;
+  border-radius: 16px;
+  background: #fee2e2;
+  color: #7f1d1d;
+  padding: 0.85rem 1rem;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.wb-account .text-destructive { color: #7f1d1d; }
+.wb-account-status,
+.wb-account [role="status"] {
+  color: var(--wb-ok-fg);
+}
+.wb-account-status {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.wb-account :focus-visible {
+  outline: 2px solid var(--wb-violet);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.wb-account-band :focus-visible {
+  outline-color: var(--wb-blush);
 }

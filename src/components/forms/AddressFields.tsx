@@ -57,11 +57,16 @@ export function AddressFields({
   onChange,
   disabled,
   onZipBlur,
+  zipDescribedBy,
+  zipInvalid,
 }: {
   value: AddressValues;
   onChange: (next: AddressValues) => void;
   disabled?: boolean;
   onZipBlur?: () => void;
+  /** Set by the account profile form when the ZIP message is showing. */
+  zipDescribedBy?: string;
+  zipInvalid?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -165,10 +170,12 @@ export function AddressFields({
             onChange={(e) => onChange({ ...value, zip: e.target.value })}
             onBlur={onZipBlur}
             placeholder="78701"
-            autoComplete="postal-code"
-            disabled={disabled}
-            className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-base sm:text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
-          />
+          autoComplete="postal-code"
+          disabled={disabled}
+          aria-describedby={zipDescribedBy}
+          aria-invalid={zipInvalid ? true : undefined}
+          className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-base sm:text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
+        />
         </div>
       </div>
     </div>

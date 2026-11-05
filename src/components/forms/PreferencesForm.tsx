@@ -34,11 +34,14 @@ export function PreferencesForm({
   onSubmit,
   submitLabel,
   isDirty,
+  tone = 'default',
 }: {
   initialValues: PreferencesValues;
   onSubmit: (values: PreferencesValues) => Promise<void> | void;
   submitLabel: string;
   isDirty?: boolean;
+  /** Account page wires the save error. The default markup matches onboarding. */
+  tone?: 'default' | 'account';
 }) {
   const [values, setValues] = useState<PreferencesValues>(initialValues);
   const [saving, setSaving] = useState(false);
@@ -83,8 +86,14 @@ export function PreferencesForm({
     }
   }
 
+  const account = tone === 'account';
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form
+      onSubmit={handleSubmit}
+      className="space-y-6"
+      aria-describedby={account && error ? 'preferences-save-error' : undefined}
+    >
       <fieldset className="space-y-3">
         <legend className="text-sm font-medium">Dietary preferences</legend>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -165,7 +174,11 @@ export function PreferencesForm({
       </label>
 
       {error ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p
+          id={account ? 'preferences-save-error' : undefined}
+          className="text-sm text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
