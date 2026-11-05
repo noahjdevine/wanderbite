@@ -3964,7 +3964,8 @@ export type Database = {
         }
         Returns: string
       }
-      // Hand-edited for 20261105204844 (filename of 20261105201621) and 20261105213000. npm run types:db was not run.
+      // Hand-edited for 20261105204844 (filename of 20261105201621) and 20261105212138 (filename of 20261105213000). npm run types:db was not run.
+      // 20261105223000 keeps the same apply signatures and stores change_summary inside source_facts.value. types:db was not run.
       activity_operator_text: {
         Args: { p_kind: string; p_text: string }
         Returns: string
