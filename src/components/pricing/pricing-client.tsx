@@ -111,7 +111,12 @@ export function PricingClient({
                   partial refunds. Each challenge shows its discount and minimum spend. Offers are
                   non-stackable and require in-person confirmation.
                 </p>
-                {userId ? null : (
+                {userId ? (
+                  <p>
+                    See our <Link href="/terms">Terms</Link>, <Link href="/privacy">Privacy</Link>, and{' '}
+                    <Link href="/rules">Rules</Link>.
+                  </p>
+                ) : (
                   <p>
                     By creating an account, you agree to our{' '}
                     <Link href="/terms">Terms of Service</Link>

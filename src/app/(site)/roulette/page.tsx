@@ -23,12 +23,22 @@ export default async function RoulettePage({ searchParams }: RoulettePageProps) 
     const {
       data: { user },
     } = await supabase.auth.getUser();
+    let subscriptionStatus: string | null = null;
+    if (user) {
+      const { data: profile } = await supabase
+        .from('user_profiles')
+        .select('subscription_status')
+        .eq('id', user.id)
+        .maybeSingle();
+      subscriptionStatus =
+        (profile as { subscription_status: string | null } | null)?.subscription_status ?? null;
+    }
     return (
       <main className="min-h-screen bg-gradient-to-b from-orange-50/80 to-background">
         <RouletteClient
           key={initialMessage}
           initialMessage={initialMessage}
-          signedIn={user != null}
+          subscriptionStatus={subscriptionStatus}
         />
       </main>
     );

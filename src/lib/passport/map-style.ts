@@ -7,6 +7,9 @@ import type { StyleSpecification } from 'maplibre-gl';
  */
 export const OSM_TILES_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
+/** Scheme, host, and port. No path, query, or `{z}` placeholder. */
+export const OSM_TILE_ORIGIN = 'https://tile.openstreetmap.org';
+
 export const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
 
@@ -31,6 +34,22 @@ export function isValidMapTilesUrl(raw: string | null | undefined): boolean {
     return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
     return false;
+  }
+}
+
+/**
+ * Origin the Passport map will request. A valid http(s) XYZ template contributes
+ * its origin only. Blank, non-XYZ, and non-http(s) values use the OSM origin.
+ * `{z}`, `{x}`, `{y}`, and any query (including a tile key) are not returned.
+ */
+export function mapTilesCspOrigin(raw: string | null | undefined): string {
+  const value = trimmed(raw);
+  if (!isValidMapTilesUrl(value)) return OSM_TILE_ORIGIN;
+  const probe = value.replaceAll('{z}', '0').replaceAll('{x}', '0').replaceAll('{y}', '0');
+  try {
+    return new URL(probe).origin;
+  } catch {
+    return OSM_TILE_ORIGIN;
   }
 }
 

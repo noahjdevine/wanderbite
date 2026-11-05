@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { StyleSpecification } from 'maplibre-gl';
 import {
   OSM_ATTRIBUTION,
+  OSM_TILE_ORIGIN,
   OSM_TILES_URL,
+  mapTilesCspOrigin,
   passportMapStyle,
 } from '@/lib/passport/map-style';
 
@@ -88,6 +90,28 @@ describe('passportMapStyle', () => {
     expect(source.tiles?.[0]).toBe('https://tiles.example.test/maps/{z}/{x}/{y}.png');
     expect(source.attribution).toBe('Map tiles from tiles.example.test');
     expect(source.attribution).not.toMatch(/OpenStreetMap/);
+  });
+
+  it('returns the tile origin for CSP and falls back to OpenStreetMap', () => {
+    expect(mapTilesCspOrigin(undefined)).toBe(OSM_TILE_ORIGIN);
+    expect(mapTilesCspOrigin('')).toBe(OSM_TILE_ORIGIN);
+    expect(mapTilesCspOrigin('   ')).toBe(OSM_TILE_ORIGIN);
+    expect(mapTilesCspOrigin('https://example.test/tiles.png')).toBe(OSM_TILE_ORIGIN);
+    expect(mapTilesCspOrigin('javascript:alert(1)/{z}/{x}/{y}')).toBe(OSM_TILE_ORIGIN);
+    expect(mapTilesCspOrigin('ftp://example.test/{z}/{x}/{y}.png')).toBe(OSM_TILE_ORIGIN);
+    expect(mapTilesCspOrigin(OSM_TILES_URL)).toBe('https://tile.openstreetmap.org');
+    expect(
+      mapTilesCspOrigin('https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key=abc'),
+    ).toBe('https://api.maptiler.com');
+    expect(mapTilesCspOrigin('http://localhost:8080/tiles/{z}/{x}/{y}.png')).toBe(
+      'http://localhost:8080',
+    );
+    const origin = mapTilesCspOrigin(
+      'https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key=abc',
+    );
+    expect(origin).not.toContain('key=abc');
+    expect(origin).not.toContain('{z}');
+    expect(origin).not.toContain('/maps/');
   });
 
   it('keeps the OpenStreetMap credit when the configured URL is that host and attribution is blank', () => {

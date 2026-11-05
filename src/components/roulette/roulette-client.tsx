@@ -66,11 +66,14 @@ function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
 
 export function RouletteClient({
   initialMessage = '',
-  signedIn = false,
+  subscriptionStatus = null,
 }: {
   initialMessage?: string;
-  /** Signed-in members, including active members, do not see the join upsell. */
-  signedIn?: boolean;
+  /**
+   * Same active-membership check as PricingClient: hide the join upsell only
+   * when subscription_status is exactly "active".
+   */
+  subscriptionStatus?: string | null;
 }) {
   const askInFlightRef = useRef(false);
   const resultSectionRef = useRef<HTMLDivElement>(null);
@@ -85,6 +88,8 @@ export function RouletteClient({
   const [message, setMessage] = useState(initialMessage);
   const [result, setResult] = useState<RouletteApiResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isActive = subscriptionStatus === 'active';
 
   const exclusionsSummary = useMemo(() => {
     if (excludedCuisines.length === 0) return null;
@@ -358,7 +363,7 @@ export function RouletteClient({
             </Button>
           </div>
 
-          {signedIn ? null : (
+          {isActive ? null : (
             <p className="text-center text-sm text-muted-foreground">
               Wanderbite members see the discount on each challenge.{' '}
               <Link

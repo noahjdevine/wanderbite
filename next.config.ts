@@ -28,6 +28,7 @@ const nextConfig: NextConfig = {
       posthogHost:
         process.env.NEXT_PUBLIC_POSTHOG_HOST || process.env.POSTHOG_HOST,
       sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+      mapTilesUrl: process.env.NEXT_PUBLIC_MAP_TILES_URL,
     });
   },
 };

@@ -46,10 +46,16 @@ function stubSpin() {
   }));
 }
 
-async function showResult(signedIn = false) {
-  render(<RouletteClient signedIn={signedIn} />);
+async function showResult(subscriptionStatus: string | null = null) {
+  render(<RouletteClient subscriptionStatus={subscriptionStatus} />);
   fireEvent.submit(screen.getByRole('button', { name: 'Find a spot' }).closest('form')!);
   expect(await screen.findByRole('heading', { name: 'Umai Sushi' })).toBeTruthy();
+}
+
+function expectJoinUpsell() {
+  const link = screen.getByRole('link', { name: 'Join for $15/month →' });
+  expect(link.getAttribute('href')).toBe('/pricing');
+  expect(screen.getByText(/Wanderbite members see the discount on each challenge/)).toBeTruthy();
 }
 
 describe('Discover join upsell', () => {
@@ -62,15 +68,16 @@ describe('Discover join upsell', () => {
     vi.unstubAllGlobals();
   });
 
-  it('keeps the join link for a signed-out visitor', async () => {
-    await showResult(false);
-    const link = screen.getByRole('link', { name: 'Join for $15/month →' });
-    expect(link.getAttribute('href')).toBe('/pricing');
-    expect(screen.getByText(/Wanderbite members see the discount on each challenge/)).toBeTruthy();
-  });
+  it.each([null, 'inactive', 'past_due'])(
+    'keeps the join link when subscription_status is %s',
+    async (status) => {
+      await showResult(status);
+      expectJoinUpsell();
+    },
+  );
 
-  it('hides the join link for a signed-in member', async () => {
-    await showResult(true);
+  it('hides the join link only for an active member', async () => {
+    await showResult('active');
     expect(screen.queryByRole('link', { name: 'Join for $15/month →' })).toBeNull();
     expect(screen.queryByText(/Wanderbite members see the discount/)).toBeNull();
   });
