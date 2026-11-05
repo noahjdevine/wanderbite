@@ -12,6 +12,7 @@ import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations'
 import { loadCreditsSwapRemaining } from '@/lib/challenges/carried-credits';
 import { memberGenerateBlocked } from '@/lib/challenges/load-monthly-reveal';
 import { loadActivitySuggestions } from '@/lib/activities/load';
+import { loadRestaurantBriefings } from '@/lib/briefings/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
 
 export const dynamic = 'force-dynamic';
@@ -101,15 +102,17 @@ export default async function DashboardPage() {
   }
 
   const activityRestaurants = (currentChallenge?.items ?? []).map((item) => item.restaurant);
-  const [progress, blockMemberGenerate, recipeSections, activitySuggestions, biteNotesRes] =
+  const restaurantIds = activityRestaurants.map((restaurant) => restaurant.id);
+  const [progress, blockMemberGenerate, recipeSections, activitySuggestions, briefings, biteNotesRes] =
     await Promise.all([
       getMemberProgress(typedProfile.id),
       memberGenerateBlocked(),
-      loadRecipeSections(activityRestaurants.map((restaurant) => restaurant.id)),
+      loadRecipeSections(restaurantIds),
       loadActivitySuggestions({
         restaurants: activityRestaurants,
         distanceBand: typedProfile.distance_band,
       }),
+      loadRestaurantBriefings({ restaurantIds }),
       getBiteNotes(),
     ]);
   const presentedProgress = presentMemberProgress(progress);
@@ -147,6 +150,7 @@ export default async function DashboardPage() {
           blockMemberGenerate={blockMemberGenerate}
           recipeSections={recipeSections}
           activitySuggestions={activitySuggestions}
+          briefings={briefings}
         />
       </div>
     </main>

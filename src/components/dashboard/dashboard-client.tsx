@@ -43,6 +43,7 @@ import {
   type MonthlyRevealPanel,
 } from '@/lib/challenges/monthly-reveal-copy';
 import type { ActivitySuggestions } from '@/lib/activities/types';
+import type { RestaurantBriefings } from '@/lib/briefings/types';
 import type { RecipeSections } from '@/lib/recipes/display';
 
 export type DashboardStreakStats = {
@@ -91,6 +92,8 @@ type DashboardClientProps = {
   recipeSections?: RecipeSections;
   /** Empty when E06_ACTIVITIES_ENABLED is not exactly true. */
   activitySuggestions?: ActivitySuggestions;
+  /** Empty when E06_BRIEFINGS_ENABLED is not exactly true. */
+  briefings?: RestaurantBriefings;
   /** Challenges uses the Golden Hour sheet. Dashboard keeps the classic stack. */
   appearance?: 'classic' | 'golden';
   /** Golden sheet only. The classic page renders this notice itself. */
@@ -114,6 +117,7 @@ export function DashboardClient({
   blockMemberGenerate = false,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
   activitySuggestions = { byRestaurantId: {} },
+  briefings = { byRestaurantId: {} },
   appearance = 'classic',
   showIncompleteProfile = false,
 }: DashboardClientProps) {
@@ -265,6 +269,7 @@ export function DashboardClient({
               recipes={recipeSections.byRestaurantId[item.restaurant.id] ?? []}
               recipeExclusionLine={recipeSections.exclusionLine}
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
+              briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
             />
           ) : (
             <RestaurantCard
@@ -287,6 +292,7 @@ export function DashboardClient({
               recipes={recipeSections.byRestaurantId[item.restaurant.id] ?? []}
               recipeExclusionLine={recipeSections.exclusionLine}
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
+              briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
             />
           ),
         )}
@@ -349,6 +355,7 @@ export function DashboardClient({
       launchEligible={launchEligible}
       recipeSections={recipeSections}
       activitySuggestions={activitySuggestions}
+      briefings={briefings}
     />
   );
 

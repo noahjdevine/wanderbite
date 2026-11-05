@@ -16,6 +16,7 @@ import {
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
+import { FirstVisitBriefing } from '@/components/briefings/first-visit';
 import { VisitNoteRead } from '@/components/notes/visit-note';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { SocialProofRatingBlock } from '@/components/restaurant-social-proof';
@@ -25,6 +26,7 @@ import { ChallengeTicket } from '@/components/wb/challenge-ticket';
 import { CtaButton } from '@/components/wb/cta-button';
 import type { StatusTrackStatus } from '@/components/wb/status-track';
 import type { ActivitySuggestion } from '@/lib/activities/types';
+import type { BriefingFact } from '@/lib/briefings/types';
 import type { BiteNoteSummary } from '@/app/actions/bite-notes';
 import {
   challengeCardExpired,
@@ -104,6 +106,8 @@ type AdventureTicketProps = {
   recipes?: RecipeCardModel[];
   recipeExclusionLine?: string | null;
   activities?: ActivitySuggestion[];
+  /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
+  briefings?: BriefingFact[];
 };
 
 export function AdventureTicket({
@@ -124,6 +128,7 @@ export function AdventureTicket({
   recipes = [],
   recipeExclusionLine = null,
   activities = [],
+  briefings = [],
 }: AdventureTicketProps) {
   const [nowMs] = useState(() => Date.now());
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
@@ -316,6 +321,7 @@ export function AdventureTicket({
         />
       ) : null}
       <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
+      <FirstVisitBriefing headingId={`briefing-${item.restaurant.id}`} facts={briefings} />
       {item.socialProof && item.socialProof.totalRatings >= 3 && item.socialProof.avgRating != null ? (
         <SocialProofRatingBlock
           avgRating={item.socialProof.avgRating}

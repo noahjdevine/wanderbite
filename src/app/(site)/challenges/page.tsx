@@ -18,6 +18,7 @@ import {
 import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-reveal';
 import { loadActivitySuggestions } from '@/lib/activities/load';
+import { loadRestaurantBriefings } from '@/lib/briefings/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
 
 export const dynamic = 'force-dynamic';
@@ -166,12 +167,14 @@ export default async function ChallengesPage() {
     ...(currentChallenge?.items ?? []).map((item) => item.restaurant),
     ...carriedCredits.flatMap((credit) => (credit.item ? [credit.item.restaurant] : [])),
   ];
-  const [recipeSections, activitySuggestions] = await Promise.all([
-    loadRecipeSections(activityRestaurants.map((restaurant) => restaurant.id)),
+  const restaurantIds = activityRestaurants.map((restaurant) => restaurant.id);
+  const [recipeSections, activitySuggestions, briefings] = await Promise.all([
+    loadRecipeSections(restaurantIds),
     loadActivitySuggestions({
       restaurants: activityRestaurants,
       distanceBand: typedProfile.distance_band,
     }),
+    loadRestaurantBriefings({ restaurantIds }),
   ]);
 
   const monthlyReveal = await loadMonthlyRevealForChallenges({
@@ -207,6 +210,7 @@ export default async function ChallengesPage() {
         monthlyReveal={monthlyReveal}
         recipeSections={recipeSections}
         activitySuggestions={activitySuggestions}
+        briefings={briefings}
       />
     </main>
   );
