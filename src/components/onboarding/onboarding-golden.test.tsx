@@ -150,7 +150,7 @@ describe('onboarding Golden Hour shell', () => {
       },
       USER_ID,
     );
-    expect(screen.getByRole('heading', { level: 1, name: 'Make it personal' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Make it personal' })).toBeTruthy();
     expect(screen.getByText('Step 2 of 3')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '← Back' }));
@@ -189,7 +189,7 @@ describe('onboarding Golden Hour shell', () => {
       USER_ID,
     );
     expect(push).not.toHaveBeenCalled();
-    expect(screen.getByRole('heading', { level: 1, name: 'Your profile is saved' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Your profile is saved' })).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: '← Back to profile' }));
     expect(screen.getByRole('heading', { level: 1, name: 'Make it personal' })).toBeTruthy();
@@ -202,7 +202,7 @@ describe('onboarding Golden Hour shell', () => {
     fireEvent.change(screen.getByLabelText('City'), { target: { value: 'Allen' } });
     fireEvent.submit(screen.getByLabelText('City').closest('form')!);
     await waitFor(() => expect(updateProfileStructured).toHaveBeenCalledTimes(1));
-    expect(push).toHaveBeenCalledWith('/challenges');
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/challenges'));
     expect(screen.queryByText('Your profile is saved')).toBeNull();
   });
 
