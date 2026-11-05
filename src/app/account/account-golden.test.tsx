@@ -385,7 +385,7 @@ describe('AccountClient sections', () => {
       },
       USER_ID,
     );
-    const saved = screen.getByText('Saved ✓');
+    const saved = await screen.findByText('Saved ✓');
     expect(saved.getAttribute('role')).toBe('status');
 
     updateProfileStructured.mockResolvedValueOnce({
@@ -427,7 +427,7 @@ describe('AccountClient sections', () => {
       },
       USER_ID,
     );
-    const saved = screen.getByText('Saved ✓');
+    const saved = await screen.findByText('Saved ✓');
     expect(saved.getAttribute('role')).toBe('status');
 
     updatePreferences.mockResolvedValueOnce({
