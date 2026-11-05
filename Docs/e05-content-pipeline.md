@@ -90,7 +90,7 @@ Listed timestamps use America/Chicago. Stored timestamps are UTC.
 
 ## Hosted
 
-Local review uses a local database. The script refuses a hosted Supabase URL unless `WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1`. Writes also need `WANDERBITE_CONTENT_REFRESH_APPLY=1`. Do not point refresh or expire at hosted. Migration `20261104040000_e05_b2_content_pipeline.sql` was applied to the hosted database on 2026-11-03 with Noah's OK, and its `schema_migrations` version is aligned. Migration `20261105190005_e06_b1_activity_pipeline.sql` is not on hosted. Do not run `npm run types:db` against hosted for this slice; the checked-in table types were hand-edited to match the migration.
+Local review uses a local database. The script refuses a hosted Supabase URL unless `WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1`. Writes also need `WANDERBITE_CONTENT_REFRESH_APPLY=1`. Do not point refresh or expire at hosted. Migration `20261104040000_e05_b2_content_pipeline.sql` was applied to the hosted database on 2026-11-03 with Noah's OK, and its `schema_migrations` version is aligned. Migration `20261105193652_e06_b1_activity_pipeline.sql` is applied to hosted (2026-11-05). The filename matches the hosted `schema_migrations` version. Do not run `npm run types:db` against hosted for this slice; the checked-in table types were hand-edited to match the migration.
 
 ## Rollback of the PR
 

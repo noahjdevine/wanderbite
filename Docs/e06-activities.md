@@ -24,7 +24,7 @@ There is no saved time-budget field on the member. Duration is displayed and not
 
 ## Hosted
 
-Migration `20261104060000_e06_a1_activities.sql` was applied on hosted after Noah confirmed it on 2026-11-04. Migration `20261105190005_e06_b1_activity_pipeline.sql` is not on hosted. Do not run `supabase db push` or `npm run types:db` for this slice. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited for `activities.content_source_id` and the activity fact helpers. The change is additive. Revert this PR to remove the code. The new migration is unused until it is applied. No drop is required for that rollback.
+Migration `20261104060000_e06_a1_activities.sql` was applied on hosted after Noah confirmed it on 2026-11-04. Migration `20261105193652_e06_b1_activity_pipeline.sql` is applied to hosted (2026-11-05). The filename matches the hosted `schema_migrations` version. `E06_ACTIVITIES_ENABLED` stays unset. Do not run `supabase db push` or `npm run types:db` for this slice. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited for `activities.content_source_id` and the activity fact helpers. The change is additive. Revert this PR to remove the code. Once the code is reverted, the added column and helpers are unused. No drop is required for that rollback.
 
 ## Local check
 
