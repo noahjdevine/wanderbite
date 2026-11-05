@@ -271,6 +271,7 @@ describe('ContentReview', () => {
         beforeText: '',
         afterText: 'A fountain sits on the sample square.',
         evidenceText: injected,
+        changeSummary: 'summary: a fountain sits on the sample square.',
         attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
         verifiedLabel: 'Nov 4, 2026, 11:30 PM CST',
         recipeLabel: '',
@@ -293,6 +294,8 @@ describe('ContentReview', () => {
     expect(document.body.textContent).toContain('Checked Nov 4, 2026, 11:30 PM CST');
     expect(document.body.textContent).toContain('Afternoons on the sample listing');
     expect(document.body.textContent).toContain('Open 9 a.m. to 5 p.m.');
+    expect(document.querySelector('[data-testid="change-summary-cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd"]')?.textContent)
+      .toContain('summary: a fountain sits on the sample square.');
     const evidence = document.querySelector('[data-testid="evidence-abababab-abab-4aba-8aba-abababababab"]');
     expect(evidence?.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(evidence?.innerHTML).not.toContain('<img');
@@ -342,6 +345,7 @@ describe('ContentReview', () => {
         beforeText: 'Street parking is two blocks east.',
         afterText: 'Valet parking is available beside the front door.',
         evidenceText: injected,
+        changeSummary: 'parking: valet beside the front door. <script>alert(1)</script>',
         attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
         verifiedLabel: 'Nov 4, 2026, 11:30 PM CST',
         recipeLabel: '',
@@ -363,6 +367,10 @@ describe('ContentReview', () => {
     expect(document.body.textContent).toContain('Cafe');
     expect(document.body.textContent).toContain('parking');
     expect(document.body.textContent).toContain('Checked Nov 4, 2026, 11:30 PM CST');
+    const summary = document.querySelector('[data-testid="change-summary-edededed-eded-4ede-8ede-edededededed"]');
+    expect(summary?.textContent).toContain('parking: valet beside the front door.');
+    expect(summary?.textContent).toContain('<script>alert(1)</script>');
+    expect(summary?.innerHTML).not.toContain('<script');
     const evidence = document.querySelector('[data-testid="evidence-edededed-eded-4ede-8ede-edededededed"]');
     expect(evidence?.textContent).toContain('<script>alert(1)</script>');
     expect(evidence?.innerHTML).not.toContain('<script');

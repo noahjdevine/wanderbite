@@ -25,7 +25,18 @@ export type BriefingDraft = {
   text: string;
   before: string | null;
   evidenceExcerpt: string;
+  changeSummary: string;
 };
+
+/** An open pending_review fact the refresh can match before inserting another. */
+export type OpenPendingDraft = {
+  subjectType: 'briefing' | 'activity';
+  subjectId: string;
+  field: string;
+  text: string;
+};
+
+export const CHANGE_SUMMARY_MAX = 160;
 
 export function briefingTextBlocked(text: string): 'injection_suspected' | 'sensitive' | null {
   if (injectionSuspected(text)) return 'injection_suspected';
@@ -35,8 +46,92 @@ export function briefingTextBlocked(text: string): 'injection_suspected' | 'sens
   return null;
 }
 
+export function normalizeDraftText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
 export function sameBriefingText(left: string, right: string): boolean {
-  return left.replace(/\s+/g, ' ').trim() === right.replace(/\s+/g, ' ').trim();
+  return normalizeDraftText(left) === normalizeDraftText(right);
+}
+
+export function capChangeSummary(text: string): string {
+  const flat = normalizeDraftText(text);
+  if (flat.length <= CHANGE_SUMMARY_MAX) return flat;
+  return `${flat.slice(0, CHANGE_SUMMARY_MAX - 1).trimEnd()}…`;
+}
+
+/** One line from the previous text and the new text. Used when the model omits a grounded summary. */
+export function deterministicChangeSummary(args: {
+  field: string;
+  before: string | null;
+  after: string;
+}): string {
+  const label = normalizeDraftText(args.field.replace(/_/g, ' '));
+  const after = normalizeDraftText(args.after);
+  const before = args.before ? normalizeDraftText(args.before) : '';
+  if (before && before !== after) return capChangeSummary(`${label}: "${before}" → "${after}"`);
+  return capChangeSummary(`${label}: "${after}"`);
+}
+
+/**
+ * Prefer a model summary that is short and supported by this page.
+ * Otherwise use the deterministic line. The result is never empty when `after` has text.
+ */
+export function resolveChangeSummary(args: {
+  field: string;
+  before: string | null;
+  after: string;
+  pageText: string;
+  modelSummary?: string | null;
+  acceptModel?: (text: string) => boolean;
+}): string {
+  const model = args.modelSummary ? capChangeSummary(args.modelSummary) : '';
+  const accepted = model.length > 0 && (args.acceptModel ? args.acceptModel(model) : briefingTextBlocked(model) == null);
+  if (accepted && groundedInPage(model, args.pageText)) return model;
+  const fallback = deterministicChangeSummary(args);
+  return fallback || capChangeSummary(args.after);
+}
+
+export function pendingDraftIsDuplicate(
+  open: readonly OpenPendingDraft[],
+  candidate: OpenPendingDraft,
+): boolean {
+  const text = normalizeDraftText(candidate.text);
+  if (!text) return false;
+  return open.some((row) => (
+    row.subjectType === candidate.subjectType
+    && row.subjectId === candidate.subjectId
+    && row.field === candidate.field
+    && normalizeDraftText(row.text) === text
+  ));
+}
+
+export function readOpenPendingDraft(row: {
+  subject_type: string;
+  subject_id: string | null;
+  field: string;
+  status: string;
+  value: Json;
+}): OpenPendingDraft | null {
+  if (row.status !== 'pending_review' || !row.subject_id) return null;
+  if (row.subject_type !== 'briefing' && row.subject_type !== 'activity') return null;
+  if (!row.value || typeof row.value !== 'object' || Array.isArray(row.value)) return null;
+  const text = typeof row.value.text === 'string' ? row.value.text : '';
+  if (!normalizeDraftText(text)) return null;
+  return {
+    subjectType: row.subject_type,
+    subjectId: row.subject_id,
+    field: row.field,
+    text,
+  };
+}
+
+export function readStoredChangeSummary(value: Json): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const raw = value.change_summary;
+  if (typeof raw !== 'string') return null;
+  const text = capChangeSummary(raw);
+  return text || null;
 }
 
 function briefingException(args: {
@@ -71,6 +166,7 @@ export function planBriefingUpdate(args: {
   pageText: string;
   grounded: readonly SupportedFact[];
   stored: readonly StoredBriefing[];
+  pendingDrafts?: readonly OpenPendingDraft[];
 }): { drafts: BriefingDraft[]; exceptions: ExceptionDraft[] } {
   if (injectionSuspected(args.pageText)) {
     return {
@@ -129,13 +225,27 @@ export function planBriefingUpdate(args: {
       }));
       continue;
     }
+    if (pendingDraftIsDuplicate(args.pendingDrafts ?? [], {
+      subjectType: 'briefing',
+      subjectId: args.restaurantId,
+      field: fact.field,
+      text: fact.text,
+    })) continue;
+    const text = fact.text.trim();
     drafts.push({
       sourceId: args.sourceId,
       restaurantId: args.restaurantId,
       field: fact.field,
-      text: fact.text.trim(),
+      text,
       before: stored?.body ?? null,
       evidenceExcerpt: evidenceExcerpt(fact.supportPassage),
+      changeSummary: resolveChangeSummary({
+        field: fact.field,
+        before: stored?.body ?? null,
+        after: text,
+        pageText: args.pageText,
+        modelSummary: fact.changeSummary,
+      }),
     });
   }
 
@@ -156,6 +266,9 @@ export function planBriefingUpdate(args: {
   return { drafts, exceptions };
 }
 
-export function briefingValue(draft: Pick<BriefingDraft, 'text' | 'before'>): Json {
-  return draft.before ? { text: draft.text, before: draft.before } : { text: draft.text };
+export function briefingValue(draft: Pick<BriefingDraft, 'text' | 'before' | 'changeSummary'>): Json {
+  const value: { text: string; before?: string; change_summary?: string } = { text: draft.text };
+  if (draft.before) value.before = draft.before;
+  if (draft.changeSummary) value.change_summary = draft.changeSummary;
+  return value;
 }

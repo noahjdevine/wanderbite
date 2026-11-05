@@ -13,7 +13,7 @@ import { classifyMenuFailure, retryableFailure, type FetchOutcome } from '@/lib/
 import { contentHash } from '@/lib/content-pipeline/hash';
 import type { ActivityFactDraft, ActivityFactSnapshot, ActivitySnapshot } from '@/lib/content-pipeline/activity-plan';
 import { runActivityRefresh } from '@/lib/content-pipeline/activity-refresh';
-import type { BriefingDraft, StoredBriefing } from '@/lib/content-pipeline/briefing-plan';
+import type { BriefingDraft, OpenPendingDraft, StoredBriefing } from '@/lib/content-pipeline/briefing-plan';
 import { runBriefingRefresh } from '@/lib/content-pipeline/briefing-refresh';
 import { activeFetchedSource, isActivitySourceKind, isRestaurantPageKind } from '@/lib/content-pipeline/registry';
 import { extractMenuDishes } from '@/lib/recipes/menu-extract';
@@ -94,6 +94,7 @@ export type ContentSourceContext = {
   activityFacts?: ActivityFactSnapshot[];
   briefings?: StoredBriefing[];
   restaurantName?: string;
+  pendingDrafts?: OpenPendingDraft[];
 };
 
 export type MaintenanceReservation =
@@ -155,6 +156,7 @@ export async function refreshContentSource(args: {
   activityFacts?: readonly ActivityFactSnapshot[];
   briefings?: readonly StoredBriefing[];
   restaurantName?: string;
+  pendingDrafts?: readonly OpenPendingDraft[];
   openExceptions?: readonly OpenExceptionKey[];
   apply: boolean;
   now?: () => Date;
@@ -250,6 +252,7 @@ export async function refreshContentSource(args: {
       apply: args.apply,
       activities: args.activities ?? [],
       facts: args.activityFacts ?? [],
+      pendingDrafts: args.pendingDrafts,
       openExceptions: args.openExceptions ?? [],
       modelCallsUsed: args.modelCallsUsed ?? 0,
       maxModelCalls: CONTENT_MAX_MODEL_CALLS,
@@ -282,6 +285,7 @@ export async function refreshContentSource(args: {
       at,
       apply: args.apply,
       stored: args.briefings ?? [],
+      pendingDrafts: args.pendingDrafts,
       openExceptions: args.openExceptions ?? [],
       modelCallsUsed: args.modelCallsUsed ?? 0,
       maxModelCalls: CONTENT_MAX_MODEL_CALLS,
@@ -516,6 +520,7 @@ export async function refreshContentSources(args: {
       activityFacts: loaded.activityFacts,
       briefings: loaded.briefings,
       restaurantName: loaded.restaurantName,
+      pendingDrafts: loaded.pendingDrafts,
       openExceptions: loaded.openExceptions,
       apply: args.apply,
       now: args.now,

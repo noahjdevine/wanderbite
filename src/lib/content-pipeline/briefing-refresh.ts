@@ -2,13 +2,14 @@ import {
   briefingValue,
   planBriefingUpdate,
   type BriefingDraft,
+  type OpenPendingDraft,
   type StoredBriefing,
 } from '@/lib/content-pipeline/briefing-plan';
 import { newExceptions, type ExceptionDraft, type OpenExceptionKey } from '@/lib/content-pipeline/exceptions';
 import type { AttemptWrite, MaintenanceReservation, SourcePatch } from '@/lib/content-pipeline/refresh';
 import {
   BRIEFING_PAGE_CHARS,
-  briefingSystemPrompt,
+  briefingMaintenanceSystemPrompt,
   briefingUserPrompt,
   filterSupportedFacts,
   htmlToText,
@@ -63,6 +64,7 @@ export async function runBriefingRefresh(args: {
   at: string;
   apply: boolean;
   stored: readonly StoredBriefing[];
+  pendingDrafts?: readonly OpenPendingDraft[];
   openExceptions: readonly OpenExceptionKey[];
   modelCallsUsed?: number;
   maxModelCalls: number;
@@ -95,6 +97,7 @@ export async function runBriefingRefresh(args: {
     pageText,
     grounded: [],
     stored: args.stored,
+    pendingDrafts: args.pendingDrafts,
   });
   if (blocked.exceptions.some((row) => row.reason === 'injection_suspected') && blocked.drafts.length === 0) {
     const exceptions = newExceptions(args.openExceptions, blocked.exceptions);
@@ -133,7 +136,7 @@ export async function runBriefingRefresh(args: {
   }
 
   const prompt = {
-    system: briefingSystemPrompt(),
+    system: briefingMaintenanceSystemPrompt(),
     user: briefingUserPrompt(
       { id: args.restaurantId, name: args.restaurantName?.trim() || 'Restaurant', address: null, lat: null, lon: null },
       [{ url: pageUrl, text: pageText }],
@@ -197,6 +200,7 @@ export async function runBriefingRefresh(args: {
     pageText,
     grounded,
     stored: args.stored,
+    pendingDrafts: args.pendingDrafts,
   });
   const exceptions = newExceptions(args.openExceptions, plan.exceptions);
   if (args.effects) {
