@@ -45,16 +45,14 @@ export default async function PricingPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6">
-        <PricingClient
-          userId={userId}
-          email={email}
-          fullName={fullName}
-          subscriptionStatus={subscriptionStatus}
-          areaState={areaState}
-        />
-      </div>
+    <main className="wb-pricing">
+      <PricingClient
+        userId={userId}
+        email={email}
+        fullName={fullName}
+        subscriptionStatus={subscriptionStatus}
+        areaState={areaState}
+      />
     </main>
   );
 }
