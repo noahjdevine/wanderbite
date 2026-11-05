@@ -175,7 +175,7 @@ export function RouletteOptionsFields({
         <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Cuisine (optional)
         </p>
-        <div className="flex max-h-32 flex-wrap justify-center gap-2 overflow-y-auto px-1">
+        <div className="flex flex-wrap justify-center gap-2">
           {ROULETTE_CUISINE_OPTIONS.map((c) => {
             const selected = preferredCuisine === c.id;
             return (

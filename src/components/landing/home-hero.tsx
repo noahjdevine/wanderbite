@@ -98,7 +98,7 @@ function Facts({ catalog }: { catalog: HomeHeroCatalog }) {
   if (rows.length === 0) return null;
 
   return (
-    <GlassPanel radius={22} padding={18} className="mt-4 w-full max-w-[220px]">
+    <GlassPanel radius={22} padding={18} className="w-full max-w-[220px]">
       <div className="flex flex-col gap-3.5">
         {rows.map((row, index) => (
           <div key={row.label} className="flex flex-col gap-0.5">
@@ -160,12 +160,8 @@ export function HomeHero({ catalog }: { catalog: HomeHeroCatalog }) {
         <div className="absolute inset-x-0 bottom-0 h-[220px] bg-gradient-to-t from-wb-night to-transparent" />
       </div>
 
-      <p className="pointer-events-none absolute bottom-20 left-4 z-[1] text-[11px] text-white/85 sm:left-10">
-        Placeholder photo
-      </p>
-
       <div className="relative z-10 mx-auto flex w-full max-w-[1280px] flex-1 flex-col px-4 pt-5 min-[960px]:px-10 xl:pt-28">
-        <div className="grid items-start gap-8 min-[960px]:grid-cols-[minmax(0,640px)_minmax(260px,1fr)]">
+        <div className="grid items-start gap-8 min-[960px]:grid-cols-[minmax(0,1fr)_minmax(360px,400px)]">
           <div className="flex max-w-[640px] flex-col gap-5 min-[960px]:gap-6">
             <PillLabel>
               <Spark />
@@ -182,21 +178,21 @@ export function HomeHero({ catalog }: { catalog: HomeHeroCatalog }) {
             <HomeHeroPrompt />
           </div>
 
-          <div className="relative hidden min-w-0 min-[960px]:block">
-            <div className="relative max-w-[320px]">
+          <div className="relative hidden min-w-0 min-[960px]:flex min-[960px]:justify-end">
+            <div className="flex w-full max-w-[360px] flex-col gap-5">
               <Doodle />
               <PickCard catalog={catalog} />
-              <div
-                aria-hidden="true"
-                className="wb-float absolute top-[250px] right-0 h-[118px] w-[118px] rounded-full border-[3px] border-wb-blush p-1.5"
-              >
-                <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-full border border-dashed border-wb-blush text-center text-wb-blush">
-                  <span className="text-[8px] font-bold tracking-[1.6px]">WANDERBITE</span>
-                  <span className="font-display text-2xl leading-none italic">Stamped</span>
-                  <span className="text-[9px] font-bold tracking-[1.6px]">{catalog.sealCity}</span>
+              <div className="flex items-start justify-between gap-4">
+                <div
+                  aria-hidden="true"
+                  className="wb-float h-[118px] w-[118px] shrink-0 rounded-full border-[3px] border-wb-blush p-1.5"
+                >
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-0.5 rounded-full border border-dashed border-wb-blush text-center text-wb-blush">
+                    <span className="text-[8px] font-bold tracking-[1.6px]">WANDERBITE</span>
+                    <span className="font-display text-2xl leading-none italic">Stamped</span>
+                    <span className="text-[9px] font-bold tracking-[1.6px]">{catalog.sealCity}</span>
+                  </div>
                 </div>
-              </div>
-              <div className="pt-16">
                 <Facts catalog={catalog} />
               </div>
             </div>

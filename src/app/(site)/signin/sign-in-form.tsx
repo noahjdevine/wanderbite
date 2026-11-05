@@ -133,14 +133,9 @@ export function SignInForm({ redirectTo, resetSuccess, sessionError }: SignInFor
         </div>
 
         <div className="wb-auth-field">
-          <div className="wb-auth-label-row">
-            <label htmlFor="signin-password" className="wb-auth-label">
-              Password
-            </label>
-            <Link href="/forgot-password" className="wb-auth-link">
-              Forgot it? Happens to the best of us
-            </Link>
-          </div>
+          <label htmlFor="signin-password" className="wb-auth-label">
+            Password
+          </label>
           <PasswordField
             id="signin-password"
             name="password"
@@ -158,6 +153,9 @@ export function SignInForm({ redirectTo, resetSuccess, sessionError }: SignInFor
             autoComplete="current-password"
             error={shownPasswordError}
           />
+          <Link href="/forgot-password" className="wb-auth-link">
+            Forgot it? Happens to the best of us
+          </Link>
         </div>
 
         {resetSuccess ? (

@@ -635,6 +635,16 @@ describe('Progress label', () => {
     expect(myJourneyHref('journal')).toBe('/journey?view=journal');
     expect(myJourneyHref('passport')).toBe('/journey?view=passport');
 
+    const page = readFileSync(path.join(ROOT, 'src/app/(site)/journey/page.tsx'), 'utf8');
+    expect(page).not.toContain('MyJourneyHub');
+    expect(page).not.toContain('JourneySectionTabs');
+    render(<ProgressView model={readyModel()} />);
+    expect(screen.getAllByRole('tablist', { name: 'Progress sections' })).toHaveLength(1);
+    expect(screen.getByRole('tab', { name: 'Progress' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: 'Journal' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Passport' })).toBeTruthy();
+    cleanup();
+
     render(
       <MyJourneyHub activeView="passport">
         <p>Passport body</p>
@@ -645,7 +655,6 @@ describe('Progress label', () => {
     expect(screen.getByRole('tab', { name: 'Passport' }).getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('Passport body')).toBeTruthy();
 
-    const page = readFileSync(path.join(ROOT, 'src/app/(site)/journey/page.tsx'), 'utf8');
     expect(page).toContain('view === \'journey\' ? \'/journey\' : `/journey?view=${view}`');
     expect(page).toContain('redirect(`/signin?redirectTo=${encodeURIComponent(redirectTo)}`)');
     expect(page).toContain('<PassportContent');

@@ -46,8 +46,13 @@ describe('sign-in form', () => {
     expect(password.getAttribute('name')).toBe('password');
     expect(password.getAttribute('autocomplete')).toBe('current-password');
     expect(screen.getByRole('button', { name: 'Sign me in' })).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Forgot it? Happens to the best of us' }).getAttribute('href')).toBe(
-      '/forgot-password',
+    const forgot = screen.getByRole('link', { name: 'Forgot it? Happens to the best of us' });
+    expect(forgot.getAttribute('href')).toBe('/forgot-password');
+    expect(password.compareDocumentPosition(forgot) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(forgot.compareDocumentPosition(password) & Node.DOCUMENT_POSITION_PRECEDING).toBe(
+      Node.DOCUMENT_POSITION_PRECEDING,
     );
     expect(screen.getByRole('link', { name: 'Create an account' }).getAttribute('href')).toBe('/signup');
     expect(email.closest('form')?.hasAttribute('hidden')).toBe(false);

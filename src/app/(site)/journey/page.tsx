@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { JourneyContent } from '@/components/journey/journey-content';
-import { MyJourneyHub } from '@/components/journey/my-journey-hub';
 import { JournalContent } from '@/components/journal/journal-content';
 import { PassportContent } from '@/components/passport/passport-content';
 import { parseMyJourneyView } from '@/lib/my-journey-views';
@@ -49,11 +48,9 @@ export default async function JourneyPage({ searchParams }: JourneyPageProps) {
 
   if (view === 'journey') {
     return (
-      <MyJourneyHub activeView={view}>
-        <Suspense fallback={<HubViewFallback />}>
-          <JourneyContent userId={user.id} />
-        </Suspense>
-      </MyJourneyHub>
+      <Suspense fallback={<HubViewFallback />}>
+        <JourneyContent userId={user.id} />
+      </Suspense>
     );
   }
 

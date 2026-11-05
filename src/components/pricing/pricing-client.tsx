@@ -111,15 +111,17 @@ export function PricingClient({
                   partial refunds. Each challenge shows its discount and minimum spend. Offers are
                   non-stackable and require in-person confirmation.
                 </p>
-                <p>
-                  By creating an account, you agree to our{' '}
-                  <Link href="/terms">Terms of Service</Link>
-                  ,{' '}
-                  <Link href="/privacy">Privacy Policy</Link>
-                  , and{' '}
-                  <Link href="/rules">Discount & Challenge Rules</Link>
-                  .
-                </p>
+                {userId ? null : (
+                  <p>
+                    By creating an account, you agree to our{' '}
+                    <Link href="/terms">Terms of Service</Link>
+                    ,{' '}
+                    <Link href="/privacy">Privacy Policy</Link>
+                    , and{' '}
+                    <Link href="/rules">Discount & Challenge Rules</Link>
+                    .
+                  </p>
+                )}
               </div>
             </CardContent>
             <CardFooter className="wb-pricing-actions">

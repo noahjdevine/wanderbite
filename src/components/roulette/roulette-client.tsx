@@ -64,7 +64,14 @@ function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
   );
 }
 
-export function RouletteClient({ initialMessage = '' }: { initialMessage?: string }) {
+export function RouletteClient({
+  initialMessage = '',
+  signedIn = false,
+}: {
+  initialMessage?: string;
+  /** Signed-in members, including active members, do not see the join upsell. */
+  signedIn?: boolean;
+}) {
   const askInFlightRef = useRef(false);
   const resultSectionRef = useRef<HTMLDivElement>(null);
 
@@ -351,15 +358,17 @@ export function RouletteClient({ initialMessage = '' }: { initialMessage?: strin
             </Button>
           </div>
 
-          <p className="text-center text-sm text-muted-foreground">
-            Wanderbite members see the discount on each challenge.{' '}
-            <Link
-              href="/pricing"
-              className="font-medium text-[#E85D26] underline-offset-2 hover:underline"
-            >
-              Join for $15/month →
-            </Link>
-          </p>
+          {signedIn ? null : (
+            <p className="text-center text-sm text-muted-foreground">
+              Wanderbite members see the discount on each challenge.{' '}
+              <Link
+                href="/pricing"
+                className="font-medium text-[#E85D26] underline-offset-2 hover:underline"
+              >
+                Join for $15/month →
+              </Link>
+            </p>
+          )}
         </div>
       ) : null}
     </div>
