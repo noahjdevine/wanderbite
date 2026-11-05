@@ -300,7 +300,7 @@ export const SCHEMA_CONTRACT = {
     'error_code',
   ],
   // status also allows reviewed (20261105204844). subject_type also allows briefing (20261105212138). No new column. types:db was not run.
-  // 20261105223000 stores change_summary inside value. Same function signatures. types:db was not run.
+  // 20261105214940 (filename of 20261105223000) stores change_summary inside value. Same function signatures. types:db was not run.
   source_facts: [
     'id',
     'source_id',

@@ -96,6 +96,28 @@ Rollback inserts the previous value as a new version and supersedes the current 
 
 Listed timestamps use America/Chicago. Stored timestamps are UTC.
 
+## Measurement
+
+`npm run content:metrics` is a read-only report for the four D00 numbers. It does not call a model, does not search the web, does not call Places, and does not write credits, offers, challenges, redemptions, bookings, partnerships, or `restaurant_briefing_facts`. Flags stay unset. Do not point it at hosted.
+
+```bash
+npm run content:metrics
+npm run content:metrics -- --from 2026-11-01 --to 2026-11-05
+npm run content:metrics -- --fixture scripts/fixtures/e06-content-metrics.json --from 2026-11-05 --to 2026-11-05
+```
+
+The default window is the last 7 America/Chicago calendar days, including today. `--from` and `--to` are inclusive `YYYY-MM-DD` Chicago dates. Pass both or neither. A timestamp belongs to the Chicago calendar day of that instant. `2026-11-06T05:30:00.000Z` is 11:30 PM on 2026-11-05 in Chicago. The process time zone does not move the boundary. Stdout is JSON.
+
+Refresh cost is the sum of `ai_requests.settled_platform_microdollars` where `feature_class` is `maintenance`, `account_tier` is `ops`, and `status` is `settled` or `assumed_spent`. The day is `day_key`, the Chicago day stored when the reservation was made. If `day_key` is missing, the day is the Chicago calendar date of `settled_at`. A dispatched, denied, or member-tier row is not spend. No matching row is `0`, and `usd` is microdollars divided by 1,000,000 shown to 6 decimal places with integer arithmetic. `byDay` lists only days with a non-zero sum.
+
+Automatic updates count `source_fetch_attempts` in the window whose `outcome` is `ok` (the page changed and verification advanced) or `unchanged`. The split is `content_sources.kind`: `public_menu`, `venue_page`, `event_page`, `restaurant_page`, plus `other` when the source is missing or has another kind. A pipeline draft also counts when it is an `activity` or `briefing` fact extracted in the window, and it is `pending_review` or `reviewed`, or its `change_summary` is non-empty, and no `ok` or `unchanged` attempt on that source has `attempted_at` at or before `extracted_at` within 15 minutes. That association keeps a draft written in the same refresh from being counted twice. The match ignores the window, so a fetch that starts just before Chicago midnight keeps the update on the attempt's day. Failures (`http_error`, `timeout`, `parse_error`, and the other non-verification outcomes) are not automatic updates. Operator edits are not fetch attempts, so they stay in the corrections count.
+
+Operator corrections count `admin_audit_log` rows in the window with action `content.exception_edit`, `content.exception_reject`, or `content.recipe_rollback`. One row is one correction. `publish` is the edit subset whose metadata `published` is true, and it is not added again. Approve (`content.exception_approve`) and source pause or resume are not corrections.
+
+Time per exception uses closed `content_exceptions` whose Chicago `resolved_at` is in the window. The table has no opened column. Opened time is the latest `source_fetch_attempts.attempted_at` on that source with outcome `ok` or `parse_error` at or before `resolved_at`. A later fetch of that kind before resolve shortens the measured interval. A closed row with no such attempt is `closedUnmatched` and is not in the median. A row with `status` `open`, or with no `resolved_at`, is `open` and is not in the median. The open count is every still-open row in the input, not only rows opened inside the window. The median of an even sample is the mean of the two central durations, rounded to the nearest millisecond, with halves away from zero. `p90` is the nearest rank: sort ascending and take index `ceil(0.90 * n) - 1`. Hours are that millisecond value divided by 3,600,000, rounded to 0.001 hour, with halves away from zero. An empty closed sample leaves the median and p90 null and leaves the other three metrics as numbers.
+
+This report does not claim E06 or D00 acceptance. D00 demo use of the numbers is still ahead.
+
 ## Hosted
 
 Local review uses a local database. The script refuses a hosted Supabase URL unless `WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1`. Writes also need `WANDERBITE_CONTENT_REFRESH_APPLY=1`. Do not point refresh or expire at hosted. Migration `20261104040000_e05_b2_content_pipeline.sql` was applied to the hosted database on 2026-11-03 with Noah's OK, and its `schema_migrations` version is aligned. Migration `20261105193652_e06_b1_activity_pipeline.sql` is applied to hosted (2026-11-05). The filename matches the hosted `schema_migrations` version. Do not run `npm run types:db` against hosted for this slice; the checked-in table types were hand-edited to match the migration.

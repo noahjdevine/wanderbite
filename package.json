@@ -13,6 +13,7 @@
     "catalog:import": "tsx scripts/catalog-import.ts",
     "menu:recipes": "tsx scripts/e05-menu-recipes.ts",
     "content:refresh": "tsx scripts/content-refresh.ts",
+    "content:metrics": "tsx scripts/content-metrics.ts",
     "research:briefings": "tsx scripts/research-briefings.ts",
     "research:official-websites": "tsx scripts/propose-official-websites.ts",
     "supply:gate": "tsx scripts/e02-supply-gate.ts",
