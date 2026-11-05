@@ -23,14 +23,39 @@ export const HAIKU_MICRODOLLARS_PER_MILLION: Record<string, number> = {
 };
 
 export const BRIEFING_PAGE_CAP = 3;
+/** Same-host official subpages fetched after the search-page cap is filled. */
+export const BRIEFING_OFFICIAL_SUBPAGE_CAP = 4;
+/** Extra candidates so a disallowed path does not end the subpage walk. */
+export const BRIEFING_SUBPAGE_CANDIDATE_CAP = 12;
 export const BRIEFING_PAGE_CHARS = 8_000;
+/**
+ * Read this many HTML bytes and keep the prefix. Oversized pages are truncated,
+ * not dropped. 1.5 MB in decimal bytes.
+ */
+export const BRIEFING_HTML_BYTE_CAP = 1_500_000;
 export const BRIEFING_MAX_OUTPUT_TOKENS = 700;
 export const BRIEFING_SEARCH_MAX_OUTPUT_TOKENS = 1_024;
 export const DEFAULT_RESTAURANT_CAP = 25;
 export const DEFAULT_COST_CAP_MICRODOLLARS = 2_000_000;
 export const MAX_COST_CAP_MICRODOLLARS = 5_000_000;
 export const BRIEFING_OUTPUT_DIR = '.briefings';
-export const BRIEFING_USER_AGENT = 'WanderbiteBriefingResearchBot';
+/** Identifies this operator script. Accept headers are browser-like; the UA stays explicit. */
+export const BRIEFING_USER_AGENT =
+  'WanderbiteBriefingResearchBot/1.0 (+https://wanderbite.com; first-visit research)';
+
+/** Path or link text that often holds first-visit detail on an official site. */
+export const BRIEFING_SUBPAGE_HINTS = [
+  'menu',
+  'about',
+  'faq',
+  'visit',
+  'location',
+  'contact',
+  'hours',
+  'reservations',
+  'parking',
+  'private-dining',
+] as const;
 
 /**
  * Current Messages API server tool (name `web_search`).
@@ -49,7 +74,25 @@ const SEARCH_CONTINUATION_CAP = 2;
 
 const HOSTED_PROJECT_REF = 'yiajoycgiyxjvznndjge';
 const FETCH_TIMEOUT_MS = 8_000;
-const MAX_BYTES = 400_000;
+const PAGE_REQUEST_HEADERS: Record<string, string> = {
+  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
+  'accept-language': 'en-US,en;q=0.9',
+  'user-agent': BRIEFING_USER_AGENT,
+};
+const TRACKING_PARAMS = [
+  'fbclid',
+  'gclid',
+  'mc_cid',
+  'mc_eid',
+  'utm_campaign',
+  'utm_content',
+  'utm_id',
+  'utm_medium',
+  'utm_source',
+  'utm_term',
+];
+const SUBPAGE_SKIP_EXTENSION =
+  /\.(?:avif|bmp|css|gif|ico|jpe?g|js|mjs|mp3|mp4|pdf|png|svg|webm|webp|woff2?|zip)$/i;
 
 const LISTING_HOSTS = [
   'yelp.com',
@@ -203,6 +246,19 @@ export type BriefingInsert = {
 
 function hostMatches(host: string, suffix: string): boolean {
   return host === suffix || host.endsWith(`.${suffix}`);
+}
+
+/** www and the apex host are the same official site. Other subdomains are not. */
+export function officialHostKey(hostname: string): string {
+  return hostname.toLowerCase().replace(/\.+$/, '').replace(/^www\./, '');
+}
+
+export function sameOfficialHost(leftUrl: string, rightUrl: string): boolean {
+  try {
+    return officialHostKey(new URL(leftUrl).hostname) === officialHostKey(new URL(rightUrl).hostname);
+  } catch {
+    return false;
+  }
 }
 
 function isPublicHost(hostname: string): boolean {
@@ -388,6 +444,10 @@ function classifyUrl(raw: string, restaurantName: string): 'official' | 'listing
   return 'skip';
 }
 
+/**
+ * Official hosts first, then reputable listings. The page cap is applied later,
+ * after robots.txt, so a disallowed listing does not consume a slot.
+ */
 export function rankBriefingUrls(urls: readonly string[], restaurantName: string): string[] {
   const official: string[] = [];
   const listings: string[] = [];
@@ -400,7 +460,97 @@ export function rankBriefingUrls(urls: readonly string[], restaurantName: string
     if (kind === 'official') official.push(normalized);
     else if (kind === 'listing') listings.push(normalized);
   }
-  return [...official, ...listings].slice(0, BRIEFING_PAGE_CAP);
+  return [...official, ...listings];
+}
+
+function tokenHitsHint(word: string, hint: string): boolean {
+  if (word === hint || word === `${hint}s` || word === `${hint}es`) return true;
+  if (hint.endsWith('s') && word === hint.slice(0, -1)) return true;
+  return false;
+}
+
+function matchingSubpageHint(pathname: string, text: string): string | null {
+  const words = `${pathname} ${text}`
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  const joined = words.join(' ');
+  for (const hint of BRIEFING_SUBPAGE_HINTS) {
+    if (hint.includes('-')) {
+      const parts = hint.split('-');
+      if (joined.includes(parts.join(' ')) || words.includes(parts.join(''))) return hint;
+      continue;
+    }
+    if (words.some((word) => tokenHitsHint(word, hint))) return hint;
+  }
+  return null;
+}
+
+function hrefFromAttributes(attributes: string): string | null {
+  const match = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'=<>`]+))/i.exec(attributes);
+  if (!match) return null;
+  const href = (match[1] ?? match[2] ?? match[3] ?? '').trim();
+  return href || null;
+}
+
+function cleanPageUrl(raw: string, base: string): string | null {
+  let resolved: URL;
+  try {
+    resolved = new URL(raw, base);
+  } catch {
+    return null;
+  }
+  for (const key of TRACKING_PARAMS) resolved.searchParams.delete(key);
+  return normalizeHttpsUrl(resolved.toString());
+}
+
+function orderSubpageUrls(found: Array<{ url: string; hint: string }>, cap: number): string[] {
+  const picked: string[] = [];
+  const seenUrls = new Set<string>();
+  const seenHints = new Set<string>();
+  const take = (item: { url: string; hint: string }, onePerHint: boolean) => {
+    if (picked.length >= cap || seenUrls.has(item.url)) return;
+    if (onePerHint && seenHints.has(item.hint)) return;
+    seenUrls.add(item.url);
+    seenHints.add(item.hint);
+    picked.push(item.url);
+  };
+  for (const item of found) take(item, true);
+  for (const item of found) take(item, false);
+  return picked;
+}
+
+/**
+ * Same-host links whose path or text matches a first-visit hint.
+ * One link per hint comes first, in document order, then extra matches fill the cap.
+ */
+export function discoverOfficialSubpages(
+  html: string,
+  pageUrl: string,
+  cap = BRIEFING_SUBPAGE_CANDIDATE_CAP,
+): string[] {
+  const base = normalizeHttpsUrl(pageUrl);
+  if (!base || cap < 1) return [];
+  const found: Array<{ url: string; hint: string }> = [];
+  const seen = new Set<string>([base]);
+  const anchor = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+  let match: RegExpExecArray | null;
+  let scanned = 0;
+  while ((match = anchor.exec(html))) {
+    scanned += 1;
+    if (scanned > 500 || found.length >= 40) break;
+    const href = hrefFromAttributes(match[1] ?? '');
+    if (!href || href.startsWith('#') || /^(?:mailto|tel|javascript|data):/i.test(href)) continue;
+    const normalized = cleanPageUrl(href, base);
+    if (!normalized || seen.has(normalized) || !sameOfficialHost(base, normalized)) continue;
+    const path = new URL(normalized).pathname;
+    if (SUBPAGE_SKIP_EXTENSION.test(path)) continue;
+    const hint = matchingSubpageHint(path, htmlToText(match[2] ?? ''));
+    if (!hint) continue;
+    seen.add(normalized);
+    found.push({ url: normalized, hint });
+  }
+  return orderSubpageUrls(found, cap);
 }
 
 function contentWords(text: string): string[] {
@@ -677,25 +827,39 @@ export function anthropicText(body: unknown): string {
   return typeof block?.text === 'string' ? block.text : '';
 }
 
-async function readCapped(response: Response): Promise<string | null> {
+function decodeHtmlPrefix(bytes: Uint8Array): string {
+  return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+}
+
+/** Stream the body and keep the first `maxBytes`. A longer page is truncated, not dropped. */
+async function readBounded(
+  response: Response,
+  maxBytes: number,
+): Promise<{ text: string; truncated: boolean }> {
   const reader = response.body?.getReader();
   if (!reader) {
-    const text = await response.text();
-    return Buffer.byteLength(text, 'utf8') > MAX_BYTES ? null : text;
+    const bytes = Buffer.from(await response.text(), 'utf8');
+    if (bytes.byteLength <= maxBytes) return { text: decodeHtmlPrefix(bytes), truncated: false };
+    return { text: decodeHtmlPrefix(bytes.subarray(0, maxBytes)), truncated: true };
   }
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let truncated = false;
   for (;;) {
     const step = await reader.read();
     if (step.done) break;
-    total += step.value.byteLength;
-    if (total > MAX_BYTES) {
-      await reader.cancel();
-      return null;
+    const value = step.value;
+    if (total + value.byteLength > maxBytes) {
+      const keep = maxBytes - total;
+      if (keep > 0) chunks.push(value.subarray(0, keep));
+      truncated = true;
+      await reader.cancel().catch(() => undefined);
+      break;
     }
-    chunks.push(step.value);
+    total += value.byteLength;
+    chunks.push(value);
   }
-  return Buffer.concat(chunks).toString('utf8');
+  return { text: decodeHtmlPrefix(Buffer.concat(chunks)), truncated };
 }
 
 async function requestOnce(
@@ -708,10 +872,7 @@ async function requestOnce(
     const response = await fetchImpl(url, {
       method: 'GET',
       redirect: 'manual',
-      headers: {
-        accept: 'text/html, text/plain;q=0.9',
-        'user-agent': BRIEFING_USER_AGENT,
-      },
+      headers: PAGE_REQUEST_HEADERS,
       signal: controller.signal,
     });
     return { response };
@@ -725,7 +886,7 @@ async function requestOnce(
 async function fetchHttps(
   fetchImpl: typeof fetch,
   startUrl: string,
-): Promise<{ url: string; text: string; contentType: string } | { error: string }> {
+): Promise<{ url: string; text: string; contentType: string; truncated: boolean } | { error: string }> {
   const start = normalizeHttpsUrl(startUrl);
   if (!start) return { error: 'url is not https' };
   let current: string = start;
@@ -735,42 +896,135 @@ async function fetchHttps(
     const status = result.response.status;
     if (status >= 300 && status < 400) {
       const location = result.response.headers.get('location');
-      await result.response.body?.cancel();
+      await result.response.body?.cancel().catch(() => undefined);
       const resolved = location ? normalizeHttpsUrl(new URL(location, current).toString()) : null;
       if (!resolved) return { error: 'redirect was not https' };
       current = resolved;
       continue;
     }
     if (status !== 200) {
-      await result.response.body?.cancel();
+      await result.response.body?.cancel().catch(() => undefined);
       return { error: `status ${status}` };
     }
     const contentType = result.response.headers.get('content-type') ?? '';
-    const text = await readCapped(result.response);
-    if (text == null) return { error: 'page exceeds the size cap' };
-    return { url: current, text, contentType };
+    const body = await readBounded(result.response, BRIEFING_HTML_BYTE_CAP);
+    return { url: current, text: body.text, contentType, truncated: body.truncated };
   }
   return { error: 'too many redirects' };
 }
 
-async function pageAllowed(
-  fetchImpl: typeof fetch,
-  pageUrl: string,
-): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const robotsUrl = new URL('/robots.txt', pageUrl).toString();
-  const robots = await fetchHttps(fetchImpl, robotsUrl);
+type RobotsRecord =
+  | { kind: 'absent' }
+  | { kind: 'unavailable'; reason: string }
+  | { kind: 'text'; text: string };
+
+type RobotsCache = Map<string, RobotsRecord>;
+
+async function readRobots(fetchImpl: typeof fetch, pageUrl: string, cache: RobotsCache): Promise<RobotsRecord> {
+  const origin = new URL(pageUrl).origin;
+  const cached = cache.get(origin);
+  if (cached) return cached;
+  const robots = await fetchHttps(fetchImpl, new URL('/robots.txt', pageUrl).toString());
+  let record: RobotsRecord;
   if ('error' in robots) {
-    if (robots.error === 'status 404' || robots.error === 'status 410') return { ok: true };
-    return { ok: false, reason: `robots.txt unavailable (${robots.error})` };
+    record =
+      robots.error === 'status 404' || robots.error === 'status 410'
+        ? { kind: 'absent' }
+        : { kind: 'unavailable', reason: `robots.txt unavailable (${robots.error})` };
+  } else if (/text\/html|application\/xhtml/i.test(robots.contentType)) {
+    record = { kind: 'unavailable', reason: 'robots.txt was not plain text' };
+  } else {
+    record = { kind: 'text', text: robots.text };
   }
-  if (/text\/html|application\/xhtml/i.test(robots.contentType)) {
-    return { ok: false, reason: 'robots.txt was not plain text' };
-  }
+  cache.set(origin, record);
+  return record;
+}
+
+function robotsDecision(record: RobotsRecord, pageUrl: string): { ok: true } | { ok: false; reason: string } {
+  if (record.kind === 'absent') return { ok: true };
+  if (record.kind === 'unavailable') return { ok: false, reason: record.reason };
   const pathName = new URL(pageUrl).pathname || '/';
-  if (!robotsAllowsPath(robots.text, pathName, BRIEFING_USER_AGENT)) {
+  if (!robotsAllowsPath(record.text, pathName, BRIEFING_USER_AGENT)) {
     return { ok: false, reason: 'robots.txt disallows the path' };
   }
   return { ok: true };
+}
+
+type PageDraft = { url: string; html: string; text: string; truncated: boolean };
+
+function pageFailureReason(error: string): string {
+  return error === 'status 403' ? 'skipped HTTP 403' : error;
+}
+
+function pushNote(notes: string[], note: string | null): void {
+  if (note && !notes.includes(note)) notes.push(note);
+}
+
+async function takeBriefingPages(args: {
+  urls: readonly string[];
+  cap: number;
+  fetchImpl: typeof fetch;
+  robotsCache: RobotsCache;
+  notes: string[];
+  seen: Set<string>;
+  /** When set, the final URL must stay on this official host. */
+  officialUrl?: string;
+}): Promise<PageDraft[]> {
+  const kept: PageDraft[] = [];
+  for (const raw of args.urls) {
+    if (kept.length >= args.cap) break;
+    const normalized = normalizeHttpsUrl(raw);
+    if (!normalized || args.seen.has(normalized)) continue;
+    if (args.officialUrl && !sameOfficialHost(args.officialUrl, normalized)) continue;
+    const decision = robotsDecision(await readRobots(args.fetchImpl, normalized, args.robotsCache), normalized);
+    if (!decision.ok) {
+      pushNote(args.notes, `${normalized}: ${decision.reason}`);
+      args.seen.add(normalized);
+      continue;
+    }
+    const fetched = await fetchHttps(args.fetchImpl, normalized);
+    if ('error' in fetched) {
+      pushNote(args.notes, `${normalized}: ${pageFailureReason(fetched.error)}`);
+      args.seen.add(normalized);
+      continue;
+    }
+    const finalUrl = normalizeHttpsUrl(fetched.url) ?? fetched.url;
+    if (args.officialUrl && !sameOfficialHost(args.officialUrl, finalUrl)) {
+      pushNote(args.notes, `${normalized}: left the official host`);
+      args.seen.add(normalized);
+      continue;
+    }
+    if (finalUrl !== normalized) {
+      const finalDecision = robotsDecision(
+        await readRobots(args.fetchImpl, finalUrl, args.robotsCache),
+        finalUrl,
+      );
+      if (!finalDecision.ok) {
+        pushNote(args.notes, `${finalUrl}: ${finalDecision.reason}`);
+        args.seen.add(normalized);
+        args.seen.add(finalUrl);
+        continue;
+      }
+    }
+    if (!/text\/html|text\/plain|application\/xhtml/i.test(fetched.contentType) && fetched.contentType) {
+      pushNote(args.notes, `${finalUrl}: unsupported content type`);
+      args.seen.add(normalized);
+      continue;
+    }
+    const text = htmlToText(fetched.text).slice(0, BRIEFING_PAGE_CHARS);
+    if (!text) {
+      pushNote(args.notes, `${finalUrl}: empty page`);
+      args.seen.add(normalized);
+      continue;
+    }
+    args.seen.add(normalized);
+    args.seen.add(finalUrl);
+    kept.push({ url: finalUrl, html: fetched.text, text, truncated: fetched.truncated });
+    if (fetched.truncated) {
+      pushNote(args.notes, `${finalUrl}: truncated to the first ${BRIEFING_HTML_BYTE_CAP} bytes of HTML`);
+    }
+  }
+  return kept;
 }
 
 const WEB_SEARCH_ERROR_REASONS: Record<string, string> = {
@@ -1031,6 +1285,8 @@ export async function researchOneRestaurant(args: {
   callModel: BriefingModelCaller;
   apiKey: string;
   pageCap?: number;
+  /** Shared across a catalog run so a disallowed listing host is not fetched again. */
+  robotsCache?: RobotsCache;
 }): Promise<RestaurantResearchResult> {
   const notes: string[] = [];
   let units: ModelUsage = {};
@@ -1061,37 +1317,40 @@ export async function researchOneRestaurant(args: {
     return priced();
   }
   for (const warning of search.warnings) notes.push(warning);
-  const ranked = rankBriefingUrls(search.urls, args.restaurant.name).slice(
-    0,
-    args.pageCap ?? BRIEFING_PAGE_CAP,
-  );
+  const ranked = rankBriefingUrls(search.urls, args.restaurant.name);
   if (ranked.length === 0) {
     notes.push('no official site or reputable listing in the search results');
     return priced();
   }
-  const pages: FetchedPage[] = [];
-  for (const url of ranked) {
-    const allowed = await pageAllowed(args.fetchImpl, url);
-    if (!allowed.ok) {
-      notes.push(`${url}: ${allowed.reason}`);
-      continue;
-    }
-    const page = await fetchHttps(args.fetchImpl, url);
-    if ('error' in page) {
-      notes.push(`${url}: ${page.error}`);
-      continue;
-    }
-    if (!/text\/html|text\/plain|application\/xhtml/i.test(page.contentType) && page.contentType) {
-      notes.push(`${url}: unsupported content type`);
-      continue;
-    }
-    const text = htmlToText(page.text).slice(0, BRIEFING_PAGE_CHARS);
-    if (!text) {
-      notes.push(`${url}: empty page`);
-      continue;
-    }
-    pages.push({ url: page.url, text });
-  }
+  const robotsCache = args.robotsCache ?? new Map();
+  const seen = new Set<string>();
+  const pageCap = args.pageCap ?? BRIEFING_PAGE_CAP;
+  const searchPages = await takeBriefingPages({
+    urls: ranked,
+    cap: pageCap,
+    fetchImpl: args.fetchImpl,
+    robotsCache,
+    notes,
+    seen,
+  });
+  const official = searchPages.find((page) => classifyUrl(page.url, args.restaurant.name) === 'official');
+  const subpages = official
+    ? await takeBriefingPages({
+        urls: discoverOfficialSubpages(official.html, official.url, BRIEFING_SUBPAGE_CANDIDATE_CAP),
+        cap: BRIEFING_OFFICIAL_SUBPAGE_CAP,
+        fetchImpl: args.fetchImpl,
+        robotsCache,
+        notes,
+        seen,
+        officialUrl: official.url,
+      })
+    : [];
+  const ordered = [
+    ...searchPages.filter((page) => classifyUrl(page.url, args.restaurant.name) === 'official'),
+    ...subpages,
+    ...searchPages.filter((page) => classifyUrl(page.url, args.restaurant.name) !== 'official'),
+  ];
+  const pages: FetchedPage[] = ordered.map((page) => ({ url: page.url, text: page.text }));
   base.fetchedUrls = pages.map((page) => page.url);
   if (pages.length === 0) {
     notes.push('no page text fetched');
@@ -1129,6 +1388,7 @@ export async function researchCatalog(args: {
   const restaurants: RestaurantResearchResult[] = [];
   let spent = 0;
   let stoppedBecause: string | null = null;
+  const robotsCache: RobotsCache = new Map();
   const cap = Math.min(args.restaurantCap, DEFAULT_RESTAURANT_CAP);
   for (const restaurant of args.restaurants) {
     if (restaurants.length >= cap) {
@@ -1144,6 +1404,7 @@ export async function researchCatalog(args: {
       fetchImpl: args.fetchImpl,
       callModel: args.callModel,
       apiKey: args.apiKey,
+      robotsCache,
     });
     restaurants.push(result);
     spent += result.estimatedMicrodollars;
@@ -1181,8 +1442,25 @@ export function briefingInsertRow(fact: SupportedFact, restaurantId: string, ver
   };
 }
 
+/** Fetch notes plus whether this restaurant kept a supported fact. */
+export function briefingResultReasons(
+  result: Pick<RestaurantResearchResult, 'notes' | 'facts'>,
+): string[] {
+  const reasons = [...result.notes];
+  if (result.facts.length === 0) reasons.push('no supported facts');
+  else {
+    const noun = result.facts.length === 1 ? 'fact' : 'facts';
+    reasons.push(`kept ${result.facts.length} supported ${noun}`);
+  }
+  return reasons;
+}
+
 export function formatBriefingReport(run: BriefingRun): { json: string; markdown: string } {
-  const json = `${JSON.stringify({ schema: 'wanderbite.e06.briefing_research.v1', ...run }, null, 2)}\n`;
+  const restaurants = run.restaurants.map((restaurant) => ({
+    ...restaurant,
+    reasons: briefingResultReasons(restaurant),
+  }));
+  const json = `${JSON.stringify({ schema: 'wanderbite.e06.briefing_research.v1', ...run, restaurants }, null, 2)}\n`;
   const lines = [
     '# First-visit briefing research',
     '',
@@ -1194,12 +1472,15 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     run.stoppedBecause ? `Stopped: ${run.stoppedBecause}` : 'Stopped: completed the selected restaurants',
     '',
   ];
-  for (const restaurant of run.restaurants) {
+  for (const restaurant of restaurants) {
     lines.push(`## ${restaurant.restaurantName}`);
     lines.push('');
     lines.push(
       `Tokens in ${restaurant.units.input ?? 0}, out ${restaurant.units.output ?? 0}. Web searches ${restaurant.units.web_search_requests ?? 0}. Estimated ${formatEstimatedUsd(restaurant.estimatedMicrodollars)} USD.`,
     );
+    lines.push('');
+    lines.push('Reasons:');
+    for (const reason of restaurant.reasons) lines.push(`- ${reason}`);
     lines.push('');
     lines.push('Fetched:');
     if (restaurant.fetchedUrls.length === 0) lines.push('- none');
@@ -1215,11 +1496,6 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
       lines.push('');
       lines.push('Dropped:');
       for (const reason of restaurant.dropped) lines.push(`- ${reason}`);
-    }
-    if (restaurant.notes.length > 0) {
-      lines.push('');
-      lines.push('Notes:');
-      for (const note of restaurant.notes) lines.push(`- ${note}`);
     }
     lines.push('');
   }

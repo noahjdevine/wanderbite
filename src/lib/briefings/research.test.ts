@@ -2,7 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  BRIEFING_HTML_BYTE_CAP,
   BRIEFING_MODEL,
+  BRIEFING_PAGE_CHARS,
+  BRIEFING_USER_AGENT,
   BRIEFING_WEB_SEARCH_MAX_USES,
   BRIEFING_WEB_SEARCH_TOOL,
   WEB_SEARCH_MICRODOLLARS_PER_REQUEST,
@@ -12,6 +15,7 @@ import {
   briefingResearchAllowed,
   callBriefingModel,
   discoverBriefingUrls,
+  discoverOfficialSubpages,
   estimateMicrodollars,
   filterSupportedFacts,
   findSupportPassage,
@@ -452,6 +456,11 @@ describe('researchOneRestaurant', () => {
     expect(vi.mocked(fetchMock).mock.calls.some((call) => String(call[0]).includes('duckduckgo'))).toBe(
       false,
     );
+    const pageCall = vi.mocked(fetchMock).mock.calls.find((call) => String(call[0]) === OFFICIAL);
+    const headers = pageCall?.[1]?.headers as Record<string, string>;
+    expect(headers.accept).toContain('text/html');
+    expect(headers['accept-language']).toBe('en-US,en;q=0.9');
+    expect(headers['user-agent']).toBe(BRIEFING_USER_AGENT);
   });
 
   it('records the search failure and skips the fact model', async () => {
@@ -508,8 +517,11 @@ describe('researchOneRestaurant', () => {
     const report = formatBriefingReport(costly);
     expect(report.markdown).toContain('Hutchins BBQ');
     expect(report.markdown).toContain('Web searches 1');
+    expect(report.markdown).toContain('Reasons:');
+    expect(report.markdown).toContain('no supported facts');
     expect(report.json).toContain('wanderbite.e06.briefing_research.v1');
     expect(report.json).toContain('web_search_requests');
+    expect(report.json).toContain('"reasons"');
   });
 
   it('stops the next restaurant when web search spend reaches the cap', async () => {
@@ -559,5 +571,317 @@ describe('callBriefingModel', () => {
     expect(result.text).toBe('{"facts":[]}');
     expect(result.units).toEqual({ input: 12, output: 3 });
     expect(estimateMicrodollars(result.units)).toBe(27);
+  });
+});
+
+const HOME = 'https://hutchinsbbq.com';
+const YELP_SECOND = 'https://www.yelp.com/biz/hutchins-bbq-mckinney';
+const OPENTABLE = 'https://www.opentable.com/r/hutchins-bbq';
+const INFATUATION = 'https://www.theinfatuation.com/dallas/reviews/hutchins';
+const TRIPADVISOR = 'https://www.tripadvisor.com/Restaurant_Review-hutchins';
+const EATER = 'https://www.eater.com/hutchins';
+const ABOUT = 'https://www.hutchinsbbq.com/about';
+const HOURS = 'https://hutchinsbbq.com/hours';
+const FAQ = 'https://hutchinsbbq.com/faq';
+const PARKING_FACT = 'Valet parking is available beside the front door.';
+
+function searchBody(urls: readonly string[]): string {
+  return JSON.stringify({
+    stop_reason: 'end_turn',
+    content: [
+      {
+        type: 'web_search_tool_result',
+        tool_use_id: 'srvtoolu_pages',
+        content: urls.map((url) => ({ type: 'web_search_result', url, title: url })),
+      },
+    ],
+    usage: { server_tool_use: { web_search_requests: 1 } },
+  });
+}
+
+function emptyModel(): BriefingModelCaller {
+  return vi.fn(async () => ({ text: '{"facts":[]}', units: { input: 1, output: 1 } }));
+}
+
+describe('official subpages, truncation, and robots skip', () => {
+  it('discovers same-host first-visit links and ignores other hosts', () => {
+    const html = [
+      '<a href="/careers">Careers</a>',
+      '<a href="https://evil.example/menu">Menu</a>',
+      '<a href="https://order.hutchinsbbq.com/menu">Order</a>',
+      '<a href="/menu?utm_source=home">Menu</a>',
+      '<a href="https://www.hutchinsbbq.com/about">About us</a>',
+      '<a href="/visit">Plan your visit</a>',
+      '<a href="/faq">FAQ</a>',
+      '<a href="/hours">Hours</a>',
+      '<a href="/location">Location</a>',
+      '<a href="/contact">Contact</a>',
+      '<a href="/reservations">Reservations</a>',
+      '<a href="/parking">Parking</a>',
+      '<a href="/private-dining">Private dining</a>',
+      '<a href="mailto:hi@hutchinsbbq.com">Email</a>',
+      '<a href="/menu.jpg">Menu image</a>',
+    ].join('');
+    expect(discoverOfficialSubpages(html, `${HOME}/`, 4)).toEqual([HOME + '/menu', ABOUT, OFFICIAL, FAQ]);
+    const all = discoverOfficialSubpages(html, `${HOME}/`);
+    expect(all).toEqual([
+      HOME + '/menu',
+      ABOUT,
+      OFFICIAL,
+      FAQ,
+      `${HOME}/hours`,
+      `${HOME}/location`,
+      `${HOME}/contact`,
+      `${HOME}/reservations`,
+      `${HOME}/parking`,
+      `${HOME}/private-dining`,
+    ]);
+  });
+
+  it('fetches up to four same-host subpages and skips a disallowed path', async () => {
+    const homeHtml = [
+      '<a href="/careers">Careers</a>',
+      '<a href="https://evil.example/menu">Menu</a>',
+      '<a href="https://order.hutchinsbbq.com/menu">Order online</a>',
+      '<a href="/menu">Menu</a>',
+      `<a href="${ABOUT}">About us</a>`,
+      '<a href="/visit">Plan your visit</a>',
+      '<a href="/faq">FAQ</a>',
+      '<a href="/hours">Hours</a>',
+      '<a href="/private-dining">Private dining</a>',
+      '<a href="/contact">Contact</a>',
+      '<p>Welcome.</p>',
+    ].join('');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([`${HOME}/`, YELP, 'https://evil.example/menu']), 200, 'application/json');
+      }
+      if (url === `${HOME}/robots.txt`) {
+        return response('User-agent: *\nDisallow: /menu\n', 200, 'text/plain');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === HOME || url === `${HOME}/`) return response(homeHtml);
+      if (url === HOURS) return response(`<p>${PARKING_FACT}</p>`);
+      if (url.startsWith(`${HOME}/`) || url.startsWith('https://www.hutchinsbbq.com/')) {
+        return response('<p>A shorter note about the room.</p>');
+      }
+      if (url.startsWith(YELP)) return response('<p>Guests mention a line at the door.</p>');
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: JSON.stringify({
+        facts: [
+          { field: 'parking', text: PARKING_FACT, source_url: HOURS },
+          { field: 'attire', text: 'Black tie is required every night.', source_url: HOURS },
+        ],
+      }),
+      units: { input: 20, output: 8 },
+    }));
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+    });
+    expect(result.fetchedUrls).toEqual([`${HOME}/`, ABOUT, OFFICIAL, FAQ, HOURS, YELP]);
+    expect(result.facts.map((fact) => fact.sourceUrl)).toEqual([HOURS]);
+    expect(result.dropped.join('\n')).toMatch(/does not support/);
+    expect(result.notes).toContain(`${HOME}/menu: robots.txt disallows the path`);
+    const calls = vi.mocked(fetchMock).mock.calls.map((call) => String(call[0]));
+    expect(calls.filter((url) => url === 'https://api.anthropic.com/v1/messages')).toHaveLength(1);
+    expect(calls.filter((url) => url === `${HOME}/robots.txt`)).toHaveLength(1);
+    expect(calls).not.toContain(`${HOME}/menu`);
+    expect(calls).not.toContain(`${HOME}/private-dining`);
+    expect(calls).not.toContain('https://order.hutchinsbbq.com/menu');
+    expect(calls).not.toContain('https://evil.example/menu');
+    expect(calls).not.toContain(`${HOME}/careers`);
+    const prompt = vi.mocked(callModel).mock.calls[0]?.[0]?.user ?? '';
+    expect(prompt).toContain(HOURS);
+    expect(prompt).toContain(PARKING_FACT);
+    expect(prompt.length).toBeLessThan(BRIEFING_PAGE_CHARS * result.fetchedUrls.length + 800);
+    const report = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [result],
+      stoppedBecause: null,
+      totals: { input: result.units.input ?? 0, output: result.units.output ?? 0, estimatedMicrodollars: result.estimatedMicrodollars },
+    });
+    expect(report.markdown).toContain('Reasons:');
+    expect(report.markdown).toContain(`${HOME}/menu: robots.txt disallows the path`);
+    expect(report.markdown).toContain('kept 1 supported fact');
+  });
+
+  it('keeps a page above the old 400 KB cap when it is under 1.5 MB', async () => {
+    const body = `<p>${PARKING_FACT}</p>${'y'.repeat(500_000)}`;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([OFFICIAL]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === OFFICIAL) return response(body);
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: JSON.stringify({ facts: [{ field: 'parking', text: PARKING_FACT, source_url: OFFICIAL }] }),
+      units: { input: 10, output: 4 },
+    }));
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+    });
+    expect(result.fetchedUrls).toEqual([OFFICIAL]);
+    expect(result.facts).toHaveLength(1);
+    expect(result.notes.join('\n')).not.toMatch(/size cap|truncated/);
+    const prompt = vi.mocked(callModel).mock.calls[0]?.[0]?.user ?? '';
+    expect(prompt).toContain(PARKING_FACT);
+    expect(prompt.length).toBeLessThan(BRIEFING_PAGE_CHARS + 800);
+  });
+
+  it('truncates HTML past 1.5 MB instead of dropping the page', async () => {
+    const prefix = Buffer.from(`<p>${PARKING_FACT}</p>`);
+    const filler = Buffer.alloc(64 * 1024, 0x79);
+    const parts: Buffer[] = [prefix];
+    let total = prefix.byteLength;
+    while (total < BRIEFING_HTML_BYTE_CAP + 64) {
+      parts.push(filler);
+      total += filler.byteLength;
+    }
+    parts.push(Buffer.from('TAIL_MARKER'));
+    const payload = Buffer.concat(parts);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([OFFICIAL]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === OFFICIAL) {
+        return new Response(payload, { status: 200, headers: { 'content-type': 'text/html' } });
+      }
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: JSON.stringify({ facts: [{ field: 'parking', text: PARKING_FACT, source_url: OFFICIAL }] }),
+      units: { input: 10, output: 4 },
+    }));
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+    });
+    expect(result.fetchedUrls).toEqual([OFFICIAL]);
+    expect(result.facts).toHaveLength(1);
+    expect(result.notes).toContain(`${OFFICIAL}: truncated to the first ${BRIEFING_HTML_BYTE_CAP} bytes of HTML`);
+    expect(result.notes.join('\n')).not.toMatch(/size cap/);
+    const prompt = vi.mocked(callModel).mock.calls[0]?.[0]?.user ?? '';
+    expect(prompt).toContain(PARKING_FACT);
+    expect(prompt).not.toContain('TAIL_MARKER');
+    expect(prompt.length).toBeLessThan(BRIEFING_PAGE_CHARS + 800);
+  });
+
+  it('skips robots-disallowed listing hosts without a page slot or another web search', async () => {
+    const urls = [
+      YELP,
+      YELP_SECOND,
+      OPENTABLE,
+      INFATUATION,
+      `${HOME}/`,
+      TRIPADVISOR,
+      EATER,
+      'https://example.com/random-blog',
+    ];
+    const disallow = [
+      'User-agent: WanderbiteBriefingResearchBot',
+      'Disallow: /',
+      '',
+      'User-agent: *',
+      'Allow: /',
+      '',
+    ].join('\n');
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody(urls), 200, 'application/json');
+      }
+      if (url === 'https://www.yelp.com/robots.txt' || url === 'https://www.opentable.com/robots.txt') {
+        return response(disallow, 200, 'text/plain');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (
+        url === HOME ||
+        url === `${HOME}/` ||
+        url.startsWith(INFATUATION) ||
+        url.startsWith(TRIPADVISOR) ||
+        url.startsWith(EATER)
+      ) {
+        return response('<p>Open tonight for dinner.</p>');
+      }
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const callModel = emptyModel();
+    const second = { ...RESTAURANT, id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' };
+    const run = await researchCatalog({
+      restaurants: [RESTAURANT, second],
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+      now: new Date('2026-11-05T17:00:00.000Z'),
+      restaurantCap: 25,
+      costCapMicrodollars: 5_000_000,
+    });
+    expect(run.restaurants).toHaveLength(2);
+    for (const restaurant of run.restaurants) {
+      expect(restaurant.fetchedUrls).toEqual([`${HOME}/`, INFATUATION, TRIPADVISOR]);
+      expect(restaurant.notes).toContain(`${YELP}: robots.txt disallows the path`);
+      expect(restaurant.notes).toContain(`${YELP_SECOND}: robots.txt disallows the path`);
+      expect(restaurant.notes).toContain(`${OPENTABLE}: robots.txt disallows the path`);
+      expect(restaurant.units.web_search_requests).toBe(1);
+    }
+    const calls = vi.mocked(fetchMock).mock.calls.map((call) => String(call[0]));
+    expect(calls.filter((url) => url === 'https://api.anthropic.com/v1/messages')).toHaveLength(2);
+    expect(calls.filter((url) => url === 'https://www.yelp.com/robots.txt')).toHaveLength(1);
+    expect(calls.filter((url) => url === 'https://www.opentable.com/robots.txt')).toHaveLength(1);
+    expect(calls.some((url) => url.startsWith('https://www.yelp.com/biz'))).toBe(false);
+    expect(calls.some((url) => url === OPENTABLE)).toBe(false);
+    expect(calls.some((url) => url.includes('eater.com'))).toBe(false);
+    expect(calls.some((url) => url.includes('example.com'))).toBe(false);
+    const report = formatBriefingReport(run);
+    expect(report.markdown).toContain(`## ${RESTAURANT.name}`);
+    expect(report.markdown).toContain(`${YELP}: robots.txt disallows the path`);
+    expect(report.json).toContain('"reasons"');
+  });
+
+  it('skips HTTP 403 per URL and still fills the page cap', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([OFFICIAL, YELP, OPENTABLE, TRIPADVISOR, EATER]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === OFFICIAL) return response('nope', 403, 'text/html');
+      if (url.startsWith(YELP) || url.startsWith(OPENTABLE) || url.startsWith(TRIPADVISOR) || url.startsWith(EATER)) {
+        return response('<p>Open tonight for dinner.</p>');
+      }
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const callModel = emptyModel();
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+    });
+    expect(result.notes).toContain(`${OFFICIAL}: skipped HTTP 403`);
+    expect(result.fetchedUrls).toEqual([YELP, OPENTABLE, TRIPADVISOR]);
+    expect(callModel).toHaveBeenCalledTimes(1);
+    const prompt = vi.mocked(callModel).mock.calls[0]?.[0]?.user ?? '';
+    expect(prompt).toContain(YELP);
+    expect(prompt).not.toContain(OFFICIAL);
+    const calls = vi.mocked(fetchMock).mock.calls.map((call) => String(call[0]));
+    expect(calls.filter((url) => url === 'https://api.anthropic.com/v1/messages')).toHaveLength(1);
+    expect(calls.some((url) => url.startsWith(EATER))).toBe(false);
   });
 });

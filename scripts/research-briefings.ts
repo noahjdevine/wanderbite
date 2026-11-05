@@ -6,6 +6,7 @@ import {
   BRIEFING_OUTPUT_DIR,
   briefingInsertRow,
   briefingResearchAllowed,
+  briefingResultReasons,
   callBriefingModel,
   formatBriefingReport,
   formatEstimatedUsd,
@@ -22,9 +23,14 @@ const HELP = `Operator-only first-visit briefing research.
 Default is a dry-run. It reads active restaurants and asks Claude Haiku
 (claude-haiku-4-5-20251001) to search with Anthropic's server-side web_search
 tool (web_search_20260318, at most 3 searches, McKinney TX). It then fetches
-those public https pages itself (official site first, then a reputable listing)
-and asks Haiku for facts the page text supports. It writes a JSON and markdown
-report under .briefings/. It does not write the database.
+those public https pages itself. The official site is first. Up to four
+same-host subpages (menu, about, faq, visit, location, contact, hours,
+reservations, parking, private-dining) are fetched from that site. A reputable
+listing is next. robots.txt is respected. A disallowed listing host does not
+use a page slot or another web search. HTML is kept up to 1.5 MB and the text
+is capped. HTTP 403 skips that URL only. It asks Haiku for facts the page text
+supports. It writes a JSON and markdown report under .briefings/. It does not
+write the database.
 
   npm run research:briefings
   npm run research:briefings -- --limit 5
@@ -146,8 +152,9 @@ async function main(): Promise<void> {
     0,
   );
   for (const restaurant of run.restaurants) {
+    const reasons = briefingResultReasons(restaurant).join(' | ');
     process.stdout.write(
-      `${restaurant.restaurantName} facts=${restaurant.facts.length} input=${restaurant.units.input ?? 0} output=${restaurant.units.output ?? 0} web_searches=${restaurant.units.web_search_requests ?? 0} estimated_usd=${formatEstimatedUsd(restaurant.estimatedMicrodollars)}\n`,
+      `${restaurant.restaurantName} facts=${restaurant.facts.length} input=${restaurant.units.input ?? 0} output=${restaurant.units.output ?? 0} web_searches=${restaurant.units.web_search_requests ?? 0} estimated_usd=${formatEstimatedUsd(restaurant.estimatedMicrodollars)} reasons=${reasons}\n`,
     );
   }
   process.stdout.write(
