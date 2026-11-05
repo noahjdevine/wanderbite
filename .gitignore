@@ -50,3 +50,7 @@ next-env.d.ts
 
 # Operator dry-run output for E05-B menu recipe drafts. Never commit.
 /.menu-recipes/
+
+# Local Stripe CLI. Install it from Stripe's docs; do not commit a binary.
+stripe.exe
+/stripe
