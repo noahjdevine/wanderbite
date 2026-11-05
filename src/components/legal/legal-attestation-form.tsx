@@ -12,9 +12,13 @@ import {
 
 export function LegalAttestationForm({
   renderedForUserId,
+  tone = 'default',
 }: {
   renderedForUserId: string;
+  /** Account page wires the save error. The default markup matches onboarding. */
+  tone?: 'default' | 'account';
 }) {
+  const account = tone === 'account';
   const [age21, setAge21] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -59,7 +63,11 @@ export function LegalAttestationForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form
+      onSubmit={onSubmit}
+      className="space-y-4"
+      aria-describedby={account && error ? 'legal-attestation-error' : undefined}
+    >
       <p className="text-sm text-muted-foreground">
         Terms and Privacy version {LEGAL_DOCUMENT_VERSION}. This confirmation is saved only when you
         submit it.
@@ -103,7 +111,11 @@ export function LegalAttestationForm({
         </label>
       </div>
       {error ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p
+          id={account ? 'legal-attestation-error' : undefined}
+          className="text-sm text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}

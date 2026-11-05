@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { AccountClient } from '@/components/account/AccountClient';
+import { AccountShell } from '@/components/account/account-shell';
 import { normalizeCuisineIds } from '@/lib/cuisines';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import { resolveProfileAddress } from '@/lib/launch-market';
@@ -41,9 +42,11 @@ export default async function AccountPage() {
 
   if (profileResult.error) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-background p-6 pt-24">
-        <p className="text-sm text-destructive">Unable to load your profile right now. Please try again.</p>
-      </main>
+      <AccountShell>
+        <p className="wb-account-error" role="alert">
+          Unable to load your profile right now. Please try again.
+        </p>
+      </AccountShell>
     );
   }
 
@@ -84,44 +87,37 @@ export default async function AccountPage() {
   const resolvedAddress = resolveProfileAddress(p);
 
   return (
-    <main className="min-h-screen bg-background pb-20 pt-24 md:pt-28">
-      <div className="mx-auto max-w-3xl space-y-8 px-4 sm:px-6">
-        <header className="space-y-1">
-          <h1 className="text-3xl font-bold tracking-tight text-foreground">Your account</h1>
-          <p className="text-muted-foreground">Manage your profile, preferences, and subscription.</p>
-        </header>
-
-        <AccountClient
-          initial={{
-            userId: p.id,
-            email: p.email,
-            fullName: p.full_name,
-            subscriptionStatus: p.subscription_status,
-            currentPeriodEnd: p.current_period_end,
-            preferences: {
-              dietary_flags: p.dietary_flags ?? [],
-              excluded_cuisines: normalizeCuisineIds(
-                (prefs as UserPreferencesRow | null)?.excluded_cuisines ?? []
-              ),
-              distance_band: p.distance_band ?? '15_mi',
-              wants_cocktail_experience: Boolean(p.wants_cocktail_experience),
+    <AccountShell>
+      <AccountClient
+        initial={{
+          userId: p.id,
+          email: p.email,
+          fullName: p.full_name,
+          subscriptionStatus: p.subscription_status,
+          currentPeriodEnd: p.current_period_end,
+          preferences: {
+            dietary_flags: p.dietary_flags ?? [],
+            excluded_cuisines: normalizeCuisineIds(
+              (prefs as UserPreferencesRow | null)?.excluded_cuisines ?? []
+            ),
+            distance_band: p.distance_band ?? '15_mi',
+            wants_cocktail_experience: Boolean(p.wants_cocktail_experience),
+          },
+          profile: {
+            username: p.username ?? '',
+            address: {
+              street: resolvedAddress.street ?? '',
+              city: resolvedAddress.city ?? '',
+              state: resolvedAddress.state ?? '',
+              zip: resolvedAddress.zip ?? '',
             },
-            profile: {
-              username: p.username ?? '',
-              address: {
-                street: resolvedAddress.street ?? '',
-                city: resolvedAddress.city ?? '',
-                state: resolvedAddress.state ?? '',
-                zip: resolvedAddress.zip ?? '',
-              },
-            },
-            adventureRemindersOptedOut: reminderPrefResult.data?.opted_out === true,
-            adventureRemindersUnavailable: Boolean(reminderPrefResult.error),
-            hasCurrentAttestation,
-          }}
-        />
-      </div>
-    </main>
+          },
+          adventureRemindersOptedOut: reminderPrefResult.data?.opted_out === true,
+          adventureRemindersUnavailable: Boolean(reminderPrefResult.error),
+          hasCurrentAttestation,
+        }}
+      />
+    </AccountShell>
   );
 }
 

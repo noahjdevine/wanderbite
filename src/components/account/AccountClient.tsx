@@ -49,6 +49,9 @@ export function AccountClient({
       ? 'Mail preferences are unavailable right now.'
       : null,
   );
+  const [reminderLive, setReminderLive] = useState<'status' | 'alert'>(
+    initial.adventureRemindersUnavailable ? 'alert' : 'status',
+  );
 
   async function savePreferences(values: PreferencesValues) {
     const res = await updatePreferences(values, initial.userId);
@@ -64,80 +67,82 @@ export function AccountClient({
   if (accountState === 'changed') return <AccountChangedNotice />;
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold tracking-tight">Profile</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+    <div className="wb-account-stack">
+      <section className="wb-account-card">
+        <h2>Profile</h2>
+        <p className="wb-account-copy">
           Username and address for a smoother experience.
         </p>
-        <div className="mt-6">
+        <div className="wb-account-block">
           <ProfileForm
             initialValues={initial.profile}
             onSubmit={saveProfile}
             submitLabel="Save changes"
             currentUserId={initial.userId}
+            tone="account"
           />
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold tracking-tight">Preferences</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <section className="wb-account-card">
+        <h2>Preferences</h2>
+        <p className="wb-account-copy">
           Tell us what you’re into. We’ll curate around it.
         </p>
-        <div className="mt-6">
+        <div className="wb-account-block">
           <PreferencesForm
             initialValues={initial.preferences}
             onSubmit={savePreferences}
             submitLabel="Save changes"
+            tone="account"
           />
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold tracking-tight">Age and terms</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <section className="wb-account-card">
+        <h2>Age and terms</h2>
+        <p className="wb-account-copy">
           Purchase asks for this confirmation. You can keep using Wanderbite either way.
         </p>
-        <div className="mt-6">
+        <div className="wb-account-block">
           {initial.hasCurrentAttestation ? (
-            <p className="text-sm text-muted-foreground" role="status">
+            <p className="wb-account-status" role="status">
               You confirmed you are 21 or older and agreed to terms version {LEGAL_DOCUMENT_VERSION}.
             </p>
           ) : (
-            <LegalAttestationForm renderedForUserId={initial.userId} />
+            <LegalAttestationForm renderedForUserId={initial.userId} tone="account" />
           )}
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold tracking-tight">Subscription</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <section className="wb-account-card">
+        <h2>Subscription</h2>
+        <p className="wb-account-copy">
           {isActive
             ? `Status: Active${billingLabel ? ` · Renews ${billingLabel}` : ''}`
             : 'Status: No active subscription'}
         </p>
-        <div className="mt-6">
+        <div className="wb-account-block">
           <ManageSubscriptionButton />
         </div>
       </section>
 
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold tracking-tight">Account</h2>
-        <div className="mt-4 space-y-2 text-sm">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-muted-foreground">Email</span>
-            <span className="font-medium text-foreground">{initial.email ?? '—'}</span>
+      <section className="wb-account-card">
+        <h2>Account</h2>
+        <div className="wb-account-block wb-account-meta-list">
+          <div className="wb-account-meta">
+            <span>Email</span>
+            <span>{initial.email ?? '—'}</span>
           </div>
-          <p className="text-xs text-muted-foreground">
+          <p className="wb-account-fine">
             Email change can be added here once enabled in Supabase Auth settings.
           </p>
-          <label className="flex items-start gap-3 pt-2 text-sm">
+          <label className="wb-account-reminder">
             <input
               type="checkbox"
-              className="mt-1 size-4 accent-primary"
               checked={!remindersOptedOut}
               disabled={initial.adventureRemindersUnavailable || reminderSaving}
+              aria-describedby={reminderMessage ? 'account-reminder-message' : undefined}
               onChange={(event) => {
                 const optedOut = !event.target.checked;
                 setReminderSaving(true);
@@ -145,10 +150,12 @@ export function AccountClient({
                 void updateAdventureReminderOptOut(optedOut, initial.userId)
                   .then((res) => {
                     if (!res.ok) {
+                      setReminderLive('alert');
                       setReminderMessage(res.error);
                       return;
                     }
                     setRemindersOptedOut(optedOut);
+                    setReminderLive('status');
                     setReminderMessage(
                       optedOut
                         ? 'Adventure reminders are off.'
@@ -156,6 +163,7 @@ export function AccountClient({
                     );
                   })
                   .catch(() => {
+                    setReminderLive('alert');
                     setReminderMessage('Unable to save email preferences right now. Please try again.');
                   })
                   .finally(() => setReminderSaving(false));
@@ -170,7 +178,13 @@ export function AccountClient({
             </span>
           </label>
           {reminderMessage ? (
-            <p className="text-xs text-muted-foreground">{reminderMessage}</p>
+            <p
+              id="account-reminder-message"
+              className={reminderLive === 'alert' ? 'wb-account-error' : 'wb-account-status'}
+              role={reminderLive}
+            >
+              {reminderMessage}
+            </p>
           ) : null}
         </div>
       </section>

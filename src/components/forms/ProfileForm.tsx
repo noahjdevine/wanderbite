@@ -58,12 +58,15 @@ export function ProfileForm({
   submitLabel,
   currentUserId: _currentUserId,
   isDirty,
+  tone = 'default',
 }: {
   initialValues: ProfileValues;
   onSubmit: (values: ProfileValues) => Promise<void> | void;
   submitLabel: string;
   currentUserId: string;
   isDirty?: boolean;
+  /** Account page wires errors. The default markup matches onboarding. */
+  tone?: 'default' | 'account';
 }) {
   const [values, setValues] = useState<ProfileValues>(initialValues);
   const [saving, setSaving] = useState(false);
@@ -155,6 +158,15 @@ export function ProfileForm({
 
   const usernameHint = usernameMessage(usernameState);
   const usernameGood = usernameOk(usernameState);
+  const account = tone === 'account';
+  const usernameDescribedBy = account
+    ? ['profile-username-hint', error ? 'profile-save-error' : null].filter(Boolean).join(' ')
+    : undefined;
+  const hintRole = !account || !usernameHint
+    ? undefined
+    : usernameGood
+      ? ('status' as const)
+      : ('alert' as const);
 
   const canSubmit =
     dirty &&
@@ -192,6 +204,7 @@ export function ProfileForm({
         applyAutofill();
       }}
       className="space-y-6"
+      aria-describedby={account && error ? 'profile-save-error' : undefined}
     >
       <div className="space-y-2">
         <label htmlFor="profile-username" className="text-sm font-medium">
@@ -213,9 +226,15 @@ export function ProfileForm({
           placeholder="e.g. foodie_jane"
           autoComplete="username"
           disabled={saving}
+          aria-describedby={usernameDescribedBy}
+          aria-invalid={account && Boolean(usernameHint) && !usernameGood ? true : undefined}
           className="w-full rounded-md border border-input bg-background px-3 py-2.5 text-base sm:text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20"
         />
-        <div className="flex items-center gap-2 text-xs">
+        <div
+          id={account ? 'profile-username-hint' : undefined}
+          className="flex items-center gap-2 text-xs"
+          role={hintRole}
+        >
           {usernameState.status === 'checking' ? (
             <>
               <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-hidden />
@@ -245,14 +264,26 @@ export function ProfileForm({
           onChange={(addr) => setValues((p) => ({ ...p, address: addr }))}
           onZipBlur={() => setTouchedZip(true)}
           disabled={saving}
+          zipDescribedBy={account && showZipError ? 'profile-zip-error' : undefined}
+          zipInvalid={account && showZipError}
         />
         {showZipError ? (
-          <p className="text-sm text-destructive">ZIP must be 5 digits or ZIP+4 (e.g. 78701 or 78701-1234).</p>
+          <p
+            id={account ? 'profile-zip-error' : undefined}
+            className="text-sm text-destructive"
+            role={account ? 'alert' : undefined}
+          >
+            ZIP must be 5 digits or ZIP+4 (e.g. 78701 or 78701-1234).
+          </p>
         ) : null}
       </div>
 
       {error ? (
-        <p className="text-sm text-destructive" role="alert">
+        <p
+          id={account ? 'profile-save-error' : undefined}
+          className="text-sm text-destructive"
+          role="alert"
+        >
           {error}
         </p>
       ) : null}
