@@ -413,6 +413,50 @@
   display: grid;
   align-items: center;
 }
+.wb-tabbar > a {
+  width: 100%;
+  min-width: 44px;
+  min-height: 44px;
+}
+.wb-tabbar > a:focus-visible {
+  outline: 2px solid var(--wb-blush);
+  outline-offset: 2px;
+  border-radius: 16px;
+}
+/* Member chrome only. 80rem is the site xl breakpoint used by the #114 header. */
+.wb-member-tabbar {
+  position: fixed;
+  z-index: 30;
+  left: 16px;
+  right: 16px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+}
+.wb-member-tabbar-pad {
+  display: contents;
+}
+@media (width >= 80rem) {
+  .wb-member-tabbar {
+    display: none;
+  }
+}
+@media (width < 80rem) {
+  .wb-member-tabbar-pad {
+    display: block;
+    padding-bottom: calc(64px + 18px + 8px + env(safe-area-inset-bottom, 0px));
+  }
+  .wb-member-tabbar-on [data-sonner-toaster][data-y-position="bottom"] {
+    bottom: calc(64px + 18px + 8px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wb-tabbar,
+  .wb-tabbar > a,
+  .wb-member-tabbar,
+  .wb-member-tabbar-pad {
+    animation: none;
+    transition: none;
+  }
+}
 .wb-status-bar {
   height: 4px;
   border-radius: 2px;
