@@ -341,6 +341,18 @@ export function noPairCta(input: NoPairCtaInput): NoPairCta {
   };
 }
 
+/**
+ * `/challenges` hold card. A zero count is not a hold, same as the
+ * credits-waiting branch of `noPairCta`. Challenges still shows this card
+ * before the area-hold path, so a non-eligible member with a pending credit
+ * keeps the card. `noPairCta` returns `area_hold` first in that case.
+ */
+export function challengesCreditHold(
+  pendingCount: number,
+): { pendingCount: number } | null {
+  return pendingCount > 0 ? { pendingCount } : null;
+}
+
 export function headerLabelFor(fullName: string | null | undefined): string {
   return memberHeaderLabel(fullName);
 }

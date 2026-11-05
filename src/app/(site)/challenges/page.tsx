@@ -7,8 +7,8 @@ import { getMemberProgress, presentMemberProgress } from '@/lib/progress/get-mem
 import { getBiteNotes } from '@/app/actions/bite-notes';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { SubscriptionSuccessToast } from '@/components/dashboard/paywall-card';
-import { chicagoMonthStart } from '@/lib/cron-period';
 import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
+import { challengesCreditHold, pendingCreditsHeadFilters } from '@/lib/progress/progress-board';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import {
   loadCarriedCreditsForUser,
@@ -105,13 +105,14 @@ export default async function ChallengesPage() {
   let creditsSwapRemaining: number | null = null;
   const creditsWorkflow = typedProfile.workflow_version === 'credits';
   if (creditsWorkflow) {
+    const creditFilters = pendingCreditsHeadFilters(typedProfile.id, new Date());
     const [{ count, error: creditError }, swapRemaining] = await Promise.all([
       admin
         .from('entitlement_credits')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', typedProfile.id)
-        .eq('issue_period', chicagoMonthStart())
-        .eq('status', 'pending'),
+        .eq('user_id', creditFilters.userId)
+        .eq('issue_period', creditFilters.issuePeriod)
+        .eq('status', creditFilters.status),
       loadCreditsSwapRemaining(typedProfile.id),
     ]);
     if (creditError) {
@@ -128,7 +129,7 @@ export default async function ChallengesPage() {
         </main>
       );
     }
-    creditHold = { pendingCount: count ?? 0 };
+    creditHold = challengesCreditHold(count ?? 0);
     creditsSwapRemaining = swapRemaining.remaining;
   }
 

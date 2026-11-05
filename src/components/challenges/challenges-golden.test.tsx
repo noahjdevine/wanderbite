@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GeneratedChallenge } from '@/app/actions/generate-challenge';
 import { DashboardClient } from '@/components/dashboard/dashboard-client';
 import { TICKET_PHOTO_HEIGHT } from '@/components/challenges/adventure-ticket';
+import { AREA_HOLD_HEADING } from '@/lib/launch-market';
 import { PROGRESS_UNAVAILABLE_MESSAGE } from '@/lib/progress/rules';
 import { visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 
@@ -240,5 +241,108 @@ describe('golden challenges', () => {
     expect(text).toContain(PROGRESS_UNAVAILABLE_MESSAGE);
     expect(text).not.toContain('0 month');
     expect(text.toLowerCase()).not.toContain('boost');
+  });
+
+  it('shows the credits-waiting card only when a pending count is above zero', async () => {
+    const waiting = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={null}
+        streak={streak}
+        biteNotes={[]}
+        creditHold={{ pendingCount: 2 }}
+        monthlyReveal={{ mode: 'curation', constraintLines: ['Within about 15 miles.'] }}
+      />,
+    );
+    expect(waiting.textContent).toContain('Your credits are waiting');
+    expect(waiting.textContent).toContain(
+      'You have 2 credits for this month. Restaurant selection is not open yet.',
+    );
+    expect(waiting.textContent).not.toContain('Generate Challenge');
+    expect(waiting.textContent).not.toContain('Reveal my challenges');
+
+    const one = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={null}
+        streak={streak}
+        biteNotes={[]}
+        creditHold={{ pendingCount: 1 }}
+      />,
+    );
+    expect(one.textContent).toContain('Your credits are waiting');
+    expect(one.textContent).toContain('Restaurant selection is not open yet.');
+    expect(one.textContent).not.toContain('You have 2 credits');
+    expect(one.textContent).not.toContain('Generate Challenge');
+
+    const open = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={null}
+        streak={streak}
+        biteNotes={[]}
+        creditHold={null}
+      />,
+    );
+    expect(open.textContent).toContain('Generate Challenge');
+    expect(open.textContent).not.toContain('Your credits are waiting');
+
+    const zero = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={null}
+        streak={streak}
+        biteNotes={[]}
+        creditHold={{ pendingCount: 0 }}
+      />,
+    );
+    expect(zero.textContent).toContain('Generate Challenge');
+    expect(zero.textContent).not.toContain('Your credits are waiting');
+
+    const heldArea = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible={false}
+        currentChallenge={null}
+        streak={streak}
+        biteNotes={[]}
+        creditHold={{ pendingCount: 2 }}
+      />,
+    );
+    expect(heldArea.textContent).toContain('Your credits are waiting');
+    expect(heldArea.textContent).toContain(AREA_HOLD_HEADING);
+    expect(heldArea.textContent).not.toContain('Generate Challenge');
+
+    const area = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible={false}
+        currentChallenge={null}
+        streak={streak}
+        biteNotes={[]}
+        creditHold={{ pendingCount: 0 }}
+      />,
+    );
+    expect(area.textContent).toContain(AREA_HOLD_HEADING);
+    expect(area.textContent).not.toContain('Your credits are waiting');
+    expect(area.textContent).not.toContain('Generate Challenge');
+
+    const paired = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([item('ready-1', 'The Common Table', 'assigned', 'ready')])}
+        streak={streak}
+        biteNotes={[]}
+        creditHold={{ pendingCount: 2 }}
+      />,
+    );
+    expect(paired.textContent).toContain('The Common Table');
+    expect(paired.textContent).toContain("I'm here — get my code");
+    expect(paired.textContent).not.toContain('Your credits are waiting');
   });
 });

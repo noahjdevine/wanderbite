@@ -20,6 +20,7 @@ import {
   assembleProgressAdventures,
   buildProgressModel,
   buildStreakMonths,
+  challengesCreditHold,
   headerLabelFor,
   nextChicagoMonth,
   noPairCta,
@@ -385,6 +386,49 @@ describe('noPairCta', () => {
     expect(screen.getByText(/You have 2 credits for this month/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Open challenges' }).getAttribute('href')).toBe('/challenges');
     expect(screen.queryByText('Generate Challenge')).toBeNull();
+  });
+
+  it('gates the Challenges hold on a pending count and keeps the two-credit sentence at 2', () => {
+    expect(challengesCreditHold(0)).toBeNull();
+    expect(challengesCreditHold(1)).toEqual({ pendingCount: 1 });
+    expect(challengesCreditHold(2)).toEqual({ pendingCount: 2 });
+
+    const launchEligible = (pendingCreditsCount: number) =>
+      noPairCta({
+        launchEligible: true,
+        creditsWorkflow: true,
+        pendingCreditsCount,
+        generateBlocked: false,
+      });
+    expect(launchEligible(0).id).toBe('generate');
+    expect(launchEligible(1).id).toBe('credits_waiting');
+    expect(launchEligible(1).meta).toBe('Restaurant selection is not open yet');
+    expect(launchEligible(2).id).toBe('credits_waiting');
+    expect(launchEligible(2).meta).toBe(
+      'You have 2 credits for this month. Restaurant selection is not open yet.',
+    );
+
+    const outOfArea = noPairCta({
+      launchEligible: false,
+      creditsWorkflow: true,
+      pendingCreditsCount: 2,
+      generateBlocked: false,
+    });
+    expect(outOfArea.id).toBe('area_hold');
+    expect(challengesCreditHold(2)).toEqual({ pendingCount: 2 });
+
+    const page = readFileSync(path.join(ROOT, 'src/app/(site)/challenges/page.tsx'), 'utf8');
+    const filtersAt = page.indexOf('pendingCreditsHeadFilters(');
+    const failedAt = page.indexOf('Failed to load credits:');
+    const holdAt = page.indexOf('challengesCreditHold(');
+    const carriedAt = page.indexOf('loadCarriedCreditsForUser(');
+    expect(filtersAt).toBeGreaterThan(-1);
+    expect(page).toContain('loadCreditsSwapRemaining(');
+    expect(failedAt).toBeGreaterThan(filtersAt);
+    expect(holdAt).toBeGreaterThan(failedAt);
+    expect(carriedAt).toBeGreaterThan(holdAt);
+    expect(page).not.toContain('creditHold = { pendingCount: count ?? 0 }');
+    expect(page).not.toContain('blockMemberGenerate');
   });
 
   it('uses the Chicago month for the pending-credit issue period across the UTC date line', () => {
