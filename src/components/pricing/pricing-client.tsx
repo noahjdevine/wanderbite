@@ -44,100 +44,109 @@ export function PricingClient({
   const missingAddress = Boolean(userId) && areaState === 'missing_address';
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <header className="text-center">
-        <p className="text-sm font-medium text-primary">
-          Now launching in {LAUNCH_MARKET.displayName}
-        </p>
-        <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          {isActive
-            ? 'Your Wanderbite Club plan'
-            : userId
-              ? `Welcome${firstName ? `, ${firstName}` : ''}! Membership checkout is paused.`
-              : 'Simple, Transparent Pricing.'}
-        </h1>
-        <p className="mt-3 text-lg text-muted-foreground">
-          {isActive
-            ? 'Manage your subscription anytime.'
-            : 'Paid checkout is launching soon. You can still create a free account.'}
-        </p>
+    <div>
+      <header className="wb-pricing-band">
+        <div className="wb-pricing-wrap">
+          <p className="wb-pricing-eyebrow">Now launching in {LAUNCH_MARKET.displayName}</p>
+          <h1>
+            {isActive ? (
+              <>
+                Your Wanderbite Club <em className="wb-accent">plan</em>
+              </>
+            ) : userId ? (
+              <>
+                {`Welcome${firstName ? `, ${firstName}` : ''}! Membership checkout is `}
+                <em className="wb-accent">paused.</em>
+              </>
+            ) : (
+              <>
+                Simple, Transparent <em className="wb-accent">Pricing.</em>
+              </>
+            )}
+          </h1>
+          <p className="wb-pricing-lede">
+            {isActive
+              ? 'Manage your subscription anytime.'
+              : 'Paid checkout is launching soon. You can still create a free account.'}
+          </p>
+        </div>
       </header>
 
-      <Card className="mt-10 border-2 shadow-lg">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">Wanderbite Club</CardTitle>
-          <CardDescription className="text-base">
-            One plan. Two adventures every month in {LAUNCH_MARKET.displayName}.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="text-center">
-            <p className="text-4xl font-bold tracking-tight text-primary">
-              $15<span className="text-lg font-normal text-muted-foreground">/month</span>
-            </p>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Includes 2 curated adventures per month. Coming soon.
-            </p>
-          </div>
-          <ul className="space-y-3">
-            {CLUB_PLAN_FEATURES.map((feature) => (
-              <li key={feature} className="flex items-center gap-3 text-sm">
-                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                  <Check className="size-3" aria-hidden />
-                </span>
-                <span>{feature}</span>
-              </li>
-            ))}
-          </ul>
+      <div className="wb-pricing-sheet wb-on-cream">
+        <div className="wb-pricing-wrap">
+          <Card className="wb-pricing-card">
+            <CardHeader className="text-center">
+              <CardTitle>
+                Wanderbite <em className="wb-accent">Club</em>
+              </CardTitle>
+              <CardDescription>
+                One plan. Two adventures every month in {LAUNCH_MARKET.displayName}.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="wb-pricing-body">
+              <div className="text-center">
+                <p className="wb-pricing-price">
+                  $15<span>/month</span>
+                </p>
+                <p className="wb-pricing-note">
+                  Includes 2 curated adventures per month. Coming soon.
+                </p>
+              </div>
+              <ul className="wb-pricing-features">
+                {CLUB_PLAN_FEATURES.map((feature) => (
+                  <li key={feature}>
+                    <span className="wb-pricing-check">
+                      <Check aria-hidden />
+                    </span>
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
 
-          <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3 text-xs text-muted-foreground">
-            <p>
-              Plan (when checkout reopens): $15/month (billed monthly). Auto-renews until canceled.
-              Includes 2 challenges/month and 1 swap/month. Cancel anytime in Settings → Manage
-              Subscription; cancellation takes effect at the end of your current billing period. No
-              partial refunds. Each challenge shows its discount and minimum spend. Offers are
-              non-stackable and require in-person confirmation.
-            </p>
-            <p>
-              By creating an account, you agree to our{' '}
-              <Link href="/terms" className="underline hover:text-foreground">
-                Terms of Service
-              </Link>
-              ,{' '}
-              <Link href="/privacy" className="underline hover:text-foreground">
-                Privacy Policy
-              </Link>
-              , and{' '}
-              <Link href="/rules" className="underline hover:text-foreground">
-                Discount & Challenge Rules
-              </Link>
-              .
-            </p>
-          </div>
-        </CardContent>
-        <CardFooter className="flex flex-col gap-3">
-          {isActive ? (
-            <Button size="lg" asChild className="w-full sm:w-auto">
-              <Link href="/billing">Manage my plan</Link>
-            </Button>
-          ) : ineligible ? (
-            <AreaHoldNotice />
-          ) : missingAddress ? (
-            <Button size="lg" asChild className="w-full sm:w-auto">
-              <Link href="/onboarding">Finish your profile</Link>
-            </Button>
-          ) : (
-            <>
-              <LaunchHoldNotice />
-              {!userId ? (
-                <Button size="lg" variant="outline" asChild className="w-full sm:w-auto">
-                  <Link href="/signup">Create a free account</Link>
+              <div className="wb-pricing-fine">
+                <p>
+                  Plan (when checkout reopens): $15/month (billed monthly). Auto-renews until canceled.
+                  Includes 2 challenges/month and 1 swap/month. Cancel anytime in Settings → Manage
+                  Subscription; cancellation takes effect at the end of your current billing period. No
+                  partial refunds. Each challenge shows its discount and minimum spend. Offers are
+                  non-stackable and require in-person confirmation.
+                </p>
+                <p>
+                  By creating an account, you agree to our{' '}
+                  <Link href="/terms">Terms of Service</Link>
+                  ,{' '}
+                  <Link href="/privacy">Privacy Policy</Link>
+                  , and{' '}
+                  <Link href="/rules">Discount & Challenge Rules</Link>
+                  .
+                </p>
+              </div>
+            </CardContent>
+            <CardFooter className="wb-pricing-actions">
+              {isActive ? (
+                <Button size="lg" asChild>
+                  <Link href="/billing">Manage my plan</Link>
                 </Button>
-              ) : null}
-            </>
-          )}
-        </CardFooter>
-      </Card>
+              ) : ineligible ? (
+                <AreaHoldNotice />
+              ) : missingAddress ? (
+                <Button size="lg" asChild>
+                  <Link href="/onboarding">Finish your profile</Link>
+                </Button>
+              ) : (
+                <>
+                  <LaunchHoldNotice />
+                  {!userId ? (
+                    <Button size="lg" variant="outline" asChild>
+                      <Link href="/signup">Create a free account</Link>
+                    </Button>
+                  ) : null}
+                </>
+              )}
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }
