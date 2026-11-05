@@ -10,6 +10,7 @@ import {
   callBriefingModel,
   estimateMicrodollars,
   filterSupportedFacts,
+  findSupportPassage,
   formatBriefingReport,
   parseBriefingArgs,
   rankBriefingUrls,
@@ -93,6 +94,7 @@ describe('briefing research filter', () => {
         field: 'parking',
         text: 'Valet parking is available beside the front door.',
         sourceUrl: OFFICIAL,
+        supportPassage: 'Valet parking is available beside the front door.',
       },
     ]);
     expect(filtered.dropped.join('\n')).toMatch(/not fetched/);
@@ -154,6 +156,7 @@ describe('briefing research filter', () => {
         field: 'parking',
         text: 'Valet parking is available beside the front door.',
         sourceUrl: OFFICIAL,
+        supportPassage: 'Valet parking is available beside the front door.',
       },
       RESTAURANT.id,
       '2026-11-05T17:00:00.000Z',
@@ -161,6 +164,68 @@ describe('briefing research filter', () => {
     expect(row.status).toBe('paused');
     expect(row.is_sample).toBe(false);
     expect(row.last_verified_at).toBe('2026-11-05T17:00:00.000Z');
+  });
+});
+
+describe('support passage', () => {
+  const page =
+    'Valet parking is available beside the front door after 5 pm. Street parking is two blocks east. Most dinners last about 90 minutes.';
+
+  it('keeps a paraphrase when the distinctive words share one passage', () => {
+    const fact = 'Valet parking sits beside the front door after 5 pm.';
+    const passage = findSupportPassage(fact, page);
+    expect(passage).toBe('Valet parking is available beside the front door after 5 pm.');
+    const filtered = filterSupportedFacts({
+      raw: {
+        facts: [{ field: 'parking', text: fact, source_url: OFFICIAL }],
+      },
+      pages: [{ url: OFFICIAL, text: page }],
+    });
+    expect(filtered.kept).toHaveLength(1);
+    expect(filtered.kept[0]?.supportPassage).toBe(passage);
+    const report = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [
+        {
+          restaurantId: RESTAURANT.id,
+          restaurantName: RESTAURANT.name,
+          fetchedUrls: [OFFICIAL],
+          facts: filtered.kept,
+          dropped: [],
+          units: { input: 10, output: 4 },
+          estimatedMicrodollars: 30,
+          notes: [],
+        },
+      ],
+      stoppedBecause: null,
+      totals: { input: 10, output: 4, estimatedMicrodollars: 30 },
+    });
+    expect(report.markdown).toContain(`Passage: ${passage}`);
+    expect(report.json).toContain(passage);
+  });
+
+  it('drops a fact that only repeats generic words from the page', () => {
+    const fact = 'Street parking is available.';
+    expect(page.toLowerCase()).toContain('street');
+    expect(page.toLowerCase()).toContain('parking');
+    expect(page.toLowerCase()).toContain('available');
+    expect(findSupportPassage(fact, page)).toBeNull();
+    const filtered = filterSupportedFacts({
+      raw: {
+        facts: [{ field: 'parking', text: fact, source_url: OFFICIAL }],
+      },
+      pages: [{ url: OFFICIAL, text: page }],
+    });
+    expect(filtered.kept).toEqual([]);
+    expect(filtered.dropped.join('\n')).toMatch(/does not support/);
+  });
+
+  it('drops a fact whose number is not the number in the passage', () => {
+    const fact = 'Most dinners last about 45 minutes.';
+    expect(findSupportPassage(fact, page)).toBeNull();
+    expect(findSupportPassage('Most dinners last about 90 minutes.', page)).toBe(
+      'Most dinners last about 90 minutes.',
+    );
   });
 });
 

@@ -60,6 +60,53 @@ const SKIP_HOSTS = [
   'tiktok.com',
 ];
 
+/**
+ * Common briefing words. They do not count toward the share that keeps a fact.
+ * "parking" and "street" alone must not carry an invented detail.
+ */
+const GENERIC_CONTENT_WORDS = new Set([
+  'about',
+  'after',
+  'around',
+  'available',
+  'before',
+  'during',
+  'guest',
+  'guests',
+  'hours',
+  'inside',
+  'located',
+  'location',
+  'minute',
+  'minutes',
+  'nearby',
+  'outside',
+  'parking',
+  'place',
+  'private',
+  'public',
+  'restaurant',
+  'space',
+  'spots',
+  'staff',
+  'street',
+  'streets',
+  'their',
+  'there',
+  'typical',
+  'visit',
+  'visits',
+  'where',
+  'which',
+  'while',
+  'would',
+]);
+
+/** Two thirds of the distinctive words must sit in the same passage. */
+const SUPPORT_SHARE_NUMERATOR = 2;
+const SUPPORT_SHARE_DENOMINATOR = 3;
+const PASSAGE_WORD_CAP = 60;
+
 const STOP_WORDS = new Set([
   'about',
   'after',
@@ -93,6 +140,8 @@ export type SupportedFact = {
   field: BriefingField;
   text: string;
   sourceUrl: string;
+  /** Page passage the reviewer can compare with the fact. Not stored. */
+  supportPassage: string;
 };
 
 export type FetchedPage = {
@@ -360,13 +409,132 @@ function contentWords(text: string): string[] {
   return text.toLowerCase().match(/[a-z0-9]{5,}/g)?.filter((word) => !STOP_WORDS.has(word)) ?? [];
 }
 
+function distinctiveWords(text: string): string[] {
+  return [...new Set(contentWords(text).filter((word) => !GENERIC_CONTENT_WORDS.has(word)))];
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasWord(passage: string, word: string): boolean {
+  const pattern = new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(word)}(?:[^A-Za-z0-9]|$)`, 'i');
+  return pattern.test(passage);
+}
+
+function hasWholeNumber(passage: string, num: string): boolean {
+  const pattern = new RegExp(`(?:^|\\D)${escapeRegExp(num)}(?:\\D|$)`);
+  return pattern.test(passage);
+}
+
+function normalizeClock(value: string): string {
+  return value.toLowerCase().replace(/\./g, '').replace(/\s+/g, '');
+}
+
+function normalizePrice(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, '');
+}
+
+const TIME_SOURCE =
+  '\\b(?:noon|midnight|\\d{1,2}:\\d{2}\\s*(?:a\\.?m\\.?|p\\.?m\\.?)?|\\d{1,2}\\s*(?:a\\.?m\\.?|p\\.?m\\.?))\\b';
+const PRICE_SOURCE = '\\$\\s?\\d+(?:\\.\\d{1,2})?|\\b\\d+(?:\\.\\d{1,2})?\\s*(?:dollars|usd)\\b';
+const NUMBER_SOURCE = '\\d+(?:\\.\\d+)?';
+
+function matchAll(text: string, source: string): string[] {
+  return [...text.matchAll(new RegExp(source, 'gi'))].map((match) => match[0]);
+}
+
+type FactAnchors = {
+  numbers: string[];
+  times: string[];
+  prices: string[];
+  properNouns: string[];
+};
+
+function unique(values: string[]): string[] {
+  return [...new Set(values)];
+}
+
+function extractAnchors(factText: string): FactAnchors {
+  const times = unique(matchAll(factText, TIME_SOURCE).map(normalizeClock));
+  const prices = unique(matchAll(factText, PRICE_SOURCE).map(normalizePrice));
+  const numbers = unique(matchAll(factText, NUMBER_SOURCE));
+  const properNouns: string[] = [];
+  const token = /[A-Za-z][A-Za-z'’.-]*/g;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(factText))) {
+    const word = match[0];
+    const before = factText.slice(0, match.index).trimEnd();
+    const sentenceStart = before.length === 0 || /[.!?]$/.test(before);
+    const allCaps = word.length >= 3 && word === word.toUpperCase() && /[A-Z]/.test(word);
+    const midSentenceName = /^[A-Z]/.test(word) && word.length >= 2 && !sentenceStart;
+    if (allCaps || midSentenceName) properNouns.push(word);
+  }
+  return { numbers, times, prices, properNouns: unique(properNouns) };
+}
+
+function anchorsInPassage(anchors: FactAnchors, passage: string): boolean {
+  if (anchors.numbers.some((num) => !hasWholeNumber(passage, num))) return false;
+  const passageTimes = unique(matchAll(passage, TIME_SOURCE).map(normalizeClock));
+  if (anchors.times.some((time) => !passageTimes.includes(time))) return false;
+  const passagePrices = unique(matchAll(passage, PRICE_SOURCE).map(normalizePrice));
+  if (anchors.prices.some((price) => !passagePrices.includes(price))) return false;
+  if (anchors.properNouns.some((name) => !hasWord(passage, name))) return false;
+  return true;
+}
+
+function wordsOf(text: string): string[] {
+  return text.split(/\s+/).filter(Boolean);
+}
+
+function passageWindows(pageText: string): string[] {
+  const flat = pageText.replace(/\s+/g, ' ').trim();
+  if (!flat) return [];
+  const sentences = flat.split(/(?<=[.!?])\s+/).filter((sentence) => sentence.length > 0);
+  const windows: string[] = [];
+  const push = (text: string) => {
+    const words = wordsOf(text);
+    if (words.length === 0) return;
+    if (words.length <= PASSAGE_WORD_CAP) {
+      windows.push(words.join(' '));
+      return;
+    }
+    for (let start = 0; start < words.length; start += 10) {
+      windows.push(words.slice(start, start + 40).join(' '));
+      if (start + 40 >= words.length) break;
+    }
+  };
+  const parts = sentences.length > 0 ? sentences : [flat];
+  for (let index = 0; index < parts.length; index += 1) {
+    push(parts[index] ?? '');
+    if (index + 1 < parts.length) push(`${parts[index]} ${parts[index + 1]}`);
+  }
+  return windows;
+}
+
+/**
+ * A fact stays only when one passage of this page holds a two-thirds share of
+ * its distinctive words and every number, time, price, and proper noun in it.
+ * Generic words such as "parking" and "street" do not carry the fact.
+ */
+export function findSupportPassage(factText: string, pageText: string): string | null {
+  const distinctive = distinctiveWords(factText);
+  if (distinctive.length === 0) return null;
+  const anchors = extractAnchors(factText);
+  let best: { passage: string; hits: number } | null = null;
+  for (const passage of passageWindows(pageText)) {
+    if (!anchorsInPassage(anchors, passage)) continue;
+    const hits = distinctive.filter((word) => hasWord(passage, word)).length;
+    if (hits * SUPPORT_SHARE_DENOMINATOR < distinctive.length * SUPPORT_SHARE_NUMERATOR) continue;
+    if (!best || hits > best.hits || (hits === best.hits && passage.length < best.passage.length)) {
+      best = { passage, hits };
+    }
+  }
+  return best?.passage ?? null;
+}
+
 export function groundedInPage(factText: string, pageText: string): boolean {
-  const words = contentWords(factText);
-  if (words.length === 0) return false;
-  const page = pageText.toLowerCase();
-  const hits = words.filter((word) => page.includes(word));
-  const need = Math.min(2, words.length);
-  return hits.length >= need;
+  return findSupportPassage(factText, pageText) != null;
 }
 
 export function parseBriefingModelJson(text: string): unknown {
@@ -434,7 +602,8 @@ export function filterSupportedFacts(args: {
       dropped.push(`dropped ${field} because ${sourceUrl} was not fetched in this run`);
       continue;
     }
-    if (!groundedInPage(body, pageText)) {
+    const supportPassage = findSupportPassage(body, pageText);
+    if (!supportPassage) {
       dropped.push(`dropped ${field} because the page text does not support it`);
       continue;
     }
@@ -443,7 +612,7 @@ export function filterSupportedFacts(args: {
       continue;
     }
     seen.add(field);
-    kept.push({ field, text: body, sourceUrl });
+    kept.push({ field, text: body, sourceUrl, supportPassage });
   }
   kept.sort((a, b) => BRIEFING_FIELDS.indexOf(a.field) - BRIEFING_FIELDS.indexOf(b.field));
   return { kept, dropped };
@@ -776,6 +945,7 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     for (const fact of restaurant.facts) {
       lines.push(`- ${fact.field}: ${fact.text}`);
       lines.push(`  Source: ${fact.sourceUrl}`);
+      lines.push(`  Passage: ${fact.supportPassage}`);
     }
     if (restaurant.dropped.length > 0) {
       lines.push('');
