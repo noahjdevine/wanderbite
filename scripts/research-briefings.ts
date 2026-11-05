@@ -19,10 +19,12 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
 const HELP = `Operator-only first-visit briefing research.
 
-Default is a dry-run. It reads active restaurants, fetches public https pages
-(official site first, then a reputable listing), and asks Claude Haiku
-(claude-haiku-4-5-20251001) for facts it can support. It writes a JSON and
-markdown report under .briefings/. It does not write the database.
+Default is a dry-run. It reads active restaurants and asks Claude Haiku
+(claude-haiku-4-5-20251001) to search with Anthropic's server-side web_search
+tool (web_search_20260318, at most 3 searches, McKinney TX). It then fetches
+those public https pages itself (official site first, then a reputable listing)
+and asks Haiku for facts the page text supports. It writes a JSON and markdown
+report under .briefings/. It does not write the database.
 
   npm run research:briefings
   npm run research:briefings -- --limit 5
@@ -42,7 +44,9 @@ as part of ordinary local review.
 
 The challenge page does not call this script or the model. E06_BRIEFINGS_ENABLED
 stays unset. This does not write credits, offers, visits, badges, or the member
-AI ledger. The printed cost is an estimate from the published Haiku rates.
+AI ledger. The printed cost is an estimate from the published Haiku token rates
+plus Anthropic's web search price of $10 per 1,000 searches. Search requests
+count toward the USD cap. A failed search is logged for that restaurant.
 `;
 
 function fail(message: string): never {
@@ -99,6 +103,7 @@ async function main(): Promise<void> {
     restaurants,
     fetchImpl: fetch,
     callModel: (input) => callBriefingModel({ ...input, apiKey }),
+    apiKey,
     now,
     restaurantCap: parsed.restaurantCap,
     costCapMicrodollars: parsed.costCapMicrodollars,
@@ -136,13 +141,17 @@ async function main(): Promise<void> {
   const mdPath = path.join(dir, `run-${stamp}.md`);
   writeFileSync(jsonPath, report.json, { encoding: 'utf8', mode: 0o600 });
   writeFileSync(mdPath, report.markdown, { encoding: 'utf8', mode: 0o600 });
+  const webSearches = run.restaurants.reduce(
+    (sum, restaurant) => sum + (restaurant.units.web_search_requests ?? 0),
+    0,
+  );
   for (const restaurant of run.restaurants) {
     process.stdout.write(
-      `${restaurant.restaurantName} facts=${restaurant.facts.length} input=${restaurant.units.input ?? 0} output=${restaurant.units.output ?? 0} estimated_usd=${formatEstimatedUsd(restaurant.estimatedMicrodollars)}\n`,
+      `${restaurant.restaurantName} facts=${restaurant.facts.length} input=${restaurant.units.input ?? 0} output=${restaurant.units.output ?? 0} web_searches=${restaurant.units.web_search_requests ?? 0} estimated_usd=${formatEstimatedUsd(restaurant.estimatedMicrodollars)}\n`,
     );
   }
   process.stdout.write(
-    `mode=${parsed.write ? 'write' : 'dry-run'} restaurants=${run.restaurants.length} inserted=${inserted} skipped=${skipped} input=${run.totals.input} output=${run.totals.output} estimated_usd=${formatEstimatedUsd(run.totals.estimatedMicrodollars)} report=${path.relative(process.cwd(), mdPath)}\n`,
+    `mode=${parsed.write ? 'write' : 'dry-run'} restaurants=${run.restaurants.length} inserted=${inserted} skipped=${skipped} input=${run.totals.input} output=${run.totals.output} web_searches=${webSearches} estimated_usd=${formatEstimatedUsd(run.totals.estimatedMicrodollars)} report=${path.relative(process.cwd(), mdPath)}\n`,
   );
   if (run.stoppedBecause) process.stdout.write(`stopped: ${run.stoppedBecause}\n`);
 }

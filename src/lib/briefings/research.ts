@@ -25,11 +25,27 @@ export const HAIKU_MICRODOLLARS_PER_MILLION: Record<string, number> = {
 export const BRIEFING_PAGE_CAP = 3;
 export const BRIEFING_PAGE_CHARS = 8_000;
 export const BRIEFING_MAX_OUTPUT_TOKENS = 700;
+export const BRIEFING_SEARCH_MAX_OUTPUT_TOKENS = 1_024;
 export const DEFAULT_RESTAURANT_CAP = 25;
 export const DEFAULT_COST_CAP_MICRODOLLARS = 2_000_000;
 export const MAX_COST_CAP_MICRODOLLARS = 5_000_000;
 export const BRIEFING_OUTPUT_DIR = '.briefings';
 export const BRIEFING_USER_AGENT = 'WanderbiteBriefingResearchBot';
+
+/**
+ * Current Messages API server tool (name `web_search`).
+ * Haiku 4.5 cannot use the dynamic-filtering caller, so requests set
+ * `allowed_callers` to `direct` and read URLs from the tool result.
+ */
+export const BRIEFING_WEB_SEARCH_TOOL = 'web_search_20260318';
+/** Anthropic bills each completed search. Cap uses per restaurant. */
+export const BRIEFING_WEB_SEARCH_MAX_USES = 3;
+/** Published price: $10 per 1,000 searches = 10,000 microdollars each. */
+export const WEB_SEARCH_MICRODOLLARS_PER_REQUEST = 10_000;
+
+const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
+const SEARCH_TIMEOUT_MS = 60_000;
+const SEARCH_CONTINUATION_CAP = 2;
 
 const HOSTED_PROJECT_REF = 'yiajoycgiyxjvznndjge';
 const FETCH_TIMEOUT_MS = 8_000;
@@ -229,11 +245,25 @@ export function normalizeHttpsUrl(raw: string | null | undefined): string | null
 export function estimateMicrodollars(units: ModelUsage): number {
   let total = 0;
   for (const [kind, count] of Object.entries(units)) {
+    if (!Number.isFinite(count) || count <= 0) continue;
+    if (kind === 'web_search_requests') {
+      total += Math.trunc(count) * WEB_SEARCH_MICRODOLLARS_PER_REQUEST;
+      continue;
+    }
     const rate = HAIKU_MICRODOLLARS_PER_MILLION[kind];
-    if (!rate || !Number.isFinite(count) || count <= 0) continue;
+    if (!rate) continue;
     total += Math.round((count * rate) / 1_000_000);
   }
   return total;
+}
+
+export function mergeModelUsage(left: ModelUsage, right: ModelUsage): ModelUsage {
+  const merged: ModelUsage = { ...left };
+  for (const [kind, count] of Object.entries(right)) {
+    if (!Number.isFinite(count) || count <= 0) continue;
+    merged[kind] = (merged[kind] ?? 0) + Math.trunc(count);
+  }
+  return merged;
 }
 
 export function formatEstimatedUsd(microdollars: number): string {
@@ -334,38 +364,6 @@ export function htmlToText(html: string): string {
     .replace(/&quot;/gi, '"')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function decodeHref(value: string): string {
-  return value.replace(/&amp;/gi, '&').replace(/&quot;/gi, '"');
-}
-
-export function unwrapSearchHref(href: string): string | null {
-  const decoded = decodeHref(href.trim());
-  let url: URL;
-  try {
-    url = new URL(decoded, 'https://duckduckgo.com');
-  } catch {
-    return null;
-  }
-  const uddg = url.searchParams.get('uddg');
-  if (uddg) return normalizeHttpsUrl(uddg);
-  if (url.protocol !== 'https:') return null;
-  if (hostMatches(url.hostname, 'duckduckgo.com')) return null;
-  return normalizeHttpsUrl(url.toString());
-}
-
-export function urlsFromSearchHtml(html: string): string[] {
-  const found: string[] = [];
-  const seen = new Set<string>();
-  const re = /<a\b[^>]*\bhref="([^"]+)"[^>]*>/gi;
-  for (const match of html.matchAll(re)) {
-    const url = unwrapSearchHref(match[1] ?? '');
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
-    found.push(url);
-  }
-  return found;
 }
 
 function nameTokens(name: string): string[] {
@@ -654,6 +652,10 @@ export function usageFromAnthropicBody(body: unknown): ModelUsage {
   take('input', record.input_tokens);
   take('output', record.output_tokens);
   take('cache_read', record.cache_read_input_tokens);
+  const serverTools = record.server_tool_use;
+  if (serverTools && typeof serverTools === 'object' && !Array.isArray(serverTools)) {
+    take('web_search_requests', (serverTools as Record<string, unknown>).web_search_requests);
+  }
   const creation = record.cache_creation;
   if (creation && typeof creation === 'object' && !Array.isArray(creation)) {
     const cache = creation as Record<string, unknown>;
@@ -771,41 +773,301 @@ async function pageAllowed(
   return { ok: true };
 }
 
-export function searchUrlFor(restaurant: BriefingRestaurant): string {
-  const query = [restaurant.name, restaurant.address ?? '', 'official site'].filter(Boolean).join(' ');
-  return `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+const WEB_SEARCH_ERROR_REASONS: Record<string, string> = {
+  too_many_requests: 'Anthropic web search hit a rate limit (too_many_requests)',
+  invalid_tool_input: 'Anthropic web search rejected the query (invalid_tool_input)',
+  max_uses_exceeded: 'Anthropic web search stopped at max_uses (max_uses_exceeded)',
+  query_too_long: 'Anthropic web search query was too long (query_too_long)',
+  request_too_large: 'Anthropic web search request was too large (request_too_large)',
+  unavailable: 'Anthropic web search was unavailable',
+};
+
+export type BriefingSearchResult = {
+  urls: string[];
+  units: ModelUsage;
+  /** Set when this restaurant has no usable search result. */
+  failure: string | null;
+  /** Tool errors that arrived alongside usable URLs. */
+  warnings: string[];
+};
+
+export function webSearchErrorReason(code: string): string {
+  return WEB_SEARCH_ERROR_REASONS[code] ?? `Anthropic web search failed (${code})`;
+}
+
+function clipReason(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (flat.length <= 180) return flat;
+  return `${flat.slice(0, 177)}...`;
+}
+
+function anthropicFailureMessage(status: number, parsed: unknown, raw: string): string {
+  let detail = '';
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    const error = (parsed as { error?: unknown }).error;
+    if (error && typeof error === 'object' && !Array.isArray(error)) {
+      const record = error as { type?: unknown; message?: unknown };
+      const type = typeof record.type === 'string' ? record.type : '';
+      const message = typeof record.message === 'string' ? clipReason(record.message) : '';
+      detail = [type, message].filter(Boolean).join(': ');
+    }
+  }
+  if (!detail && raw.trim()) detail = clipReason(raw);
+  return detail
+    ? `Anthropic web search failed (HTTP ${status}: ${detail})`
+    : `Anthropic web search failed (HTTP ${status})`;
+}
+
+/** URLs and error codes from a Messages API web_search response. */
+export function collectWebSearchSignals(body: unknown): { urls: string[]; errorCodes: string[] } {
+  const urls: string[] = [];
+  const errorCodes: string[] = [];
+  const seenUrls = new Set<string>();
+  const seenErrors = new Set<string>();
+  const visit = (node: unknown, depth: number) => {
+    if (depth > 8 || node == null || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    const type = record.type;
+    if (
+      (type === 'web_search_result' || type === 'web_search_result_location') &&
+      typeof record.url === 'string'
+    ) {
+      const url = normalizeHttpsUrl(record.url);
+      if (url && !seenUrls.has(url)) {
+        seenUrls.add(url);
+        urls.push(url);
+      }
+    }
+    if (type === 'web_search_tool_result_error' && typeof record.error_code === 'string') {
+      if (!seenErrors.has(record.error_code)) {
+        seenErrors.add(record.error_code);
+        errorCodes.push(record.error_code);
+      }
+    }
+    for (const value of Object.values(record)) {
+      if (value && typeof value === 'object') visit(value, depth + 1);
+    }
+  };
+  visit(body, 0);
+  return { urls, errorCodes };
+}
+
+export function briefingSearchUserPrompt(restaurant: BriefingRestaurant): string {
+  const where = restaurant.address ? ` Address: ${restaurant.address}.` : '';
+  return [
+    `Find public pages for ${restaurant.name}.${where}`,
+    'Search the web.',
+    'Prefer the restaurant official website, then a reputable listing such as Yelp, Tripadvisor, OpenTable, Resy, Tock, Michelin Guide, The Infatuation, Eater, Time Out, Zagat, or Google Maps.',
+    'Do not invent URLs.',
+  ].join(' ');
+}
+
+function briefingWebSearchTool(maxUses: number) {
+  return {
+    type: BRIEFING_WEB_SEARCH_TOOL,
+    name: 'web_search',
+    max_uses: maxUses,
+    allowed_callers: ['direct'],
+    user_location: {
+      type: 'approximate',
+      city: 'McKinney',
+      region: 'Texas',
+      country: 'US',
+      timezone: 'America/Chicago',
+    },
+  };
+}
+
+type AnthropicTurn = { role: 'user' | 'assistant'; content: unknown };
+
+async function postAnthropicMessage(args: {
+  apiKey: string;
+  fetchImpl: typeof fetch;
+  body: Record<string, unknown>;
+}): Promise<{ ok: true; parsed: unknown } | { ok: false; reason: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+  try {
+    const response = await args.fetchImpl(ANTHROPIC_MESSAGES_URL, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': args.apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify(args.body),
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let parsed: unknown = null;
+    if (raw.trim()) {
+      try {
+        parsed = JSON.parse(raw) as unknown;
+      } catch {
+        if (!response.ok) {
+          return { ok: false, reason: `Anthropic web search failed (HTTP ${response.status})` };
+        }
+        return { ok: false, reason: 'Anthropic web search failed: the response was not JSON' };
+      }
+    }
+    if (!response.ok) {
+      return { ok: false, reason: anthropicFailureMessage(response.status, parsed, raw) };
+    }
+    if (parsed == null) {
+      return { ok: false, reason: 'Anthropic web search failed: the response was empty' };
+    }
+    return { ok: true, parsed };
+  } catch {
+    return { ok: false, reason: 'Anthropic web search failed: the request did not complete' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * One Messages API turn with server-side web_search. Candidate URLs come from
+ * the tool result, not from model prose. A paused turn continues until the
+ * per-restaurant search cap is used or two continuations have run.
+ */
+export async function discoverBriefingUrls(args: {
+  restaurant: BriefingRestaurant;
+  apiKey: string;
+  fetchImpl?: typeof fetch;
+}): Promise<BriefingSearchResult> {
+  const fetchImpl = args.fetchImpl ?? fetch;
+  if (!args.apiKey.trim()) {
+    return {
+      urls: [],
+      units: {},
+      failure: 'Anthropic web search failed: ANTHROPIC_API_KEY is not set',
+      warnings: [],
+    };
+  }
+  const messages: AnthropicTurn[] = [
+    { role: 'user', content: briefingSearchUserPrompt(args.restaurant) },
+  ];
+  let units: ModelUsage = {};
+  const urls: string[] = [];
+  const seen = new Set<string>();
+  const errorCodes: string[] = [];
+  const seenErrors = new Set<string>();
+  let paused = false;
+
+  for (let turn = 0; turn <= SEARCH_CONTINUATION_CAP; turn += 1) {
+    const remaining = BRIEFING_WEB_SEARCH_MAX_USES - (units.web_search_requests ?? 0);
+    if (remaining < 1) break;
+    const posted = await postAnthropicMessage({
+      apiKey: args.apiKey,
+      fetchImpl,
+      body: {
+        model: BRIEFING_MODEL,
+        max_tokens: BRIEFING_SEARCH_MAX_OUTPUT_TOKENS,
+        temperature: 0,
+        system:
+          'Find source pages for one restaurant. Use the web_search tool. Do not invent URLs or state facts from memory.',
+        messages,
+        tools: [briefingWebSearchTool(remaining)],
+      },
+    });
+    if (!posted.ok) {
+      if (urls.length > 0) {
+        return {
+          urls,
+          units,
+          failure: null,
+          warnings: [...errorCodes.map(webSearchErrorReason), posted.reason],
+        };
+      }
+      return { urls, units, failure: posted.reason, warnings: [] };
+    }
+    units = mergeModelUsage(units, usageFromAnthropicBody(posted.parsed));
+    const signals = collectWebSearchSignals(posted.parsed);
+    for (const url of signals.urls) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      urls.push(url);
+    }
+    for (const code of signals.errorCodes) {
+      if (seenErrors.has(code)) continue;
+      seenErrors.add(code);
+      errorCodes.push(code);
+    }
+    const record =
+      posted.parsed && typeof posted.parsed === 'object' && !Array.isArray(posted.parsed)
+        ? (posted.parsed as { stop_reason?: unknown; content?: unknown })
+        : null;
+    if (record?.stop_reason !== 'pause_turn' || !Array.isArray(record.content)) {
+      paused = false;
+      break;
+    }
+    paused = true;
+    messages.push({ role: 'assistant', content: record.content });
+  }
+
+  if (urls.length === 0) {
+    const failure =
+      errorCodes.length > 0
+        ? errorCodes.map(webSearchErrorReason).join('; ')
+        : paused
+          ? 'Anthropic web search paused before it returned a page'
+          : 'Anthropic web search returned no candidate URLs';
+    return { urls, units, failure, warnings: [] };
+  }
+  return {
+    urls,
+    units,
+    failure: null,
+    warnings: errorCodes.map(webSearchErrorReason),
+  };
 }
 
 export async function researchOneRestaurant(args: {
   restaurant: BriefingRestaurant;
   fetchImpl: typeof fetch;
   callModel: BriefingModelCaller;
+  apiKey: string;
   pageCap?: number;
 }): Promise<RestaurantResearchResult> {
   const notes: string[] = [];
-  const emptyUnits: ModelUsage = {};
+  let units: ModelUsage = {};
   const base = {
     restaurantId: args.restaurant.id,
     restaurantName: args.restaurant.name,
     fetchedUrls: [] as string[],
     facts: [] as SupportedFact[],
     dropped: [] as string[],
-    units: emptyUnits,
+    units,
     estimatedMicrodollars: 0,
     notes,
   };
-  const search = await fetchHttps(args.fetchImpl, searchUrlFor(args.restaurant));
-  if ('error' in search) {
-    notes.push(`search failed: ${search.error}`);
-    return base;
+  const priced = (): RestaurantResearchResult => ({
+    ...base,
+    units,
+    estimatedMicrodollars: estimateMicrodollars(units),
+    notes,
+  });
+  const search = await discoverBriefingUrls({
+    restaurant: args.restaurant,
+    apiKey: args.apiKey,
+    fetchImpl: args.fetchImpl,
+  });
+  units = search.units;
+  if (search.failure) {
+    notes.push(search.failure);
+    return priced();
   }
-  const ranked = rankBriefingUrls(urlsFromSearchHtml(search.text), args.restaurant.name).slice(
+  for (const warning of search.warnings) notes.push(warning);
+  const ranked = rankBriefingUrls(search.urls, args.restaurant.name).slice(
     0,
     args.pageCap ?? BRIEFING_PAGE_CAP,
   );
   if (ranked.length === 0) {
     notes.push('no official site or reputable listing in the search results');
-    return base;
+    return priced();
   }
   const pages: FetchedPage[] = [];
   for (const url of ranked) {
@@ -833,28 +1095,25 @@ export async function researchOneRestaurant(args: {
   base.fetchedUrls = pages.map((page) => page.url);
   if (pages.length === 0) {
     notes.push('no page text fetched');
-    return base;
+    return priced();
   }
   let modelText = '';
-  let units: ModelUsage = {};
   try {
     const model = await args.callModel({
       system: briefingSystemPrompt(),
       user: briefingUserPrompt(args.restaurant, pages),
     });
     modelText = model.text;
-    units = model.units;
+    units = mergeModelUsage(units, model.units);
   } catch (error) {
     notes.push(error instanceof Error ? error.message : 'model call failed');
-    return base;
+    return priced();
   }
   const filtered = filterSupportedFacts({ raw: parseBriefingModelJson(modelText), pages });
   return {
-    ...base,
+    ...priced(),
     facts: filtered.kept,
     dropped: filtered.dropped,
-    units,
-    estimatedMicrodollars: estimateMicrodollars(units),
   };
 }
 
@@ -862,6 +1121,7 @@ export async function researchCatalog(args: {
   restaurants: readonly BriefingRestaurant[];
   fetchImpl: typeof fetch;
   callModel: BriefingModelCaller;
+  apiKey: string;
   now: Date;
   restaurantCap: number;
   costCapMicrodollars: number;
@@ -883,6 +1143,7 @@ export async function researchCatalog(args: {
       restaurant,
       fetchImpl: args.fetchImpl,
       callModel: args.callModel,
+      apiKey: args.apiKey,
     });
     restaurants.push(result);
     spent += result.estimatedMicrodollars;
@@ -928,6 +1189,7 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     `Verified at: ${run.verifiedAt}`,
     `Input tokens: ${run.totals.input}`,
     `Output tokens: ${run.totals.output}`,
+    `Web searches: ${run.restaurants.reduce((sum, result) => sum + (result.units.web_search_requests ?? 0), 0)}`,
     `Estimated cost: ${formatEstimatedUsd(run.totals.estimatedMicrodollars)} USD`,
     run.stoppedBecause ? `Stopped: ${run.stoppedBecause}` : 'Stopped: completed the selected restaurants',
     '',
@@ -935,7 +1197,9 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
   for (const restaurant of run.restaurants) {
     lines.push(`## ${restaurant.restaurantName}`);
     lines.push('');
-    lines.push(`Tokens in ${restaurant.units.input ?? 0}, out ${restaurant.units.output ?? 0}. Estimated ${formatEstimatedUsd(restaurant.estimatedMicrodollars)} USD.`);
+    lines.push(
+      `Tokens in ${restaurant.units.input ?? 0}, out ${restaurant.units.output ?? 0}. Web searches ${restaurant.units.web_search_requests ?? 0}. Estimated ${formatEstimatedUsd(restaurant.estimatedMicrodollars)} USD.`,
+    );
     lines.push('');
     lines.push('Fetched:');
     if (restaurant.fetchedUrls.length === 0) lines.push('- none');
