@@ -44,8 +44,12 @@ describe('carried assignment caller', () => {
       'Swaps are not available for this account yet.',
     );
     const challenges = source('src/app/(site)/challenges/page.tsx');
-    expect(challenges).toContain(".eq('issue_period', chicagoMonthStart())");
-    expect(challenges).toContain(".eq('status', 'pending')");
+    expect(challenges).toContain('pendingCreditsHeadFilters(');
+    expect(challenges).toContain(".eq('issue_period', creditFilters.issuePeriod)");
+    expect(challenges).toContain(".eq('status', creditFilters.status)");
+    const filters = source('src/lib/progress/progress-board.ts');
+    expect(filters).toContain('issuePeriod: chicagoMonthStart(now)');
+    expect(filters).toContain("status: 'pending'");
     expect(challenges).not.toContain('assign_carried_credit');
     expect(source('vercel.json')).not.toContain('assign_carried_credit');
     expect(source('src/lib/schema-contract.ts')).not.toContain('assign_carried_credit');

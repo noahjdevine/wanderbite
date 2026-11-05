@@ -120,8 +120,12 @@ describe('carried credit reader', () => {
     expect(current).not.toContain('startOfMonth');
 
     const page = source('src/app/(site)/challenges/page.tsx');
-    expect(page).toContain(".eq('issue_period', chicagoMonthStart())");
-    expect(page).toContain(".eq('status', 'pending')");
+    expect(page).toContain('pendingCreditsHeadFilters(');
+    expect(page).toContain(".eq('issue_period', creditFilters.issuePeriod)");
+    expect(page).toContain(".eq('status', creditFilters.status)");
+    const filters = source('src/lib/progress/progress-board.ts');
+    expect(filters).toContain('issuePeriod: chicagoMonthStart(now)');
+    expect(filters).toContain("status: 'pending'");
     expect(page).toContain('loadCarriedCreditsForUser');
     expect(page).toContain('loadCreditsSwapRemaining');
     expect(page).not.toContain('startOfMonth');

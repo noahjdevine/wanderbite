@@ -75,7 +75,10 @@ type DashboardClientProps = {
   biteNotes: BiteNoteSummary[];
   /** Editor return path. Challenges and the dashboard each pass their own. */
   memoryReturnTo?: string;
-  /** Set only for a credits-workflow account. Legacy accounts omit it. */
+  /**
+   * Credits workflow with a pending credit for this America/Chicago month.
+   * A zero count is not a hold and falls through to the same empty state as null.
+   */
   creditHold?: { pendingCount: number } | null;
   /** Credits workflow only. Null keeps the legacy per-cycle swap count. */
   creditsSwapRemaining?: number | null;
@@ -194,6 +197,7 @@ export function DashboardClient({
 
   const revealDetails = monthlyReveal.mode === 'revealed';
   const revealReasons = monthlyReveal.mode === 'revealed' ? monthlyReveal.reasons : null;
+  const creditsWaiting = (creditHold?.pendingCount ?? 0) > 0;
 
   useEffect(() => {
     if (!revealDetails) return;
@@ -293,7 +297,7 @@ export function DashboardClient({
         </p>
       ) : null}
     </div>
-  ) : creditHold ? (
+  ) : creditsWaiting && creditHold ? (
     <Card>
       <CardHeader>
         <CardTitle>Your credits are waiting</CardTitle>
