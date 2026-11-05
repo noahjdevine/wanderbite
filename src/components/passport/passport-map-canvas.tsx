@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from 'react';
 import Map, { Layer, Marker, NavigationControl, Popup, Source } from 'react-map-gl/maplibre';
-import type { StyleSpecification } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { MemoryEntryLink } from '@/components/notes/memory-entry';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
 import { chicagoVisitDate, cuisineInk, MAP_SEGMENT_HREF, stampRotationDegrees } from '@/lib/passport/passport-board';
+import { passportMapStyle } from '@/lib/passport/map-style';
 import {
   boundsFromPoints,
   neighborhoodGlowPoints,
@@ -15,27 +15,7 @@ import {
 } from '@/lib/passport/passport-map';
 import { visitStatusLabel } from '@/lib/visits/visit-status';
 
-const OSM_STYLE: StyleSpecification = {
-  version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    },
-  },
-  layers: [
-    {
-      id: 'osm',
-      type: 'raster',
-      source: 'osm',
-      minzoom: 0,
-      maxzoom: 19,
-    },
-  ],
-};
+const mapStyle = passportMapStyle();
 
 const LAUNCH = {
   longitude: LAUNCH_MARKET.centroid.lon,
@@ -121,7 +101,7 @@ export function PassportMapMarkers({
       <Map
         {...(mapLib ? { mapLib: mapLib as never } : {})}
         initialViewState={initialViewState}
-        mapStyle={OSM_STYLE}
+        mapStyle={mapStyle}
         style={{ width: '100%', height: '100%' }}
         reuseMaps
         onClick={() => setSelectedId(null)}

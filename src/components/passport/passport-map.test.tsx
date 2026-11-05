@@ -264,6 +264,23 @@ describe('passport map segment', () => {
     expect(screen.getByText('5 neighborhoods')).toBeTruthy();
   });
 
+  it('takes the raster style from the map-style helper', () => {
+    const root = path.resolve(__dirname, '../../..');
+    const canvas = readFileSync(
+      path.join(root, 'src/components/passport/passport-map-canvas.tsx'),
+      'utf8',
+    );
+    const view = readFileSync(
+      path.join(root, 'src/components/passport/passport-map-view.tsx'),
+      'utf8',
+    );
+    expect(canvas).toContain("from '@/lib/passport/map-style'");
+    expect(canvas).toContain('passportMapStyle()');
+    expect(canvas).not.toContain('tile.openstreetmap.org');
+    expect(view).not.toContain('tile.openstreetmap.org');
+    expect(view).not.toContain('passportMapStyle');
+  });
+
   it('keeps the map fog still under reduced motion', () => {
     const css = readFileSync(
       path.join(path.resolve(__dirname, '../../..'), 'src/app/styles/wanderbite-theme.css'),
