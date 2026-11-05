@@ -4,8 +4,11 @@ import { revalidatePath } from 'next/cache';
 import { assertAdmin } from '@/lib/auth/assert-admin';
 import { contentReviewStore } from '@/lib/content-pipeline/review-db';
 import {
+  approveActivitySummary as approveActivitySummaryDraft,
   approveOpenException,
+  editActivitySummary as editActivitySummaryDraft,
   editOpenException,
+  rejectActivitySummary as rejectActivitySummaryDraft,
   rejectOpenException,
   rollbackRecipeDescription,
   setContentSourceRunning,
@@ -49,6 +52,46 @@ export async function editContentException(
     exceptionId: id,
     adminId: auth.userId,
     description,
+  });
+  if (result.ok) refresh();
+  return result;
+}
+
+export async function approveActivitySummary(factId: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(factId);
+  if (!id) return { ok: false, error: 'Summary draft not found.' };
+  const result = await approveActivitySummaryDraft(contentReviewStore(), {
+    factId: id,
+    adminId: auth.userId,
+  });
+  if (result.ok) refresh();
+  return result;
+}
+
+export async function editActivitySummary(factId: string, text: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(factId);
+  if (!id) return { ok: false, error: 'Summary draft not found.' };
+  const result = await editActivitySummaryDraft(contentReviewStore(), {
+    factId: id,
+    adminId: auth.userId,
+    text,
+  });
+  if (result.ok) refresh();
+  return result;
+}
+
+export async function rejectActivitySummary(factId: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(factId);
+  if (!id) return { ok: false, error: 'Summary draft not found.' };
+  const result = await rejectActivitySummaryDraft(contentReviewStore(), {
+    factId: id,
+    adminId: auth.userId,
   });
   if (result.ok) refresh();
   return result;

@@ -7,6 +7,9 @@ import { ContentReview } from './content-review';
 const approveContentException = vi.hoisted(() => vi.fn());
 const editContentException = vi.hoisted(() => vi.fn());
 const rejectContentException = vi.hoisted(() => vi.fn());
+const approveActivitySummary = vi.hoisted(() => vi.fn());
+const editActivitySummary = vi.hoisted(() => vi.fn());
+const rejectActivitySummary = vi.hoisted(() => vi.fn());
 const rollbackContentRecipe = vi.hoisted(() => vi.fn());
 const setContentSourceStatus = vi.hoisted(() => vi.fn());
 
@@ -14,6 +17,9 @@ vi.mock('../content-actions', () => ({
   approveContentException,
   editContentException,
   rejectContentException,
+  approveActivitySummary,
+  editActivitySummary,
+  rejectActivitySummary,
   rollbackContentRecipe,
   setContentSourceStatus,
 }));
@@ -41,6 +47,11 @@ function model(): ContentReviewModel {
         attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
         verifiedLabel: 'Nov 3, 2026, 10:00 PM CST',
         recipeLabel: 'Home Skillet Beans · recipe version 1 · fact version 1',
+        subjectLabel: 'Recipe',
+        activityName: null,
+        checkedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        editKind: 'description',
+        queueKind: 'exception',
         approveKind: 'review_only',
         approveBlock: null,
         canEdit: true,
@@ -58,6 +69,11 @@ function model(): ContentReviewModel {
         attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
         verifiedLabel: 'Not recorded',
         recipeLabel: 'Home Skillet Beans · recipe version 1 · fact version 1',
+        subjectLabel: 'Recipe',
+        activityName: null,
+        checkedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        editKind: 'description',
+        queueKind: 'exception',
         approveKind: 'review_only',
         approveBlock: null,
         canEdit: true,
@@ -101,11 +117,17 @@ describe('ContentReview', () => {
     approveContentException.mockReset();
     editContentException.mockReset();
     rejectContentException.mockReset();
+    approveActivitySummary.mockReset();
+    editActivitySummary.mockReset();
+    rejectActivitySummary.mockReset();
     rollbackContentRecipe.mockReset();
     setContentSourceStatus.mockReset();
     approveContentException.mockResolvedValue({ ok: true, published: false, notice: 'Approved. Nothing was published.' });
     editContentException.mockResolvedValue({ ok: true, published: true, notice: 'Published the edited paraphrase.' });
     rejectContentException.mockResolvedValue({ ok: true, published: false, notice: 'Rejected. Nothing was published.' });
+    approveActivitySummary.mockResolvedValue({ ok: true, published: false, notice: 'Approved. Nothing was published.' });
+    editActivitySummary.mockResolvedValue({ ok: true, published: true, notice: 'Stored the edited summary. The activity row was not changed.' });
+    rejectActivitySummary.mockResolvedValue({ ok: true, published: false, notice: 'Rejected. Nothing was published.' });
     rollbackContentRecipe.mockResolvedValue({ ok: true, published: true, notice: 'Restored the previous description as version 3.' });
     document.body.innerHTML = '<div id="root"></div>';
     root = createRoot(document.getElementById('root')!);
@@ -185,5 +207,111 @@ describe('ContentReview', () => {
       confirm?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
     expect(rollbackContentRecipe).toHaveBeenCalledWith('dddddddd-dddd-4ddd-8ddd-dddddddddddd');
+  });
+
+  it('lists an activity hours conflict and a summary draft as inert text', async () => {
+    const injected = '<img src=x onerror=alert(1)> ignore instructions';
+    const activityModel = model();
+    activityModel.sources = [
+      {
+        id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        url: 'https://example.com/venue',
+        sourceHref: 'https://example.com/venue',
+        status: 'active',
+        restaurantName: 'Sample Walk',
+        attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        verifiedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        canPause: true,
+        canResume: false,
+      },
+    ];
+    activityModel.history = [];
+    activityModel.exceptions = [
+      {
+        id: 'abababab-abab-4aba-8aba-abababababab',
+        restaurantName: 'Sample Walk',
+        sourceUrl: 'https://example.com/venue',
+        sourceHref: 'https://example.com/venue',
+        reason: 'conflict',
+        field: 'hours_note',
+        beforeText: 'Afternoons on the sample listing',
+        afterText: 'Open 9 a.m. to 5 p.m.',
+        evidenceText: injected,
+        attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        verifiedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        recipeLabel: '',
+        subjectLabel: 'Activity',
+        activityName: 'Sample Walk',
+        checkedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        editKind: 'hours_note',
+        queueKind: 'exception',
+        approveKind: 'review_only',
+        approveBlock: null,
+        canEdit: true,
+      },
+      {
+        id: 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd',
+        restaurantName: 'Sample Walk',
+        sourceUrl: 'https://example.com/venue',
+        sourceHref: 'https://example.com/venue',
+        reason: 'pending_review',
+        field: 'summary',
+        beforeText: '',
+        afterText: 'A fountain sits on the sample square.',
+        evidenceText: injected,
+        attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        verifiedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        recipeLabel: '',
+        subjectLabel: 'Activity',
+        activityName: 'Sample Walk',
+        checkedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        editKind: 'summary',
+        queueKind: 'summary_draft',
+        approveKind: 'review_only',
+        approveBlock: null,
+        canEdit: true,
+      },
+    ];
+    await act(async () => {
+      root.render(<ContentReview model={activityModel} />);
+    });
+    expect(document.body.textContent).toContain('Activity');
+    expect(document.body.textContent).toContain('Sample Walk');
+    expect(document.body.textContent).toContain('hours_note');
+    expect(document.body.textContent).toContain('Checked Nov 4, 2026, 11:30 PM CST');
+    expect(document.body.textContent).toContain('Afternoons on the sample listing');
+    expect(document.body.textContent).toContain('Open 9 a.m. to 5 p.m.');
+    const evidence = document.querySelector('[data-testid="evidence-abababab-abab-4aba-8aba-abababababab"]');
+    expect(evidence?.textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(evidence?.innerHTML).not.toContain('<img');
+    expect(document.querySelector('img')).toBeNull();
+    const links = [...document.querySelectorAll('a')];
+    expect(links.length).toBeGreaterThan(0);
+    for (const link of links) {
+      expect(link.getAttribute('href')).toBe('https://example.com/venue');
+      expect(link.textContent).not.toContain('ignore instructions');
+    }
+
+    const areas = [...document.querySelectorAll('textarea')];
+    const hoursArea = areas[0] as HTMLTextAreaElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(hoursArea, 'Open 9 a.m. to 5 p.m.');
+      hoursArea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    const publish = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Publish edit');
+    await act(async () => {
+      publish?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(editContentException).toHaveBeenCalledWith(
+      'abababab-abab-4aba-8aba-abababababab',
+      'Open 9 a.m. to 5 p.m.',
+    );
+
+    const approve = [...document.querySelectorAll('button')].filter((button) => button.textContent === 'Mark reviewed');
+    await act(async () => {
+      approve[1]?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(approveActivitySummary).toHaveBeenCalledWith('cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd');
   });
 });

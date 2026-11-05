@@ -10,8 +10,8 @@ Protected by `assertAdmin` (current user, `user_profiles.role = 'admin'`, and th
 | `src/app/(site)/admin/actions.ts` | `addRestaurant`, `generateMissingSlugs`, `deleteRestaurant`, `setRestaurantPin` |
 | `src/app/(site)/admin/actions-import.ts` | `attachGoogleMetadataToLatestRestaurantByName`, `searchRestaurantsFromGoogle`, `getRestaurantDetailsFromGoogle` |
 | `src/app/(site)/admin/actions-places.ts` | `enrichSingleRestaurant`, `enrichAllRestaurants` |
-| `src/app/(site)/admin/content/page.tsx` | Open content exceptions, source status, and recipe description history. An AAL1 admin sees enrollment or a challenge instead, and this page does not load those rows. |
-| `src/app/(site)/admin/content-actions.ts` | `approveContentException`, `editContentException`, `rejectContentException`, `rollbackContentRecipe`, `setContentSourceStatus` |
+| `src/app/(site)/admin/content/page.tsx` | Open content exceptions, pending activity summary drafts, source status, and recipe description history. An AAL1 admin sees enrollment or a challenge instead, and this page does not load those rows. |
+| `src/app/(site)/admin/content-actions.ts` | `approveContentException`, `editContentException`, `rejectContentException`, `approveActivitySummary`, `editActivitySummary`, `rejectActivitySummary`, `rollbackContentRecipe`, `setContentSourceStatus` |
 
 `src/app/(site)/admin/mfa-actions.ts` is role-checked only. It enrolls or challenges the current admin and cannot read the dashboard or call the mutations above.
 

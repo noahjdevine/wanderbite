@@ -20,8 +20,11 @@ import {
   type ExceptionView,
 } from '@/lib/content-pipeline/review-model';
 import {
+  approveActivitySummary,
   approveContentException,
+  editActivitySummary,
   editContentException,
+  rejectActivitySummary,
   rejectContentException,
   rollbackContentRecipe,
   setContentSourceStatus,
@@ -79,7 +82,7 @@ export function ContentReview({ model }: { model: ContentReviewModel }) {
           <div>
             <h2 className="text-lg font-semibold">Open exceptions</h2>
             <p className="text-sm text-muted-foreground">
-              Newest source attempt first. Evidence and proposed text stay plain text.
+              Newest source attempt first. Activity rows are labeled Activity. Evidence and proposed text stay plain text.
             </p>
           </div>
           <label className="text-sm">
@@ -109,9 +112,21 @@ export function ContentReview({ model }: { model: ContentReviewModel }) {
               pending={pending}
               draft={drafts[row.id] ?? ''}
               onDraft={(value) => setDrafts((current) => ({ ...current, [row.id]: value }))}
-              onApprove={() => run(() => approveContentException(row.id))}
-              onReject={() => run(() => rejectContentException(row.id))}
-              onEdit={() => run(() => editContentException(row.id, drafts[row.id] ?? ''))}
+              onApprove={() => run(() => (
+                row.queueKind === 'summary_draft'
+                  ? approveActivitySummary(row.id)
+                  : approveContentException(row.id)
+              ))}
+              onReject={() => run(() => (
+                row.queueKind === 'summary_draft'
+                  ? rejectActivitySummary(row.id)
+                  : rejectContentException(row.id)
+              ))}
+              onEdit={() => run(() => (
+                row.queueKind === 'summary_draft'
+                  ? editActivitySummary(row.id, drafts[row.id] ?? '')
+                  : editContentException(row.id, drafts[row.id] ?? '')
+              ))}
             />
           ))
         )}
@@ -247,8 +262,11 @@ function ExceptionCard({
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          {row.restaurantName}
-          <span className="ml-2 text-sm font-normal text-muted-foreground">{row.reason}</span>
+          {row.subjectLabel === 'Activity' ? 'Activity' : row.restaurantName}
+          <span className="ml-2 text-sm font-normal text-muted-foreground">
+            {row.subjectLabel === 'Activity' ? row.activityName : row.reason}
+            {row.subjectLabel === 'Activity' ? ` · ${row.reason}` : ''}
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
@@ -256,7 +274,7 @@ function ExceptionCard({
         <p>
           Attempted {row.attemptedLabel} · verified {row.verifiedLabel}
         </p>
-        <p>{row.recipeLabel}</p>
+        {row.subjectLabel === 'Activity' ? <p>Checked {row.checkedLabel}</p> : <p>{row.recipeLabel}</p>}
         {row.field ? <p>Field {row.field}</p> : null}
         <div>
           <p className="font-medium">Before</p>
@@ -273,7 +291,10 @@ function ExceptionCard({
         {row.approveKind === 'review_only' ? (
           <p>
             {`Approve marks this reviewed. ${NOTHING_PUBLISHED}`}
-            {row.canEdit ? ' Edit publishes a paraphrase.' : ''}
+            {row.editKind === 'description' ? ' Edit publishes a paraphrase.' : ''}
+            {row.editKind === 'hours_note' ? ' Edit writes the hours note you type and keeps the previous note.' : ''}
+            {row.editKind === 'summary' ? ' Edit stores your text as a new summary version and keeps the previous one.' : ''}
+            {row.editKind === 'note' ? ' Edit closes the row with your note. Price and allergen text are not published.' : ''}
           </p>
         ) : null}
         {row.approveBlock ? <p>{row.approveBlock}</p> : null}
@@ -290,7 +311,7 @@ function ExceptionCard({
         {row.canEdit ? (
           <div className="space-y-2">
             <label className="block font-medium" htmlFor={`edit-${row.id}`}>
-              Edited paraphrase
+              {row.editKind === 'hours_note' ? 'Hours note' : row.editKind === 'summary' ? 'Summary' : row.editKind === 'note' ? 'Resolution note' : 'Edited paraphrase'}
             </label>
             <textarea
               id={`edit-${row.id}`}
@@ -299,7 +320,7 @@ function ExceptionCard({
               onChange={(event) => onDraft(event.target.value)}
             />
             <Button type="button" size="sm" variant="outline" disabled={pending} onClick={onEdit}>
-              Publish edit
+              {row.editKind === 'note' ? 'Save note' : 'Publish edit'}
             </Button>
           </div>
         ) : null}

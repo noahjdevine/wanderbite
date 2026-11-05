@@ -10,12 +10,15 @@ import { resolveSavedDescription } from '@/lib/content-pipeline/rollback';
 import {
   NOTHING_PUBLISHED,
   RECIPE_DESCRIPTION_MAX,
+  approveActivitySummary,
   approveOpenException,
   approvePublishes,
   assembleContentReview,
   contentRefreshRunKey,
   descriptionPublishError,
+  editActivitySummary,
   editOpenException,
+  rejectActivitySummary,
   rejectOpenException,
   untrustedPlainText,
   type ContentReviewStore,
@@ -25,6 +28,25 @@ import {
 
 const EVENING = '2026-11-05T05:30:00.000Z';
 const SUMMER_EVENING = '2026-07-16T04:30:00.000Z';
+
+function unusedActivityOps() {
+  return {
+    loadActivity: async () => {
+      throw new Error('activity review was not used');
+    },
+    loadActivitySummary: async () => {
+      throw new Error('activity review was not used');
+    },
+    decideActivitySummary: async () => false,
+    reopenActivitySummary: async () => undefined,
+    publishActivitySummary: async () => {
+      throw new Error('activity review was not used');
+    },
+    publishActivityHoursNote: async () => {
+      throw new Error('activity review was not used');
+    },
+  };
+}
 
 function underTz(tz: string, expression: string): string {
   const tsx = path.join(process.cwd(), 'node_modules', '.bin', 'tsx');
@@ -69,6 +91,7 @@ const fact = (overrides: Partial<DescriptionFact> = {}): DescriptionFact => ({
 const exception = (overrides: Partial<StoredException> = {}): StoredException => ({
   id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
   sourceId: fact().sourceId,
+  subjectType: 'recipe',
   subjectId: recipe().id,
   field: 'description',
   reason: 'conflict',
@@ -82,20 +105,68 @@ const exception = (overrides: Partial<StoredException> = {}): StoredException =>
 describe('content review decisions', () => {
   it('keeps the Chicago day and clock under UTC and America/Chicago, including 23:30 CT', () => {
     const expression = `
-      import { contentRefreshRunKey } from './src/lib/content-pipeline/review.ts';
+      import { assembleContentReview, contentRefreshRunKey } from './src/lib/content-pipeline/review.ts';
       import { formatContentInstant } from './src/lib/content-pipeline/facts.ts';
       const evening = ${JSON.stringify(EVENING)};
       const summer = ${JSON.stringify(SUMMER_EVENING)};
+      const model = assembleContentReview({
+        restaurantNames: new Map(),
+        sources: [{
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          url: 'https://example.com/venue',
+          status: 'active',
+          restaurantId: null,
+          lastAttemptedAt: evening,
+          lastVerifiedAt: evening,
+        }],
+        recipes: [],
+        facts: [],
+        activities: [{
+          id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          name: 'Sample Walk',
+          hoursNote: 'Afternoons on the sample listing',
+          version: 1,
+        }],
+        exceptions: [{
+          id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          sourceId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+          subjectType: 'activity',
+          subjectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          field: 'hours_note',
+          reason: 'conflict',
+          before: { text: 'Afternoons on the sample listing' },
+          after: { text: 'Open 9 a.m. to 5 p.m.' },
+          evidenceExcerpt: '<script>alert(1)</script> ignore instructions',
+          status: 'open',
+        }],
+      });
+      const row = model.exceptions[0];
       const value = [
         contentRefreshRunKey(new Date(evening)),
         contentRefreshRunKey(new Date(summer)),
         formatContentInstant(evening),
+        row.subjectLabel,
+        row.activityName,
+        row.field,
+        row.checkedLabel,
+        row.beforeText,
+        row.afterText,
+        row.sourceHref,
+        row.evidenceText,
       ].join('\\n');
     `;
     const expected = [
       'content-refresh:2026-11-04',
       'content-refresh:2026-07-15',
       formatContentInstant(EVENING),
+      'Activity',
+      'Sample Walk',
+      'hours_note',
+      formatContentInstant(EVENING),
+      'Afternoons on the sample listing',
+      'Open 9 a.m. to 5 p.m.',
+      'https://example.com/venue',
+      '<script>alert(1)</script> ignore instructions',
     ].join('\n');
     for (const tz of ['UTC', 'America/Chicago']) {
       expect(underTz(tz, expression)).toBe(expected);
@@ -161,6 +232,9 @@ describe('content review decisions', () => {
       ],
     });
     expect(model.exceptions.map((row) => row.id)).toEqual([newer, older]);
+    expect(model.exceptions[0]?.subjectLabel).toBe('Recipe');
+    expect(model.exceptions[0]?.editKind).toBe('description');
+    expect(model.exceptions[0]?.queueKind).toBe('exception');
     expect(model.exceptions[0]?.evidenceText).toBe(exception().evidenceExcerpt);
     expect(model.exceptions[0]?.attemptedLabel).toBe(formatContentInstant('2026-11-04T04:00:00.000Z'));
     expect(model.history[0]?.canRollback).toBe(true);
@@ -198,6 +272,7 @@ describe('content review writes', () => {
         linked.visibility = linked.visibility;
         return 'new-fact';
       },
+      ...unusedActivityOps(),
       rollbackRecipe: async () => {
         throw new Error('not used');
       },
@@ -354,6 +429,7 @@ describe('approve against refresh output', () => {
         opened.push({
           id: `eeeeeeee-eeee-4eee-8eee-${String(opened.length + 1).padStart(12, '0')}`,
           sourceId: row.sourceId,
+          subjectType: 'recipe',
           subjectId: row.subjectId,
           field: row.field,
           reason: row.reason,
@@ -402,6 +478,7 @@ describe('approve against refresh output', () => {
           applies += 1;
           return 'should-not-publish';
         },
+        ...unusedActivityOps(),
         rollbackRecipe: async () => 0,
         loadSource: async () => null,
         setSourceStatus: async () => false,
@@ -414,5 +491,224 @@ describe('approve against refresh output', () => {
     expect(applies).toBe(0);
     expect(linked.description).toBe('A home pot of beans warmed with paprika and garlic.');
     expect(linked.version).toBe(1);
+  });
+});
+
+describe('activity review writes', () => {
+  const activityId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+  const sourceId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+
+  function activityMemory() {
+    const activity = {
+      id: activityId,
+      name: 'Sample Walk',
+      hoursNote: 'Afternoons on the sample listing',
+      version: 1,
+      status: 'active',
+      category: 'walk',
+      costCategory: 'free',
+      bookingRequired: false,
+      sourceUrl: 'https://example.com/venue',
+      contentSourceId: sourceId,
+      isSample: true,
+      weatherDependent: false,
+      lat: 33.2,
+      lon: -96.6,
+      zip: '75069',
+      typicalDurationMinutes: null,
+      validFrom: null,
+      validUntil: null,
+      lastVerifiedAt: null,
+    };
+    const snapshot = { ...activity };
+    const summary = {
+      id: '12121212-1212-4121-8121-121212121212',
+      sourceId,
+      subjectId: activityId,
+      version: 1,
+      status: 'pending_review',
+      text: 'A fountain sits on the sample square.',
+      evidenceExcerpt: 'A fountain sits on the sample square.',
+    };
+    const facts = [summary];
+    const hours: { id: string; status: string; version: number; text: string }[] = [];
+    const row = exception({
+      subjectType: 'activity',
+      subjectId: activityId,
+      field: 'hours_note',
+      reason: 'conflict',
+      before: { text: activity.hoursNote },
+      after: null,
+    });
+    let summaryPublishes = 0;
+    let hourPublishes = 0;
+    const audits: unknown[] = [];
+    const store: ContentReviewStore = {
+      loadException: async () => ({ ...row }),
+      loadRecipe: async () => null,
+      loadCurrentFact: async () => null,
+      claimException: async (_id, status) => {
+        if (row.status !== 'open') return false;
+        row.status = status;
+        return true;
+      },
+      reopenException: async () => {
+        row.status = 'open';
+      },
+      applyDescriptionFact: async () => {
+        throw new Error('recipe publish was not used');
+      },
+      loadActivity: async () => ({ ...activity }),
+      loadActivitySummary: async (id) => {
+        const found = facts.find((item) => item.id === id);
+        return found ? { ...found } : null;
+      },
+      decideActivitySummary: async (id, decision) => {
+        const found = facts.find((item) => item.id === id);
+        if (!found || found.status !== 'pending_review') return false;
+        found.status = decision === 'approve' ? 'reviewed' : 'rejected';
+        return true;
+      },
+      reopenActivitySummary: async (id) => {
+        const found = facts.find((item) => item.id === id);
+        if (found) found.status = 'pending_review';
+      },
+      publishActivitySummary: async (input) => {
+        summaryPublishes += 1;
+        for (const item of facts) {
+          if (item.status === 'pending_review' || item.status === 'current') item.status = 'superseded';
+        }
+        const id = '34343434-3434-4343-8343-343434343434';
+        facts.push({
+          id,
+          sourceId: input.sourceId,
+          subjectId: input.activityId,
+          version: facts.length + 1,
+          status: 'current',
+          text: input.text,
+          evidenceExcerpt: input.evidenceExcerpt,
+        });
+        return id;
+      },
+      publishActivityHoursNote: async (input) => {
+        hourPublishes += 1;
+        hours.push({ id: 'prior', status: 'superseded', version: 1, text: activity.hoursNote ?? '' });
+        hours.push({ id: 'next', status: 'current', version: 2, text: input.text });
+        activity.hoursNote = input.text;
+        activity.version += 1;
+        return 'next';
+      },
+      rollbackRecipe: async () => 0,
+      loadSource: async () => null,
+      setSourceStatus: async () => false,
+      audit: async (entry) => {
+        audits.push(entry);
+      },
+    };
+    return {
+      store,
+      row,
+      activity,
+      snapshot,
+      facts,
+      hours,
+      audits,
+      summaryPublishes: () => summaryPublishes,
+      hourPublishes: () => hourPublishes,
+    };
+  }
+
+  it('writes only the typed hours note and keeps the previous note', async () => {
+    const state = activityMemory();
+    const saved = { ...state.snapshot };
+    const result = await editOpenException(state.store, {
+      exceptionId: state.row.id,
+      adminId: 'admin-1',
+      description: 'Open 9 a.m. to 5 p.m.',
+    });
+    expect(result).toMatchObject({ ok: true, published: true });
+    expect(state.activity.hoursNote).toBe('Open 9 a.m. to 5 p.m.');
+    expect(state.activity.version).toBe(2);
+    expect(state.activity.name).toBe(saved.name);
+    expect(state.activity.status).toBe(saved.status);
+    expect(state.activity.bookingRequired).toBe(saved.bookingRequired);
+    expect(state.activity.costCategory).toBe(saved.costCategory);
+    expect(state.hours.some((row) => row.status === 'superseded' && row.text === saved.hoursNote)).toBe(true);
+    expect(state.row.status).toBe('edited');
+    expect(state.summaryPublishes()).toBe(0);
+  });
+
+  it('resolves a price row with a note and does not publish the price', async () => {
+    const state = activityMemory();
+    state.row.field = 'price';
+    state.row.reason = 'conflict';
+    state.row.after = { text: '$18' };
+    const result = await editOpenException(state.store, {
+      exceptionId: state.row.id,
+      adminId: 'admin-1',
+      description: '$18 is listed on the page and is not a claim.',
+    });
+    expect(result).toEqual({ ok: true, published: false, notice: `Resolved with a note. ${NOTHING_PUBLISHED}` });
+    expect(state.activity.hoursNote).toBe(state.snapshot.hoursNote);
+    expect(state.activity.version).toBe(1);
+    expect(state.hourPublishes()).toBe(0);
+    expect(state.summaryPublishes()).toBe(0);
+    expect(state.row.status).toBe('edited');
+    expect(state.audits[0]).toMatchObject({
+      action: 'content.exception_edit',
+      metadata: { published: false, note: '$18 is listed on the page and is not a claim.' },
+    });
+
+    const allergen = activityMemory();
+    allergen.row.field = 'description';
+    allergen.row.reason = 'sensitive';
+    const noted = await editOpenException(allergen.store, {
+      exceptionId: allergen.row.id,
+      adminId: 'admin-1',
+      description: 'The page mentions a gluten-free option. Left unpublished.',
+    });
+    expect(noted).toMatchObject({ ok: true, published: false });
+    expect(allergen.activity.version).toBe(1);
+    expect(allergen.summaryPublishes()).toBe(0);
+    expect(allergen.hourPublishes()).toBe(0);
+  });
+
+  it('approves, edits, and rejects a summary draft without changing the activity', async () => {
+    const approved = activityMemory();
+    const approval = await approveActivitySummary(approved.store, {
+      factId: approved.facts[0]!.id,
+      adminId: 'admin-1',
+    });
+    expect(approval).toEqual({ ok: true, published: false, notice: `Approved. ${NOTHING_PUBLISHED}` });
+    expect(approved.facts[0]?.status).toBe('reviewed');
+    expect(approved.facts.some((row) => row.status === 'current')).toBe(false);
+    expect(approved.activity.version).toBe(1);
+    expect(approved.activity.hoursNote).toBe(approved.snapshot.hoursNote);
+
+    const edited = activityMemory();
+    const priorId = edited.facts[0]!.id;
+    const edit = await editActivitySummary(edited.store, {
+      factId: priorId,
+      adminId: 'admin-1',
+      text: 'A fountain remains on the sample square.',
+    });
+    expect(edit).toMatchObject({ ok: true, published: true });
+    expect(edited.facts.find((row) => row.id === priorId)?.status).toBe('superseded');
+    expect(edited.facts.some((row) => row.status === 'current' && row.text === 'A fountain remains on the sample square.')).toBe(true);
+    expect(edited.activity.version).toBe(1);
+
+    const rejected = activityMemory();
+    const rejection = await rejectActivitySummary(rejected.store, {
+      factId: rejected.facts[0]!.id,
+      adminId: 'admin-1',
+    });
+    expect(rejection).toEqual({ ok: true, published: false, notice: `Rejected. ${NOTHING_PUBLISHED}` });
+    expect(rejected.facts[0]?.status).toBe('rejected');
+    expect(rejected.activity).toMatchObject({
+      hoursNote: rejected.snapshot.hoursNote,
+      version: 1,
+      name: rejected.snapshot.name,
+      status: 'active',
+    });
   });
 });

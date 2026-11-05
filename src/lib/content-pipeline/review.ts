@@ -1,4 +1,15 @@
 import {
+  activityCheckedLabel,
+  activityEditKind,
+  hoursNotePublishError,
+  normalizeOperatorText,
+  resolutionNoteError,
+  summaryPublishError,
+  type ActivityGuard,
+  type ActivityQueueRow,
+  type ActivitySummarySnapshot,
+} from '@/lib/content-pipeline/activity-review';
+import {
   dietaryClaim,
   extractPrice,
   hoursSuspected,
@@ -75,6 +86,7 @@ export function safeSourceHref(url: string): string | null {
 export type StoredException = {
   id: string;
   sourceId: string;
+  subjectType: string | null;
   subjectId: string | null;
   field: string | null;
   reason: string;
@@ -116,6 +128,22 @@ export type ContentReviewStore = {
     recipeId: string;
     supersedeFactId: string;
     value: DescriptionFactValue;
+    evidenceExcerpt: string;
+  }): Promise<string>;
+  loadActivity(id: string): Promise<ActivityGuard | null>;
+  loadActivitySummary(id: string): Promise<ActivitySummarySnapshot | null>;
+  decideActivitySummary(id: string, decision: 'approve' | 'reject'): Promise<boolean>;
+  reopenActivitySummary(id: string): Promise<void>;
+  publishActivitySummary(row: {
+    sourceId: string;
+    activityId: string;
+    text: string;
+    evidenceExcerpt: string;
+  }): Promise<string>;
+  publishActivityHoursNote(row: {
+    sourceId: string;
+    activityId: string;
+    text: string;
     evidenceExcerpt: string;
   }): Promise<string>;
   rollbackRecipe(recipeId: string): Promise<number>;
@@ -220,7 +248,7 @@ async function context(store: ContentReviewStore, exception: StoredException): P
   recipe: RecipeGuard | null;
   fact: DescriptionFact | null;
 }> {
-  if (!exception.subjectId) return { recipe: null, fact: null };
+  if (!exception.subjectId || exception.subjectType === 'activity') return { recipe: null, fact: null };
   const recipe = await store.loadRecipe(exception.subjectId);
   const fact = await store.loadCurrentFact(exception.sourceId, exception.subjectId);
   return { recipe, fact };
@@ -273,6 +301,9 @@ export async function editOpenException(
   const exception = await store.loadException(input.exceptionId);
   if (!exception) return { ok: false, error: 'Exception not found.' };
   if (exception.status !== 'open') return { ok: false, error: 'Already resolved.' };
+  if (exception.subjectType === 'activity') {
+    return editActivityException(store, exception, input);
+  }
   const { recipe, fact } = await context(store, exception);
   const planned = editPlan(exception, recipe, fact, input.description);
   if ('error' in planned) return { ok: false, error: planned.error };
@@ -306,6 +337,255 @@ export async function rejectOpenException(
       published: false,
       reason: exception.reason,
       ...hashes(exception.before, exception.after),
+    },
+  });
+  return { ok: true, published: false, notice: `Rejected. ${NOTHING_PUBLISHED}` };
+}
+
+function activityEvidence(excerpt: string | null, text: string): string {
+  return evidenceExcerpt(excerpt || text);
+}
+
+async function editActivityException(
+  store: ContentReviewStore,
+  exception: StoredException,
+  input: { adminId: string; description: string },
+): Promise<ContentActionResult> {
+  if (!exception.subjectId) return { ok: false, error: 'That activity was not found.' };
+  const activity = await store.loadActivity(exception.subjectId);
+  if (!activity) return { ok: false, error: 'That activity was not found.' };
+  const kind = activityEditKind(exception.field);
+  const text = normalizeOperatorText(input.description);
+  if (kind === 'hours_note') {
+    const textError = hoursNotePublishError(text);
+    if (textError) return { ok: false, error: textError };
+    return publishActivityHours(store, { exception, activity, adminId: input.adminId, text });
+  }
+  if (kind === 'summary') {
+    const textError = summaryPublishError(text);
+    if (textError) return { ok: false, error: textError };
+    return publishActivitySummaryEdit(store, { exception, activity, adminId: input.adminId, text });
+  }
+  const noteError = resolutionNoteError(text);
+  if (noteError) return { ok: false, error: noteError };
+  return resolveActivityWithNote(store, { exception, adminId: input.adminId, note: text });
+}
+
+async function publishActivityHours(
+  store: ContentReviewStore,
+  input: { exception: StoredException; activity: ActivityGuard; adminId: string; text: string },
+): Promise<ContentActionResult> {
+  const claimed = await store.claimException(input.exception.id, 'edited', input.adminId);
+  if (!claimed) return { ok: false, error: 'Already resolved.' };
+  let factId: string;
+  try {
+    factId = await store.publishActivityHoursNote({
+      sourceId: input.exception.sourceId,
+      activityId: input.activity.id,
+      text: input.text,
+      evidenceExcerpt: activityEvidence(input.exception.evidenceExcerpt, input.text),
+    });
+  } catch (err) {
+    await store.reopenException(input.exception.id);
+    const message = err instanceof Error ? err.message : 'Hours note was not saved.';
+    return { ok: false, error: message };
+  }
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_edit',
+      targetType: 'content_exception',
+      targetId: input.exception.id,
+      metadata: {
+        adminId: input.adminId,
+        exceptionId: input.exception.id,
+        published: true,
+        subjectType: 'activity',
+        field: 'hours_note',
+        activityId: input.activity.id,
+        factId,
+        ...hashes(input.exception.before, input.text),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: `The hours note was saved. ${message}` };
+  }
+  return { ok: true, published: true, notice: 'Saved the hours note.' };
+}
+
+async function publishActivitySummaryEdit(
+  store: ContentReviewStore,
+  input: { exception: StoredException; activity: ActivityGuard; adminId: string; text: string },
+): Promise<ContentActionResult> {
+  const claimed = await store.claimException(input.exception.id, 'edited', input.adminId);
+  if (!claimed) return { ok: false, error: 'Already resolved.' };
+  let factId: string;
+  try {
+    factId = await store.publishActivitySummary({
+      sourceId: input.exception.sourceId,
+      activityId: input.activity.id,
+      text: input.text,
+      evidenceExcerpt: activityEvidence(input.exception.evidenceExcerpt, input.text),
+    });
+  } catch (err) {
+    await store.reopenException(input.exception.id);
+    const message = err instanceof Error ? err.message : 'Summary was not stored.';
+    return { ok: false, error: message };
+  }
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_edit',
+      targetType: 'content_exception',
+      targetId: input.exception.id,
+      metadata: {
+        adminId: input.adminId,
+        exceptionId: input.exception.id,
+        published: true,
+        subjectType: 'activity',
+        field: 'summary',
+        activityId: input.activity.id,
+        factId,
+        ...hashes(input.exception.before, input.text),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: `The summary was stored. ${message}` };
+  }
+  return { ok: true, published: true, notice: 'Stored the edited summary. The activity row was not changed.' };
+}
+
+async function resolveActivityWithNote(
+  store: ContentReviewStore,
+  input: { exception: StoredException; adminId: string; note: string },
+): Promise<ContentActionResult> {
+  const claimed = await store.claimException(input.exception.id, 'edited', input.adminId);
+  if (!claimed) return { ok: false, error: 'Already resolved.' };
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_edit',
+      targetType: 'content_exception',
+      targetId: input.exception.id,
+      metadata: {
+        adminId: input.adminId,
+        exceptionId: input.exception.id,
+        published: false,
+        subjectType: 'activity',
+        field: input.exception.field,
+        reason: input.exception.reason,
+        note: input.note,
+        ...hashes(input.exception.before, input.note),
+      },
+    });
+  } catch (err) {
+    await store.reopenException(input.exception.id);
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: message };
+  }
+  return { ok: true, published: false, notice: `Resolved with a note. ${NOTHING_PUBLISHED}` };
+}
+
+export async function approveActivitySummary(
+  store: ContentReviewStore,
+  input: { factId: string; adminId: string },
+): Promise<ContentActionResult> {
+  const fact = await store.loadActivitySummary(input.factId);
+  if (!fact || fact.status !== 'pending_review') return { ok: false, error: 'Summary draft not found.' };
+  const decided = await store.decideActivitySummary(fact.id, 'approve');
+  if (!decided) return { ok: false, error: 'Already resolved.' };
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_approve',
+      targetType: 'source_fact',
+      targetId: fact.id,
+      metadata: {
+        adminId: input.adminId,
+        factId: fact.id,
+        activityId: fact.subjectId,
+        published: false,
+        subjectType: 'activity',
+        field: 'summary',
+        ...hashes({ text: fact.text }, null),
+      },
+    });
+  } catch (err) {
+    await store.reopenActivitySummary(fact.id);
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: message };
+  }
+  return { ok: true, published: false, notice: `Approved. ${NOTHING_PUBLISHED}` };
+}
+
+export async function editActivitySummary(
+  store: ContentReviewStore,
+  input: { factId: string; adminId: string; text: string },
+): Promise<ContentActionResult> {
+  const fact = await store.loadActivitySummary(input.factId);
+  if (!fact || fact.status !== 'pending_review') return { ok: false, error: 'Summary draft not found.' };
+  const text = normalizeOperatorText(input.text);
+  const textError = summaryPublishError(text);
+  if (textError) return { ok: false, error: textError };
+  let factId: string;
+  try {
+    factId = await store.publishActivitySummary({
+      sourceId: fact.sourceId,
+      activityId: fact.subjectId,
+      text,
+      evidenceExcerpt: activityEvidence(fact.evidenceExcerpt, text),
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Summary was not stored.';
+    return { ok: false, error: message };
+  }
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_edit',
+      targetType: 'source_fact',
+      targetId: fact.id,
+      metadata: {
+        adminId: input.adminId,
+        factId,
+        priorFactId: fact.id,
+        activityId: fact.subjectId,
+        published: true,
+        subjectType: 'activity',
+        field: 'summary',
+        ...hashes({ text: fact.text }, text),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: `The summary was stored. ${message}` };
+  }
+  return { ok: true, published: true, notice: 'Stored the edited summary. The activity row was not changed.' };
+}
+
+export async function rejectActivitySummary(
+  store: ContentReviewStore,
+  input: { factId: string; adminId: string },
+): Promise<ContentActionResult> {
+  const fact = await store.loadActivitySummary(input.factId);
+  if (!fact || fact.status !== 'pending_review') return { ok: false, error: 'Summary draft not found.' };
+  const decided = await store.decideActivitySummary(fact.id, 'reject');
+  if (!decided) return { ok: false, error: 'Already resolved.' };
+  await store.audit({
+    adminId: input.adminId,
+    action: 'content.exception_reject',
+    targetType: 'source_fact',
+    targetId: fact.id,
+    metadata: {
+      adminId: input.adminId,
+      factId: fact.id,
+      activityId: fact.subjectId,
+      published: false,
+      subjectType: 'activity',
+      field: 'summary',
+      ...hashes({ text: fact.text }, null),
     },
   });
   return { ok: true, published: false, notice: `Rejected. ${NOTHING_PUBLISHED}` };
@@ -441,6 +721,7 @@ export type ReviewSourceRow = {
 export type ReviewExceptionRow = {
   id: string;
   sourceId: string;
+  subjectType?: string | null;
   subjectId: string | null;
   field: string | null;
   reason: string;
@@ -451,6 +732,13 @@ export type ReviewExceptionRow = {
 };
 
 export type { ContentReviewModel, ExceptionView, RecipeHistoryView, SourceView };
+
+function activityPlainValue(value: Json | null): string {
+  if (value && typeof value === 'object' && !Array.isArray(value) && typeof value.text === 'string') {
+    return value.text;
+  }
+  return untrustedPlainText(value);
+}
 
 function restaurantName(names: ReadonlyMap<string, string>, id: string | null): string {
   if (!id) return 'No restaurant';
@@ -469,41 +757,92 @@ export function assembleContentReview(input: {
   recipes: readonly RecipeGuard[];
   facts: readonly DescriptionFact[];
   restaurantNames: ReadonlyMap<string, string>;
+  activities?: readonly ActivityQueueRow[];
+  activitySummaries?: readonly ActivitySummarySnapshot[];
 }): ContentReviewModel {
   const sourcesById = new Map(input.sources.map((source) => [source.id, source]));
   const recipesById = new Map(input.recipes.map((recipe) => [recipe.id, recipe]));
-  const exceptions = input.exceptions
+  const activitiesById = new Map((input.activities ?? []).map((row) => [row.id, row]));
+  const summaries = input.activitySummaries ?? [];
+  const exceptionItems = input.exceptions
     .filter((row) => row.status === 'open')
     .map((row) => {
       const source = sourcesById.get(row.sourceId);
-      const recipe = row.subjectId ? recipesById.get(row.subjectId) ?? null : null;
-      const fact = row.subjectId
+      const isActivity = row.subjectType === 'activity';
+      const activity = isActivity && row.subjectId ? activitiesById.get(row.subjectId) ?? null : null;
+      const recipe = !isActivity && row.subjectId ? recipesById.get(row.subjectId) ?? null : null;
+      const fact = !isActivity && row.subjectId
         ? input.facts.find(
             (item) => item.status === 'current' && item.subjectId === row.subjectId && item.sourceId === row.sourceId,
           ) ?? null
         : null;
       const guardOk = recipePublishError(recipe) == null;
+      const canEdit = isActivity || Boolean(guardOk && fact && recipe && fact.version === recipe.version);
+      const editKind = isActivity ? activityEditKind(row.field) : canEdit ? 'description' : 'none';
       return {
         sortAt: source?.lastAttemptedAt ?? '',
         view: {
           id: row.id,
-          restaurantName: restaurantName(input.restaurantNames, source?.restaurantId ?? recipe?.restaurantId ?? null),
+          restaurantName: isActivity
+            ? activity?.name ?? 'Unknown activity'
+            : restaurantName(input.restaurantNames, source?.restaurantId ?? recipe?.restaurantId ?? null),
           sourceUrl: source?.url ?? '',
           sourceHref: source ? safeSourceHref(source.url) : null,
           reason: row.reason,
           field: row.field,
-          beforeText: untrustedPlainText(row.before),
-          afterText: untrustedPlainText(row.after),
+          beforeText: isActivity ? activityPlainValue(row.before) : untrustedPlainText(row.before),
+          afterText: isActivity ? activityPlainValue(row.after) : untrustedPlainText(row.after),
           evidenceText: row.evidenceExcerpt ?? '',
           attemptedLabel: formatContentInstant(source?.lastAttemptedAt),
           verifiedLabel: formatContentInstant(source?.lastVerifiedAt),
-          recipeLabel: recipeLabel(recipe, fact),
+          recipeLabel: isActivity ? '' : recipeLabel(recipe, fact),
+          subjectLabel: isActivity ? 'Activity' : 'Recipe',
+          activityName: isActivity ? activity?.name ?? 'Unknown activity' : null,
+          checkedLabel: activityCheckedLabel(source?.lastVerifiedAt, source?.lastAttemptedAt),
+          editKind,
+          queueKind: 'exception',
           approveKind: 'review_only',
           approveBlock: null,
-          canEdit: Boolean(guardOk && fact && recipe && fact.version === recipe.version),
+          canEdit,
         } satisfies ExceptionView,
       };
-    })
+    });
+  const summaryItems = summaries
+    .filter((row) => row.status === 'pending_review')
+    .map((row) => {
+      const source = sourcesById.get(row.sourceId);
+      const activity = activitiesById.get(row.subjectId);
+      const current = summaries
+        .filter((item) => item.status === 'current' && item.subjectId === row.subjectId && item.sourceId === row.sourceId)
+        .sort((left, right) => left.version - right.version)
+        .at(-1) ?? null;
+      return {
+        sortAt: source?.lastAttemptedAt ?? '',
+        view: {
+          id: row.id,
+          restaurantName: activity?.name ?? 'Unknown activity',
+          sourceUrl: source?.url ?? '',
+          sourceHref: source ? safeSourceHref(source.url) : null,
+          reason: 'pending_review',
+          field: 'summary',
+          beforeText: current?.text ?? '',
+          afterText: row.text,
+          evidenceText: row.evidenceExcerpt,
+          attemptedLabel: formatContentInstant(source?.lastAttemptedAt),
+          verifiedLabel: formatContentInstant(source?.lastVerifiedAt),
+          recipeLabel: '',
+          subjectLabel: 'Activity',
+          activityName: activity?.name ?? 'Unknown activity',
+          checkedLabel: activityCheckedLabel(source?.lastVerifiedAt, source?.lastAttemptedAt),
+          editKind: 'summary',
+          queueKind: 'summary_draft',
+          approveKind: 'review_only',
+          approveBlock: null,
+          canEdit: true,
+        } satisfies ExceptionView,
+      };
+    });
+  const exceptions = [...exceptionItems, ...summaryItems]
     .sort((left, right) => {
       if (left.sortAt !== right.sortAt) return right.sortAt < left.sortAt ? -1 : 1;
       return right.view.id < left.view.id ? -1 : 1;
