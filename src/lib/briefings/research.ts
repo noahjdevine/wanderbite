@@ -2,7 +2,14 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { robotsAllowsPath } from '@/lib/recipes/menu-robots';
 import {
+  microdollarsForPlacesUnit,
+  placesSkuLabel,
+  type PlacesFactDraft,
+  type PlacesLookupResult,
+} from '@/lib/briefings/places';
+import {
   BRIEFING_FIELDS,
+  briefingSourceLabel,
   isBriefingField,
   type BriefingField,
 } from '@/lib/briefings/types';
@@ -115,6 +122,9 @@ const SKIP_HOSTS = [
   'twitter.com',
   'x.com',
   'youtube.com',
+  'googleapis.com',
+  'gstatic.com',
+  'googleusercontent.com',
   'wikipedia.org',
   'tiktok.com',
 ];
@@ -193,6 +203,10 @@ export type BriefingRestaurant = {
   id: string;
   name: string;
   address: string | null;
+  officialWebsite?: string | null;
+  googlePlaceId?: string | null;
+  lat?: number | null;
+  lon?: number | null;
 };
 
 export type SupportedFact = {
@@ -224,6 +238,10 @@ export type RestaurantResearchResult = {
   units: ModelUsage;
   estimatedMicrodollars: number;
   notes: string[];
+  /** Place id for this run. Storing it is allowed. Raw Places fields are not. */
+  placeId?: string | null;
+  /** Set when google_place_id is empty and this run matched a place. */
+  placeIdToStore?: string | null;
 };
 
 export type BriefingRun = {
@@ -304,6 +322,11 @@ export function estimateMicrodollars(units: ModelUsage): number {
     if (!Number.isFinite(count) || count <= 0) continue;
     if (kind === 'web_search_requests') {
       total += Math.trunc(count) * WEB_SEARCH_MICRODOLLARS_PER_REQUEST;
+      continue;
+    }
+    const placesRate = microdollarsForPlacesUnit(kind);
+    if (placesRate != null) {
+      total += Math.trunc(count) * placesRate;
       continue;
     }
     const rate = HAIKU_MICRODOLLARS_PER_MILLION[kind];
@@ -429,18 +452,39 @@ function nameTokens(name: string): string[] {
     .filter((token) => token.length >= 4 && token !== 'cafe' && token !== 'the');
 }
 
-function classifyUrl(raw: string, restaurantName: string): 'official' | 'listing' | 'skip' {
+function matchesStoredHost(host: string, officialHosts: readonly string[]): boolean {
+  const key = officialHostKey(host);
+  return officialHosts.some((candidate) => officialHostKey(candidate) === key);
+}
+
+function urlClass(
+  raw: string,
+  restaurantName: string,
+  officialHosts: readonly string[],
+): 'official' | 'listing' | 'blocked' | 'other' {
   const normalized = normalizeHttpsUrl(raw);
-  if (!normalized) return 'skip';
+  if (!normalized) return 'blocked';
   const url = new URL(normalized);
   const host = url.hostname;
-  if (SKIP_HOSTS.some((suffix) => hostMatches(host, suffix))) return 'skip';
+  if (SKIP_HOSTS.some((suffix) => hostMatches(host, suffix))) return 'blocked';
   if (host === 'google.com' || host === 'www.google.com' || host === 'maps.google.com') {
-    return url.pathname.startsWith('/maps') ? 'listing' : 'skip';
+    return url.pathname.startsWith('/maps') ? 'listing' : 'blocked';
   }
   if (LISTING_HOSTS.some((suffix) => hostMatches(host, suffix))) return 'listing';
+  if (matchesStoredHost(host, officialHosts)) return 'official';
   const tokens = nameTokens(restaurantName);
   if (tokens.some((token) => host.includes(token))) return 'official';
+  return 'other';
+}
+
+function classifyUrl(
+  raw: string,
+  restaurantName: string,
+  officialHosts: readonly string[] = [],
+): 'official' | 'listing' | 'skip' {
+  const kind = urlClass(raw, restaurantName, officialHosts);
+  if (kind === 'official') return 'official';
+  if (kind === 'listing') return 'listing';
   return 'skip';
 }
 
@@ -448,7 +492,11 @@ function classifyUrl(raw: string, restaurantName: string): 'official' | 'listing
  * Official hosts first, then reputable listings. The page cap is applied later,
  * after robots.txt, so a disallowed listing does not consume a slot.
  */
-export function rankBriefingUrls(urls: readonly string[], restaurantName: string): string[] {
+export function rankBriefingUrls(
+  urls: readonly string[],
+  restaurantName: string,
+  officialHosts: readonly string[] = [],
+): string[] {
   const official: string[] = [];
   const listings: string[] = [];
   const seen = new Set<string>();
@@ -456,11 +504,37 @@ export function rankBriefingUrls(urls: readonly string[], restaurantName: string
     const normalized = normalizeHttpsUrl(raw);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
-    const kind = classifyUrl(normalized, restaurantName);
+    const kind = classifyUrl(normalized, restaurantName, officialHosts);
     if (kind === 'official') official.push(normalized);
     else if (kind === 'listing') listings.push(normalized);
   }
   return [...official, ...listings];
+}
+
+/** A name-token host, or the first https host that is not a listing and not blocked. */
+export function proposeOfficialFromUrls(
+  urls: readonly string[],
+  restaurantName: string,
+): { url: string | null; kind: 'official' | 'unclassified' | 'none' } {
+  let unclassified: string | null = null;
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    const normalized = normalizeHttpsUrl(raw);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    const kind = urlClass(normalized, restaurantName, []);
+    if (kind === 'official') return { url: normalized, kind: 'official' };
+    if (kind === 'other' && !unclassified) unclassified = normalized;
+  }
+  if (unclassified) return { url: unclassified, kind: 'unclassified' };
+  return { url: null, kind: 'none' };
+}
+
+export function isStorableOfficialWebsite(raw: string, restaurantName: string): boolean {
+  const normalized = normalizeHttpsUrl(raw);
+  if (!normalized) return false;
+  const kind = urlClass(normalized, restaurantName, []);
+  return kind === 'official' || kind === 'other';
 }
 
 function tokenHitsHint(word: string, hint: string): boolean {
@@ -886,6 +960,7 @@ async function requestOnce(
 async function fetchHttps(
   fetchImpl: typeof fetch,
   startUrl: string,
+  options?: { allowCrossDomainRedirect?: boolean },
 ): Promise<{ url: string; text: string; contentType: string; truncated: boolean } | { error: string }> {
   const start = normalizeHttpsUrl(startUrl);
   if (!start) return { error: 'url is not https' };
@@ -899,6 +974,9 @@ async function fetchHttps(
       await result.response.body?.cancel().catch(() => undefined);
       const resolved = location ? normalizeHttpsUrl(new URL(location, current).toString()) : null;
       if (!resolved) return { error: 'redirect was not https' };
+      if (options?.allowCrossDomainRedirect === false && !sameOfficialHost(start, resolved)) {
+        return { error: 'redirect left the site' };
+      }
       current = resolved;
       continue;
     }
@@ -969,6 +1047,8 @@ async function takeBriefingPages(args: {
   seen: Set<string>;
   /** When set, the final URL must stay on this official host. */
   officialUrl?: string;
+  /** Stored official_website may land on another domain. Other fetches may not. */
+  allowCrossDomainRedirect?: boolean;
 }): Promise<PageDraft[]> {
   const kept: PageDraft[] = [];
   for (const raw of args.urls) {
@@ -982,7 +1062,9 @@ async function takeBriefingPages(args: {
       args.seen.add(normalized);
       continue;
     }
-    const fetched = await fetchHttps(args.fetchImpl, normalized);
+    const fetched = await fetchHttps(args.fetchImpl, normalized, {
+      allowCrossDomainRedirect: args.allowCrossDomainRedirect === true,
+    });
     if ('error' in fetched) {
       pushNote(args.notes, `${normalized}: ${pageFailureReason(fetched.error)}`);
       args.seen.add(normalized);
@@ -1279,6 +1361,47 @@ export async function discoverBriefingUrls(args: {
   };
 }
 
+function mergePageAndPlacesFacts(
+  pageFacts: readonly SupportedFact[],
+  placesFacts: readonly PlacesFactDraft[],
+): { kept: SupportedFact[]; dropped: string[] } {
+  const kept = [...pageFacts];
+  const seen = new Set(pageFacts.map((fact) => fact.field));
+  const dropped: string[] = [];
+  for (const fact of placesFacts) {
+    if (seen.has(fact.field)) {
+      dropped.push(`dropped Places ${fact.field} because a page fact is already kept`);
+      continue;
+    }
+    if (!isBriefingField(fact.field) || fact.text.trim().length < 1 || fact.text.length > 400) {
+      dropped.push(`dropped Places ${fact.field} outside the fact checks`);
+      continue;
+    }
+    const sourceUrl = normalizeHttpsUrl(fact.sourceUrl);
+    if (!sourceUrl) {
+      dropped.push(`dropped Places ${fact.field} without an https source`);
+      continue;
+    }
+    seen.add(fact.field);
+    kept.push({
+      field: fact.field,
+      text: fact.text.trim(),
+      sourceUrl,
+      supportPassage: fact.supportPassage,
+    });
+  }
+  kept.sort((a, b) => BRIEFING_FIELDS.indexOf(a.field) - BRIEFING_FIELDS.indexOf(b.field));
+  return { kept, dropped };
+}
+
+function hostOf(pageUrl: string): string | null {
+  try {
+    return new URL(pageUrl).hostname;
+  } catch {
+    return null;
+  }
+}
+
 export async function researchOneRestaurant(args: {
   restaurant: BriefingRestaurant;
   fetchImpl: typeof fetch;
@@ -1287,9 +1410,34 @@ export async function researchOneRestaurant(args: {
   pageCap?: number;
   /** Shared across a catalog run so a disallowed listing host is not fetched again. */
   robotsCache?: RobotsCache;
+  placesLookup?: (restaurant: BriefingRestaurant) => Promise<PlacesLookupResult>;
 }): Promise<RestaurantResearchResult> {
   const notes: string[] = [];
   let units: ModelUsage = {};
+  let placeId: string | null = null;
+  let placeIdToStore: string | null = null;
+  let placesFacts: PlacesFactDraft[] = [];
+  let placesWebsite: string | null = null;
+  if (args.placesLookup) {
+    try {
+      const places = await args.placesLookup(args.restaurant);
+      units = mergeModelUsage(units, places.units);
+      notes.push(...places.notes);
+      placesFacts = places.facts;
+      placesWebsite = places.officialWebsite;
+      placeId = places.placeId;
+      placeIdToStore = places.placeIdToStore;
+    } catch (error) {
+      notes.push(error instanceof Error ? error.message : 'Places lookup failed');
+    }
+  }
+  const storedWebsite = normalizeHttpsUrl(args.restaurant.officialWebsite);
+  const officialStart = storedWebsite ?? (placesWebsite ? normalizeHttpsUrl(placesWebsite) : null);
+  if (storedWebsite && placesWebsite) {
+    notes.push('Places websiteUri was not used because official_website is set.');
+  } else if (!storedWebsite && officialStart) {
+    notes.push('Official host for this run is the Places websiteUri. It was not stored.');
+  }
   const base = {
     restaurantId: args.restaurant.id,
     restaurantName: args.restaurant.name,
@@ -1299,41 +1447,65 @@ export async function researchOneRestaurant(args: {
     units,
     estimatedMicrodollars: 0,
     notes,
+    placeId,
+    placeIdToStore,
   };
   const priced = (): RestaurantResearchResult => ({
     ...base,
     units,
     estimatedMicrodollars: estimateMicrodollars(units),
     notes,
+    placeId,
+    placeIdToStore,
   });
+  const robotsCache = args.robotsCache ?? new Map();
+  const seen = new Set<string>();
+  const pageCap = args.pageCap ?? BRIEFING_PAGE_CAP;
+  const storedPages = officialStart
+    ? await takeBriefingPages({
+        urls: [officialStart],
+        cap: 1,
+        fetchImpl: args.fetchImpl,
+        robotsCache,
+        notes,
+        seen,
+        allowCrossDomainRedirect: true,
+      })
+    : [];
+  const storedPage = storedPages[0] ?? null;
+  const officialHosts = [officialStart, storedPage?.url]
+    .map((url) => (url ? hostOf(url) : null))
+    .filter((host): host is string => Boolean(host));
+
   const search = await discoverBriefingUrls({
     restaurant: args.restaurant,
     apiKey: args.apiKey,
     fetchImpl: args.fetchImpl,
   });
-  units = search.units;
+  units = mergeModelUsage(units, search.units);
+  let searchPages: PageDraft[] = [];
   if (search.failure) {
     notes.push(search.failure);
-    return priced();
+  } else {
+    for (const warning of search.warnings) notes.push(warning);
+    const ranked = rankBriefingUrls(search.urls, args.restaurant.name, officialHosts);
+    if (ranked.length === 0 && !storedPage) {
+      notes.push('no official site or reputable listing in the search results');
+    }
+    if (ranked.length > 0) {
+      searchPages = await takeBriefingPages({
+        urls: ranked,
+        cap: pageCap,
+        fetchImpl: args.fetchImpl,
+        robotsCache,
+        notes,
+        seen,
+      });
+    }
   }
-  for (const warning of search.warnings) notes.push(warning);
-  const ranked = rankBriefingUrls(search.urls, args.restaurant.name);
-  if (ranked.length === 0) {
-    notes.push('no official site or reputable listing in the search results');
-    return priced();
-  }
-  const robotsCache = args.robotsCache ?? new Map();
-  const seen = new Set<string>();
-  const pageCap = args.pageCap ?? BRIEFING_PAGE_CAP;
-  const searchPages = await takeBriefingPages({
-    urls: ranked,
-    cap: pageCap,
-    fetchImpl: args.fetchImpl,
-    robotsCache,
-    notes,
-    seen,
-  });
-  const official = searchPages.find((page) => classifyUrl(page.url, args.restaurant.name) === 'official');
+  const official =
+    storedPage ??
+    searchPages.find((page) => classifyUrl(page.url, args.restaurant.name, officialHosts) === 'official');
   const subpages = official
     ? await takeBriefingPages({
         urls: discoverOfficialSubpages(official.html, official.url, BRIEFING_SUBPAGE_CANDIDATE_CAP),
@@ -1345,34 +1517,43 @@ export async function researchOneRestaurant(args: {
         officialUrl: official.url,
       })
     : [];
+  const officialSearch = searchPages.filter(
+    (page) => classifyUrl(page.url, args.restaurant.name, officialHosts) === 'official',
+  );
+  const listings = searchPages.filter(
+    (page) => classifyUrl(page.url, args.restaurant.name, officialHosts) !== 'official',
+  );
   const ordered = [
-    ...searchPages.filter((page) => classifyUrl(page.url, args.restaurant.name) === 'official'),
+    ...(storedPage ? [storedPage] : []),
+    ...officialSearch.filter((page) => page.url !== storedPage?.url),
     ...subpages,
-    ...searchPages.filter((page) => classifyUrl(page.url, args.restaurant.name) !== 'official'),
+    ...listings,
   ];
   const pages: FetchedPage[] = ordered.map((page) => ({ url: page.url, text: page.text }));
   base.fetchedUrls = pages.map((page) => page.url);
-  if (pages.length === 0) {
+  let pageFacts: SupportedFact[] = [];
+  const dropped: string[] = [];
+  if (pages.length > 0) {
+    try {
+      const model = await args.callModel({
+        system: briefingSystemPrompt(),
+        user: briefingUserPrompt(args.restaurant, pages),
+      });
+      units = mergeModelUsage(units, model.units);
+      const filtered = filterSupportedFacts({ raw: parseBriefingModelJson(model.text), pages });
+      pageFacts = filtered.kept;
+      dropped.push(...filtered.dropped);
+    } catch (error) {
+      notes.push(error instanceof Error ? error.message : 'model call failed');
+    }
+  } else if (!search.failure && placesFacts.length === 0 && !notes.includes('no official site or reputable listing in the search results')) {
     notes.push('no page text fetched');
-    return priced();
   }
-  let modelText = '';
-  try {
-    const model = await args.callModel({
-      system: briefingSystemPrompt(),
-      user: briefingUserPrompt(args.restaurant, pages),
-    });
-    modelText = model.text;
-    units = mergeModelUsage(units, model.units);
-  } catch (error) {
-    notes.push(error instanceof Error ? error.message : 'model call failed');
-    return priced();
-  }
-  const filtered = filterSupportedFacts({ raw: parseBriefingModelJson(modelText), pages });
+  const merged = mergePageAndPlacesFacts(pageFacts, placesFacts);
   return {
     ...priced(),
-    facts: filtered.kept,
-    dropped: filtered.dropped,
+    facts: merged.kept,
+    dropped: [...dropped, ...merged.dropped],
   };
 }
 
@@ -1384,6 +1565,7 @@ export async function researchCatalog(args: {
   now: Date;
   restaurantCap: number;
   costCapMicrodollars: number;
+  placesLookup?: (restaurant: BriefingRestaurant) => Promise<PlacesLookupResult>;
 }): Promise<BriefingRun> {
   const restaurants: RestaurantResearchResult[] = [];
   let spent = 0;
@@ -1405,6 +1587,7 @@ export async function researchCatalog(args: {
       callModel: args.callModel,
       apiKey: args.apiKey,
       robotsCache,
+      placesLookup: args.placesLookup,
     });
     restaurants.push(result);
     spent += result.estimatedMicrodollars;
@@ -1455,6 +1638,19 @@ export function briefingResultReasons(
   return reasons;
 }
 
+export function placesReportLine(units: ModelUsage): string {
+  const parts: string[] = [];
+  for (const [unit, count] of Object.entries(units)) {
+    if (!count || count <= 0) continue;
+    const label = placesSkuLabel('details', unit) ?? placesSkuLabel('text_search', unit);
+    if (!label) continue;
+    const each = microdollarsForPlacesUnit(unit) ?? 0;
+    parts.push(`${label} x${count} (${formatEstimatedUsd(each * count)} USD)`);
+  }
+  if (parts.length === 0) return 'Places: not called';
+  return `Places: ${parts.join('; ')}`;
+}
+
 export function formatBriefingReport(run: BriefingRun): { json: string; markdown: string } {
   const restaurants = run.restaurants.map((restaurant) => ({
     ...restaurant,
@@ -1468,6 +1664,7 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     `Input tokens: ${run.totals.input}`,
     `Output tokens: ${run.totals.output}`,
     `Web searches: ${run.restaurants.reduce((sum, result) => sum + (result.units.web_search_requests ?? 0), 0)}`,
+    placesReportLine(run.restaurants.reduce<ModelUsage>((sum, result) => mergeModelUsage(sum, result.units), {})),
     `Estimated cost: ${formatEstimatedUsd(run.totals.estimatedMicrodollars)} USD`,
     run.stoppedBecause ? `Stopped: ${run.stoppedBecause}` : 'Stopped: completed the selected restaurants',
     '',
@@ -1478,6 +1675,9 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     lines.push(
       `Tokens in ${restaurant.units.input ?? 0}, out ${restaurant.units.output ?? 0}. Web searches ${restaurant.units.web_search_requests ?? 0}. Estimated ${formatEstimatedUsd(restaurant.estimatedMicrodollars)} USD.`,
     );
+    lines.push(placesReportLine(restaurant.units));
+    if (restaurant.placeId) lines.push(`Place id: ${restaurant.placeId}`);
+    if (restaurant.placeIdToStore) lines.push(`Place id to store on --write: ${restaurant.placeIdToStore}`);
     lines.push('');
     lines.push('Reasons:');
     for (const reason of restaurant.reasons) lines.push(`- ${reason}`);
@@ -1490,6 +1690,7 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     for (const fact of restaurant.facts) {
       lines.push(`- ${fact.field}: ${fact.text}`);
       lines.push(`  Source: ${fact.sourceUrl}`);
+      lines.push(`  Label: ${briefingSourceLabel(fact.sourceUrl)}`);
       lines.push(`  Passage: ${fact.supportPassage}`);
     }
     if (restaurant.dropped.length > 0) {

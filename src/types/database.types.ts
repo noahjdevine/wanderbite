@@ -1748,6 +1748,7 @@ export type Database = {
           market_id: string | null
           name: string
           neighborhood: string | null
+          official_website: string | null
           org_id: string | null
           pin_hash: string | null
           price_range: string | null
@@ -1775,6 +1776,7 @@ export type Database = {
           market_id?: string | null
           name: string
           neighborhood?: string | null
+          official_website?: string | null
           org_id?: string | null
           pin_hash?: string | null
           price_range?: string | null
@@ -1802,6 +1804,7 @@ export type Database = {
           market_id?: string | null
           name?: string
           neighborhood?: string | null
+          official_website?: string | null
           org_id?: string | null
           pin_hash?: string | null
           price_range?: string | null

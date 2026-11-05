@@ -21,11 +21,13 @@ import {
   findSupportPassage,
   formatBriefingReport,
   parseBriefingArgs,
+  proposeOfficialFromUrls,
   rankBriefingUrls,
   researchCatalog,
   researchOneRestaurant,
   type BriefingModelCaller,
 } from '@/lib/briefings/research';
+import { PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS } from '@/lib/briefings/places';
 
 const RESTAURANT = {
   id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -883,5 +885,168 @@ describe('official subpages, truncation, and robots skip', () => {
     const calls = vi.mocked(fetchMock).mock.calls.map((call) => String(call[0]));
     expect(calls.filter((url) => url === 'https://api.anthropic.com/v1/messages')).toHaveLength(1);
     expect(calls.some((url) => url.startsWith(EATER))).toBe(false);
+  });
+});
+
+describe('stored official site and Places facts', () => {
+  it('prices a Place Details atmosphere call inside the same estimate as Haiku', () => {
+    expect(estimateMicrodollars({ places_details_atmosphere: 1, places_text_search_ids_only: 1 })).toBe(
+      PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS,
+    );
+    expect(estimateMicrodollars({ places_details_enterprise: 2 })).toBe(40_000);
+  });
+
+  it('treats a stored host as official even when the hostname has no name token', () => {
+    const stored = 'https://bbq.example.net/start';
+    expect(rankBriefingUrls([stored, YELP], 'Hutchins BBQ')).toEqual([YELP]);
+    expect(rankBriefingUrls([YELP, stored], 'Hutchins BBQ', ['bbq.example.net'])).toEqual([stored, YELP]);
+    expect(proposeOfficialFromUrls([YELP, 'https://www.opentable.com/hutchins', stored], "Bob's")).toEqual({
+      url: stored,
+      kind: 'unclassified',
+    });
+    expect(proposeOfficialFromUrls([YELP], 'Hutchins BBQ')).toEqual({ url: null, kind: 'none' });
+  });
+
+  it('follows a stored official URL onto another domain and refuses that hop for a search hit', async () => {
+    const stored = 'https://bbq.example.net/start';
+    const landed = 'https://order.other-domain.test/menu';
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === 'https://api.anthropic.com/v1/messages') return response(searchPayload());
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === stored) {
+        return new Response(null, { status: 301, headers: { location: landed } });
+      }
+      if (url === landed) return response(PAGE);
+      if (url === OFFICIAL) {
+        return new Response(null, { status: 302, headers: { location: 'https://evil.example/phish' } });
+      }
+      if (url.startsWith(YELP)) return response('<p>Guests mention a line at the door.</p>');
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: JSON.stringify({
+        facts: [
+          {
+            field: 'parking',
+            text: 'Valet parking is available beside the front door.',
+            source_url: landed,
+          },
+        ],
+      }),
+      units: { input: 10, output: 4 },
+    }));
+    const result = await researchOneRestaurant({
+      restaurant: { ...RESTAURANT, officialWebsite: stored },
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+    });
+    expect(result.fetchedUrls[0]).toBe(landed);
+    expect(result.fetchedUrls).not.toContain('https://evil.example/phish');
+    expect(result.facts.map((fact) => fact.sourceUrl)).toEqual([landed]);
+    expect(result.notes.join('\n')).toMatch(/redirect left the site/);
+    expect(vi.mocked(fetchMock).mock.calls.some((call) => String(call[0]) === 'https://evil.example/phish')).toBe(
+      false,
+    );
+  });
+
+  it('keeps Places sentences when search fails and does not ask the model to invent them', async () => {
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: '{"facts":[]}',
+      units: { input: 1, output: 1 },
+    }));
+    const fetchMock = vi.fn(async () =>
+      response(
+        JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'overloaded' } }),
+        529,
+        'application/json',
+      ),
+    ) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+      placesLookup: async () => ({
+        placeId: 'ChIJtestplace01',
+        placeIdToStore: 'ChIJtestplace01',
+        officialWebsite: null,
+        facts: [
+          {
+            field: 'parking',
+            text: 'A free parking lot is listed.',
+            sourceUrl: 'https://maps.google.com/?cid=99',
+            supportPassage: 'parkingOptions.freeParkingLot=true',
+          },
+        ],
+        units: { places_details_atmosphere: 1, places_text_search_ids_only: 1 },
+        notes: [],
+      }),
+    });
+    expect(callModel).not.toHaveBeenCalled();
+    expect(result.facts).toEqual([
+      {
+        field: 'parking',
+        text: 'A free parking lot is listed.',
+        sourceUrl: 'https://maps.google.com/?cid=99',
+        supportPassage: 'parkingOptions.freeParkingLot=true',
+      },
+    ]);
+    expect(result.placeIdToStore).toBe('ChIJtestplace01');
+    expect(result.estimatedMicrodollars).toBe(PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS);
+    const report = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [result],
+      stoppedBecause: null,
+      totals: { input: 0, output: 0, estimatedMicrodollars: result.estimatedMicrodollars },
+    });
+    expect(report.markdown).toContain('Label: Google Maps');
+    expect(report.markdown).toContain('Place Details Enterprise + Atmosphere x1');
+    expect(report.markdown).toContain('parkingOptions.freeParkingLot=true');
+  });
+
+  it('counts Places spend toward the cost cap before the next restaurant', async () => {
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: '{"facts":[]}',
+      units: {},
+    }));
+    const second = { ...RESTAURANT, id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'The Yard' };
+    let lookups = 0;
+    const run = await researchCatalog({
+      restaurants: [RESTAURANT, second],
+      fetchImpl: fetchImpl(),
+      callModel,
+      apiKey: API_KEY,
+      now: new Date('2026-11-05T17:00:00.000Z'),
+      restaurantCap: 25,
+      costCapMicrodollars: PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS,
+      placesLookup: async () => {
+        lookups += 1;
+        return {
+          placeId: null,
+          placeIdToStore: null,
+          officialWebsite: null,
+          facts: [],
+          units: { places_details_atmosphere: 1 },
+          notes: [],
+        };
+      },
+    });
+    expect(lookups).toBe(1);
+    expect(run.restaurants).toHaveLength(1);
+    expect(run.stoppedBecause).toMatch(/cost cap/);
+    expect(run.restaurants[0]?.estimatedMicrodollars).toBeGreaterThanOrEqual(PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS);
+  });
+
+  it('leaves the official website migration https-only and unapplied', () => {
+    const sql = readFileSync(
+      path.resolve(process.cwd(), 'supabase/migrations/20261105194811_e06_a2_restaurant_official_website.sql'),
+      'utf8',
+    );
+    expect(sql).toMatch(/NOT applied to hosted/);
+    expect(sql).toMatch(/official_website text/);
+    expect(sql).toMatch(/restaurants_official_website_https_check/);
+    expect(sql).toMatch(/revoke select \(official_website\)/i);
   });
 });

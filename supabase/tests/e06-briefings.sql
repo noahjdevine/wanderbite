@@ -149,6 +149,42 @@ begin
   exception when unique_violation then null; end;
 end $$;
 
+do $$
+begin
+  begin
+    update public.restaurants
+    set official_website = 'http://example.com/e06-http'
+    where id = 'e06a2000-0000-4000-8000-000000000010';
+    raise exception 'FAIL: http official_website was accepted';
+  exception when check_violation then null; end;
+
+  begin
+    update public.restaurants
+    set official_website = 'https://example.com/has space'
+    where id = 'e06a2000-0000-4000-8000-000000000010';
+    raise exception 'FAIL: official_website with a space was accepted';
+  exception when check_violation then null; end;
+
+  update public.restaurants
+  set official_website = 'https://example.com/e06-site'
+  where id = 'e06a2000-0000-4000-8000-000000000010';
+
+  if (
+    select official_website
+    from public.restaurants
+    where id = 'e06a2000-0000-4000-8000-000000000010'
+  ) is distinct from 'https://example.com/e06-site' then
+    raise exception 'FAIL: https official_website was not stored';
+  end if;
+
+  if has_column_privilege('anon', 'public.restaurants', 'official_website', 'SELECT')
+    or has_column_privilege('authenticated', 'public.restaurants', 'official_website', 'SELECT')
+    or not has_column_privilege('service_role', 'public.restaurants', 'official_website', 'SELECT')
+    or not has_column_privilege('service_role', 'public.restaurants', 'official_website', 'UPDATE') then
+    raise exception 'FAIL: official_website privileges';
+  end if;
+end $$;
+
 set local role anon;
 do $$
 begin
@@ -167,6 +203,10 @@ begin
   ) then
     raise exception 'FAIL: anon can read a paused fact';
   end if;
+  begin
+    perform official_website from public.restaurants where id = 'e06a2000-0000-4000-8000-000000000010';
+    raise exception 'FAIL: anon read restaurants.official_website';
+  exception when insufficient_privilege then null; end;
   begin
     insert into public.restaurant_briefing_facts (
       restaurant_id, field, body, source_url, last_verified_at
@@ -231,6 +271,9 @@ end $$;
 
 reset role;
 set local role service_role;
+update public.restaurants
+set official_website = 'https://example.com/e06-service-site'
+where id = 'e06a2000-0000-4000-8000-000000000010';
 insert into public.restaurant_briefing_facts (
   restaurant_id, field, body, source_url, last_verified_at, status, is_sample
 ) values (
@@ -263,6 +306,13 @@ begin
   if (select status from public.restaurant_briefing_facts where id = 'e06a2000-0000-4000-8000-000000000002')
     is distinct from 'paused' then
     raise exception 'FAIL: paused fact changed status';
+  end if;
+  if (
+    select official_website
+    from public.restaurants
+    where id = 'e06a2000-0000-4000-8000-000000000010'
+  ) is distinct from 'https://example.com/e06-service-site' then
+    raise exception 'FAIL: service_role did not update official_website';
   end if;
 end $$;
 
