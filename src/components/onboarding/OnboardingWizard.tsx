@@ -38,6 +38,37 @@ export type OnboardingInitial = {
   hasCurrentAttestation: boolean;
 };
 
+function stepCopy(
+  step: WizardStep,
+  subscriptionStatus: string | null,
+  ineligible: boolean,
+): { title: string; lede: string } {
+  if (step === 1) {
+    return {
+      title: 'Tell us what you love',
+      lede: 'We’ll use this to curate your monthly challenges.',
+    };
+  }
+  if (step === 2) {
+    return {
+      title: 'Make it personal',
+      lede: 'A username and a structured address help us personalize your experience.',
+    };
+  }
+  if (subscriptionStatus === 'active') {
+    return {
+      title: 'Your membership is active',
+      lede: 'Your profile is saved. Continue to your challenges.',
+    };
+  }
+  return {
+    title: 'Your profile is saved',
+    lede: ineligible
+      ? 'We saved your profile. Wanderbite is not available at this address yet.'
+      : 'Paid membership checkout is paused. We will not start Stripe from onboarding while checkout is frozen.',
+  };
+}
+
 export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
   const router = useRouter();
   const [step, setStep] = useState<WizardStep>(initial.step);
@@ -81,31 +112,46 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
   });
   const ineligible = area === 'ineligible';
 
-  return (
-    <main className="min-h-screen bg-background px-4 py-10">
-      <div className="mx-auto flex w-full max-w-xl flex-col items-center">
-        <div className="w-full rounded-2xl border bg-card p-6 shadow-sm sm:p-8">
-          {accountState === 'pending' ? null : accountState === 'changed' ? (
-            <AccountChangedNotice />
-          ) : (
-            <>
-          <ProgressIndicator currentStep={step} completed={completed} />
+  if (accountState === 'pending') {
+    return <main />;
+  }
 
-          <div className="mt-8">
+  if (accountState === 'changed') {
+    return (
+      <main className="wb-onboarding-sheet">
+        <div className="wb-onboarding-body">
+          <AccountChangedNotice />
+        </div>
+      </main>
+    );
+  }
+
+  const copy = stepCopy(step, initial.subscriptionStatus, ineligible);
+
+  return (
+    <main>
+      <header className="wb-onboarding-band">
+        <div className="wb-onboarding-wrap">
+          <p className="wb-onboarding-count" aria-live="polite">
+            Step {step} of 3
+          </p>
+          <h1>{copy.title}</h1>
+          <p className="wb-onboarding-lede">{copy.lede}</p>
+          <ProgressIndicator currentStep={step} completed={completed} />
+        </div>
+      </header>
+      <div className="wb-onboarding-sheet">
+        <div className="wb-onboarding-body">
+          <div key={step} className="wb-onboarding-card wb-onboarding-panel">
             {step === 1 ? (
               <>
-                <h1 className="text-2xl font-bold tracking-tight">Tell us what you love</h1>
-                <p className="mt-2 text-muted-foreground">
-                  We’ll use this to curate your monthly challenges.
-                </p>
-                <div className="mt-6">
-                  <PreferencesForm
-                    initialValues={prefs}
-                    onSubmit={savePrefs}
-                    submitLabel="Continue"
-                  />
-                </div>
-                <p className="mt-6 text-center text-sm text-muted-foreground">
+                <PreferencesForm
+                  initialValues={prefs}
+                  onSubmit={savePrefs}
+                  submitLabel="Continue"
+                  tone="onboarding"
+                />
+                <p className="wb-onboarding-aside">
                   Already have an account?{' '}
                   <Link href="/signin" className="font-medium text-primary underline-offset-2 hover:underline">
                     Sign in →
@@ -116,24 +162,15 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
 
             {step === 2 ? (
               <>
-                <h1 className="text-2xl font-bold tracking-tight">Make it personal</h1>
-                <p className="mt-2 text-muted-foreground">
-                  A username and a structured address help us personalize your experience.
-                </p>
-                <div className="mt-6">
-                  <ProfileForm
-                    initialValues={profile}
-                    onSubmit={saveProfile}
-                    submitLabel="Continue"
-                    currentUserId={initial.userId}
-                  />
-                </div>
-                <div className="mt-6 flex justify-between">
-                  <button
-                    type="button"
-                    className="text-sm font-medium text-muted-foreground hover:text-foreground"
-                    onClick={() => setStep(1)}
-                  >
+                <ProfileForm
+                  initialValues={profile}
+                  onSubmit={saveProfile}
+                  submitLabel="Continue"
+                  currentUserId={initial.userId}
+                  tone="onboarding"
+                />
+                <div className="wb-onboarding-back-row">
+                  <button type="button" className="wb-onboarding-back" onClick={() => setStep(1)}>
                     ← Back
                   </button>
                 </div>
@@ -141,116 +178,93 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
             ) : null}
 
             {step === 3 && initial.subscriptionStatus === 'active' ? (
-              <div>
-                <h1 className="text-2xl font-bold tracking-tight">Your membership is active</h1>
-                <p className="mt-2 text-muted-foreground">
-                  Your profile is saved. Continue to your challenges.
-                </p>
-                <Link
-                  href="/challenges"
-                  className="mt-6 inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-base font-semibold text-primary-foreground"
-                >
-                  Continue to your challenges
-                </Link>
-              </div>
+              <Link href="/challenges" className="wb-onboarding-primary">
+                Continue to your challenges
+              </Link>
             ) : step === 3 ? (
-              <div className="animate-in fade-in-0 slide-in-from-bottom-1 duration-300">
-                <h1 className="text-2xl font-bold tracking-tight">Your profile is saved</h1>
-                <p className="mt-2 text-muted-foreground">
-                  {ineligible
-                    ? 'We saved your profile. Wanderbite is not available at this address yet.'
-                    : 'Paid membership checkout is paused. We will not start Stripe from onboarding while checkout is frozen.'}
-                </p>
-
-                <Card className="mt-6 border-2 border-primary/15 shadow-md">
-                  <CardHeader className="space-y-1 pb-2 text-center">
-                    <CardTitle className="text-xl sm:text-2xl">Wanderbite Club</CardTitle>
-                    <CardDescription className="text-base">
-                      One plan. Two adventures every month in McKinney, Texas.
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-5 pt-2">
-                    <div className="text-center">
-                      <p className="text-3xl font-bold tracking-tight text-primary sm:text-4xl">
-                        $15
-                        <span className="text-base font-normal text-muted-foreground sm:text-lg">
-                          /month
-                        </span>
-                      </p>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        Includes 2 curated adventures per month. Coming soon.
-                      </p>
-                    </div>
-
-                    <ul className="space-y-2.5">
-                      {CLUB_PLAN_FEATURES.map((feature) => (
-                        <li key={feature} className="flex items-start gap-3 text-sm">
-                          <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
-                            <Check className="size-3" aria-hidden />
-                          </span>
-                          <span>{feature}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    <div className="space-y-2 rounded-lg border border-border/50 bg-muted/30 p-3 text-xs leading-relaxed text-muted-foreground">
-                      <p>
-                        Plan (when checkout reopens): $15/month (billed monthly). Auto-renews until
-                        canceled. Includes 2 challenges/month and 1 swap/month. Cancel anytime from
-                        your account; cancellation takes effect at the end of the billing period.
-                      </p>
-                      <p>
-                        By creating an account, you agree to our{' '}
-                        <Link href="/terms" className="underline underline-offset-2 hover:text-foreground">
-                          Terms
-                        </Link>
-                        ,{' '}
-                        <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground">
-                          Privacy
-                        </Link>
-                        , and{' '}
-                        <Link href="/rules" className="underline underline-offset-2 hover:text-foreground">
-                          Challenge rules
-                        </Link>
-                        .
-                      </p>
-                    </div>
-                    <div className="rounded-lg border border-border/50 p-3">
-                      {initial.hasCurrentAttestation ? (
-                        <p className="text-sm text-muted-foreground" role="status">
-                          You confirmed you are 21 or older and agreed to terms version{' '}
-                          {LEGAL_DOCUMENT_VERSION}.
-                        </p>
-                      ) : (
-                        <LegalAttestationForm renderedForUserId={initial.userId} />
-                      )}
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex flex-col gap-3 pt-2">
-                    {ineligible ? <AreaHoldNotice /> : <LaunchHoldNotice />}
-                    <p className="text-center text-xs text-muted-foreground">
-                      Prefer to browse first?{' '}
-                      <Link href="/pricing" className="font-medium text-primary underline-offset-2 hover:underline">
-                        View pricing
-                      </Link>
+              <Card className="wb-onboarding-plan">
+                <CardHeader className="space-y-1 pb-2 text-center">
+                  <CardTitle className="text-xl sm:text-2xl">Wanderbite Club</CardTitle>
+                  <CardDescription className="text-base">
+                    One plan. Two adventures every month in McKinney, Texas.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5 pt-2">
+                  <div className="text-center">
+                    <p className="wb-onboarding-price">
+                      $15
+                      <span>/month</span>
                     </p>
-                    <button
-                      type="button"
-                      className="w-full text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
-                      onClick={() => setStep(2)}
-                    >
-                      ← Back to profile
-                    </button>
-                  </CardFooter>
-                </Card>
-              </div>
+                    <p className="wb-onboarding-note">
+                      Includes 2 curated adventures per month. Coming soon.
+                    </p>
+                  </div>
+
+                  <ul className="space-y-2.5">
+                    {CLUB_PLAN_FEATURES.map((feature) => (
+                      <li key={feature} className="flex items-start gap-3 text-sm">
+                        <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+                          <Check className="size-3" aria-hidden />
+                        </span>
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="wb-onboarding-fine">
+                    <p>
+                      Plan (when checkout reopens): $15/month (billed monthly). Auto-renews until
+                      canceled. Includes 2 challenges/month and 1 swap/month. Cancel anytime from
+                      your account; cancellation takes effect at the end of the billing period.
+                    </p>
+                    <p>
+                      By creating an account, you agree to our{' '}
+                      <Link href="/terms" className="underline underline-offset-2 hover:text-foreground">
+                        Terms
+                      </Link>
+                      ,{' '}
+                      <Link href="/privacy" className="underline underline-offset-2 hover:text-foreground">
+                        Privacy
+                      </Link>
+                      , and{' '}
+                      <Link href="/rules" className="underline underline-offset-2 hover:text-foreground">
+                        Challenge rules
+                      </Link>
+                      .
+                    </p>
+                  </div>
+                  <div className="wb-onboarding-attest">
+                    {initial.hasCurrentAttestation ? (
+                      <p className="text-sm text-muted-foreground" role="status">
+                        You confirmed you are 21 or older and agreed to terms version{' '}
+                        {LEGAL_DOCUMENT_VERSION}.
+                      </p>
+                    ) : (
+                      <LegalAttestationForm renderedForUserId={initial.userId} tone="onboarding" />
+                    )}
+                  </div>
+                </CardContent>
+                <CardFooter className="flex flex-col gap-3 pt-2">
+                  {ineligible ? <AreaHoldNotice /> : <LaunchHoldNotice />}
+                  <p className="wb-onboarding-aside">
+                    Prefer to browse first?{' '}
+                    <Link href="/pricing" className="font-medium text-primary underline-offset-2 hover:underline">
+                      View pricing
+                    </Link>
+                  </p>
+                  <button
+                    type="button"
+                    className="wb-onboarding-back wb-onboarding-back-wide"
+                    onClick={() => setStep(2)}
+                  >
+                    ← Back to profile
+                  </button>
+                </CardFooter>
+              </Card>
             ) : null}
           </div>
-            </>
-          )}
         </div>
       </div>
     </main>
   );
 }
-

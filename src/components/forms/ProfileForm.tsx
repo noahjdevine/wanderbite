@@ -65,8 +65,8 @@ export function ProfileForm({
   submitLabel: string;
   currentUserId: string;
   isDirty?: boolean;
-  /** Account page wires errors. The default markup matches onboarding. */
-  tone?: 'default' | 'account';
+  /** Account and onboarding wire errors. Default markup is unchanged. */
+  tone?: 'default' | 'account' | 'onboarding';
 }) {
   const [values, setValues] = useState<ProfileValues>(initialValues);
   const [saving, setSaving] = useState(false);
@@ -158,7 +158,8 @@ export function ProfileForm({
 
   const usernameHint = usernameMessage(usernameState);
   const usernameGood = usernameOk(usernameState);
-  const account = tone === 'account';
+  // Shared error wiring. Default stays off, so account and untouched callers match main.
+  const account = tone === 'account' || tone === 'onboarding';
   const usernameDescribedBy = account
     ? ['profile-username-hint', error ? 'profile-save-error' : null].filter(Boolean).join(' ')
     : undefined;

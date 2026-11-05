@@ -1444,6 +1444,21 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .wb-onboarding,
+  .wb-onboarding * {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+  .wb-onboarding button,
+  .wb-onboarding button:hover,
+  .wb-onboarding a.wb-onboarding-primary,
+  .wb-onboarding a.wb-onboarding-primary:hover {
+    transform: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
   .wb-wordmark,
   .wb-nav-pill,
   .wb-nav-link,
@@ -1945,5 +1960,359 @@
   box-shadow: none;
 }
 .wb-account-band :focus-visible {
+  outline-color: var(--wb-blush);
+}
+
+/* ---------- Onboarding wizard ----------
+   Scoped to .wb-onboarding. Night intro, cream sheet, white step card.
+   Primary pill light stop is --wb-violet so white label text stays at or above 4.5:1.
+   This route keeps its own header. It does not mount the site nav or footer. */
+.wb-onboarding {
+  min-height: 100dvh;
+  background: var(--wb-cream);
+  color: var(--wb-ink);
+  overflow-x: clip;
+  font-family: var(--font-sans), Outfit, sans-serif;
+}
+.wb-onboarding-bar,
+.wb-onboarding-band {
+  background: var(--wb-night);
+  color: #fff;
+}
+.wb-onboarding-wrap,
+.wb-onboarding-body {
+  box-sizing: border-box;
+  width: min(100%, 36rem);
+  margin: 0 auto;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
+.wb-onboarding-bar .wb-onboarding-wrap {
+  padding-top: 1.25rem;
+  padding-bottom: 0.35rem;
+}
+.wb-onboarding-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  color: #fff;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+  text-decoration: none;
+}
+.wb-onboarding-logo img {
+  display: block;
+  width: 36px;
+  height: 36px;
+}
+.wb-onboarding-band .wb-onboarding-wrap {
+  padding-top: 0.35rem;
+  padding-bottom: 4.25rem;
+}
+.wb-onboarding-count {
+  margin: 0 0 0.75rem;
+  color: var(--wb-lavender-2);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.wb-onboarding-band h1 {
+  margin: 0;
+  color: #fff;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(36px, 8vw, 56px);
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+  overflow-wrap: anywhere;
+}
+.wb-onboarding-lede {
+  margin: 0.85rem 0 0;
+  max-width: 36rem;
+  color: var(--wb-lavender-2);
+  font-size: 17px;
+  line-height: 1.5;
+}
+.wb-onboarding-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin-top: 1.5rem;
+  min-width: 0;
+}
+.wb-onboarding-step {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 0;
+}
+.wb-onboarding-step-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--wb-lavender);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--wb-lavender-2);
+  font-size: 14px;
+  font-weight: 600;
+}
+.wb-onboarding-step-dot[data-state="active"],
+.wb-onboarding-step-dot[data-state="complete"] {
+  border-color: var(--wb-violet);
+  background: var(--wb-violet);
+  color: #fff;
+}
+.wb-onboarding-step-line {
+  position: absolute;
+  top: 17px;
+  left: calc(50% + 22px);
+  width: calc(100% - 44px);
+  height: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.wb-onboarding-step-line[data-complete="true"] {
+  background: var(--wb-lavender);
+}
+.wb-onboarding-step-label {
+  margin-top: 0.45rem;
+  color: var(--wb-lavender-2);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.wb-onboarding-step-label[data-state="active"] {
+  color: #fff;
+}
+.wb-onboarding-sheet {
+  margin-top: -28px;
+  border-radius: var(--wb-r-sheet) var(--wb-r-sheet) 0 0;
+  background: var(--wb-cream);
+  color: var(--wb-ink);
+}
+.wb-onboarding-body {
+  padding-top: 1.75rem;
+  padding-bottom: 4rem;
+}
+.wb-onboarding-card {
+  min-width: 0;
+  background: #fff;
+  border-radius: var(--wb-r-card);
+  box-shadow: var(--wb-shadow-card);
+  padding: 1.25rem 1.25rem 1.5rem;
+}
+.wb-onboarding-panel {
+  animation: wb-onboarding-in 280ms ease;
+}
+@keyframes wb-onboarding-in {
+  from { transform: translateY(8px); }
+  to { transform: none; }
+}
+.wb-onboarding h3,
+.wb-onboarding [data-slot="card-title"] {
+  margin: 0;
+  color: var(--wb-ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.wb-onboarding h3 { font-size: 22px; }
+.wb-onboarding [data-slot="card-title"] { font-size: 32px; }
+.wb-onboarding .text-muted-foreground,
+.wb-onboarding-note,
+.wb-onboarding-aside,
+.wb-onboarding [data-slot="card-description"] {
+  color: var(--wb-muted);
+}
+.wb-onboarding-note,
+.wb-onboarding-aside {
+  margin: 1rem 0 0;
+  font-size: 14px;
+  line-height: 1.5;
+  text-align: center;
+}
+.wb-onboarding-note { margin-top: 0.5rem; }
+.wb-onboarding legend,
+.wb-onboarding form label {
+  color: var(--wb-ink);
+}
+.wb-onboarding fieldset > .grid,
+.wb-onboarding section > .grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr));
+  gap: 0.5rem;
+  min-width: 0;
+}
+.wb-onboarding fieldset > .grid > label,
+.wb-onboarding section > .grid > button,
+.wb-onboarding form > label {
+  min-width: 0;
+  max-width: 100%;
+  min-height: 44px;
+  height: auto;
+  border-color: var(--wb-line);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--wb-ink);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.wb-onboarding fieldset > .grid > label:has(input:checked),
+.wb-onboarding section > .grid > button[aria-pressed="true"],
+.wb-onboarding form > label:has(input:checked) {
+  border-color: var(--wb-violet);
+  background: #f5f3ff;
+}
+.wb-onboarding input:not([type="checkbox"]),
+.wb-onboarding select {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-height: 48px;
+  border: 2px solid var(--wb-night);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--wb-ink);
+  font: inherit;
+  font-size: 16px;
+}
+.wb-onboarding input::placeholder { color: var(--wb-muted); }
+.wb-onboarding input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  accent-color: var(--wb-violet);
+  flex: 0 0 auto;
+}
+.wb-onboarding button[type="submit"],
+.wb-onboarding a.wb-onboarding-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 52px;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+  box-shadow: 0 10px 22px rgba(219, 39, 119, 0.28);
+  transform: none;
+}
+.wb-onboarding button[type="submit"]:hover,
+.wb-onboarding a.wb-onboarding-primary:hover,
+.wb-onboarding [data-slot="button"]:hover {
+  transform: none;
+}
+.wb-onboarding button[type="submit"]:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.wb-onboarding-sheet a:not(.wb-onboarding-primary) {
+  color: var(--wb-pink-ink);
+  font-weight: 600;
+  text-underline-offset: 0.18em;
+}
+.wb-onboarding-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  margin-top: 0.25rem;
+  padding: 0.35rem 0.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--wb-plum);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.wb-onboarding-back-row { display: flex; }
+.wb-onboarding-back-wide { width: 100%; }
+.wb-onboarding-price {
+  margin: 0;
+  color: var(--wb-violet);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 48px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.wb-onboarding-price span {
+  color: var(--wb-muted);
+  font-family: var(--font-sans), Outfit, sans-serif;
+  font-size: 18px;
+  font-weight: 400;
+}
+.wb-onboarding-fine {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+  border: 1px solid var(--wb-line);
+  border-radius: 16px;
+  background: var(--wb-paper);
+  padding: 0.85rem 1rem;
+  color: var(--wb-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.wb-onboarding-fine p { margin: 0; }
+.wb-onboarding-attest {
+  min-width: 0;
+  margin-top: 0.25rem;
+  border: 1px solid var(--wb-line);
+  border-radius: 16px;
+  padding: 0.85rem 1rem;
+}
+.wb-onboarding-plan {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.wb-onboarding [data-slot="card"],
+.wb-onboarding [data-slot="card-header"],
+.wb-onboarding [data-slot="card-content"],
+.wb-onboarding [data-slot="card-footer"] {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0;
+}
+.wb-onboarding-error,
+.wb-onboarding [role="alert"] {
+  margin: 0;
+  border-radius: 16px;
+  background: #fee2e2;
+  color: #7f1d1d;
+  padding: 0.85rem 1rem;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.wb-onboarding .text-destructive { color: #7f1d1d; }
+.wb-onboarding p[role="status"] { color: var(--wb-ok-fg); }
+.wb-onboarding :focus-visible {
+  outline: 2px solid var(--wb-violet);
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.wb-onboarding-bar :focus-visible,
+.wb-onboarding-band :focus-visible {
   outline-color: var(--wb-blush);
 }

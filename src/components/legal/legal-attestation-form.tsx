@@ -15,10 +15,11 @@ export function LegalAttestationForm({
   tone = 'default',
 }: {
   renderedForUserId: string;
-  /** Account page wires the save error. The default markup matches onboarding. */
-  tone?: 'default' | 'account';
+  /** Account and onboarding wire the save error. Default markup is unchanged. */
+  tone?: 'default' | 'account' | 'onboarding';
 }) {
-  const account = tone === 'account';
+  // Shared error wiring. Default stays off, so account and untouched callers match main.
+  const account = tone === 'account' || tone === 'onboarding';
   const [age21, setAge21] = useState(false);
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [saving, setSaving] = useState(false);
