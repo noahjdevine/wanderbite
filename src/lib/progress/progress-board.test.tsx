@@ -4,7 +4,9 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MyJourneyHub } from '@/components/journey/my-journey-hub';
 import { ProgressUnavailable, ProgressView } from '@/components/journey/progress-view';
+import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { chicagoMonthStart } from '@/lib/cron-period';
+import { AREA_HOLD_HEADING } from '@/lib/launch-market';
 import { MEMBER_NAV_ITEMS } from '@/lib/nav-items';
 import {
   MY_JOURNEY_VIEW_LABELS,
@@ -21,6 +23,7 @@ import {
   headerLabelFor,
   nextChicagoMonth,
   noPairCta,
+  pendingCreditsHeadFilters,
   selectNextMove,
   type NoPairCta,
   type ProgressAdventure,
@@ -35,7 +38,8 @@ const ROOT = path.resolve(__dirname, '../../..');
 
 const GENERATE = noPairCta({
   launchEligible: true,
-  creditsWaiting: false,
+  creditsWorkflow: false,
+  pendingCreditsCount: 0,
   generateBlocked: false,
 });
 
@@ -162,9 +166,24 @@ describe('selectNextMove', () => {
 
   it('uses the existing Challenges CTA when there is no pair', () => {
     for (const cta of [
-      noPairCta({ launchEligible: false, creditsWaiting: false, generateBlocked: false }),
-      noPairCta({ launchEligible: true, creditsWaiting: true, generateBlocked: false }),
-      noPairCta({ launchEligible: true, creditsWaiting: false, generateBlocked: true }),
+      noPairCta({
+        launchEligible: false,
+        creditsWorkflow: false,
+        pendingCreditsCount: 0,
+        generateBlocked: false,
+      }),
+      noPairCta({
+        launchEligible: true,
+        creditsWorkflow: true,
+        pendingCreditsCount: 2,
+        generateBlocked: false,
+      }),
+      noPairCta({
+        launchEligible: true,
+        creditsWorkflow: false,
+        pendingCreditsCount: 0,
+        generateBlocked: true,
+      }),
       GENERATE,
     ] satisfies NoPairCta[]) {
       const move = selectNextMove({
@@ -184,6 +203,67 @@ describe('selectNextMove', () => {
     expect(GENERATE.actionLabel).toBe('Generate Challenge');
   });
 
+  it('keeps an issued code, an expired code, a memory, and a ready challenge ahead of no pair', () => {
+    const creditsWaiting = noPairCta({
+      launchEligible: true,
+      creditsWorkflow: true,
+      pendingCreditsCount: 2,
+      generateBlocked: true,
+    });
+    const cases = [
+      {
+        kind: 'code_issued' as const,
+        adventure: adventure({
+          id: 'code',
+          redemptionId: 'code',
+          restaurantName: 'Code',
+          visitStatus: 'code_issued',
+          expiresAt: '2026-11-04T01:00:00.000Z',
+        }),
+      },
+      {
+        kind: 'code_expired' as const,
+        adventure: adventure({
+          id: 'expired',
+          redemptionId: 'expired',
+          restaurantName: 'Expired',
+          visitStatus: 'code_expired',
+        }),
+      },
+      {
+        kind: 'add_memory' as const,
+        adventure: adventure({
+          id: 'memory',
+          redemptionId: 'memory',
+          restaurantName: 'Memory',
+          visitStatus: 'verified',
+          occurredAt: '2026-04-26T18:00:00.000Z',
+        }),
+      },
+      {
+        kind: 'ready' as const,
+        adventure: adventure({
+          id: 'ready',
+          restaurantName: 'Ready',
+          visitStatus: 'ready',
+          slotNumber: 1,
+        }),
+      },
+    ];
+    for (const entry of cases) {
+      const move = selectNextMove({
+        now: NOW,
+        hasPair: true,
+        xp: 0,
+        nextLevelName: null,
+        nextLevelXp: null,
+        noPair: creditsWaiting,
+        adventures: [entry.adventure],
+      });
+      expect(move.kind).toBe(entry.kind);
+    }
+  });
+
   it('sends a finished pair to Discover', () => {
     const move = selectNextMove({
       now: NOW,
@@ -198,6 +278,126 @@ describe('selectNextMove', () => {
     });
     expect(move.kind).toBe('caught_up');
     expect(move.actionHref).toBe('/roulette');
+  });
+});
+
+describe('noPairCta', () => {
+  it('holds an out-of-area member on area hold before credits, reveal, or generate', () => {
+    const cta = noPairCta({
+      launchEligible: false,
+      creditsWorkflow: true,
+      pendingCreditsCount: 2,
+      generateBlocked: true,
+    });
+    expect(cta.id).toBe('area_hold');
+    expect(cta.sentence).toBe(AREA_HOLD_HEADING);
+    expect(cta.actionHref).toBe('/challenges');
+    expect(cta.actionLabel).toBe('See challenges');
+  });
+
+  it('shows credits waiting only when this month has a pending credit, and that wins over reveal', () => {
+    const one = noPairCta({
+      launchEligible: true,
+      creditsWorkflow: true,
+      pendingCreditsCount: 1,
+      generateBlocked: true,
+    });
+    expect(one.id).toBe('credits_waiting');
+    expect(one.sentence).toBe('Your credits are waiting.');
+    expect(one.meta).toBe('Restaurant selection is not open yet');
+    expect(one.actionLabel).toBe('Open challenges');
+    expect(one.actionHref).toBe('/challenges');
+
+    const two = noPairCta({
+      launchEligible: true,
+      creditsWorkflow: true,
+      pendingCreditsCount: 2,
+      generateBlocked: true,
+    });
+    expect(two.id).toBe('credits_waiting');
+    expect(two.meta).toBe(
+      'You have 2 credits for this month. Restaurant selection is not open yet.',
+    );
+  });
+
+  it('does not treat a credits member with zero pending credits as waiting', () => {
+    expect(
+      showsMonthlyCuration({ launchEligible: true, creditsWorkflow: true, hasCurrentPair: false }),
+    ).toBe(false);
+    for (const generateBlocked of [false, true]) {
+      const cta = noPairCta({
+        launchEligible: true,
+        creditsWorkflow: true,
+        pendingCreditsCount: 0,
+        generateBlocked,
+      });
+      expect(cta.id).toBe('generate');
+      expect(cta.actionLabel).toBe('Generate Challenge');
+      expect(cta.sentence).toBe('Generate your two restaurant challenges for this month.');
+      expect(cta.meta).toBe('No pair yet');
+      expect(cta.actionHref).toBe('/challenges');
+    }
+  });
+
+  it('asks a launch-eligible legacy member to reveal only while generate is blocked', () => {
+    expect(
+      showsMonthlyCuration({ launchEligible: true, creditsWorkflow: false, hasCurrentPair: false }),
+    ).toBe(true);
+    const reveal = noPairCta({
+      launchEligible: true,
+      creditsWorkflow: false,
+      pendingCreditsCount: 2,
+      generateBlocked: true,
+    });
+    expect(reveal.id).toBe('reveal');
+    expect(reveal.sentence).toBe('Reveal your challenges.');
+    expect(reveal.meta).toBe('This month’s pair is chosen on the Challenges page');
+    expect(reveal.actionLabel).toBe('Go to Challenges');
+    expect(reveal.actionHref).toBe('/challenges');
+
+    const generate = noPairCta({
+      launchEligible: true,
+      creditsWorkflow: false,
+      pendingCreditsCount: 0,
+      generateBlocked: false,
+    });
+    expect(generate.id).toBe('generate');
+    expect(generate.actionLabel).toBe('Generate Challenge');
+  });
+
+  it('renders credits waiting in the existing next-move card', () => {
+    const cta = noPairCta({
+      launchEligible: true,
+      creditsWorkflow: true,
+      pendingCreditsCount: 2,
+      generateBlocked: true,
+    });
+    const model = buildProgressModel({
+      progress: baseProgress(),
+      headerLabel: 'Noah',
+      now: NOW,
+      activity: { ok: true, hasPair: false, adventures: [], noPair: cta },
+    });
+    render(<ProgressView model={model} showSectionTabs={false} />);
+    expect(model.nextMove?.kind).toBe('no_pair');
+    expect(model.nextMove?.accent).toBeNull();
+    expect(screen.getByText('Your credits are waiting.')).toBeTruthy();
+    expect(screen.getByText(/You have 2 credits for this month/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Open challenges' }).getAttribute('href')).toBe('/challenges');
+    expect(screen.queryByText('Generate Challenge')).toBeNull();
+  });
+
+  it('uses the Chicago month for the pending-credit issue period across the UTC date line', () => {
+    const lastNight = new Date('2026-11-01T04:30:00.000Z');
+    expect(chicagoMonthStart(lastNight)).toBe('2026-10-01');
+    expect(pendingCreditsHeadFilters('member-1', lastNight)).toEqual({
+      userId: 'member-1',
+      issuePeriod: '2026-10-01',
+      status: 'pending',
+    });
+    const chicagoMidnight = new Date('2026-11-01T06:00:00.000Z');
+    expect(chicagoMonthStart(chicagoMidnight)).toBe('2026-11-01');
+    expect(pendingCreditsHeadFilters('member-1', chicagoMidnight).issuePeriod).toBe('2026-11-01');
   });
 });
 

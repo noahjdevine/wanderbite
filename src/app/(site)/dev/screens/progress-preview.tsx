@@ -105,7 +105,12 @@ export function ProgressPreview() {
       ok: true,
       hasPair: true,
       adventures,
-      noPair: noPairCta({ launchEligible: true, creditsWaiting: false, generateBlocked: false }),
+      noPair: noPairCta({
+        launchEligible: true,
+        creditsWorkflow: false,
+        pendingCreditsCount: 0,
+        generateBlocked: false,
+      }),
     },
   });
 
