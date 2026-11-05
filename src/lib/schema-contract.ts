@@ -439,6 +439,7 @@ export const SCHEMA_CONTRACT = {
     'image_url',
     'verification_code',
     'google_place_id',
+    'official_website',
     'google_photo_url',
     'slug',
     'is_dairy_free',

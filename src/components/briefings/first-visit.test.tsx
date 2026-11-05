@@ -135,6 +135,28 @@ describe('FirstVisitBriefing', () => {
     ]);
     expect(links[0]?.getAttribute('rel')).toBe('noopener noreferrer');
     expect(links[0]?.textContent).toBe('Source');
+    expect(links[0]?.getAttribute('translate')).toBeNull();
+  });
+
+  it('attributes a Google Maps source with the required text', async () => {
+    const view = await render(
+      <FirstVisitBriefing
+        headingId="brief-maps"
+        facts={[
+          fact({
+            sampleLabel: null,
+            text: 'A free parking lot is listed.',
+            sourceUrl: 'https://maps.google.com/?cid=99',
+          }),
+        ]}
+      />,
+    );
+    const link = view.querySelector('a');
+    expect(link?.textContent).toBe('Google Maps');
+    expect(link?.getAttribute('href')).toBe('https://maps.google.com/?cid=99');
+    expect(link?.getAttribute('translate')).toBe('no');
+    expect(link?.className).toContain('whitespace-nowrap');
+    expect(view.textContent).not.toContain('Source');
   });
 
   it('omits the Sample label when the fact is not a sample', async () => {

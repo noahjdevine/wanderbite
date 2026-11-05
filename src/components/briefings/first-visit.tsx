@@ -1,4 +1,9 @@
-import { FIRST_VISIT_HEADING, formatBriefingChecked, type BriefingFact } from '@/lib/briefings/types';
+import {
+  FIRST_VISIT_HEADING,
+  briefingSourceLabel,
+  formatBriefingChecked,
+  type BriefingFact,
+} from '@/lib/briefings/types';
 
 type FirstVisitBriefingProps = {
   headingId: string;
@@ -16,6 +21,8 @@ export function FirstVisitBriefing({ headingId, facts }: FirstVisitBriefingProps
         {facts.map((fact) => {
           const checked = formatBriefingChecked(fact.lastVerifiedAt);
           if (!checked) return null;
+          const sourceLabel = briefingSourceLabel(fact.sourceUrl);
+          const googleMaps = sourceLabel === 'Google Maps';
           return (
             <li key={fact.field} className="space-y-1 rounded-lg border border-border p-3">
               <p className="text-sm font-medium text-foreground">{fact.label}</p>
@@ -28,9 +35,14 @@ export function FirstVisitBriefing({ headingId, facts }: FirstVisitBriefingProps
                 href={fact.sourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-medium text-primary underline"
+                translate={googleMaps ? 'no' : undefined}
+                className={
+                  googleMaps
+                    ? 'whitespace-nowrap font-sans text-sm font-normal text-[#5E5E5E]'
+                    : 'text-xs font-medium text-primary underline'
+                }
               >
-                Source
+                {sourceLabel}
               </a>
             </li>
           );

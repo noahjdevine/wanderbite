@@ -76,6 +76,23 @@ export function formatBriefingChecked(iso: string | null | undefined): string | 
   return `${month} ${day}, ${year}`;
 }
 
+/** Link text for a fact. Google Maps wording is fixed for Places attribution. */
+export function briefingSourceLabel(sourceUrl: string): 'Google Maps' | 'Source' {
+  let url: URL;
+  try {
+    url = new URL(sourceUrl);
+  } catch {
+    return 'Source';
+  }
+  if (url.protocol !== 'https:') return 'Source';
+  const host = url.hostname.toLowerCase();
+  if (host === 'maps.google.com') return 'Google Maps';
+  if ((host === 'google.com' || host.endsWith('.google.com')) && url.pathname.startsWith('/maps')) {
+    return 'Google Maps';
+  }
+  return 'Source';
+}
+
 export function httpsSourceUrl(value: string | null | undefined): string | null {
   if (!value) return null;
   if (!/^https:\/\/\S+$/.test(value)) return null;
