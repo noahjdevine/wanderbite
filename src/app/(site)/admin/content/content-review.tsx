@@ -21,10 +21,13 @@ import {
 } from '@/lib/content-pipeline/review-model';
 import {
   approveActivitySummary,
+  approveBriefingDraft,
   approveContentException,
   editActivitySummary,
+  editBriefingDraft,
   editContentException,
   rejectActivitySummary,
+  rejectBriefingDraft,
   rejectContentException,
   rollbackContentRecipe,
   setContentSourceStatus,
@@ -82,7 +85,7 @@ export function ContentReview({ model }: { model: ContentReviewModel }) {
           <div>
             <h2 className="text-lg font-semibold">Open exceptions</h2>
             <p className="text-sm text-muted-foreground">
-              Newest source attempt first. Activity rows are labeled Activity. Evidence and proposed text stay plain text.
+              Newest source attempt first. Activity rows are labeled Activity. Briefing rows are labeled Briefing. Evidence and proposed text stay plain text.
             </p>
           </div>
           <label className="text-sm">
@@ -115,18 +118,24 @@ export function ContentReview({ model }: { model: ContentReviewModel }) {
               onApprove={() => run(() => (
                 row.queueKind === 'summary_draft'
                   ? approveActivitySummary(row.id)
-                  : approveContentException(row.id)
+                  : row.queueKind === 'briefing_draft'
+                    ? approveBriefingDraft(row.id)
+                    : approveContentException(row.id)
               ))}
               onReject={() => run(() => (
                 row.queueKind === 'summary_draft'
                   ? rejectActivitySummary(row.id)
-                  : rejectContentException(row.id)
+                  : row.queueKind === 'briefing_draft'
+                    ? rejectBriefingDraft(row.id)
+                    : rejectContentException(row.id)
               ))}
-              onEdit={() => run(() => (
-                row.queueKind === 'summary_draft'
-                  ? editActivitySummary(row.id, drafts[row.id] ?? '')
-                  : editContentException(row.id, drafts[row.id] ?? '')
-              ))}
+              onEdit={(keepActive) => run(() => {
+                const text = drafts[row.id] ?? '';
+                if (row.queueKind === 'summary_draft') return editActivitySummary(row.id, text);
+                if (row.queueKind === 'briefing_draft') return editBriefingDraft(row.id, text, keepActive);
+                if (row.editKind === 'briefing') return editContentException(row.id, text, keepActive);
+                return editContentException(row.id, text);
+              })}
             />
           ))
         )}
@@ -256,16 +265,17 @@ function ExceptionCard({
   onDraft: (value: string) => void;
   onApprove: () => void;
   onReject: () => void;
-  onEdit: () => void;
+  onEdit: (keepActive: boolean) => void;
 }) {
+  const [keepActive, setKeepActive] = useState(row.keepActiveDefault === true);
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-base">
-          {row.subjectLabel === 'Activity' ? 'Activity' : row.restaurantName}
+          {row.subjectLabel === 'Activity' ? 'Activity' : row.subjectLabel === 'Briefing' ? 'Briefing' : row.restaurantName}
           <span className="ml-2 text-sm font-normal text-muted-foreground">
-            {row.subjectLabel === 'Activity' ? row.activityName : row.reason}
-            {row.subjectLabel === 'Activity' ? ` · ${row.reason}` : ''}
+            {row.subjectLabel === 'Activity' ? row.activityName : row.subjectLabel === 'Briefing' ? row.restaurantName : row.reason}
+            {row.subjectLabel === 'Activity' || row.subjectLabel === 'Briefing' ? ` · ${row.reason}` : ''}
           </span>
         </CardTitle>
       </CardHeader>
@@ -274,7 +284,7 @@ function ExceptionCard({
         <p>
           Attempted {row.attemptedLabel} · verified {row.verifiedLabel}
         </p>
-        {row.subjectLabel === 'Activity' ? <p>Checked {row.checkedLabel}</p> : <p>{row.recipeLabel}</p>}
+        {row.subjectLabel === 'Recipe' ? <p>{row.recipeLabel}</p> : <p>Checked {row.checkedLabel}</p>}
         {row.field ? <p>Field {row.field}</p> : null}
         <div>
           <p className="font-medium">Before</p>
@@ -294,6 +304,7 @@ function ExceptionCard({
             {row.editKind === 'description' ? ' Edit publishes a paraphrase.' : ''}
             {row.editKind === 'hours_note' ? ' Edit writes the hours note you type and keeps the previous note.' : ''}
             {row.editKind === 'summary' ? ' Edit stores your text as a new summary version and keeps the previous one.' : ''}
+            {row.editKind === 'briefing' ? ' Edit saves the fact you type. A new or paused fact stays paused. An already-active fact stays visible only if you keep it that way.' : ''}
             {row.editKind === 'note' ? ' Edit closes the row with your note. Price and allergen text are not published.' : ''}
           </p>
         ) : null}
@@ -311,7 +322,7 @@ function ExceptionCard({
         {row.canEdit ? (
           <div className="space-y-2">
             <label className="block font-medium" htmlFor={`edit-${row.id}`}>
-              {row.editKind === 'hours_note' ? 'Hours note' : row.editKind === 'summary' ? 'Summary' : row.editKind === 'note' ? 'Resolution note' : 'Edited paraphrase'}
+              {row.editKind === 'hours_note' ? 'Hours note' : row.editKind === 'summary' ? 'Summary' : row.editKind === 'briefing' ? 'Fact text' : row.editKind === 'note' ? 'Resolution note' : 'Edited paraphrase'}
             </label>
             <textarea
               id={`edit-${row.id}`}
@@ -319,7 +330,17 @@ function ExceptionCard({
               value={draft}
               onChange={(event) => onDraft(event.target.value)}
             />
-            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={onEdit}>
+            {row.editKind === 'briefing' && row.keepActiveDefault ? (
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={keepActive}
+                  onChange={(event) => setKeepActive(event.target.checked)}
+                />
+                Keep this fact visible to members
+              </label>
+            ) : null}
+            <Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => onEdit(keepActive)}>
               {row.editKind === 'note' ? 'Save note' : 'Publish edit'}
             </Button>
           </div>

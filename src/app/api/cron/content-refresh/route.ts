@@ -17,6 +17,7 @@ import {
   contentRefreshEffects,
   loadActiveMenuSources,
   loadContentSourceContext,
+  loadDueRestaurantPages,
   refreshItemStatus,
   reserveMaintenance,
   runApplyContentRefresh,
@@ -60,7 +61,13 @@ export async function runContentRefresh(request: Request, now: Date) {
         now,
         port: activityMaintenancePort(admin),
       });
-      const allocated = allocateRefreshSources(menuSources, maintenance.sources, CONTENT_MAX_SOURCES);
+      const restaurantPages = await loadDueRestaurantPages(admin, now);
+      const allocated = allocateRefreshSources(
+        menuSources,
+        maintenance.sources,
+        CONTENT_MAX_SOURCES,
+        restaurantPages,
+      );
       const summary = await runApplyContentRefresh({
         sources: [...allocated.selected, ...allocated.skipped],
         load: (source) => loadContentSourceContext(admin, source.id),

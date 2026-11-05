@@ -1,19 +1,23 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ActivityFactSnapshot, ActivitySnapshot } from '@/lib/content-pipeline/activity-plan';
+import type { StoredBriefing } from '@/lib/content-pipeline/briefing-plan';
+import { briefingValue } from '@/lib/content-pipeline/briefing-plan';
 import type { RecipeSnapshot } from '@/lib/content-pipeline/change-detect';
-import { isExceptionReason, type ExceptionReason } from '@/lib/content-pipeline/exceptions';
-import { readDescriptionFact, type DescriptionFact } from '@/lib/content-pipeline/facts';
-import { isActivitySourceKind } from '@/lib/content-pipeline/registry';
+import { isExceptionReason } from '@/lib/content-pipeline/exceptions';
+import { readDescriptionFact } from '@/lib/content-pipeline/facts';
+import { isActivitySourceKind, isRestaurantPageKind, selectDueRestaurantPages } from '@/lib/content-pipeline/registry';
 import {
   MAINTENANCE_ACCOUNT_TIER,
   MAINTENANCE_FEATURE_CLASS,
   maintenanceIdempotencyKey,
   refreshContentSources,
+  type ContentSourceContext,
   type ContentSourceRecord,
   type MaintenanceReservation,
   type RefreshEffects,
   type RefreshSourceResult,
 } from '@/lib/content-pipeline/refresh';
+import { isBriefingField } from '@/lib/briefings/types';
 import { callMenuModel, MENU_RECIPE_MODEL } from '@/lib/recipes/menu-generate';
 import type { Database, Json } from '@/types/database.types';
 
@@ -81,6 +85,16 @@ export function contentRefreshEffects(supabase: Client): RefreshEffects {
       });
       if (error) throw new Error('activity fact apply failed');
     },
+    applyBriefingFact: async (row) => {
+      const { error } = await supabase.rpc('apply_briefing_field_fact', {
+        p_source_id: row.sourceId,
+        p_restaurant_id: row.restaurantId,
+        p_field: row.field,
+        p_value: briefingValue(row),
+        p_evidence_excerpt: row.evidenceExcerpt,
+      });
+      if (error) throw new Error('briefing fact apply failed');
+    },
   };
 }
 
@@ -100,19 +114,34 @@ export async function loadActiveMenuSources(supabase: Client): Promise<ContentSo
     lastAttemptedAt: row.last_attempted_at,
     lastVerifiedAt: row.last_verified_at,
     lastContentHash: row.last_content_hash,
+    restaurantId: null,
   }));
+}
+
+export async function loadDueRestaurantPages(supabase: Client, now: Date): Promise<ContentSourceRecord[]> {
+  const { data, error } = await supabase
+    .from('content_sources')
+    .select('id, kind, url, status, restaurant_id, last_attempted_at, last_verified_at, last_content_hash')
+    .eq('status', 'active')
+    .eq('kind', 'restaurant_page');
+  if (error) throw new Error('restaurant page load failed');
+  const rows = (data ?? []).map((row) => ({
+    id: row.id,
+    kind: row.kind,
+    url: row.url,
+    status: row.status as ContentSourceRecord['status'],
+    lastAttemptedAt: row.last_attempted_at,
+    lastVerifiedAt: row.last_verified_at,
+    lastContentHash: row.last_content_hash,
+    restaurantId: row.restaurant_id,
+  }));
+  return selectDueRestaurantPages(rows, now);
 }
 
 export async function loadContentSourceContext(
   supabase: Client,
   sourceId: string,
-): Promise<{
-  facts: DescriptionFact[];
-  recipes: RecipeSnapshot[];
-  openExceptions: { subjectId: string | null; field: string | null; reason: ExceptionReason }[];
-  activities: ActivitySnapshot[];
-  activityFacts: ActivityFactSnapshot[];
-}> {
+): Promise<ContentSourceContext> {
   const { data: factRows, error: factError } = await supabase
     .from('source_facts')
     .select('id, source_id, subject_id, version, status, value, evidence_excerpt')
@@ -158,6 +187,12 @@ export async function loadContentSourceContext(
     if (!isExceptionReason(row.reason)) return [];
     return [{ subjectId: row.subject_id, field: row.field, reason: row.reason }];
   });
+  if (isRestaurantPageKind(sourceRow.kind)) {
+    const briefingContext = await loadScheduledBriefingContext(supabase, {
+      restaurantId: sourceRow.restaurant_id,
+    });
+    return { facts, recipes, openExceptions, activities: [], activityFacts: [], ...briefingContext };
+  }
   if (!isActivitySourceKind(sourceRow.kind)) {
     return { facts, recipes, openExceptions, activities: [], activityFacts: [] };
   }
@@ -226,6 +261,27 @@ async function loadScheduledActivityContext(
   return { activities: [...merged.values()], activityFacts };
 }
 
+async function loadScheduledBriefingContext(
+  supabase: Client,
+  source: { restaurantId: string | null },
+): Promise<{ briefings: StoredBriefing[]; restaurantName: string }> {
+  if (!source.restaurantId) return { briefings: [], restaurantName: '' };
+  const [facts, restaurant] = await Promise.all([
+    supabase
+      .from('restaurant_briefing_facts')
+      .select('field, body, status')
+      .eq('restaurant_id', source.restaurantId),
+    supabase.from('restaurants').select('name').eq('id', source.restaurantId).maybeSingle(),
+  ]);
+  if (facts.error) throw new Error('briefing fact load failed');
+  if (restaurant.error) throw new Error('restaurant load failed');
+  const briefings = (facts.data ?? []).flatMap((row) => {
+    if (!isBriefingField(row.field)) return [];
+    return [{ field: row.field, body: row.body, status: row.status }];
+  });
+  return { briefings, restaurantName: restaurant.data?.name ?? '' };
+}
+
 export async function reserveMaintenance(
   supabase: Client,
   input: { sourceId: string; contentHash: string; estimatedInput: number; estimatedOutput: number },
@@ -270,13 +326,7 @@ export async function reserveMaintenance(
 
 export async function runApplyContentRefresh(args: {
   sources: readonly ContentSourceRecord[];
-  load: (source: ContentSourceRecord) => Promise<{
-    facts: DescriptionFact[];
-    recipes: RecipeSnapshot[];
-    openExceptions: { subjectId: string | null; field: string | null; reason: ExceptionReason }[];
-    activities?: ActivitySnapshot[];
-    activityFacts?: ActivityFactSnapshot[];
-  }>;
+  load: (source: ContentSourceRecord) => Promise<ContentSourceContext>;
   effects?: RefreshEffects;
   fetchImpl?: typeof fetch;
   now?: () => Date;

@@ -2,6 +2,8 @@ import 'server-only';
 
 import { logAdminAction } from '@/lib/audit/log-admin-action';
 import { readActivitySummary, type ActivityGuard } from '@/lib/content-pipeline/activity-review';
+import { readBriefingDraft, type BriefingMemberRow } from '@/lib/content-pipeline/briefing-review';
+import { isBriefingField } from '@/lib/briefings/types';
 import { readDescriptionFact, type DescriptionFact } from '@/lib/content-pipeline/facts';
 import {
   assembleContentReview,
@@ -221,6 +223,62 @@ export function contentReviewStore(supabase: AdminClient = getSupabaseAdmin()): 
       if (error || !data) throw new Error(error?.message ?? 'Hours note was not saved.');
       return data;
     },
+    async loadBriefingDraft(id) {
+      const { data, error } = await supabase
+        .from('source_facts')
+        .select('id, source_id, subject_id, field, version, status, value, evidence_excerpt')
+        .eq('id', id)
+        .eq('subject_type', 'briefing')
+        .maybeSingle();
+      if (error) throw new Error('Briefing draft lookup failed.');
+      return data ? readBriefingDraft(data) : null;
+    },
+    async loadBriefingMember(restaurantId, field) {
+      const { data, error } = await supabase
+        .from('restaurant_briefing_facts')
+        .select('restaurant_id, field, body, status, version')
+        .eq('restaurant_id', restaurantId)
+        .eq('field', field)
+        .maybeSingle();
+      if (error) throw new Error('Briefing fact lookup failed.');
+      if (!data || !isBriefingField(data.field)) return null;
+      return {
+        restaurantId: data.restaurant_id,
+        field: data.field,
+        body: data.body,
+        status: data.status,
+        version: data.version,
+      };
+    },
+    async decideBriefingDraft(id, decision) {
+      const { error } = await supabase.rpc('decide_briefing_fact', {
+        p_fact_id: id,
+        p_decision: decision,
+      });
+      if (!error) return true;
+      if (/not pending review/i.test(error.message)) return false;
+      throw new Error(error.message);
+    },
+    async reopenBriefingDraft(id) {
+      const { error } = await supabase
+        .from('source_facts')
+        .update({ status: 'pending_review', verified_at: null })
+        .eq('id', id)
+        .eq('subject_type', 'briefing');
+      if (error) throw new Error('Briefing draft reopen failed.');
+    },
+    async publishBriefingFact(row) {
+      const { data, error } = await supabase.rpc('publish_briefing_fact', {
+        p_source_id: row.sourceId,
+        p_restaurant_id: row.restaurantId,
+        p_field: row.field,
+        p_text: row.text,
+        p_evidence_excerpt: row.evidenceExcerpt,
+        p_keep_active: row.keepActive,
+      });
+      if (error || !data) throw new Error(error?.message ?? 'Briefing fact was not saved.');
+      return data;
+    },
     async rollbackRecipe(recipeId) {
       const { data, error } = await supabase.rpc('rollback_recipe_to_previous', {
         p_recipe_id: recipeId,
@@ -263,7 +321,7 @@ export function contentReviewStore(supabase: AdminClient = getSupabaseAdmin()): 
 export async function loadContentReviewModel(
   supabase: AdminClient = getSupabaseAdmin(),
 ): Promise<ContentReviewModel> {
-  const [sourceResult, exceptionResult, summaryResult] = await Promise.all([
+  const [sourceResult, exceptionResult, summaryResult, briefingDraftResult] = await Promise.all([
     supabase
       .from('content_sources')
       .select('id, url, status, restaurant_id, last_attempted_at, last_verified_at'),
@@ -277,6 +335,11 @@ export async function loadContentReviewModel(
       .eq('subject_type', 'activity')
       .eq('field', 'summary')
       .in('status', ['pending_review', 'current']),
+    supabase
+      .from('source_facts')
+      .select('id, source_id, subject_id, field, version, status, value, evidence_excerpt')
+      .eq('subject_type', 'briefing')
+      .eq('status', 'pending_review'),
   ]);
   if (sourceResult.error) throw new Error('Content sources failed to load.');
   const sourceRows = sourceResult.data;
@@ -304,6 +367,11 @@ export async function loadContentReviewModel(
     status: row.status,
   }));
   if (summaryResult.error) throw new Error('Activity summaries failed to load.');
+  if (briefingDraftResult.error) throw new Error('Briefing drafts failed to load.');
+  const briefingDrafts = (briefingDraftResult.data ?? []).flatMap((row) => {
+    const parsed = readBriefingDraft(row);
+    return parsed ? [parsed] : [];
+  });
   const activitySummaries = (summaryResult.data ?? []).flatMap((row) => {
     const parsed = readActivitySummary(row);
     return parsed ? [parsed] : [];
@@ -355,11 +423,17 @@ export async function loadContentReviewModel(
     activities = (activityRows ?? []).map((row) => asActivity(row));
   }
 
+  const briefingRestaurantIds = [
+    ...exceptions.filter((row) => row.subjectType === 'briefing').map((row) => row.subjectId),
+    ...briefingDrafts.map((row) => row.restaurantId),
+  ];
   const restaurantIds = [
     ...new Set(
-      [...sources.map((source) => source.restaurantId), ...recipes.map((recipe) => recipe.restaurantId)].filter(
-        (id): id is string => Boolean(id),
-      ),
+      [
+        ...sources.map((source) => source.restaurantId),
+        ...recipes.map((recipe) => recipe.restaurantId),
+        ...briefingRestaurantIds,
+      ].filter((id): id is string => Boolean(id)),
     ),
   ];
   const names = new Map<string, string>();
@@ -372,6 +446,25 @@ export async function loadContentReviewModel(
     for (const row of restaurantRows ?? []) names.set(row.id, row.name);
   }
 
+  let briefings: BriefingMemberRow[] = [];
+  if (restaurantIds.length > 0) {
+    const { data: briefingRows, error: briefingError } = await supabase
+      .from('restaurant_briefing_facts')
+      .select('restaurant_id, field, body, status, version')
+      .in('restaurant_id', restaurantIds);
+    if (briefingError) throw new Error('Briefing facts failed to load.');
+    briefings = (briefingRows ?? []).flatMap((row) => {
+      if (!isBriefingField(row.field)) return [];
+      return [{
+        restaurantId: row.restaurant_id,
+        field: row.field,
+        body: row.body,
+        status: row.status,
+        version: row.version,
+      }];
+    });
+  }
+
   return assembleContentReview({
     exceptions,
     sources,
@@ -380,5 +473,7 @@ export async function loadContentReviewModel(
     restaurantNames: names,
     activities,
     activitySummaries,
+    briefings,
+    briefingDrafts,
   });
 }

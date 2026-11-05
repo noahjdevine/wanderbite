@@ -10,6 +10,13 @@ import {
   type ActivitySummarySnapshot,
 } from '@/lib/content-pipeline/activity-review';
 import {
+  briefingPublishError,
+  briefingPublishKeepsActive,
+  type BriefingDraftSnapshot,
+  type BriefingMemberRow,
+} from '@/lib/content-pipeline/briefing-review';
+import { isBriefingField } from '@/lib/briefings/types';
+import {
   dietaryClaim,
   extractPrice,
   hoursSuspected,
@@ -146,6 +153,18 @@ export type ContentReviewStore = {
     text: string;
     evidenceExcerpt: string;
   }): Promise<string>;
+  loadBriefingDraft(id: string): Promise<BriefingDraftSnapshot | null>;
+  loadBriefingMember(restaurantId: string, field: string): Promise<BriefingMemberRow | null>;
+  decideBriefingDraft(id: string, decision: 'approve' | 'reject'): Promise<boolean>;
+  reopenBriefingDraft(id: string): Promise<void>;
+  publishBriefingFact(row: {
+    sourceId: string;
+    restaurantId: string;
+    field: string;
+    text: string;
+    evidenceExcerpt: string;
+    keepActive: boolean;
+  }): Promise<string>;
   rollbackRecipe(recipeId: string): Promise<number>;
   loadSource(id: string): Promise<{ id: string; status: string } | null>;
   setSourceStatus(id: string, from: string, to: 'active' | 'paused'): Promise<boolean>;
@@ -248,7 +267,9 @@ async function context(store: ContentReviewStore, exception: StoredException): P
   recipe: RecipeGuard | null;
   fact: DescriptionFact | null;
 }> {
-  if (!exception.subjectId || exception.subjectType === 'activity') return { recipe: null, fact: null };
+  if (!exception.subjectId || exception.subjectType === 'activity' || exception.subjectType === 'briefing') {
+    return { recipe: null, fact: null };
+  }
   const recipe = await store.loadRecipe(exception.subjectId);
   const fact = await store.loadCurrentFact(exception.sourceId, exception.subjectId);
   return { recipe, fact };
@@ -296,13 +317,16 @@ export async function approveOpenException(
 
 export async function editOpenException(
   store: ContentReviewStore,
-  input: { exceptionId: string; adminId: string; description: string },
+  input: { exceptionId: string; adminId: string; description: string; keepActive?: boolean },
 ): Promise<ContentActionResult> {
   const exception = await store.loadException(input.exceptionId);
   if (!exception) return { ok: false, error: 'Exception not found.' };
   if (exception.status !== 'open') return { ok: false, error: 'Already resolved.' };
   if (exception.subjectType === 'activity') {
     return editActivityException(store, exception, input);
+  }
+  if (exception.subjectType === 'briefing') {
+    return editBriefingException(store, exception, input);
   }
   const { recipe, fact } = await context(store, exception);
   const planned = editPlan(exception, recipe, fact, input.description);
@@ -644,6 +668,181 @@ async function publishClaim(
   return { ok: true, published: true, notice: input.notice };
 }
 
+async function editBriefingException(
+  store: ContentReviewStore,
+  exception: StoredException,
+  input: { adminId: string; description: string; keepActive?: boolean },
+): Promise<ContentActionResult> {
+  if (!exception.subjectId || !exception.field || !isBriefingField(exception.field)) {
+    return { ok: false, error: 'That briefing field was not found.' };
+  }
+  const text = normalizeOperatorText(input.description);
+  const textError = briefingPublishError(text);
+  if (textError) return { ok: false, error: textError };
+  const stored = await store.loadBriefingMember(exception.subjectId, exception.field);
+  const keepActive = briefingPublishKeepsActive(stored?.status, input.keepActive === true);
+  const claimed = await store.claimException(exception.id, 'edited', input.adminId);
+  if (!claimed) return { ok: false, error: 'Already resolved.' };
+  let factId: string;
+  try {
+    factId = await store.publishBriefingFact({
+      sourceId: exception.sourceId,
+      restaurantId: exception.subjectId,
+      field: exception.field,
+      text,
+      evidenceExcerpt: activityEvidence(exception.evidenceExcerpt, text),
+      keepActive,
+    });
+  } catch (err) {
+    await store.reopenException(exception.id);
+    const message = err instanceof Error ? err.message : 'Briefing fact was not saved.';
+    return { ok: false, error: message };
+  }
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_edit',
+      targetType: 'content_exception',
+      targetId: exception.id,
+      metadata: {
+        adminId: input.adminId,
+        exceptionId: exception.id,
+        published: true,
+        subjectType: 'briefing',
+        field: exception.field,
+        restaurantId: exception.subjectId,
+        factId,
+        status: keepActive ? 'active' : 'paused',
+        ...hashes(exception.before, text),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: `The briefing fact was saved. ${message}` };
+  }
+  return {
+    ok: true,
+    published: true,
+    notice: keepActive
+      ? 'Saved the fact. It stays visible because it was already active.'
+      : 'Saved the fact as paused. Members do not see it.',
+  };
+}
+
+export async function approveBriefingDraft(
+  store: ContentReviewStore,
+  input: { factId: string; adminId: string },
+): Promise<ContentActionResult> {
+  const fact = await store.loadBriefingDraft(input.factId);
+  if (!fact || fact.status !== 'pending_review') return { ok: false, error: 'Briefing draft not found.' };
+  const decided = await store.decideBriefingDraft(fact.id, 'approve');
+  if (!decided) return { ok: false, error: 'Already resolved.' };
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_approve',
+      targetType: 'source_fact',
+      targetId: fact.id,
+      metadata: {
+        adminId: input.adminId,
+        factId: fact.id,
+        restaurantId: fact.restaurantId,
+        published: false,
+        subjectType: 'briefing',
+        field: fact.field,
+        ...hashes({ text: fact.text }, null),
+      },
+    });
+  } catch (err) {
+    await store.reopenBriefingDraft(fact.id);
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: message };
+  }
+  return { ok: true, published: false, notice: `Approved. ${NOTHING_PUBLISHED}` };
+}
+
+export async function editBriefingDraft(
+  store: ContentReviewStore,
+  input: { factId: string; adminId: string; text: string; keepActive?: boolean },
+): Promise<ContentActionResult> {
+  const fact = await store.loadBriefingDraft(input.factId);
+  if (!fact || fact.status !== 'pending_review') return { ok: false, error: 'Briefing draft not found.' };
+  const text = normalizeOperatorText(input.text);
+  const textError = briefingPublishError(text);
+  if (textError) return { ok: false, error: textError };
+  const stored = await store.loadBriefingMember(fact.restaurantId, fact.field);
+  const keepActive = briefingPublishKeepsActive(stored?.status, input.keepActive === true);
+  let factId: string;
+  try {
+    factId = await store.publishBriefingFact({
+      sourceId: fact.sourceId,
+      restaurantId: fact.restaurantId,
+      field: fact.field,
+      text,
+      evidenceExcerpt: activityEvidence(fact.evidenceExcerpt, text),
+      keepActive,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Briefing fact was not saved.';
+    return { ok: false, error: message };
+  }
+  try {
+    await store.audit({
+      adminId: input.adminId,
+      action: 'content.exception_edit',
+      targetType: 'source_fact',
+      targetId: fact.id,
+      metadata: {
+        adminId: input.adminId,
+        factId,
+        priorFactId: fact.id,
+        restaurantId: fact.restaurantId,
+        published: true,
+        subjectType: 'briefing',
+        field: fact.field,
+        status: keepActive ? 'active' : 'paused',
+        ...hashes({ text: fact.text }, text),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Audit row was not written.';
+    return { ok: false, error: `The briefing fact was saved. ${message}` };
+  }
+  return {
+    ok: true,
+    published: true,
+    notice: keepActive
+      ? 'Saved the fact. It stays visible because it was already active.'
+      : 'Saved the fact as paused. Members do not see it.',
+  };
+}
+
+export async function rejectBriefingDraft(
+  store: ContentReviewStore,
+  input: { factId: string; adminId: string },
+): Promise<ContentActionResult> {
+  const fact = await store.loadBriefingDraft(input.factId);
+  if (!fact || fact.status !== 'pending_review') return { ok: false, error: 'Briefing draft not found.' };
+  const decided = await store.decideBriefingDraft(fact.id, 'reject');
+  if (!decided) return { ok: false, error: 'Already resolved.' };
+  await store.audit({
+    adminId: input.adminId,
+    action: 'content.exception_reject',
+    targetType: 'source_fact',
+    targetId: fact.id,
+    metadata: {
+      adminId: input.adminId,
+      factId: fact.id,
+      restaurantId: fact.restaurantId,
+      published: false,
+      subjectType: 'briefing',
+      field: fact.field,
+      ...hashes({ text: fact.text }, null),
+    },
+  });
+  return { ok: true, published: false, notice: `Rejected. ${NOTHING_PUBLISHED}` };
+}
+
 export async function rollbackRecipeDescription(
   store: ContentReviewStore,
   input: { recipeId: string; adminId: string },
@@ -759,44 +958,64 @@ export function assembleContentReview(input: {
   restaurantNames: ReadonlyMap<string, string>;
   activities?: readonly ActivityQueueRow[];
   activitySummaries?: readonly ActivitySummarySnapshot[];
+  briefings?: readonly BriefingMemberRow[];
+  briefingDrafts?: readonly BriefingDraftSnapshot[];
 }): ContentReviewModel {
   const sourcesById = new Map(input.sources.map((source) => [source.id, source]));
   const recipesById = new Map(input.recipes.map((recipe) => [recipe.id, recipe]));
   const activitiesById = new Map((input.activities ?? []).map((row) => [row.id, row]));
   const summaries = input.activitySummaries ?? [];
+  const briefings = input.briefings ?? [];
+  const briefingDrafts = input.briefingDrafts ?? [];
+  const memberFor = (restaurantId: string | null, field: string | null) => {
+    if (!restaurantId || !field) return null;
+    return briefings.find((row) => row.restaurantId === restaurantId && row.field === field) ?? null;
+  };
   const exceptionItems = input.exceptions
     .filter((row) => row.status === 'open')
     .map((row) => {
       const source = sourcesById.get(row.sourceId);
       const isActivity = row.subjectType === 'activity';
+      const isBriefing = row.subjectType === 'briefing';
       const activity = isActivity && row.subjectId ? activitiesById.get(row.subjectId) ?? null : null;
-      const recipe = !isActivity && row.subjectId ? recipesById.get(row.subjectId) ?? null : null;
-      const fact = !isActivity && row.subjectId
+      const recipe = !isActivity && !isBriefing && row.subjectId ? recipesById.get(row.subjectId) ?? null : null;
+      const fact = !isActivity && !isBriefing && row.subjectId
         ? input.facts.find(
             (item) => item.status === 'current' && item.subjectId === row.subjectId && item.sourceId === row.sourceId,
           ) ?? null
         : null;
       const guardOk = recipePublishError(recipe) == null;
-      const canEdit = isActivity || Boolean(guardOk && fact && recipe && fact.version === recipe.version);
-      const editKind = isActivity ? activityEditKind(row.field) : canEdit ? 'description' : 'none';
+      const briefingFieldOk = Boolean(row.field && isBriefingField(row.field));
+      const canEdit = isBriefing
+        ? briefingFieldOk
+        : isActivity || Boolean(guardOk && fact && recipe && fact.version === recipe.version);
+      const editKind = isBriefing
+        ? (canEdit ? 'briefing' : 'none')
+        : isActivity
+          ? activityEditKind(row.field)
+          : canEdit
+            ? 'description'
+            : 'none';
+      const briefingRestaurantId = row.subjectId ?? source?.restaurantId ?? null;
+      const member = isBriefing ? memberFor(briefingRestaurantId, row.field) : null;
       return {
         sortAt: source?.lastAttemptedAt ?? '',
         view: {
           id: row.id,
           restaurantName: isActivity
             ? activity?.name ?? 'Unknown activity'
-            : restaurantName(input.restaurantNames, source?.restaurantId ?? recipe?.restaurantId ?? null),
+            : restaurantName(input.restaurantNames, isBriefing ? briefingRestaurantId : source?.restaurantId ?? recipe?.restaurantId ?? null),
           sourceUrl: source?.url ?? '',
           sourceHref: source ? safeSourceHref(source.url) : null,
           reason: row.reason,
           field: row.field,
-          beforeText: isActivity ? activityPlainValue(row.before) : untrustedPlainText(row.before),
-          afterText: isActivity ? activityPlainValue(row.after) : untrustedPlainText(row.after),
+          beforeText: isActivity || isBriefing ? activityPlainValue(row.before) : untrustedPlainText(row.before),
+          afterText: isActivity || isBriefing ? activityPlainValue(row.after) : untrustedPlainText(row.after),
           evidenceText: row.evidenceExcerpt ?? '',
           attemptedLabel: formatContentInstant(source?.lastAttemptedAt),
           verifiedLabel: formatContentInstant(source?.lastVerifiedAt),
-          recipeLabel: isActivity ? '' : recipeLabel(recipe, fact),
-          subjectLabel: isActivity ? 'Activity' : 'Recipe',
+          recipeLabel: isActivity || isBriefing ? '' : recipeLabel(recipe, fact),
+          subjectLabel: isBriefing ? 'Briefing' : isActivity ? 'Activity' : 'Recipe',
           activityName: isActivity ? activity?.name ?? 'Unknown activity' : null,
           checkedLabel: activityCheckedLabel(source?.lastVerifiedAt, source?.lastAttemptedAt),
           editKind,
@@ -804,6 +1023,7 @@ export function assembleContentReview(input: {
           approveKind: 'review_only',
           approveBlock: null,
           canEdit,
+          keepActiveDefault: member?.status === 'active',
         } satisfies ExceptionView,
       };
     });
@@ -842,7 +1062,39 @@ export function assembleContentReview(input: {
         } satisfies ExceptionView,
       };
     });
-  const exceptions = [...exceptionItems, ...summaryItems]
+  const briefingItems = briefingDrafts
+    .filter((row) => row.status === 'pending_review')
+    .map((row) => {
+      const source = sourcesById.get(row.sourceId);
+      const member = memberFor(row.restaurantId, row.field);
+      return {
+        sortAt: source?.lastAttemptedAt ?? '',
+        view: {
+          id: row.id,
+          restaurantName: restaurantName(input.restaurantNames, row.restaurantId),
+          sourceUrl: source?.url ?? '',
+          sourceHref: source ? safeSourceHref(source.url) : null,
+          reason: 'pending_review',
+          field: row.field,
+          beforeText: row.before ?? member?.body ?? '',
+          afterText: row.text,
+          evidenceText: row.evidenceExcerpt,
+          attemptedLabel: formatContentInstant(source?.lastAttemptedAt),
+          verifiedLabel: formatContentInstant(source?.lastVerifiedAt),
+          recipeLabel: '',
+          subjectLabel: 'Briefing',
+          activityName: null,
+          checkedLabel: activityCheckedLabel(source?.lastVerifiedAt, source?.lastAttemptedAt),
+          editKind: 'briefing',
+          queueKind: 'briefing_draft',
+          approveKind: 'review_only',
+          approveBlock: null,
+          canEdit: true,
+          keepActiveDefault: member?.status === 'active',
+        } satisfies ExceptionView,
+      };
+    });
+  const exceptions = [...exceptionItems, ...summaryItems, ...briefingItems]
     .sort((left, right) => {
       if (left.sortAt !== right.sortAt) return right.sortAt < left.sortAt ? -1 : 1;
       return right.view.id < left.view.id ? -1 : 1;
