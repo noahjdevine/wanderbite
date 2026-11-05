@@ -24,7 +24,7 @@ Restaurants have no website column. The script discovers candidate URLs from a p
 
 ## Hosted
 
-Migration `20261105174040_e06_a2_restaurant_briefings.sql` is not applied to hosted. Do not run `supabase db push` or `npm run types:db` for this slice. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited for the new table. `npm run types:db` is a separate approved PR. The table is additive. Revert this PR to remove the code. If the migration is applied later, the table is unused once the code is reverted. No drop is required for that rollback.
+Migration `20261105181304_e06_a2_restaurant_briefings.sql` is applied to hosted (2026-11-05, empty table, Hosted DB Watcher PASS). `E06_BRIEFINGS_ENABLED` stays unset. Do not run `supabase db push` or `npm run types:db` for this slice. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited for the new table. `npm run types:db` is a separate approved PR. The table is additive. Revert this PR to remove the code. The hosted table is empty. Once the code is reverted, the table is unused. No drop is required for that rollback.
 
 ## Local check
 
