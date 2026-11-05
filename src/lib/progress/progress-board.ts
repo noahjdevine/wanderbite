@@ -16,6 +16,7 @@
  * 6. caught_up — a pair exists and none of the above apply. Opens Discover.
  */
 
+import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { AREA_HOLD_HEADING } from '@/lib/launch-market';
 import { chicagoMonthStart } from '@/lib/cron-period';
 import { noteEditorHref } from '@/lib/notes/note-rules';
@@ -259,11 +260,41 @@ export function formatSavingsDollars(amount: number | null): string {
   return `$${amount.toFixed(0)}`;
 }
 
-export function noPairCta(input: {
+export type NoPairCtaInput = {
   launchEligible: boolean;
-  creditsWaiting: boolean;
+  /** `user_profiles.workflow_version === 'credits'`. A zero pending count is not a hold. */
+  creditsWorkflow: boolean;
+  /**
+   * Head count of `entitlement_credits` for this member, this America/Chicago
+   * month, `status = 'pending'`. Ignored unless `creditsWorkflow` is true.
+   */
+  pendingCreditsCount: number;
+  /**
+   * `memberGenerateBlocked()`: the monthly-reveal flag is on and the reveal
+   * schema read is `available` or `unknown`.
+   */
   generateBlocked: boolean;
-}): NoPairCta {
+};
+
+/** Filters for the same pending-credit head count `/challenges` loads. */
+export function pendingCreditsHeadFilters(
+  userId: string,
+  now: Date,
+): { userId: string; issuePeriod: string; status: 'pending' } {
+  return {
+    userId,
+    issuePeriod: chicagoMonthStart(now),
+    status: 'pending',
+  };
+}
+
+/**
+ * No-pair next move. Order: area hold, then credits waiting, then reveal, then generate.
+ * Credits waiting is a pending count above zero, not the workflow flag alone.
+ * Reveal follows `/challenges`: `showsMonthlyCuration` (launch-eligible legacy, no pair)
+ * and only while member Generate is blocked. Credits members never take that branch.
+ */
+export function noPairCta(input: NoPairCtaInput): NoPairCta {
   if (!input.launchEligible) {
     return {
       id: 'area_hold',
@@ -273,16 +304,26 @@ export function noPairCta(input: {
       actionLabel: 'See challenges',
     };
   }
-  if (input.creditsWaiting) {
+  if (input.creditsWorkflow && input.pendingCreditsCount > 0) {
     return {
       id: 'credits_waiting',
       sentence: 'Your credits are waiting.',
-      meta: 'Restaurant selection is not open yet',
+      meta:
+        input.pendingCreditsCount === 2
+          ? 'You have 2 credits for this month. Restaurant selection is not open yet.'
+          : 'Restaurant selection is not open yet',
       actionHref: '/challenges',
       actionLabel: 'Open challenges',
     };
   }
-  if (input.generateBlocked) {
+  if (
+    input.generateBlocked &&
+    showsMonthlyCuration({
+      launchEligible: input.launchEligible,
+      creditsWorkflow: input.creditsWorkflow,
+      hasCurrentPair: false,
+    })
+  ) {
     return {
       id: 'reveal',
       sentence: 'Reveal your challenges.',

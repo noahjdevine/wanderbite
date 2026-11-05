@@ -10,6 +10,7 @@ import {
   buildProgressModel,
   headerLabelFor,
   noPairCta,
+  pendingCreditsHeadFilters,
 } from '@/lib/progress/progress-board';
 import { SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadSavedRecipes } from '@/lib/recipes/load';
@@ -17,6 +18,30 @@ import { loadSavedRecipes } from '@/lib/recipes/load';
 type JourneyContentProps = {
   userId: string;
 };
+
+type PendingCredits =
+  | { ok: true; count: number }
+  | { ok: false; error: string };
+
+/**
+ * Same head count `/challenges` uses. A read error stays closed: callers must
+ * not treat it as zero pending credits.
+ */
+async function loadPendingCredits(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  userId: string,
+  now: Date,
+): Promise<PendingCredits> {
+  const filters = pendingCreditsHeadFilters(userId, now);
+  const { count, error } = await admin
+    .from('entitlement_credits')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', filters.userId)
+    .eq('issue_period', filters.issuePeriod)
+    .eq('status', filters.status);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true, count: count ?? 0 };
+}
 
 type ProfileRow = {
   id: string;
@@ -47,12 +72,16 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
   const headerLabel = headerLabelFor(typed.full_name);
   const now = new Date();
   const launchEligible = launchAreaState(resolveProfileAddress(typed)) === 'eligible';
+  const creditsWorkflow = typed.workflow_version === 'credits';
 
-  const [progress, savedRecipes, activity, generateBlocked] = await Promise.all([
+  const [progress, savedRecipes, activity, generateBlocked, pendingCredits] = await Promise.all([
     getMemberProgress(userId, now),
     loadSavedRecipes(),
     loadProgressActivity(userId, now),
     memberGenerateBlocked(),
+    creditsWorkflow
+      ? loadPendingCredits(admin, userId, now)
+      : Promise.resolve({ ok: true as const, count: 0 }),
   ]);
 
   const savedRecipesCard = savedRecipes.enabled ? (
@@ -70,6 +99,17 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
       />
     </section>
   ) : null;
+
+  if (!pendingCredits.ok) {
+    return (
+      <>
+        <ProgressUnavailable headerLabel={headerLabel} />
+        <p role="alert" className="mx-auto max-w-5xl px-5 pb-16 text-sm text-destructive sm:px-8">
+          Failed to load credits: {pendingCredits.error}
+        </p>
+      </>
+    );
+  }
 
   if ('error' in progress) {
     return (
@@ -93,7 +133,8 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
           adventures: activity.adventures,
           noPair: noPairCta({
             launchEligible,
-            creditsWaiting: typed.workflow_version === 'credits',
+            creditsWorkflow,
+            pendingCreditsCount: pendingCredits.count,
             generateBlocked,
           }),
         }
