@@ -2,7 +2,14 @@ import { NextResponse } from 'next/server';
 import { verifyCronAuth } from '@/lib/cron-auth';
 import { runLeasedCron } from '@/lib/cron-runs';
 import {
+  activityMaintenancePort,
+  prepareActivityMaintenance,
+} from '@/lib/content-pipeline/activity-maintenance';
+import { allocateRefreshSources } from '@/lib/content-pipeline/registry';
+import { CONTENT_MAX_SOURCES } from '@/lib/content-pipeline/refresh';
+import {
   CONTENT_REFRESH_JOB,
+  activityMaintenanceCronEnabled,
   contentRefreshCronEnabled,
   contentRefreshRunKey,
 } from '@/lib/content-pipeline/review';
@@ -23,6 +30,10 @@ export const maxDuration = 300;
 const LEASE_SECONDS = 10 * 60;
 
 export async function GET(request: Request) {
+  return runContentRefresh(request, new Date());
+}
+
+export async function runContentRefresh(request: Request, now: Date) {
   const authError = verifyCronAuth(request);
   if (authError) return authError;
 
@@ -30,8 +41,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: 'disabled', skipped: true });
   }
 
-  const now = new Date();
   const runKey = contentRefreshRunKey(now);
+  const activityMaintenance = activityMaintenanceCronEnabled();
   const exit = await runLeasedCron({
     jobName: CONTENT_REFRESH_JOB,
     runKey,
@@ -43,9 +54,15 @@ export async function GET(request: Request) {
       if (!(await ctx.guardPeriod())) return;
       if (!(await ctx.renew())) return;
       const admin = getSupabaseAdmin();
-      const sources = await loadActiveMenuSources(admin);
+      const menuSources = await loadActiveMenuSources(admin);
+      const maintenance = await prepareActivityMaintenance({
+        enabled: activityMaintenance,
+        now,
+        port: activityMaintenancePort(admin),
+      });
+      const allocated = allocateRefreshSources(menuSources, maintenance.sources, CONTENT_MAX_SOURCES);
       const summary = await runApplyContentRefresh({
-        sources,
+        sources: [...allocated.selected, ...allocated.skipped],
         load: (source) => loadContentSourceContext(admin, source.id),
         effects: contentRefreshEffects(admin),
         reserveModel: (input) => reserveMaintenance(admin, input),
@@ -70,10 +87,15 @@ export async function GET(request: Request) {
         const recorded = await ctx.record(`skip:${skip}`, 'skipped', skip);
         if (!recorded) return;
       }
+      if (maintenance.skip) {
+        const recorded = await ctx.record('skip:activity-maintenance', 'skipped', maintenance.skip);
+        if (!recorded) return;
+      }
       await ctx.finishClear({
         sources: summary.results.length,
-        skips: summary.skips.length,
+        skips: summary.skips.length + (maintenance.skip ? 1 : 0),
         modelCalls: summary.results.reduce((total, result) => total + result.modelCalls, 0),
+        ...(activityMaintenance ? { expiredActivities: maintenance.expired } : {}),
       });
     },
   });

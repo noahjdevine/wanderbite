@@ -1,3 +1,4 @@
+import { activitySourceDue, activityVerifiedAtMs } from '@/lib/content-pipeline/activity-schedule';
 import { normalizeMenuUrl, type MenuSource } from '@/lib/recipes/menu-sources';
 
 export const FETCHED_SOURCE_KINDS = ['public_menu', 'venue_page', 'event_page'] as const;
@@ -102,4 +103,59 @@ export function activeFetchedSource(source: { status: string; kind: string; url:
 export function activeMenuSource(source: { status: string; kind: string; url: string }): string | null {
   if (source.kind !== 'public_menu') return `kind ${source.kind} is not fetched by this runner`;
   return activeFetchedSource(source);
+}
+
+export type DueActivitySource = {
+  id: string;
+  kind: string;
+  lastVerifiedAt: string | null;
+  status?: string;
+};
+
+/**
+ * Oldest last_verified_at first. Nulls and unreadable timestamps first.
+ * id breaks ties. Independent of process time zone.
+ */
+export function compareDueActivitySources(left: DueActivitySource, right: DueActivitySource): number {
+  const leftTime = activityVerifiedAtMs(left.lastVerifiedAt);
+  const rightTime = activityVerifiedAtMs(right.lastVerifiedAt);
+  if (leftTime == null && rightTime != null) return -1;
+  if (leftTime != null && rightTime == null) return 1;
+  if (leftTime != null && rightTime != null && leftTime !== rightTime) return leftTime - rightTime;
+  if (left.id === right.id) return 0;
+  return left.id < right.id ? -1 : 1;
+}
+
+/** Active venue and event rows that are due. Order is compareDueActivitySources. */
+export function selectDueActivitySources<T extends DueActivitySource>(
+  sources: readonly T[],
+  now: Date,
+): T[] {
+  return sources
+    .filter((source) => (source.status == null || source.status === 'active') && activitySourceDue(source, now))
+    .slice()
+    .sort(compareDueActivitySources);
+}
+
+/**
+ * One run starts at most `cap` sources.
+ * Active public_menu rows keep their current share: they are taken first,
+ * in the order given (URL order from the menu loader), up to the cap.
+ * Due venue_page and event_page rows fill only the leftover slots.
+ * They must already be in selectDueActivitySources order.
+ * The 15-attempt cap and the one model call per source follow that same order.
+ */
+export function allocateRefreshSources<T>(
+  menuSources: readonly T[],
+  activitySources: readonly T[],
+  cap: number,
+): { selected: T[]; skipped: T[] } {
+  const limit = Math.max(0, cap);
+  const menus = menuSources.slice(0, limit);
+  const room = limit - menus.length;
+  const activities = activitySources.slice(0, room);
+  return {
+    selected: [...menus, ...activities],
+    skipped: [...menuSources.slice(menus.length), ...activitySources.slice(activities.length)],
+  };
 }

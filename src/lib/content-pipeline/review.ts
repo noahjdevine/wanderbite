@@ -41,6 +41,13 @@ export function contentRefreshCronEnabled(env: NodeJS.ProcessEnv = process.env):
   return env.E05_CONTENT_REFRESH_CRON_ENABLED === 'true';
 }
 
+/** Exact string only. Unset, empty, and every other value leave activity maintenance off. */
+export function activityMaintenanceCronEnabled(
+  value: string | undefined = process.env.E06_ACTIVITY_MAINTENANCE_CRON_ENABLED,
+): boolean {
+  return value === 'true';
+}
+
 /** One leased run per America/Chicago calendar day. Independent of process TZ. */
 export function contentRefreshRunKey(now = new Date()): string {
   const parts = CHICAGO_DAY.formatToParts(now);

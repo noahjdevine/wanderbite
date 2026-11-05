@@ -1,6 +1,6 @@
 # E06-A1 optional nearby activities
 
-This slice adds optional activity suggestions under a member's restaurant challenge. First-visit briefing is E06-A2 and stays behind `E06_BRIEFINGS_ENABLED`. E06-B1 can register a venue or event page and can expire a dated activity. It does not create bookings, partner accounts, benefits, discounts, credits, XP, badges, or drawing entries. Hiding or changing a suggestion does not swap the restaurant and does not change a challenge item, redemption, offer, or credit.
+This slice adds optional activity suggestions under a member's restaurant challenge. First-visit briefing is E06-A2 and stays behind `E06_BRIEFINGS_ENABLED`. E06-B1 can register a venue or event page and can expire a dated activity. E06-B2 can do that expiry and the venue or event refresh on the existing content-refresh cron, behind `E06_ACTIVITY_MAINTENANCE_CRON_ENABLED` (unset). It does not create bookings, partner accounts, benefits, discounts, credits, XP, badges, or drawing entries. Hiding or changing a suggestion does not swap the restaurant and does not change a challenge item, redemption, offer, or credit.
 
 `E06_ACTIVITIES_ENABLED` is server-only. Only the exact string `true` turns the block on. Unset, the challenges page does not query `activities` and the card matches `main`. Unsetting the flag hides the block without a code change.
 
@@ -52,5 +52,11 @@ where name = 'Sample Dated Fair';
 ```
 
 That fair disappears. Unset `E06_ACTIVITIES_ENABLED` and the block is gone, with no activities query.
+
+## Scheduled maintenance
+
+`E06_ACTIVITY_MAINTENANCE_CRON_ENABLED` is server-only. Only the exact string `true` turns it on, and only inside a content-refresh cron that is already enabled with `E05_CONTENT_REFRESH_CRON_ENABLED=true`. Unset, the cron does not query `activities` or `venue_page` / `event_page` sources. Member pages are unchanged. `E06_ACTIVITIES_ENABLED` stays unset.
+
+When both flags are `true`, the run at `0 9 * * *` UTC (03:00 America/Chicago standard time, 04:00 daylight time) marks an active activity `expired` when `valid_until` is before that Chicago date. Today stays active. A null date stays active. The row is not deleted. An `event_page` is fetched when `last_verified_at` is null or older than 1 elapsed day. A `venue_page` is fetched when null or older than 7 elapsed days. Menus keep the first slots in the shared cap of 5 sources, 15 attempts, and one model call per source. Hours, price, and allergen text open `content_exceptions` and are not copied onto the activity. A summary stays `pending_review`. The cron does not insert an activity. If the activity schema is missing, that step logs one skip and the menu refresh still runs. Unset the flag to stop the step. No migration in this slice.
 
 Do not point this seed at hosted.
