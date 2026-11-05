@@ -2,9 +2,18 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
+import { activitiesToExpire } from '../src/lib/activities/expire';
+import { chicagoCalendarDate } from '../src/lib/activities/match';
+import type { ActivityFactSnapshot, ActivitySnapshot } from '../src/lib/content-pipeline/activity-plan';
 import { isExceptionReason, type ExceptionReason } from '../src/lib/content-pipeline/exceptions';
 import { formatContentInstant, readDescriptionFact, type DescriptionFact } from '../src/lib/content-pipeline/facts';
-import { seedSourcesFromRegistry } from '../src/lib/content-pipeline/registry';
+import {
+  FETCHED_SOURCE_KINDS,
+  isActivitySourceKind,
+  loadActivitySourceRegistry,
+  seedSourcesFromRegistry,
+  type ActivitySeed,
+} from '../src/lib/content-pipeline/registry';
 import {
   contentRefreshAllowed,
   contentRepoPath,
@@ -18,7 +27,7 @@ import {
 } from '../src/lib/content-pipeline/refresh';
 import type { RecipeSnapshot } from '../src/lib/content-pipeline/change-detect';
 import { callMenuModel, MENU_RECIPE_MODEL } from '../src/lib/recipes/menu-generate';
-import { loadMenuSources } from '../src/lib/recipes/menu-sources';
+import { loadMenuSources, type MenuSource } from '../src/lib/recipes/menu-sources';
 import type { Database, Json } from '../src/types/database.types';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -35,13 +44,21 @@ const HELP = `Operator-only content maintenance. Default --refresh is a dry-run.
   npm run content:refresh -- --exceptions
   WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --resolve <uuid> approve
   WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --rollback recipe <uuid>
+  npm run content:refresh -- --register --registry scripts/fixtures/e06-activity-sources.json
+  npm run content:refresh -- --expire
+  WANDERBITE_CONTENT_REFRESH_APPLY=1 npm run content:refresh -- --expire --apply
 
 --register copies scripts/fixtures/e05-menu-sources.json into content_sources.
-The migration does not insert those URLs. --refresh fetches active public_menu
-rows only. A byte-identical page records unchanged and does not call the model.
-Model calls on --apply reserve G13-A maintenance (account tier ops, no member).
-Conflicts, removed dishes, prices, hours, dietary claims, and injected text open
-content_exceptions and are not published.
+Pass --registry with venue_page and event_page rows to register activity sources.
+The migration does not insert those URLs. --refresh fetches active public_menu,
+venue_page, and event_page rows. A byte-identical page records unchanged and does
+not call the model. Model calls on --apply reserve G13-A maintenance (account tier
+ops, no member). Conflicts, removed dishes, prices, hours, dietary claims, and
+injected text open content_exceptions and are not published. An activity summary
+is a pending draft for an activity that already exists. This command does not
+insert an activity, partnership, booking, discount, credit, or offer.
+--expire lists active activities whose valid_until is before today's America/Chicago
+date. It does not write unless --apply is set, and it does not delete rows.
 
 Hosted reads and writes need Noah's separate OK, then WANDERBITE_CONTENT_REFRESH_HOSTED_OK=1
 for that run. Writes also need WANDERBITE_CONTENT_REFRESH_APPLY=1. Do not point this at hosted
@@ -102,6 +119,10 @@ async function main(): Promise<void> {
     await refresh(supabase, parsed);
     return;
   }
+  if (parsed.command === 'expire') {
+    await expireActivities(supabase, parsed.apply);
+    return;
+  }
   fail('content refresh command was not recognized');
 }
 
@@ -142,8 +163,12 @@ async function registerSources(supabase: SupabaseClient<Database>, registryPath:
   } catch {
     fail('menu source registry was not found');
   }
-  const registry = loadMenuSources(text);
+  const registry = loadRegistry(text);
   if (!registry.ok) fail(registry.reason);
+  if (registry.kind === 'activity') {
+    await registerActivitySources(supabase, registry.sources, apply);
+    return;
+  }
   const seeds = seedSourcesFromRegistry(registry.sources);
   for (const seed of seeds) {
     const { data: existing, error: lookupError } = await supabase
@@ -179,6 +204,77 @@ async function registerSources(supabase: SupabaseClient<Database>, registryPath:
       .single();
     if (error || !data) fail('content source insert failed');
     process.stdout.write(`registered ${data.id} ${seed.url}\n`);
+  }
+}
+
+function loadRegistry(text: string):
+  | { ok: true; kind: 'menu'; sources: MenuSource[] }
+  | { ok: true; kind: 'activity'; sources: ActivitySeed[] }
+  | { ok: false; reason: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch {
+    return { ok: false, reason: 'source registry is not JSON' };
+  }
+  const first = parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? (parsed as { sources?: unknown }).sources
+    : null;
+  const entry = Array.isArray(first) ? first[0] : null;
+  if (entry && typeof entry === 'object' && !Array.isArray(entry) && 'kind' in entry) {
+    const kind = (entry as { kind?: unknown }).kind;
+    if (typeof kind === 'string' && isActivitySourceKind(kind)) {
+      const loaded = loadActivitySourceRegistry(text);
+      return loaded.ok ? { ok: true, kind: 'activity', sources: loaded.sources } : loaded;
+    }
+  }
+  const menu = loadMenuSources(text);
+  return menu.ok ? { ok: true, kind: 'menu', sources: menu.sources } : menu;
+}
+
+async function registerActivitySources(
+  supabase: SupabaseClient<Database>,
+  seeds: readonly ActivitySeed[],
+  apply: boolean,
+): Promise<void> {
+  for (const seed of seeds) {
+    const { data: existing, error: lookupError } = await supabase
+      .from('content_sources')
+      .select('id, url')
+      .eq('url', seed.url)
+      .maybeSingle();
+    if (lookupError) fail('content source lookup failed');
+    if (existing) {
+      process.stdout.write(`exists ${existing.id} ${seed.url}\n`);
+      continue;
+    }
+    let restaurantId: string | null = null;
+    if (seed.restaurantSlug) {
+      const { data: restaurant, error: restaurantError } = await supabase
+        .from('restaurants')
+        .select('id, slug')
+        .eq('slug', seed.restaurantSlug)
+        .maybeSingle();
+      if (restaurantError) fail('restaurant lookup failed');
+      restaurantId = restaurant?.id ?? null;
+    }
+    if (!apply) {
+      process.stdout.write(`would register ${seed.kind} ${seed.url}\n`);
+      continue;
+    }
+    const { data, error } = await supabase
+      .from('content_sources')
+      .insert({
+        kind: seed.kind,
+        url: seed.url,
+        restaurant_id: restaurantId,
+        notes: seed.notes,
+        status: 'active',
+      })
+      .select('id')
+      .single();
+    if (error || !data) fail('content source insert failed');
+    process.stdout.write(`registered ${data.id} ${seed.kind} ${seed.url}\n`);
   }
 }
 
@@ -220,7 +316,7 @@ async function refresh(
     .select('id, kind, url, status, last_attempted_at, last_verified_at, last_content_hash')
     .order('url');
   if (parsed.sourceId) query = query.eq('id', parsed.sourceId);
-  else query = query.eq('status', 'active').eq('kind', 'public_menu');
+  else query = query.eq('status', 'active').in('kind', [...FETCHED_SOURCE_KINDS]);
   const { data, error } = await query;
   if (error) fail('content source load failed');
   const rows = data ?? [];
@@ -251,7 +347,7 @@ async function refresh(
     sources,
     apply: parsed.apply,
     htmlBySourceId: html && parsed.sourceId ? new Map([[parsed.sourceId, html]]) : undefined,
-    load: (source) => loadSourceContext(supabase, source.id),
+    load: (source) => loadSourceContext(supabase, source),
     callModel: async (input) => {
       if (!apiKey) fail('ANTHROPIC_API_KEY is not set. Apply still uses the maintenance budget, not a member budget.');
       return callMenuModel({ ...input, apiKey });
@@ -276,11 +372,37 @@ async function refresh(
   process.stdout.write(`mode=${parsed.apply ? 'apply' : 'dry-run'} model=${MENU_RECIPE_MODEL}\n`);
 }
 
-async function loadSourceContext(supabase: SupabaseClient<Database>, sourceId: string): Promise<{
+async function expireActivities(supabase: SupabaseClient<Database>, apply: boolean): Promise<void> {
+  const now = new Date();
+  const today = chicagoCalendarDate(now);
+  if (!today) fail('Chicago date was not available');
+  const { data, error } = await supabase
+    .from('activities')
+    .select('id, name, status, valid_until')
+    .eq('status', 'active')
+    .not('valid_until', 'is', null);
+  if (error) fail('activity expiry list failed');
+  const due = activitiesToExpire(data ?? [], now);
+  for (const row of due) {
+    process.stdout.write(`${apply ? 'expire' : 'would expire'} ${row.id} ${row.name} valid_until=${row.valid_until}\n`);
+  }
+  if (!apply) {
+    process.stdout.write(`mode=dry-run expire=${due.length} chicago_date=${today}\n`);
+    return;
+  }
+  const { data: count, error: rpcError } = await supabase.rpc('expire_dated_activities', { p_today: today });
+  if (rpcError) fail('activity expiry update failed');
+  process.stdout.write(`mode=apply expired=${count ?? 0} chicago_date=${today}\n`);
+}
+
+async function loadSourceContext(supabase: SupabaseClient<Database>, source: ContentSourceRecord): Promise<{
   facts: DescriptionFact[];
   recipes: RecipeSnapshot[];
   openExceptions: { subjectId: string | null; field: string | null; reason: ExceptionReason }[];
+  activities: ActivitySnapshot[];
+  activityFacts: ActivityFactSnapshot[];
 }> {
+  const sourceId = source.id;
   const { data: factRows, error: factError } = await supabase
     .from('source_facts')
     .select('id, source_id, subject_id, version, status, value, evidence_excerpt, field')
@@ -326,7 +448,66 @@ async function loadSourceContext(supabase: SupabaseClient<Database>, sourceId: s
     if (!isExceptionReason(row.reason)) return [];
     return [{ subjectId: row.subject_id, field: row.field, reason: row.reason }];
   });
-  return { facts, recipes, openExceptions };
+  const activityContext = await loadActivityContext(supabase, source);
+  return { facts, recipes, openExceptions, ...activityContext };
+}
+
+function readActivityFact(row: {
+  id: string;
+  subject_id: string | null;
+  field: string;
+  status: string;
+  value: Json;
+}): ActivityFactSnapshot | null {
+  if (!row.subject_id) return null;
+  if (!row.value || typeof row.value !== 'object' || Array.isArray(row.value)) return null;
+  const value = row.value as Record<string, Json | undefined>;
+  return {
+    id: row.id,
+    subjectId: row.subject_id,
+    field: row.field,
+    status: row.status,
+    text: typeof value.text === 'string' ? value.text : null,
+    price: typeof value.price === 'string' ? value.price : null,
+    hoursNote: typeof value.hours_note === 'string' ? value.hours_note : null,
+  };
+}
+
+async function loadActivityContext(
+  supabase: SupabaseClient<Database>,
+  source: ContentSourceRecord,
+): Promise<{ activities: ActivitySnapshot[]; activityFacts: ActivityFactSnapshot[] }> {
+  if (!isActivitySourceKind(source.kind)) return { activities: [], activityFacts: [] };
+  const columns = 'id, name, source_url, content_source_id, status, hours_note, booking_required, version';
+  const [bySource, byUrl] = await Promise.all([
+    supabase.from('activities').select(columns).eq('content_source_id', source.id),
+    supabase.from('activities').select(columns).eq('source_url', source.url),
+  ]);
+  if (bySource.error || byUrl.error) fail('activity load failed');
+  const merged = new Map<string, ActivitySnapshot>();
+  for (const row of [...(bySource.data ?? []), ...(byUrl.data ?? [])]) {
+    merged.set(row.id, {
+      id: row.id,
+      name: row.name,
+      sourceUrl: row.source_url,
+      contentSourceId: row.content_source_id,
+      status: row.status,
+      hoursNote: row.hours_note,
+      bookingRequired: row.booking_required,
+      version: row.version,
+    });
+  }
+  const { data: factRows, error: factError } = await supabase
+    .from('source_facts')
+    .select('id, subject_id, field, status, value')
+    .eq('source_id', source.id)
+    .eq('subject_type', 'activity');
+  if (factError) fail('activity fact load failed');
+  const activityFacts = (factRows ?? []).flatMap((row) => {
+    const parsed = readActivityFact(row);
+    return parsed ? [parsed] : [];
+  });
+  return { activities: [...merged.values()], activityFacts };
 }
 
 function dbEffects(supabase: SupabaseClient<Database>): RefreshEffects {
@@ -361,6 +542,16 @@ function dbEffects(supabase: SupabaseClient<Database>): RefreshEffects {
         p_supersede_fact_id: row.supersedeFactId ?? undefined,
       });
       if (error) fail('description fact apply failed');
+    },
+    applyActivityFact: async (row) => {
+      const { error } = await supabase.rpc('apply_activity_field_fact', {
+        p_source_id: row.sourceId,
+        p_activity_id: row.activityId,
+        p_field: row.field,
+        p_value: { text: row.text },
+        p_evidence_excerpt: row.evidenceExcerpt,
+      });
+      if (error) fail('activity fact apply failed');
     },
     openException: async (row) => {
       const { error } = await supabase.from('content_exceptions').insert({

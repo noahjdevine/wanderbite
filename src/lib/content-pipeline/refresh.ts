@@ -11,7 +11,9 @@ import { newExceptions, type ExceptionDraft, type OpenExceptionKey } from '@/lib
 import { type DescriptionFact, type DescriptionFactValue } from '@/lib/content-pipeline/facts';
 import { classifyMenuFailure, retryableFailure, type FetchOutcome } from '@/lib/content-pipeline/fetch';
 import { contentHash } from '@/lib/content-pipeline/hash';
-import { activeMenuSource } from '@/lib/content-pipeline/registry';
+import type { ActivityFactDraft, ActivityFactSnapshot, ActivitySnapshot } from '@/lib/content-pipeline/activity-plan';
+import { runActivityRefresh } from '@/lib/content-pipeline/activity-refresh';
+import { activeFetchedSource, isActivitySourceKind } from '@/lib/content-pipeline/registry';
 import { extractMenuDishes } from '@/lib/recipes/menu-extract';
 import { emptyRequestPacer, fetchAllowlistedMenu, type RequestPacer } from '@/lib/recipes/menu-fetch';
 import { buildMenuPrompt, estimateTokens, parseMenuModelText } from '@/lib/recipes/menu-generate';
@@ -76,6 +78,7 @@ export type RefreshEffects = {
   recordAttempt: (attempt: AttemptWrite) => Promise<void>;
   updateSource: (sourceId: string, patch: SourcePatch) => Promise<void>;
   applyDescriptionFact: (row: ApplyDescriptionFact) => Promise<void>;
+  applyActivityFact?: (row: ActivityFactDraft) => Promise<void>;
   openException: (exception: ExceptionDraft) => Promise<void>;
 };
 
@@ -134,6 +137,8 @@ export async function refreshContentSource(args: {
   source: ContentSourceRecord;
   facts: readonly DescriptionFact[];
   recipes: readonly RecipeSnapshot[];
+  activities?: readonly ActivitySnapshot[];
+  activityFacts?: readonly ActivityFactSnapshot[];
   openExceptions?: readonly OpenExceptionKey[];
   apply: boolean;
   now?: () => Date;
@@ -168,7 +173,7 @@ export async function refreshContentSource(args: {
     exceptions: [],
     verified: false,
   });
-  const refused = activeMenuSource(args.source);
+  const refused = activeFetchedSource(args.source);
   if (refused) return empty(refused);
 
   let html = args.html ?? null;
@@ -217,6 +222,37 @@ export async function refreshContentSource(args: {
       contentHash: hash,
     }), { lastAttemptedAt: at, lastVerifiedAt: at }, attempts);
     return { ...empty(null), verified: true };
+  }
+
+  if (isActivitySourceKind(args.source.kind)) {
+    const outcome = await runActivityRefresh({
+      sourceId: args.source.id,
+      sourceUrl: args.source.url,
+      html,
+      hash,
+      at,
+      apply: args.apply,
+      activities: args.activities ?? [],
+      facts: args.activityFacts ?? [],
+      openExceptions: args.openExceptions ?? [],
+      modelCallsUsed: args.modelCallsUsed ?? 0,
+      maxModelCalls: CONTENT_MAX_MODEL_CALLS,
+      callModel: args.callModel,
+      reserveModel: args.reserveModel,
+      effects: args.effects,
+      record: (row, patch) => note(args.apply, args.effects, row, patch, attempts),
+    });
+    return {
+      sourceId: args.source.id,
+      refused: null,
+      attempts,
+      modelCalls: outcome.modelCalls,
+      modelNeeded: outcome.modelNeeded,
+      updates: [],
+      baselines: [],
+      exceptions: outcome.exceptions,
+      verified: outcome.verified,
+    };
   }
 
   const dishes = extractMenuDishes(html);
@@ -405,6 +441,8 @@ export async function refreshContentSources(args: {
     facts: DescriptionFact[];
     recipes: RecipeSnapshot[];
     openExceptions: OpenExceptionKey[];
+    activities?: ActivitySnapshot[];
+    activityFacts?: ActivityFactSnapshot[];
   }>;
   apply: boolean;
   now?: () => Date;
@@ -432,6 +470,8 @@ export async function refreshContentSources(args: {
       source,
       facts: loaded.facts,
       recipes: loaded.recipes,
+      activities: loaded.activities,
+      activityFacts: loaded.activityFacts,
       openExceptions: loaded.openExceptions,
       apply: args.apply,
       now: args.now,
@@ -470,7 +510,7 @@ export function contentRefreshAllowed(
     return {
       ok: false,
       reason:
-        'Refused. Set WANDERBITE_CONTENT_REFRESH_APPLY=1 for a local register, refresh, resolve, or rollback. Hosted writes need Noah\'s OK.',
+        'Refused. Set WANDERBITE_CONTENT_REFRESH_APPLY=1 for a local register, refresh, resolve, rollback, or expire. Hosted writes need Noah\'s OK.',
     };
   }
   return { ok: true };
@@ -480,7 +520,7 @@ export type ContentRefreshArgs =
   | { help: true }
   | {
       help: false;
-      command: 'sources' | 'register' | 'refresh' | 'exceptions' | 'resolve' | 'rollback';
+      command: 'sources' | 'register' | 'refresh' | 'exceptions' | 'resolve' | 'rollback' | 'expire';
       apply: boolean;
       sourceId: string | null;
       resolveId: string | null;
@@ -502,6 +542,7 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
   let exceptions = false;
   let resolve = false;
   let rollback = false;
+  let expire = false;
   let apply = false;
   let sourceId: string | null = null;
   let resolveId: string | null = null;
@@ -534,6 +575,10 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
     }
     if (arg === '--exceptions') {
       exceptions = true;
+      continue;
+    }
+    if (arg === '--expire') {
+      expire = true;
       continue;
     }
     if (arg === '--apply') {
@@ -594,8 +639,8 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
     return { error: `Unknown argument: ${arg}` };
   }
   if (help) return { help: true };
-  const commands = Number(sources) + Number(register) + Number(refresh) + Number(exceptions) + Number(resolve) + Number(rollback);
-  if (commands !== 1) return { error: 'Choose one of --sources, --register, --refresh, --exceptions, --resolve, or --rollback.' };
+  const commands = Number(sources) + Number(register) + Number(refresh) + Number(exceptions) + Number(resolve) + Number(rollback) + Number(expire);
+  if (commands !== 1) return { error: 'Choose one of --sources, --register, --refresh, --exceptions, --resolve, --rollback, or --expire.' };
   if (fromFile && !refresh) return { error: '--from-file is only valid with --refresh' };
   if (fromFile && !sourceId) return { error: '--from-file needs one --source' };
   if (sourceId && !refresh) return { error: '--source is only valid with --refresh' };
@@ -609,7 +654,9 @@ export function parseContentRefreshArgs(argv: readonly string[]): ContentRefresh
           ? 'exceptions'
           : resolve
             ? 'resolve'
-            : 'rollback';
+            : rollback
+              ? 'rollback'
+              : 'expire';
   return {
     help: false,
     command,

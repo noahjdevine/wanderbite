@@ -68,10 +68,13 @@ function activityZip(zip: string | null): string | null {
   return match?.[1] ?? null;
 }
 
+/** Coordinate matches stay within 5 miles of the restaurant. */
+export const ACTIVITY_NEARBY_CAP_MILES = 5;
+
 export function activityBoundMiles(distanceBand: string | null | undefined): number {
   const band = parseDistanceBand(distanceBand);
-  if (!band) return ACTIVITY_DEFAULT_BOUND_MILES;
-  return milesForDistanceBand(band);
+  const miles = band ? milesForDistanceBand(band) : ACTIVITY_DEFAULT_BOUND_MILES;
+  return Math.min(miles, ACTIVITY_NEARBY_CAP_MILES);
 }
 
 function officialUrl(sourceUrl: string | null): string | null {
@@ -137,10 +140,11 @@ function toSuggestion(
 
 /**
  * Up to two activities for one restaurant.
- * Coordinates are used only when both sides have them, and only against the
- * member's saved distance band (or 15 miles when that band is missing).
- * Otherwise the match is same ZIP or an adjacent launch ZIP. That path is
- * not a driving time.
+ * Coordinates are used only when both sides have them. The bound is the
+ * member's saved distance band, capped at 5 miles from the restaurant.
+ * A missing band uses min(15, 5), which is 5. Otherwise the match is same
+ * ZIP or an adjacent launch ZIP. That path is not a driving time and is
+ * not capped by the 5-mile coordinate rule.
  * Unknown hours stay in the result with a check-hours line. A missing
  * official URL or a stale last_verified_at drops the row.
  */

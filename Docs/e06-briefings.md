@@ -8,7 +8,7 @@ This slice shows a short sourced "First visit" block on a revealed restaurant ch
 
 `restaurant_briefing_facts` has one row per restaurant and field. `body` is the fact text (1–400 characters). `source_url` is https only. `last_verified_at` is required. `status` is `active` or `paused`, and the default is `paused`. Client roles can select active rows and cannot insert, update, or delete. `service_role` writes. `is_sample` marks local fixtures. The UI shows "Sample" only when that column is true.
 
-`content_sources` is unchanged. This slice does not register venue pages there.
+`content_sources` is unchanged by the briefing page. E06-B1 can register a `venue_page` separately. This slice does not write `restaurant_briefing_facts` from that refresh.
 
 ## Sample data
 
