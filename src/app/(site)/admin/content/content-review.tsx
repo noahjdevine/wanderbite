@@ -286,6 +286,12 @@ function ExceptionCard({
         </p>
         {row.subjectLabel === 'Recipe' ? <p>{row.recipeLabel}</p> : <p>Checked {row.checkedLabel}</p>}
         {row.field ? <p>Field {row.field}</p> : null}
+        {row.changeSummary ? (
+          <div>
+            <p className="font-medium">Change summary</p>
+            <PlainText text={row.changeSummary} testId={`change-summary-${row.id}`} />
+          </div>
+        ) : null}
         <div>
           <p className="font-medium">Before</p>
           <PlainText text={row.beforeText} testId={`before-${row.id}`} />

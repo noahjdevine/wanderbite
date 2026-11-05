@@ -1,4 +1,4 @@
-import { briefingTextBlocked } from '@/lib/content-pipeline/briefing-plan';
+import { briefingTextBlocked, readStoredChangeSummary } from '@/lib/content-pipeline/briefing-plan';
 import { normalizeOperatorText } from '@/lib/content-pipeline/activity-review';
 import { isBriefingField } from '@/lib/briefings/types';
 import type { Json } from '@/types/database.types';
@@ -23,6 +23,7 @@ export type BriefingDraftSnapshot = {
   text: string;
   before: string | null;
   evidenceExcerpt: string;
+  changeSummary: string | null;
 };
 
 const DRAFT_STATUSES = new Set(['current', 'superseded', 'pending_review', 'reviewed', 'rejected']);
@@ -52,6 +53,7 @@ export function readBriefingDraft(row: {
     text,
     before,
     evidenceExcerpt: row.evidence_excerpt,
+    changeSummary: readStoredChangeSummary(row.value),
   };
 }
 

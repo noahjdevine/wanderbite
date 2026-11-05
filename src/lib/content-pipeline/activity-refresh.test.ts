@@ -217,6 +217,8 @@ describe('venue and event refresh', () => {
     expect(state.facts).toEqual([
       expect.objectContaining({ activityId: ACTIVITY_ID, field: 'summary', text: 'A fountain sits on the sample square.' }),
     ]);
+    expect(state.facts[0]?.changeSummary.length).toBeGreaterThan(0);
+    expect(state.facts[0]?.changeSummary).not.toMatch(/partnership|discount|credit|offer/i);
     expect(state.activity.bookingRequired).toBe(false);
 
     const blocked: Memory = { attempts: [], patches: [], exceptions: [], facts: [], activity: activity({ hoursNote: null }) };
@@ -239,6 +241,60 @@ describe('venue and event refresh', () => {
     expect(blocked.facts).toEqual([]);
     expect(blocked.exceptions.some((row) => row.reason === 'sensitive' && row.subjectType === 'activity')).toBe(true);
     expect(activityClaimForbidden('a partnership')).toBe(true);
+  });
+
+  it('keeps one grounded summary line and skips a duplicate pending draft', async () => {
+    const grounded: Memory = { attempts: [], patches: [], exceptions: [], facts: [], activity: activity({ hoursNote: null }) };
+    const withSummary = await refreshContentSource({
+      source: source({ lastContentHash: 'c'.repeat(64) }),
+      facts: [],
+      recipes: [],
+      activities: [grounded.activity],
+      apply: true,
+      html: QUIET,
+      fetchImpl: fetchThatThrows(),
+      callModel: async () => ({
+        text: '{"summary":"A fountain sits on the sample square.","change_summary":"A fountain sits on the sample square."}',
+        usage: { input: 4, output: 4 },
+      }),
+      reserveModel: async () => ({ ok: true, settle: async () => undefined, release: async () => undefined }),
+      effects: effects(grounded),
+    });
+    expect(withSummary.modelCalls).toBe(1);
+    expect(grounded.facts[0]?.changeSummary).toBe('A fountain sits on the sample square.');
+
+    const duplicate: Memory = { attempts: [], patches: [], exceptions: [], facts: [], activity: activity({ hoursNote: null }) };
+    let models = 0;
+    const skipped = await refreshContentSource({
+      source: source({ lastContentHash: 'd'.repeat(64) }),
+      facts: [],
+      recipes: [],
+      activities: [duplicate.activity],
+      activityFacts: [{
+        id: '44444444-4444-4444-8444-444444444444',
+        subjectId: ACTIVITY_ID,
+        field: 'summary',
+        status: 'pending_review',
+        text: 'A fountain   sits on the sample square.',
+        price: null,
+        hoursNote: null,
+      }],
+      apply: true,
+      html: QUIET,
+      fetchImpl: fetchThatThrows(),
+      callModel: async () => {
+        models += 1;
+        return { text: '{"summary":"A fountain sits on the sample square."}', usage: { input: 2, output: 2 } };
+      },
+      reserveModel: async () => ({ ok: true, settle: async () => undefined, release: async () => undefined }),
+      effects: effects(duplicate),
+    });
+    expect(models).toBe(1);
+    expect(skipped.modelCalls).toBe(1);
+    expect(duplicate.facts).toEqual([]);
+    expect(skipped.verified).toBe(true);
+    expect(duplicate.patches[0]?.lastVerifiedAt).toEqual(expect.any(String));
+    expect(duplicate.activity.version).toBe(1);
   });
 
   it('does not invent an activity when the page has no linked row', async () => {

@@ -223,6 +223,8 @@ export type SupportedFact = {
   sourceUrl: string;
   /** Page passage the reviewer can compare with the fact. Not stored. */
   supportPassage: string;
+  /** Optional model sentence. Grounding happens when a draft is built. */
+  changeSummary?: string;
 };
 
 export type FetchedPage = {
@@ -1007,7 +1009,11 @@ export function filterSupportedFacts(args: {
       continue;
     }
     seen.add(field);
-    kept.push({ field, text: body, sourceUrl, supportPassage });
+    const rawSummary = record.change_summary;
+    const changeSummary = typeof rawSummary === 'string' && rawSummary.trim() ? rawSummary.trim() : undefined;
+    kept.push(changeSummary
+      ? { field, text: body, sourceUrl, supportPassage, changeSummary }
+      : { field, text: body, sourceUrl, supportPassage });
   }
   kept.sort((a, b) => BRIEFING_FIELDS.indexOf(a.field) - BRIEFING_FIELDS.indexOf(b.field));
   return { kept, dropped };
@@ -1023,6 +1029,16 @@ export function briefingSystemPrompt(): string {
     'Do not invent, guess, or use outside knowledge.',
     'Omit a field when the pages do not support it. An empty facts array is valid.',
     'Do not include prices, offers, discounts, credits, or bookings.',
+  ].join(' ');
+}
+
+/** Same extraction as briefingSystemPrompt, plus an optional grounded change summary. Maintenance only. */
+export function briefingMaintenanceSystemPrompt(): string {
+  return [
+    briefingSystemPrompt(),
+    'Each fact may include "change_summary": one sentence of at most 160 characters.',
+    'change_summary must be supported by the supplied page text. Omit it when the page does not support it.',
+    'Do not add a second object. One facts array is the whole response.',
   ].join(' ');
 }
 

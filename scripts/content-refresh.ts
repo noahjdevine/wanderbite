@@ -4,11 +4,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 import { activitiesToExpire } from '../src/lib/activities/expire';
 import { chicagoCalendarDate } from '../src/lib/activities/match';
-import type { ActivityFactSnapshot, ActivitySnapshot } from '../src/lib/content-pipeline/activity-plan';
+import { activityFactValue, type ActivityFactSnapshot, type ActivitySnapshot } from '../src/lib/content-pipeline/activity-plan';
 import { isExceptionReason } from '../src/lib/content-pipeline/exceptions';
 import { formatContentInstant, readDescriptionFact } from '../src/lib/content-pipeline/facts';
 import { restaurantPageSeedsFromWebsites } from '../src/lib/content-pipeline/briefing-register';
-import { briefingValue } from '../src/lib/content-pipeline/briefing-plan';
+import { briefingValue, readOpenPendingDraft, type OpenPendingDraft } from '../src/lib/content-pipeline/briefing-plan';
 import { isBriefingField } from '../src/lib/briefings/types';
 import {
   FETCHED_SOURCE_KINDS,
@@ -67,8 +67,11 @@ not call the model. Model calls on --apply reserve G13-A maintenance (account ti
 ops, no member). One call per source. A restaurant page is read from the fetched
 text only. Conflicts, removed evidence, sensitive claims, and injection text open
 content_exceptions and are not published. A briefing draft stays pending_review
-and does not set restaurant_briefing_facts to active. An activity summary is a
-pending draft for an activity that already exists. This command does not insert
+and does not set restaurant_briefing_facts to active. That draft includes a short
+change_summary. An open pending_review row with the same subject, field, and
+normalized text is not inserted again. An activity summary is a
+pending draft for an activity that already exists, with the same summary and
+dedup. This command does not insert
 an activity, partnership, booking, discount, credit, or offer.
 --expire lists active activities whose valid_until is before today's America/Chicago
 date. It does not write unless --apply is set, and it does not delete rows.
@@ -567,17 +570,28 @@ async function loadSourceContext(
 async function loadBriefingContext(
   supabase: SupabaseClient<Database>,
   restaurantId: string | null,
-): Promise<{ briefings: { field: string; body: string; status: string }[]; restaurantName: string }> {
-  if (!restaurantId) return { briefings: [], restaurantName: '' };
-  const [facts, restaurant] = await Promise.all([
+): Promise<{ briefings: { field: string; body: string; status: string }[]; restaurantName: string; pendingDrafts: OpenPendingDraft[] }> {
+  if (!restaurantId) return { briefings: [], restaurantName: '', pendingDrafts: [] };
+  const [facts, restaurant, pending] = await Promise.all([
     supabase.from('restaurant_briefing_facts').select('field, body, status').eq('restaurant_id', restaurantId),
     supabase.from('restaurants').select('name').eq('id', restaurantId).maybeSingle(),
+    supabase
+      .from('source_facts')
+      .select('subject_type, subject_id, field, status, value')
+      .eq('subject_type', 'briefing')
+      .eq('subject_id', restaurantId)
+      .eq('status', 'pending_review'),
   ]);
   if (facts.error) fail('briefing fact load failed');
   if (restaurant.error) fail('restaurant load failed');
+  if (pending.error) fail('briefing draft load failed');
   return {
     briefings: (facts.data ?? []).flatMap((row) => (isBriefingField(row.field) ? [row] : [])),
     restaurantName: restaurant.data?.name ?? '',
+    pendingDrafts: (pending.data ?? []).flatMap((row) => {
+      const parsed = readOpenPendingDraft(row);
+      return parsed ? [parsed] : [];
+    }),
   };
 }
 
@@ -605,8 +619,8 @@ function readActivityFact(row: {
 async function loadActivityContext(
   supabase: SupabaseClient<Database>,
   source: ContentSourceRecord,
-): Promise<{ activities: ActivitySnapshot[]; activityFacts: ActivityFactSnapshot[] }> {
-  if (!isActivitySourceKind(source.kind)) return { activities: [], activityFacts: [] };
+): Promise<{ activities: ActivitySnapshot[]; activityFacts: ActivityFactSnapshot[]; pendingDrafts: OpenPendingDraft[] }> {
+  if (!isActivitySourceKind(source.kind)) return { activities: [], activityFacts: [], pendingDrafts: [] };
   const columns = 'id, name, source_url, content_source_id, status, hours_note, booking_required, version';
   const [bySource, byUrl] = await Promise.all([
     supabase.from('activities').select(columns).eq('content_source_id', source.id),
@@ -636,7 +650,23 @@ async function loadActivityContext(
     const parsed = readActivityFact(row);
     return parsed ? [parsed] : [];
   });
-  return { activities: [...merged.values()], activityFacts };
+  const activityIds = [...merged.keys()];
+  let pendingDrafts: OpenPendingDraft[] = [];
+  if (activityIds.length > 0) {
+    const { data: pendingRows, error: pendingError } = await supabase
+      .from('source_facts')
+      .select('subject_type, subject_id, field, status, value')
+      .eq('subject_type', 'activity')
+      .eq('field', 'summary')
+      .eq('status', 'pending_review')
+      .in('subject_id', activityIds);
+    if (pendingError) fail('activity draft load failed');
+    pendingDrafts = (pendingRows ?? []).flatMap((row) => {
+      const parsed = readOpenPendingDraft(row);
+      return parsed ? [parsed] : [];
+    });
+  }
+  return { activities: [...merged.values()], activityFacts, pendingDrafts };
 }
 
 function dbEffects(supabase: SupabaseClient<Database>): RefreshEffects {
@@ -677,7 +707,7 @@ function dbEffects(supabase: SupabaseClient<Database>): RefreshEffects {
         p_source_id: row.sourceId,
         p_activity_id: row.activityId,
         p_field: row.field,
-        p_value: { text: row.text },
+        p_value: activityFactValue(row),
         p_evidence_excerpt: row.evidenceExcerpt,
       });
       if (error) fail('activity fact apply failed');

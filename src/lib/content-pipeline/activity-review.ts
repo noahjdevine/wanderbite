@@ -1,4 +1,5 @@
 import { activityClaimForbidden, activitySummaryPublishable } from '@/lib/content-pipeline/activity-plan';
+import { readStoredChangeSummary } from '@/lib/content-pipeline/briefing-plan';
 import {
   dietaryClaim,
   extractPrice,
@@ -44,6 +45,7 @@ export type ActivitySummarySnapshot = {
   status: string;
   text: string;
   evidenceExcerpt: string;
+  changeSummary?: string | null;
 };
 
 const SUMMARY_STATUSES = new Set(['current', 'superseded', 'pending_review', 'reviewed', 'rejected']);
@@ -83,6 +85,7 @@ export function readActivitySummary(row: {
     status: row.status,
     text,
     evidenceExcerpt: row.evidence_excerpt,
+    changeSummary: readStoredChangeSummary(row.value),
   };
 }
 

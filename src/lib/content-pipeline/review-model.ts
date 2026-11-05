@@ -16,6 +16,8 @@ export type ExceptionView = {
   beforeText: string;
   afterText: string;
   evidenceText: string;
+  /** Operator-only before→after line. Empty when this row is not a maintenance draft. */
+  changeSummary?: string;
   attemptedLabel: string;
   verifiedLabel: string;
   recipeLabel: string;

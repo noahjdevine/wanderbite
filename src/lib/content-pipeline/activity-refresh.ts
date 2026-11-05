@@ -2,12 +2,17 @@ import {
   activityPageText,
   activitySummaryPublishable,
   buildActivityPrompt,
-  parseActivitySummary,
+  parseActivityModelDraft,
   planActivityPage,
   type ActivityFactDraft,
   type ActivityFactSnapshot,
   type ActivitySnapshot,
 } from '@/lib/content-pipeline/activity-plan';
+import {
+  pendingDraftIsDuplicate,
+  resolveChangeSummary,
+  type OpenPendingDraft,
+} from '@/lib/content-pipeline/briefing-plan';
 import { newExceptions, type ExceptionDraft, type OpenExceptionKey } from '@/lib/content-pipeline/exceptions';
 import { evidenceExcerpt } from '@/lib/content-pipeline/facts';
 import type { AttemptWrite, MaintenanceReservation, SourcePatch } from '@/lib/content-pipeline/refresh';
@@ -59,6 +64,7 @@ export async function runActivityRefresh(args: {
   apply: boolean;
   activities: readonly ActivitySnapshot[];
   facts: readonly ActivityFactSnapshot[];
+  pendingDrafts?: readonly OpenPendingDraft[];
   openExceptions: readonly OpenExceptionKey[];
   modelCallsUsed?: number;
   maxModelCalls: number;
@@ -110,6 +116,7 @@ export async function runActivityRefresh(args: {
 
   let modelCalls = 0;
   let summary: string | null = null;
+  let modelChangeSummary: string | null = null;
   let modelFailed = false;
   if (plan.needsDraft) {
     const prompt = buildActivityPrompt(text);
@@ -136,7 +143,9 @@ export async function runActivityRefresh(args: {
             if (model.usage) await reservation.settle(model.usage);
             else await reservation.release();
           }
-          summary = parseActivitySummary(model.text);
+          const parsed = parseActivityModelDraft(model.text);
+          summary = parsed?.summary ?? null;
+          modelChangeSummary = parsed?.changeSummary ?? null;
           if (!summary) modelFailed = true;
         } catch {
           if (reservation?.ok) await reservation.release();
@@ -175,13 +184,43 @@ export async function runActivityRefresh(args: {
         evidenceExcerpt: evidenceExcerpt(summary),
       });
     } else {
-      fact = {
-        sourceId: args.sourceId,
-        activityId: plan.activityId,
+      const before = args.facts.find((row) => (
+        row.subjectId === plan.activityId
+        && row.field === 'summary'
+        && row.status === 'current'
+        && row.text
+      ))?.text ?? null;
+      const open = [
+        ...(args.pendingDrafts ?? []),
+        ...args.facts.flatMap((row): OpenPendingDraft[] => (
+          row.status === 'pending_review' && row.field === 'summary' && row.text
+            ? [{ subjectType: 'activity', subjectId: row.subjectId, field: row.field, text: row.text }]
+            : []
+        )),
+      ];
+      const duplicate = pendingDraftIsDuplicate(open, {
+        subjectType: 'activity',
+        subjectId: plan.activityId,
         field: 'summary',
         text: summary,
-        evidenceExcerpt: evidenceExcerpt(text),
-      };
+      });
+      if (!duplicate) {
+        fact = {
+          sourceId: args.sourceId,
+          activityId: plan.activityId,
+          field: 'summary',
+          text: summary,
+          evidenceExcerpt: evidenceExcerpt(text),
+          changeSummary: resolveChangeSummary({
+            field: 'summary',
+            before,
+            after: summary,
+            pageText: text,
+            modelSummary: modelChangeSummary,
+            acceptModel: activitySummaryPublishable,
+          }),
+        };
+      }
     }
   }
 

@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { ActivityFactSnapshot, ActivitySnapshot } from '@/lib/content-pipeline/activity-plan';
-import type { StoredBriefing } from '@/lib/content-pipeline/briefing-plan';
-import { briefingValue } from '@/lib/content-pipeline/briefing-plan';
+import { activityFactValue, type ActivityFactSnapshot, type ActivitySnapshot } from '@/lib/content-pipeline/activity-plan';
+import {
+  briefingValue,
+  readOpenPendingDraft,
+  type OpenPendingDraft,
+  type StoredBriefing,
+} from '@/lib/content-pipeline/briefing-plan';
 import type { RecipeSnapshot } from '@/lib/content-pipeline/change-detect';
 import { isExceptionReason } from '@/lib/content-pipeline/exceptions';
 import { readDescriptionFact } from '@/lib/content-pipeline/facts';
@@ -80,7 +84,7 @@ export function contentRefreshEffects(supabase: Client): RefreshEffects {
         p_source_id: row.sourceId,
         p_activity_id: row.activityId,
         p_field: row.field,
-        p_value: { text: row.text },
+        p_value: activityFactValue(row),
         p_evidence_excerpt: row.evidenceExcerpt,
       });
       if (error) throw new Error('activity fact apply failed');
@@ -194,7 +198,7 @@ export async function loadContentSourceContext(
     return { facts, recipes, openExceptions, activities: [], activityFacts: [], ...briefingContext };
   }
   if (!isActivitySourceKind(sourceRow.kind)) {
-    return { facts, recipes, openExceptions, activities: [], activityFacts: [] };
+    return { facts, recipes, openExceptions, activities: [], activityFacts: [], pendingDrafts: [] };
   }
   const activityContext = await loadScheduledActivityContext(supabase, {
     id: sourceRow.id,
@@ -227,7 +231,7 @@ function readActivityFact(row: {
 async function loadScheduledActivityContext(
   supabase: Client,
   source: { id: string; url: string },
-): Promise<{ activities: ActivitySnapshot[]; activityFacts: ActivityFactSnapshot[] }> {
+): Promise<{ activities: ActivitySnapshot[]; activityFacts: ActivityFactSnapshot[]; pendingDrafts: OpenPendingDraft[] }> {
   const columns = 'id, name, source_url, content_source_id, status, hours_note, booking_required, version';
   const [bySource, byUrl] = await Promise.all([
     supabase.from('activities').select(columns).eq('content_source_id', source.id),
@@ -258,28 +262,55 @@ async function loadScheduledActivityContext(
     const parsed = readActivityFact(row);
     return parsed ? [parsed] : [];
   });
-  return { activities: [...merged.values()], activityFacts };
+  const activityIds = [...merged.keys()];
+  let pendingDrafts: OpenPendingDraft[] = [];
+  if (activityIds.length > 0) {
+    const { data: pendingRows, error: pendingError } = await supabase
+      .from('source_facts')
+      .select('subject_type, subject_id, field, status, value')
+      .eq('subject_type', 'activity')
+      .eq('field', 'summary')
+      .eq('status', 'pending_review')
+      .in('subject_id', activityIds);
+    if (pendingError) throw new Error('activity draft load failed');
+    pendingDrafts = (pendingRows ?? []).flatMap((row) => {
+      const parsed = readOpenPendingDraft(row);
+      return parsed ? [parsed] : [];
+    });
+  }
+  return { activities: [...merged.values()], activityFacts, pendingDrafts };
 }
 
 async function loadScheduledBriefingContext(
   supabase: Client,
   source: { restaurantId: string | null },
-): Promise<{ briefings: StoredBriefing[]; restaurantName: string }> {
-  if (!source.restaurantId) return { briefings: [], restaurantName: '' };
-  const [facts, restaurant] = await Promise.all([
+): Promise<{ briefings: StoredBriefing[]; restaurantName: string; pendingDrafts: OpenPendingDraft[] }> {
+  if (!source.restaurantId) return { briefings: [], restaurantName: '', pendingDrafts: [] };
+  const [facts, restaurant, pending] = await Promise.all([
     supabase
       .from('restaurant_briefing_facts')
       .select('field, body, status')
       .eq('restaurant_id', source.restaurantId),
     supabase.from('restaurants').select('name').eq('id', source.restaurantId).maybeSingle(),
+    supabase
+      .from('source_facts')
+      .select('subject_type, subject_id, field, status, value')
+      .eq('subject_type', 'briefing')
+      .eq('subject_id', source.restaurantId)
+      .eq('status', 'pending_review'),
   ]);
   if (facts.error) throw new Error('briefing fact load failed');
   if (restaurant.error) throw new Error('restaurant load failed');
+  if (pending.error) throw new Error('briefing draft load failed');
   const briefings = (facts.data ?? []).flatMap((row) => {
     if (!isBriefingField(row.field)) return [];
     return [{ field: row.field, body: row.body, status: row.status }];
   });
-  return { briefings, restaurantName: restaurant.data?.name ?? '' };
+  const pendingDrafts = (pending.data ?? []).flatMap((row) => {
+    const parsed = readOpenPendingDraft(row);
+    return parsed ? [parsed] : [];
+  });
+  return { briefings, restaurantName: restaurant.data?.name ?? '', pendingDrafts };
 }
 
 export async function reserveMaintenance(
