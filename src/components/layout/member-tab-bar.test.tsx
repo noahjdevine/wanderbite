@@ -1,8 +1,8 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 
 const session = vi.hoisted(() => ({
   signedIn: false,
@@ -133,6 +133,7 @@ describe('member tab bar layout', () => {
       </SiteLayout>,
     );
     expect(memberNav()).toBeNull();
+    expect(document.querySelector('.wb-member-tabbar-slot')).toBeTruthy();
     expect(document.querySelector('.wb-member-tabbar-pad')).toBeNull();
 
     session.signedIn = true;
@@ -146,6 +147,56 @@ describe('member tab bar layout', () => {
       expect(memberNav()).toBeNull();
       view.unmount();
     }
+  });
+
+  it('keeps a stateful page mounted when the session becomes signed in', () => {
+    pathname = '/roulette';
+    session.signedIn = false;
+    let mounts = 0;
+
+    function StatefulChild() {
+      const [mountId] = useState(() => {
+        mounts += 1;
+        return mounts;
+      });
+      const [draft, setDraft] = useState('start');
+      return (
+        <label>
+          Draft
+          <input
+            aria-label="Draft"
+            data-mounts={mountId}
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+          />
+        </label>
+      );
+    }
+
+    const view = render(
+      <SiteLayout>
+        <StatefulChild />
+      </SiteLayout>,
+    );
+    const slot = document.querySelector('.wb-member-tabbar-slot');
+    expect(slot).toBeTruthy();
+    expect(slot?.className).not.toContain('wb-member-tabbar-pad');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Draft' }), { target: { value: 'tacos' } });
+
+    session.signedIn = true;
+    view.rerender(
+      <SiteLayout>
+        <StatefulChild />
+      </SiteLayout>,
+    );
+
+    const input = screen.getByRole('textbox', { name: 'Draft' });
+    expect(input.getAttribute('data-mounts')).toBe('1');
+    expect(mounts).toBe(1);
+    expect((input as HTMLInputElement).value).toBe('tacos');
+    expect(document.querySelector('.wb-member-tabbar-slot')).toBe(slot);
+    expect(slot?.className).toContain('wb-member-tabbar-pad');
+    expect(memberNav()).toBeTruthy();
   });
 
   it('mounts the same bar on the account layout and stays out of excluded layouts', () => {

@@ -56,21 +56,26 @@ function MemberTabBar() {
 }
 
 /**
- * Wraps site content only while the bar is shown, so signed-out and excluded
- * routes keep the same DOM as before. The bar itself is hidden at the xl
- * breakpoint in CSS.
+ * The content wrapper stays the same element when auth resolves. useSupabaseUser
+ * starts signed out and becomes signed in after getUser(), and swapping the
+ * parent would remount the page and the footer. Padding is a class on that
+ * stable div. The bar is a sibling and is hidden at the xl breakpoint in CSS.
  */
 export function MemberTabBarSlot({ children }: { children: ReactNode }) {
   const { signedIn } = useSupabaseUser();
   const pathname = usePathname();
-  if (!shouldShowMemberTabBar(pathname, signedIn)) return children;
+  const visible = shouldShowMemberTabBar(pathname, signedIn);
 
   return (
     <>
-      <div className="wb-member-tabbar-pad">{children}</div>
-      <Suspense fallback={null}>
-        <MemberTabBar />
-      </Suspense>
+      <div className={visible ? 'wb-member-tabbar-slot wb-member-tabbar-pad' : 'wb-member-tabbar-slot'}>
+        {children}
+      </div>
+      {visible ? (
+        <Suspense fallback={null}>
+          <MemberTabBar />
+        </Suspense>
+      ) : null}
     </>
   );
 }

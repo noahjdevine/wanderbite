@@ -431,7 +431,7 @@
   right: 16px;
   bottom: calc(18px + env(safe-area-inset-bottom, 0px));
 }
-.wb-member-tabbar-pad {
+.wb-member-tabbar-slot {
   display: contents;
 }
 @media (width >= 80rem) {
@@ -452,6 +452,7 @@
   .wb-tabbar,
   .wb-tabbar > a,
   .wb-member-tabbar,
+  .wb-member-tabbar-slot,
   .wb-member-tabbar-pad {
     animation: none;
     transition: none;
