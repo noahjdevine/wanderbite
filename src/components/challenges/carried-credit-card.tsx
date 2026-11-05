@@ -35,6 +35,7 @@ import {
 } from '@/lib/challenges/challenge-deadline';
 import type { CarriedCreditView } from '@/lib/challenges/carried-credits';
 import type { ActivitySuggestion } from '@/lib/activities/types';
+import type { BriefingFact } from '@/lib/briefings/types';
 import type { RecipeCardModel } from '@/lib/recipes/display';
 
 type CarriedCreditCardProps = {
@@ -49,6 +50,7 @@ type CarriedCreditCardProps = {
   recipes?: RecipeCardModel[];
   recipeExclusionLine?: string | null;
   activities?: ActivitySuggestion[];
+  briefings?: BriefingFact[];
 };
 
 function offerLine(candidate: CarriedAssignCandidate): string {
@@ -69,6 +71,7 @@ export function CarriedCreditCard({
   recipes = [],
   recipeExclusionLine = null,
   activities = [],
+  briefings = [],
 }: CarriedCreditCardProps) {
   const router = useRouter();
   const [nowMs] = useState(() => Date.now());
@@ -151,6 +154,7 @@ export function CarriedCreditCard({
           recipes={recipes}
           recipeExclusionLine={recipeExclusionLine}
           activities={activities}
+          briefings={briefings}
         />
       </div>
     );

@@ -1,6 +1,6 @@
 # E06-A1 optional nearby activities
 
-This slice adds optional activity suggestions under a member's restaurant challenge. It does not brief a first visit (E06-A2) and it does not refresh activities (E06-B). It does not create bookings, partner accounts, benefits, discounts, credits, XP, badges, or drawing entries. Hiding or changing a suggestion does not swap the restaurant and does not change a challenge item, redemption, offer, or credit.
+This slice adds optional activity suggestions under a member's restaurant challenge. First-visit briefing is E06-A2 and stays behind `E06_BRIEFINGS_ENABLED`. This slice does not refresh activities (E06-B). It does not create bookings, partner accounts, benefits, discounts, credits, XP, badges, or drawing entries. Hiding or changing a suggestion does not swap the restaurant and does not change a challenge item, redemption, offer, or credit.
 
 `E06_ACTIVITIES_ENABLED` is server-only. Only the exact string `true` turns the block on. Unset, the challenges page does not query `activities` and the card matches `main`. Unsetting the flag hides the block without a code change.
 

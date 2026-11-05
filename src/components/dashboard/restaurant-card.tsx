@@ -38,7 +38,9 @@ import {
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
+import { FirstVisitBriefing } from '@/components/briefings/first-visit';
 import type { ActivitySuggestion } from '@/lib/activities/types';
+import type { BriefingFact } from '@/lib/briefings/types';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
 import { RECIPES_SECTION_HEADING, type RecipeCardModel } from '@/lib/recipes/display';
 import { StatusTrack } from '@/components/wb/status-track';
@@ -71,6 +73,8 @@ export type RestaurantCardProps = {
   recipeExclusionLine?: string | null;
   /** Empty when E06_ACTIVITIES_ENABLED is not exactly true, or nothing qualifies. */
   activities?: ActivitySuggestion[];
+  /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
+  briefings?: BriefingFact[];
 };
 
 export function RestaurantCard({
@@ -90,6 +94,7 @@ export function RestaurantCard({
   recipes = [],
   recipeExclusionLine = null,
   activities = [],
+  briefings = [],
 }: RestaurantCardProps) {
   const [nowMs] = useState(() => Date.now());
   const isExpired = challengeCardExpired({
@@ -188,6 +193,7 @@ export function RestaurantCard({
         {revealReason ? <p className="text-sm text-foreground">{revealReason}</p> : null}
         {item.visitStatus ? <StatusTrack status={item.visitStatus} /> : null}
         <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
+        <FirstVisitBriefing headingId={`briefing-${item.restaurant.id}`} facts={briefings} />
         {item.socialProof &&
           item.socialProof.totalRatings >= 3 &&
           item.socialProof.avgRating != null && (

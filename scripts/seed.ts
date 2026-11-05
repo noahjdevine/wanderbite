@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { DEMO_RECIPE_SEEDS, DEMO_RECIPE_SOURCE_NAME } from './fixtures/e05-demo-recipes';
 import { SAMPLE_ACTIVITY_SEEDS } from './fixtures/e06-sample-activities';
+import { SAMPLE_BRIEFING_SEEDS } from './fixtures/e06-sample-briefings';
 import { chicagoCalendarDate, shiftCalendarDate } from '../src/lib/activities/match';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -171,6 +172,27 @@ async function seed() {
       version: 1,
     });
     if (activityError) throw new Error(`activities: ${activity.name}: ${activityError.message}`);
+  }
+
+  const briefingVerifiedAt = new Date().toISOString();
+  for (const briefing of SAMPLE_BRIEFING_SEEDS) {
+    const restaurantId = venueIds.get(briefing.restaurantName);
+    if (!restaurantId) {
+      throw new Error(`sample briefing restaurant missing: ${briefing.restaurantName}`);
+    }
+    const { error: briefingError } = await supabase.from('restaurant_briefing_facts').insert({
+      restaurant_id: restaurantId,
+      field: briefing.field,
+      body: briefing.body,
+      source_url: briefing.sourceUrl,
+      last_verified_at: briefingVerifiedAt,
+      status: briefing.status,
+      is_sample: true,
+      version: 1,
+    });
+    if (briefingError) {
+      throw new Error(`restaurant_briefing_facts: ${briefing.field}: ${briefingError.message}`);
+    }
   }
 
   console.log('✅ Seed Complete! Database is populated.');

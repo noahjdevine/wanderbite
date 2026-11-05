@@ -1595,6 +1595,57 @@ export type Database = {
         }
         Relationships: []
       }
+      // Hand-edited for E06-A2. npm run types:db is a separate approved PR and was not run.
+      restaurant_briefing_facts: {
+        Row: {
+          body: string
+          created_at: string
+          field: string
+          id: string
+          is_sample: boolean
+          last_verified_at: string
+          restaurant_id: string
+          source_url: string
+          status: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          field: string
+          id?: string
+          is_sample?: boolean
+          last_verified_at: string
+          restaurant_id: string
+          source_url: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          field?: string
+          id?: string
+          is_sample?: boolean
+          last_verified_at?: string
+          restaurant_id?: string
+          source_url?: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_briefing_facts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       restaurant_offers: {
         Row: {
           active: boolean | null
