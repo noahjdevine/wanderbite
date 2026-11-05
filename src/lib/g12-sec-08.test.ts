@@ -133,9 +133,100 @@ describe('G12-A report-only document CSP', () => {
   it('is wired from next.config without an enforcing document CSP key', () => {
     const cfg = source('next.config.ts');
     expect(cfg).toMatch(/buildSecurityHeaderSources/);
+    expect(cfg).toMatch(/mapTilesUrl:\s*process\.env\.NEXT_PUBLIC_MAP_TILES_URL/);
     expect(cfg).toMatch(/contentSecurityPolicy:\s*"default-src 'self'; script-src 'none'; sandbox;"/);
     expect(cfg).not.toMatch(/key:\s*["']Content-Security-Policy["']/);
     expect(source('src/lib/ratelimit.ts')).toMatch(/wanderbite:csp-report-ip/);
+  });
+});
+
+const TILE_CSP_ENV = {
+  nodeEnv: 'production',
+  supabaseUrl: 'https://yiajoycgiyxjvznndjge.supabase.co',
+  posthogHost: 'https://us.i.posthog.com',
+  sentryDsn: 'https://abc@o123.ingest.us.sentry.io/1',
+} as const;
+
+function cspDirective(policy: string, name: string): string {
+  const part = policy.split('; ').find((directive) => directive.startsWith(`${name} `));
+  if (!part) throw new Error(`missing ${name}`);
+  return part;
+}
+
+describe('G12-A map tile origin', () => {
+  const unset = buildReportOnlyDocumentCsp(TILE_CSP_ENV);
+  const unchanged = [
+    'default-src',
+    'base-uri',
+    'object-src',
+    'frame-src',
+    'frame-ancestors',
+    'form-action',
+    'script-src',
+    'style-src',
+    'font-src',
+    'media-src',
+    'worker-src',
+    'report-uri',
+  ] as const;
+
+  function expectOtherDirectivesUnchanged(policy: string) {
+    for (const name of unchanged) {
+      expect(cspDirective(policy, name)).toBe(cspDirective(unset, name));
+    }
+  }
+
+  it('adds only the OpenStreetMap origin when the tile URL is unset, blank, or invalid', () => {
+    expect(cspDirective(unset, 'img-src')).toBe(
+      "img-src 'self' data: blob: https://yiajoycgiyxjvznndjge.supabase.co https://images.unsplash.com https://tile.openstreetmap.org",
+    );
+    expect(cspDirective(unset, 'connect-src')).toBe(
+      "connect-src 'self' https://yiajoycgiyxjvznndjge.supabase.co wss://yiajoycgiyxjvznndjge.supabase.co https://us.i.posthog.com https://us-assets.i.posthog.com https://o123.ingest.us.sentry.io https://tile.openstreetmap.org",
+    );
+    expect(buildReportOnlyDocumentCsp({ ...TILE_CSP_ENV, mapTilesUrl: '   ' })).toBe(unset);
+    expect(
+      buildReportOnlyDocumentCsp({
+        ...TILE_CSP_ENV,
+        mapTilesUrl: 'https://example.test/tiles.png',
+      }),
+    ).toBe(unset);
+    expect(
+      buildReportOnlyDocumentCsp({
+        ...TILE_CSP_ENV,
+        mapTilesUrl: 'javascript:alert(1)/{z}/{x}/{y}',
+      }),
+    ).toBe(unset);
+  });
+
+  it('allowlists a MapTiler-style origin without the key, placeholders, or OSM', () => {
+    const policy = buildReportOnlyDocumentCsp({
+      ...TILE_CSP_ENV,
+      mapTilesUrl: 'https://api.maptiler.com/maps/streets/256/{z}/{x}/{y}.png?key=abc',
+    });
+    expect(cspDirective(policy, 'img-src')).toContain('https://api.maptiler.com');
+    expect(cspDirective(policy, 'connect-src')).toContain('https://api.maptiler.com');
+    expect(policy).not.toContain('key=abc');
+    expect(policy).not.toContain('{z}');
+    expect(policy).not.toContain('tile.openstreetmap.org');
+    expectOtherDirectivesUnchanged(policy);
+    const headers = effectiveHeadersForPath('/', buildSecurityHeaderSources(TILE_CSP_ENV));
+    expect(headers[ENFORCING_CSP_HEADER]).toBeUndefined();
+    expect(hasEnforcingDocumentCsp(headers)).toBe(false);
+    expect(headers['X-Frame-Options']).toBe(X_FRAME_OPTIONS_VALUE);
+    expect(headers['Permissions-Policy']).toBe(BASE_PERMISSIONS_POLICY);
+  });
+
+  it('keeps an http localhost port and drops the path', () => {
+    const policy = buildReportOnlyDocumentCsp({
+      ...TILE_CSP_ENV,
+      mapTilesUrl: 'http://localhost:8080/tiles/{z}/{x}/{y}.png',
+    });
+    expect(cspDirective(policy, 'img-src')).toContain('http://localhost:8080');
+    expect(cspDirective(policy, 'connect-src')).toContain('http://localhost:8080');
+    expect(policy).not.toContain('/tiles/');
+    expect(policy).not.toContain('{y}');
+    expect(policy).not.toContain('tile.openstreetmap.org');
+    expectOtherDirectivesUnchanged(policy);
   });
 });
 

@@ -4,6 +4,8 @@
  * does not protect against clickjacking.
  */
 
+import { mapTilesCspOrigin } from './passport/map-style';
+
 export const CSP_REPORT_PATH = '/api/csp-report';
 export const ENFORCING_CSP_HEADER = 'Content-Security-Policy';
 export const REPORT_ONLY_CSP_HEADER = 'Content-Security-Policy-Report-Only';
@@ -31,12 +33,18 @@ export type SecurityHeaderEnv = {
   supabaseUrl?: string | undefined;
   posthogHost?: string | undefined;
   sentryDsn?: string | undefined;
+  /** XYZ template. Only its origin is allowlisted. See mapTilesCspOrigin. */
+  mapTilesUrl?: string | undefined;
 };
 
+/**
+ * Static image hosts. The map tile origin is not listed here: mapTilesCspOrigin
+ * adds the configured origin, or https://tile.openstreetmap.org when the URL is
+ * unset, blank, or invalid. A custom tile host therefore does not also keep OSM.
+ */
 const IMAGE_HOSTS = [
   'https://images.unsplash.com',
   'https://yiajoycgiyxjvznndjge.supabase.co',
-  'https://tile.openstreetmap.org',
 ] as const;
 
 const STRIPE_FORM_HOSTS = [
@@ -88,6 +96,7 @@ function sentryIngestOrigin(sentryDsn: string | undefined): string | null {
 
 export function buildReportOnlyDocumentCsp(env: SecurityHeaderEnv = {}): string {
   const supabaseOrigin = originFromUrl(env.supabaseUrl);
+  const tileOrigin = mapTilesCspOrigin(env.mapTilesUrl);
   const connect = uniqueOrigins([
     "'self'",
     supabaseOrigin,
@@ -97,9 +106,17 @@ export function buildReportOnlyDocumentCsp(env: SecurityHeaderEnv = {}): string 
     ...(env.nodeEnv === 'development'
       ? ['ws://localhost:3000', 'ws://127.0.0.1:3000']
       : []),
+    tileOrigin,
   ]);
 
-  const img = uniqueOrigins(["'self'", 'data:', 'blob:', supabaseOrigin, ...IMAGE_HOSTS]);
+  const img = uniqueOrigins([
+    "'self'",
+    'data:',
+    'blob:',
+    supabaseOrigin,
+    ...IMAGE_HOSTS,
+    tileOrigin,
+  ]);
 
   const directives = [
     "default-src 'self'",
