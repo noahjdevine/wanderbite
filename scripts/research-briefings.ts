@@ -165,7 +165,7 @@ async function main(): Promise<void> {
         outboundDisabled: isGooglePlacesOutboundDisabled(),
         purpose: 'facts',
         normalizeUrl: normalizeHttpsUrl,
-        acceptWebsite: (url) => isStorableOfficialWebsite(url, restaurant.name),
+        acceptWebsite: (url) => isStorableOfficialWebsite(url, restaurant.name, restaurant.address),
       }),
   });
   let inserted = 0;

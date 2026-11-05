@@ -1,6 +1,7 @@
 import { isGooglePlacesOutboundDisabled } from '@/lib/restaurant-image';
 import { lookupBriefingPlace } from '@/lib/briefings/places';
 import {
+  canonicalOfficialWebsite,
   discoverBriefingUrls,
   estimateMicrodollars,
   isStorableOfficialWebsite,
@@ -27,7 +28,9 @@ export type OfficialWebsiteProposal = {
 /**
  * Prefer Places websiteUri when the key is set. Otherwise, or when Places
  * has no storable https site, use the briefing web search and the same
- * host rules. Listing hosts are not proposed.
+ * host rules. Listing hosts are not proposed. A city token is not a name
+ * match, a rejected host does not end the search, and a content path is stored
+ * as the site root unless it is a chain location page.
  */
 export async function proposeRestaurantWebsite(args: {
   restaurant: BriefingRestaurant;
@@ -59,14 +62,15 @@ export async function proposeRestaurantWebsite(args: {
       outboundDisabled: disabled,
       purpose: 'website',
       normalizeUrl: normalizeHttpsUrl,
-      acceptWebsite: (url) => isStorableOfficialWebsite(url, args.restaurant.name),
+      acceptWebsite: (url) =>
+        isStorableOfficialWebsite(url, args.restaurant.name, args.restaurant.address),
     });
     units = mergeModelUsage(units, places.units);
     notes.push(...places.notes);
     placeId = places.placeId;
     placeIdToStore = places.placeIdToStore;
     if (places.officialWebsite) {
-      proposed = places.officialWebsite;
+      proposed = canonicalOfficialWebsite(places.officialWebsite, args.restaurant.address);
       kind = 'places';
     }
   }
@@ -81,7 +85,7 @@ export async function proposeRestaurantWebsite(args: {
     if (search.failure) notes.push(search.failure);
     else {
       notes.push(...search.warnings);
-      const picked = proposeOfficialFromUrls(search.urls, args.restaurant.name);
+      const picked = proposeOfficialFromUrls(search.urls, args.restaurant.name, args.restaurant.address);
       if (picked.url) {
         proposed = picked.url;
         kind = picked.kind;

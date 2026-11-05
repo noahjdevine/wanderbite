@@ -21,6 +21,7 @@ import {
   findSupportPassage,
   formatBriefingReport,
   parseBriefingArgs,
+  isStorableOfficialWebsite,
   proposeOfficialFromUrls,
   rankBriefingUrls,
   researchCatalog,
@@ -1048,5 +1049,205 @@ describe('stored official site and Places facts', () => {
     expect(sql).toMatch(/official_website text/);
     expect(sql).toMatch(/restaurants_official_website_https_check/);
     expect(sql).toMatch(/revoke select \(official_website\)/i);
+  });
+});
+
+const MCKINNEY_ADDRESS = '100 Main St, McKinney, TX 75069';
+
+describe('official website host rules', () => {
+  it('does not treat a city token in the restaurant name as a host match', () => {
+    expect(
+      proposeOfficialFromUrls(
+        ['https://bestmckinney.com/food', 'https://mckinneygrill.com/gallery'],
+        'McKinney Grill',
+        MCKINNEY_ADDRESS,
+      ),
+    ).toEqual({ url: 'https://mckinneygrill.com/', kind: 'official' });
+    expect(
+      proposeOfficialFromUrls(['https://bestmckinney.com/food'], 'McKinney Grill', MCKINNEY_ADDRESS),
+    ).toEqual({ url: 'https://bestmckinney.com/food', kind: 'unclassified' });
+    expect(
+      proposeOfficialFromUrls(
+        ['https://visitfrisco.com/eat', 'https://friscotacos.com/menu'],
+        'Frisco Tacos',
+        '10 Oak St, Frisco, TX 75034',
+      ),
+    ).toEqual({ url: 'https://friscotacos.com/', kind: 'official' });
+    expect(
+      proposeOfficialFromUrls(
+        ['https://visittexas.com/eat', 'https://texasroadhouse.com/visit'],
+        'Texas Roadhouse',
+        MCKINNEY_ADDRESS,
+      ),
+    ).toEqual({ url: 'https://texasroadhouse.com/', kind: 'official' });
+  });
+
+  it('never proposes a listing or skipped host, and keeps scanning for the restaurant domain', () => {
+    const rejected = [
+      'https://visitmckinney.com/restaurants/grill',
+      'https://www.visitmckinney.com/',
+      'https://order.toasttab.com/online/grill',
+      'https://toasttab.com/grill',
+      'https://nextdoor.com/pages/grill',
+      'https://www.nextdoor.com/pages/grill',
+      'https://maps.roadtrippers.com/us/mckinney/food/grill',
+      'https://roadtrippers.com/grill',
+      'https://mindtrip.ai/restaurant/grill',
+      'https://www.mindtrip.ai/restaurant/grill',
+      'https://joe.coffee/grill',
+      'https://www.joe.coffee/grill',
+    ];
+    for (const url of rejected) {
+      expect(isStorableOfficialWebsite(url, 'McKinney Grill', MCKINNEY_ADDRESS)).toBe(false);
+      expect(proposeOfficialFromUrls([url], 'McKinney Grill', MCKINNEY_ADDRESS)).toEqual({
+        url: null,
+        kind: 'none',
+      });
+    }
+    expect(
+      proposeOfficialFromUrls([...rejected, 'https://mckinneygrill.com/visit'], 'McKinney Grill', MCKINNEY_ADDRESS),
+    ).toEqual({ url: 'https://mckinneygrill.com/', kind: 'official' });
+    expect(
+      rankBriefingUrls(
+        [
+          'https://visitmckinney.com/restaurants/grill',
+          'https://nextdoor.com/pages/grill',
+          'https://order.toasttab.com/online/grill',
+          'https://mckinneygrill.com/gallery',
+        ],
+        'McKinney Grill',
+        [],
+        MCKINNEY_ADDRESS,
+      ),
+    ).toEqual([
+      'https://mckinneygrill.com/gallery',
+      'https://visitmckinney.com/restaurants/grill',
+      'https://order.toasttab.com/online/grill',
+    ]);
+  });
+
+  it('stores the site root for a content path and keeps a chain location page', () => {
+    expect(
+      proposeOfficialFromUrls(['https://hutchinsbbq.com/gallery'], 'Hutchins BBQ McKinney', MCKINNEY_ADDRESS),
+    ).toEqual({ url: 'https://hutchinsbbq.com/', kind: 'official' });
+    expect(
+      proposeOfficialFromUrls(['https://hutchinsbbq.com/visit?utm_source=google'], 'Hutchins BBQ', MCKINNEY_ADDRESS),
+    ).toEqual({ url: 'https://hutchinsbbq.com/', kind: 'official' });
+    expect(
+      proposeOfficialFromUrls(
+        ['https://www.chuys.com/locations/mckinney/gallery?utm_source=google'],
+        "Chuy's McKinney",
+        MCKINNEY_ADDRESS,
+      ),
+    ).toEqual({ url: 'https://www.chuys.com/locations/mckinney', kind: 'official' });
+    expect(proposeOfficialFromUrls(['https://www.chuys.com/mckinney'], "Chuy's", MCKINNEY_ADDRESS)).toEqual({
+      url: 'https://www.chuys.com/mckinney',
+      kind: 'official',
+    });
+    expect(proposeOfficialFromUrls(['https://www.chuys.com/locations'], "Chuy's", MCKINNEY_ADDRESS)).toEqual({
+      url: 'https://www.chuys.com/',
+      kind: 'official',
+    });
+  });
+
+  it('searches again after a rejected host and then proposes the restaurant domain', async () => {
+    const restaurant = { ...RESTAURANT, name: 'Hutchins BBQ McKinney' };
+    const calls: Array<Record<string, unknown>> = [];
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      calls.push(body);
+      if (calls.length === 1) {
+        return response(
+          JSON.stringify({
+            stop_reason: 'end_turn',
+            content: [
+              {
+                type: 'web_search_tool_result',
+                content: [
+                  { type: 'web_search_result', url: 'https://visitmckinney.com/restaurants/hutchins', title: 'Guide' },
+                  { type: 'web_search_result', url: 'https://order.toasttab.com/hutchins', title: 'Toast' },
+                  { type: 'web_search_result', url: 'https://nextdoor.com/pages/hutchins', title: 'Nextdoor' },
+                ],
+              },
+            ],
+            usage: { server_tool_use: { web_search_requests: 1 } },
+          }),
+          200,
+          'application/json',
+        );
+      }
+      return response(
+        JSON.stringify({
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'web_search_tool_result',
+              content: [{ type: 'web_search_result', url: 'https://hutchinsbbq.com/visit', title: 'Visit' }],
+            },
+          ],
+          usage: { server_tool_use: { web_search_requests: 1 } },
+        }),
+        200,
+        'application/json',
+      );
+    }) as typeof fetch;
+    const found = await discoverBriefingUrls({
+      restaurant,
+      apiKey: API_KEY,
+      fetchImpl: fetchMock,
+    });
+    expect(calls).toHaveLength(2);
+    const secondTools = calls[1]?.tools as Array<{ max_uses?: number }>;
+    expect(secondTools[0]?.max_uses).toBe(2);
+    const secondMessages = calls[1]?.messages as Array<{ content?: string }>;
+    expect(secondMessages.at(-1)?.content).toMatch(/own website/);
+    expect(found.urls).toEqual([
+      'https://visitmckinney.com/restaurants/hutchins',
+      'https://order.toasttab.com/hutchins',
+      'https://nextdoor.com/pages/hutchins',
+      'https://hutchinsbbq.com/visit',
+    ]);
+    expect(found.warnings).toEqual(['Search continued after a listing or skipped host.']);
+    expect(proposeOfficialFromUrls(found.urls, restaurant.name, restaurant.address)).toEqual({
+      url: 'https://hutchinsbbq.com/',
+      kind: 'official',
+    });
+  });
+
+  it('does not propose a listing when further searches also miss the restaurant domain', async () => {
+    const restaurant = { ...RESTAURANT, name: 'Hutchins BBQ McKinney' };
+    let calls = 0;
+    const fetchMock = vi.fn(async () => {
+      calls += 1;
+      return response(
+        JSON.stringify({
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'web_search_tool_result',
+              content: [
+                { type: 'web_search_result', url: 'https://www.visitmckinney.com/food', title: 'Guide' },
+                { type: 'web_search_result', url: 'https://maps.roadtrippers.com/hutchins', title: 'Roadtrip' },
+                { type: 'web_search_result', url: 'https://joe.coffee/hutchins', title: 'Joe' },
+              ],
+            },
+          ],
+          usage: { server_tool_use: { web_search_requests: 1 } },
+        }),
+        200,
+        'application/json',
+      );
+    }) as typeof fetch;
+    const found = await discoverBriefingUrls({
+      restaurant,
+      apiKey: API_KEY,
+      fetchImpl: fetchMock,
+    });
+    expect(calls).toBe(3);
+    expect(found.units.web_search_requests).toBe(3);
+    expect(proposeOfficialFromUrls(found.urls, restaurant.name, restaurant.address)).toEqual({
+      url: null,
+      kind: 'none',
+    });
   });
 });
