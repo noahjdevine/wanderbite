@@ -1041,7 +1041,7 @@ describe('stored official site and Places facts', () => {
 
   it('leaves the official website migration https-only and unapplied', () => {
     const sql = readFileSync(
-      path.resolve(process.cwd(), 'supabase/migrations/20261105194811_e06_a2_restaurant_official_website.sql'),
+      path.resolve(process.cwd(), 'supabase/migrations/20261105202512_e06_a2_restaurant_official_website.sql'),
       'utf8',
     );
     expect(sql).toMatch(/NOT applied to hosted/);

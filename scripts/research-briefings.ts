@@ -73,7 +73,7 @@ Anthropic's web search price of $10 per 1,000 searches, and Places list prices
 per 1,000). Those requests count toward the USD cap. A failed search is logged
 for that restaurant.
 
-Apply supabase/migrations/20261105194811_e06_a2_restaurant_official_website.sql
+Apply supabase/migrations/20261105202512_e06_a2_restaurant_official_website.sql
 locally before this script. This script does not apply it. Propose URLs with
 npm run research:official-websites and review them before --write.
 `;
@@ -114,7 +114,7 @@ async function loadActiveRestaurants(
   if (error) {
     if (error.message.includes('official_website')) {
       fail(
-        'restaurants.official_website is missing. Apply supabase/migrations/20261105194811_e06_a2_restaurant_official_website.sql on the local database. This script does not apply it.',
+        'restaurants.official_website is missing. Apply supabase/migrations/20261105202512_e06_a2_restaurant_official_website.sql on the local database. This script does not apply it.',
       );
     }
     fail(`restaurant read failed: ${error.message}`);
