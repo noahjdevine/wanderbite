@@ -60,7 +60,11 @@ describe('PricingClient branches', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'Simple, Transparent Pricing.' })).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain(LAUNCH_HOLD_HEADING);
     expect(screen.getByRole('status').textContent).toContain(LAUNCH_HOLD_BODY);
-    expect(screen.getByRole('link', { name: 'Create a free account' }).getAttribute('href')).toBe('/signup');
+    const signup = screen.getByRole('link', { name: 'Create a free account' });
+    expect(signup.getAttribute('href')).toBe('/signup');
+    expect(signup.getAttribute('data-slot')).toBe('button');
+    expect(signup.getAttribute('data-variant')).toBe('outline');
+    expect(screen.getByRole('status').getAttribute('data-slot')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Manage my plan' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Finish your profile' })).toBeNull();
   });
@@ -111,7 +115,10 @@ describe('PricingClient branches', () => {
     expectSharedPlan();
     expect(screen.getByRole('heading', { level: 1, name: 'Your Wanderbite Club plan' })).toBeTruthy();
     expect(screen.getByText('Manage your subscription anytime.')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Manage my plan' }).getAttribute('href')).toBe('/billing');
+    const manage = screen.getByRole('link', { name: 'Manage my plan' });
+    expect(manage.getAttribute('href')).toBe('/billing');
+    expect(manage.getAttribute('data-slot')).toBe('button');
+    expect(manage.getAttribute('data-variant')).toBe('default');
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Create a free account' })).toBeNull();
   });
@@ -151,9 +158,10 @@ describe('PricingClient branches', () => {
     expect(
       screen.getByRole('heading', { level: 1, name: 'Welcome! Membership checkout is paused.' }),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Finish your profile' }).getAttribute('href')).toBe(
-      '/onboarding',
-    );
+    const finish = screen.getByRole('link', { name: 'Finish your profile' });
+    expect(finish.getAttribute('href')).toBe('/onboarding');
+    expect(finish.getAttribute('data-slot')).toBe('button');
+    expect(finish.getAttribute('data-variant')).toBe('default');
     expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByRole('link', { name: 'Create a free account' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Manage my plan' })).toBeNull();
@@ -197,6 +205,24 @@ describe('pricing sources stay frozen', () => {
     const block = css.slice(start);
     expect(block).toContain('linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%)');
     expect(block).toContain('.wb-pricing [data-slot="button"]:focus-visible');
+    const rules = [...block.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    const outlineRules = rules.filter(([, selector]) => selector.includes('[data-variant="outline"]'));
+    expect(outlineRules.length).toBeGreaterThan(0);
+    for (const [, , body] of outlineRules) {
+      expect(body).not.toContain('linear-gradient');
+      expect(body).toContain('background: transparent');
+      expect(body).toContain('border: 1.5px solid #d9cfe6');
+      expect(body).toContain('color: var(--wb-plum)');
+      expect(body).toContain('box-shadow: none');
+    }
+    const defaultButtonRules = rules.filter(([, selector]) => {
+      return selector.includes('.wb-pricing [data-slot="button"]') && !selector.includes('data-variant');
+    });
+    expect(
+      defaultButtonRules.some(([, , body]) =>
+        body.includes('linear-gradient(135deg, var(--wb-violet) 0%, var(--wb-pink) 100%)'),
+      ),
+    ).toBe(true);
     expect(block).toContain('outline: 2px solid var(--wb-violet);');
     expect(block).not.toContain('--wb-violet-2');
     expect(block).not.toMatch(/\.wb-reading|\.wb-partner|\.wb-auth-|\.wb-account|\.wb-onboarding|\.wb-hiw-cta|Reveal/);

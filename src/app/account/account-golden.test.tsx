@@ -449,7 +449,7 @@ describe('AccountClient sections', () => {
     await waitFor(() =>
       expect(updateAdventureReminderOptOut).toHaveBeenCalledWith(true, USER_ID),
     );
-    const on = screen.getByText('Adventure reminders are off.');
+    const on = await screen.findByText('Adventure reminders are off.');
     expect(on.getAttribute('role')).toBe('status');
     expect(box.getAttribute('aria-describedby')).toBe('account-reminder-message');
 
@@ -480,7 +480,7 @@ describe('AccountClient sections', () => {
       { presentedVersion: LEGAL_DOCUMENT_VERSION, age21: true, agreeToTerms: true },
       USER_ID,
     );
-    const confirmed = screen.getByText(
+    const confirmed = await screen.findByText(
       `You confirmed you are 21 or older and agreed to terms version ${LEGAL_DOCUMENT_VERSION}.`,
     );
     expect(confirmed.getAttribute('role')).toBe('status');

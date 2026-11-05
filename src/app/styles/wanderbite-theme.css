@@ -2621,6 +2621,15 @@
 .wb-pricing-band :focus-visible {
   outline-color: var(--wb-blush);
 }
+/* Cream secondary pill, same paint as .wb-cta-secondary-cream. Default buttons stay the violet-to-pink gradient. */
+.wb-pricing [data-slot="button"][data-variant="outline"],
+.wb-pricing [data-slot="button"][data-variant="outline"]:hover,
+.wb-pricing [data-slot="button"][data-variant="outline"]:focus-visible {
+  border: 1.5px solid #d9cfe6;
+  background: transparent;
+  color: var(--wb-plum);
+  box-shadow: none;
+}
 @media (min-width: 640px) {
   .wb-pricing [data-slot="button"] {
     width: auto;
