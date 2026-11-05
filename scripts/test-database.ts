@@ -23,6 +23,7 @@ import { runE02VersionCapacityDbTest } from './e02-version-capacity-db-test';
 import { runG13A1Concurrency } from './g13-a1-concurrency';
 import { runG13A2Concurrency } from './g13-a2-concurrency';
 import { runE04RevealConcurrency } from './e04-reveal-concurrency';
+import { runE06B2ActivityMaintenanceDb } from './e06-b2-activity-maintenance-db';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = localDockerHost(process.env.G1_DOCKER_HOST ??
@@ -156,6 +157,8 @@ async function main() {
   process.stdout.write('PASS: E06 briefing constraints, grants, and active-only reads.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-b1-activity-pipeline.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E06-B1 activity subject, grants, draft fact, and dated expiry.\n');
+  await runE06B2ActivityMaintenanceDb({ sql });
+  process.stdout.write('PASS: E06-B2 cron-path expiry, cadence selection, and flag-off leaves activities untouched.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-credit-safe-swaps.sql'), 'utf8')) + '\n');
   await runE02CreditSafeSwaps({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E02 credit-safe swap issuance overlap.\n');

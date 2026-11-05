@@ -1,7 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ActivityFactSnapshot, ActivitySnapshot } from '@/lib/content-pipeline/activity-plan';
 import type { RecipeSnapshot } from '@/lib/content-pipeline/change-detect';
 import { isExceptionReason, type ExceptionReason } from '@/lib/content-pipeline/exceptions';
 import { readDescriptionFact, type DescriptionFact } from '@/lib/content-pipeline/facts';
+import { isActivitySourceKind } from '@/lib/content-pipeline/registry';
 import {
   MAINTENANCE_ACCOUNT_TIER,
   MAINTENANCE_FEATURE_CLASS,
@@ -69,6 +71,16 @@ export function contentRefreshEffects(supabase: Client): RefreshEffects {
       });
       if (error) throw new Error('exception insert failed');
     },
+    applyActivityFact: async (row) => {
+      const { error } = await supabase.rpc('apply_activity_field_fact', {
+        p_source_id: row.sourceId,
+        p_activity_id: row.activityId,
+        p_field: row.field,
+        p_value: { text: row.text },
+        p_evidence_excerpt: row.evidenceExcerpt,
+      });
+      if (error) throw new Error('activity fact apply failed');
+    },
   };
 }
 
@@ -98,6 +110,8 @@ export async function loadContentSourceContext(
   facts: DescriptionFact[];
   recipes: RecipeSnapshot[];
   openExceptions: { subjectId: string | null; field: string | null; reason: ExceptionReason }[];
+  activities: ActivitySnapshot[];
+  activityFacts: ActivityFactSnapshot[];
 }> {
   const { data: factRows, error: factError } = await supabase
     .from('source_facts')
@@ -111,7 +125,7 @@ export async function loadContentSourceContext(
   });
   const { data: sourceRow, error: sourceError } = await supabase
     .from('content_sources')
-    .select('id, url, restaurant_id')
+    .select('id, url, restaurant_id, kind')
     .eq('id', sourceId)
     .single();
   if (sourceError || !sourceRow) throw new Error('content source load failed');
@@ -144,7 +158,72 @@ export async function loadContentSourceContext(
     if (!isExceptionReason(row.reason)) return [];
     return [{ subjectId: row.subject_id, field: row.field, reason: row.reason }];
   });
-  return { facts, recipes, openExceptions };
+  if (!isActivitySourceKind(sourceRow.kind)) {
+    return { facts, recipes, openExceptions, activities: [], activityFacts: [] };
+  }
+  const activityContext = await loadScheduledActivityContext(supabase, {
+    id: sourceRow.id,
+    url: sourceRow.url,
+  });
+  return { facts, recipes, openExceptions, ...activityContext };
+}
+
+function readActivityFact(row: {
+  id: string;
+  subject_id: string | null;
+  field: string;
+  status: string;
+  value: Json;
+}): ActivityFactSnapshot | null {
+  if (!row.subject_id) return null;
+  if (!row.value || typeof row.value !== 'object' || Array.isArray(row.value)) return null;
+  const value = row.value as Record<string, Json | undefined>;
+  return {
+    id: row.id,
+    subjectId: row.subject_id,
+    field: row.field,
+    status: row.status,
+    text: typeof value.text === 'string' ? value.text : null,
+    price: typeof value.price === 'string' ? value.price : null,
+    hoursNote: typeof value.hours_note === 'string' ? value.hours_note : null,
+  };
+}
+
+async function loadScheduledActivityContext(
+  supabase: Client,
+  source: { id: string; url: string },
+): Promise<{ activities: ActivitySnapshot[]; activityFacts: ActivityFactSnapshot[] }> {
+  const columns = 'id, name, source_url, content_source_id, status, hours_note, booking_required, version';
+  const [bySource, byUrl] = await Promise.all([
+    supabase.from('activities').select(columns).eq('content_source_id', source.id),
+    supabase.from('activities').select(columns).eq('source_url', source.url),
+  ]);
+  if (bySource.error) throw new Error('activity load failed');
+  if (byUrl.error) throw new Error('activity load failed');
+  const merged = new Map<string, ActivitySnapshot>();
+  for (const row of [...(bySource.data ?? []), ...(byUrl.data ?? [])]) {
+    merged.set(row.id, {
+      id: row.id,
+      name: row.name,
+      sourceUrl: row.source_url,
+      contentSourceId: row.content_source_id,
+      status: row.status,
+      hoursNote: row.hours_note,
+      bookingRequired: row.booking_required,
+      version: row.version,
+    });
+  }
+  const { data: factRows, error: factError } = await supabase
+    .from('source_facts')
+    .select('id, subject_id, field, status, value')
+    .eq('source_id', source.id)
+    .eq('subject_type', 'activity');
+  if (factError) throw new Error('activity fact load failed');
+  const activityFacts = (factRows ?? []).flatMap((row) => {
+    const parsed = readActivityFact(row);
+    return parsed ? [parsed] : [];
+  });
+  return { activities: [...merged.values()], activityFacts };
 }
 
 export async function reserveMaintenance(
@@ -195,6 +274,8 @@ export async function runApplyContentRefresh(args: {
     facts: DescriptionFact[];
     recipes: RecipeSnapshot[];
     openExceptions: { subjectId: string | null; field: string | null; reason: ExceptionReason }[];
+    activities?: ActivitySnapshot[];
+    activityFacts?: ActivityFactSnapshot[];
   }>;
   effects?: RefreshEffects;
   fetchImpl?: typeof fetch;
