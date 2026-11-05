@@ -40,7 +40,7 @@ When `GOOGLE_PLACES_API_KEY` is set, the proposal is Place Details `websiteUri` 
 
 `--write` stores that https URL and, when `google_place_id` is null, the place id. Hosted reads and writes need `WANDERBITE_BRIEFINGS_HOSTED_OK=1` for that run. This script does not apply the migration.
 
-Migration `20261105194811_e06_a2_restaurant_official_website.sql` is not applied to hosted. Do not run `supabase db push` or `npm run types:db` for it. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited. Apply it locally before either research script selects the column.
+Migration `20261105202512_e06_a2_restaurant_official_website.sql` is applied to hosted (2026-11-05). The filename matches the hosted `schema_migrations` version. Do not run `supabase db push` or `npm run types:db` for it. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited. Apply it locally before either research script selects the column.
 
 ## Google Places
 

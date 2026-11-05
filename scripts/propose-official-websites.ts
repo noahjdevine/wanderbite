@@ -19,7 +19,7 @@ import type { Database } from '../src/types/database.types';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
 
-const MIGRATION = 'supabase/migrations/20261105194811_e06_a2_restaurant_official_website.sql';
+const MIGRATION = 'supabase/migrations/20261105202512_e06_a2_restaurant_official_website.sql';
 
 const HELP = `Operator-only official website proposals for active restaurants.
 
