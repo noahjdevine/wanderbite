@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { logAdminAction } from '@/lib/audit/log-admin-action';
+import { readActivitySummary, type ActivityGuard } from '@/lib/content-pipeline/activity-review';
 import { readDescriptionFact, type DescriptionFact } from '@/lib/content-pipeline/facts';
 import {
   assembleContentReview,
@@ -14,6 +15,50 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
 type AdminClient = ReturnType<typeof getSupabaseAdmin>;
+
+function asActivity(row: {
+  id: string;
+  name: string;
+  hours_note: string | null;
+  version: number;
+  status: string;
+  category: string;
+  cost_category: string;
+  booking_required: boolean;
+  source_url: string | null;
+  content_source_id: string | null;
+  is_sample: boolean;
+  weather_dependent: boolean;
+  lat: number | null;
+  lon: number | null;
+  zip: string | null;
+  typical_duration_minutes: number | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  last_verified_at: string | null;
+}): ActivityGuard {
+  return {
+    id: row.id,
+    name: row.name,
+    hoursNote: row.hours_note,
+    version: row.version,
+    status: row.status,
+    category: row.category,
+    costCategory: row.cost_category,
+    bookingRequired: row.booking_required,
+    sourceUrl: row.source_url,
+    contentSourceId: row.content_source_id,
+    isSample: row.is_sample,
+    weatherDependent: row.weather_dependent,
+    lat: row.lat,
+    lon: row.lon,
+    zip: row.zip,
+    typicalDurationMinutes: row.typical_duration_minutes,
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    lastVerifiedAt: row.last_verified_at,
+  };
+}
 
 function asRecipe(row: {
   id: string;
@@ -46,7 +91,7 @@ export function contentReviewStore(supabase: AdminClient = getSupabaseAdmin()): 
     async loadException(id) {
       const { data, error } = await supabase
         .from('content_exceptions')
-        .select('id, source_id, subject_id, field, reason, before, after, evidence_excerpt, status')
+        .select('id, source_id, subject_type, subject_id, field, reason, before, after, evidence_excerpt, status')
         .eq('id', id)
         .maybeSingle();
       if (error) throw new Error('Exception lookup failed.');
@@ -54,6 +99,7 @@ export function contentReviewStore(supabase: AdminClient = getSupabaseAdmin()): 
       return {
         id: data.id,
         sourceId: data.source_id,
+        subjectType: data.subject_type,
         subjectId: data.subject_id,
         field: data.field,
         reason: data.reason,
@@ -117,6 +163,64 @@ export function contentReviewStore(supabase: AdminClient = getSupabaseAdmin()): 
       if (error || !data) throw new Error(error?.message ?? 'Description fact was not published.');
       return data;
     },
+    async loadActivity(id) {
+      const { data, error } = await supabase
+        .from('activities')
+        .select('id, name, hours_note, version, status, category, cost_category, booking_required, source_url, content_source_id, is_sample, weather_dependent, lat, lon, zip, typical_duration_minutes, valid_from, valid_until, last_verified_at')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw new Error('Activity lookup failed.');
+      return data ? asActivity(data) : null;
+    },
+    async loadActivitySummary(id) {
+      const { data, error } = await supabase
+        .from('source_facts')
+        .select('id, source_id, subject_id, version, status, value, evidence_excerpt')
+        .eq('id', id)
+        .eq('subject_type', 'activity')
+        .eq('field', 'summary')
+        .maybeSingle();
+      if (error) throw new Error('Activity summary lookup failed.');
+      return data ? readActivitySummary(data) : null;
+    },
+    async decideActivitySummary(id, decision) {
+      const { error } = await supabase.rpc('decide_activity_summary_fact', {
+        p_fact_id: id,
+        p_decision: decision,
+      });
+      if (!error) return true;
+      if (/not pending review/i.test(error.message)) return false;
+      throw new Error(error.message);
+    },
+    async reopenActivitySummary(id) {
+      const { error } = await supabase
+        .from('source_facts')
+        .update({ status: 'pending_review', verified_at: null })
+        .eq('id', id)
+        .eq('subject_type', 'activity')
+        .eq('field', 'summary');
+      if (error) throw new Error('Summary reopen failed.');
+    },
+    async publishActivitySummary(row) {
+      const { data, error } = await supabase.rpc('publish_activity_summary', {
+        p_source_id: row.sourceId,
+        p_activity_id: row.activityId,
+        p_text: row.text,
+        p_evidence_excerpt: row.evidenceExcerpt,
+      });
+      if (error || !data) throw new Error(error?.message ?? 'Summary was not stored.');
+      return data;
+    },
+    async publishActivityHoursNote(row) {
+      const { data, error } = await supabase.rpc('publish_activity_hours_note', {
+        p_source_id: row.sourceId,
+        p_activity_id: row.activityId,
+        p_text: row.text,
+        p_evidence_excerpt: row.evidenceExcerpt,
+      });
+      if (error || !data) throw new Error(error?.message ?? 'Hours note was not saved.');
+      return data;
+    },
     async rollbackRecipe(recipeId) {
       const { data, error } = await supabase.rpc('rollback_recipe_to_previous', {
         p_recipe_id: recipeId,
@@ -159,14 +263,20 @@ export function contentReviewStore(supabase: AdminClient = getSupabaseAdmin()): 
 export async function loadContentReviewModel(
   supabase: AdminClient = getSupabaseAdmin(),
 ): Promise<ContentReviewModel> {
-  const [sourceResult, exceptionResult] = await Promise.all([
+  const [sourceResult, exceptionResult, summaryResult] = await Promise.all([
     supabase
       .from('content_sources')
       .select('id, url, status, restaurant_id, last_attempted_at, last_verified_at'),
     supabase
       .from('content_exceptions')
-      .select('id, source_id, subject_id, field, reason, before, after, evidence_excerpt, status')
+      .select('id, source_id, subject_type, subject_id, field, reason, before, after, evidence_excerpt, status')
       .eq('status', 'open'),
+    supabase
+      .from('source_facts')
+      .select('id, source_id, subject_id, version, status, value, evidence_excerpt')
+      .eq('subject_type', 'activity')
+      .eq('field', 'summary')
+      .in('status', ['pending_review', 'current']),
   ]);
   if (sourceResult.error) throw new Error('Content sources failed to load.');
   const sourceRows = sourceResult.data;
@@ -184,6 +294,7 @@ export async function loadContentReviewModel(
   const exceptions: ReviewExceptionRow[] = (exceptionRows ?? []).map((row) => ({
     id: row.id,
     sourceId: row.source_id,
+    subjectType: row.subject_type,
     subjectId: row.subject_id,
     field: row.field,
     reason: row.reason,
@@ -192,6 +303,11 @@ export async function loadContentReviewModel(
     evidenceExcerpt: row.evidence_excerpt,
     status: row.status,
   }));
+  if (summaryResult.error) throw new Error('Activity summaries failed to load.');
+  const activitySummaries = (summaryResult.data ?? []).flatMap((row) => {
+    const parsed = readActivitySummary(row);
+    return parsed ? [parsed] : [];
+  });
 
   const urls = [...new Set(sources.map((source) => source.url))];
   let recipes: RecipeGuard[] = [];
@@ -221,6 +337,24 @@ export async function loadContentReviewModel(
     });
   }
 
+  const activityIds = [
+    ...new Set(
+      [
+        ...exceptions.filter((row) => row.subjectType === 'activity').map((row) => row.subjectId),
+        ...activitySummaries.map((row) => row.subjectId),
+      ].filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  let activities: ActivityGuard[] = [];
+  if (activityIds.length > 0) {
+    const { data: activityRows, error: activityError } = await supabase
+      .from('activities')
+      .select('id, name, hours_note, version, status, category, cost_category, booking_required, source_url, content_source_id, is_sample, weather_dependent, lat, lon, zip, typical_duration_minutes, valid_from, valid_until, last_verified_at')
+      .in('id', activityIds);
+    if (activityError) throw new Error('Activities failed to load.');
+    activities = (activityRows ?? []).map((row) => asActivity(row));
+  }
+
   const restaurantIds = [
     ...new Set(
       [...sources.map((source) => source.restaurantId), ...recipes.map((recipe) => recipe.restaurantId)].filter(
@@ -244,5 +378,7 @@ export async function loadContentReviewModel(
     recipes,
     facts,
     restaurantNames: names,
+    activities,
+    activitySummaries,
   });
 }

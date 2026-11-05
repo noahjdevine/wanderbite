@@ -3964,6 +3964,33 @@ export type Database = {
         }
         Returns: string
       }
+      // Hand-edited for 20261105201621. npm run types:db was not run.
+      activity_operator_text: {
+        Args: { p_kind: string; p_text: string }
+        Returns: string
+      }
+      decide_activity_summary_fact: {
+        Args: { p_decision: string; p_fact_id: string }
+        Returns: string
+      }
+      publish_activity_hours_note: {
+        Args: {
+          p_activity_id: string
+          p_evidence_excerpt: string
+          p_source_id: string
+          p_text: string
+        }
+        Returns: string
+      }
+      publish_activity_summary: {
+        Args: {
+          p_activity_id: string
+          p_evidence_excerpt: string
+          p_source_id: string
+          p_text: string
+        }
+        Returns: string
+      }
       expire_dated_activities: {
         Args: { p_today: string }
         Returns: number

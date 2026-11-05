@@ -2,6 +2,10 @@ import { EXCEPTION_REASONS, type ExceptionReason } from '@/lib/content-pipeline/
 
 export const NOTHING_PUBLISHED = 'Nothing was published.';
 
+export type ReviewSubjectLabel = 'Recipe' | 'Activity';
+export type ReviewEditKind = 'description' | 'hours_note' | 'summary' | 'note' | 'none';
+export type ReviewQueueKind = 'exception' | 'summary_draft';
+
 export type ExceptionView = {
   id: string;
   restaurantName: string;
@@ -15,6 +19,11 @@ export type ExceptionView = {
   attemptedLabel: string;
   verifiedLabel: string;
   recipeLabel: string;
+  subjectLabel: ReviewSubjectLabel;
+  activityName: string | null;
+  checkedLabel: string;
+  editKind: ReviewEditKind;
+  queueKind: ReviewQueueKind;
   approveKind: 'review_only' | 'blocked';
   approveBlock: string | null;
   canEdit: boolean;
