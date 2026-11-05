@@ -38,8 +38,13 @@ restaurants.google_place_id when that column is null.
 
 When the Places key is unset, the script uses the same Anthropic web search as
 npm run research:briefings and proposes the first official host, or the first
-https host that is not a listing and not a blocked host. Yelp, OpenTable, and
-other listing hosts are not stored.
+https host that is not a listing and not a blocked host. A city or location
+word in the name, including McKinney, does not count as the restaurant's host.
+Yelp, OpenTable, visitmckinney.com, Toast (toasttab.com), Nextdoor,
+Roadtrippers, Mindtrip, and joe.coffee are not stored. If the results are only
+those hosts, the search continues for the restaurant's own domain. A content
+path such as /gallery or /visit is stored as the site root. A chain location
+path such as /locations/mckinney is kept.
 
 An existing official_website is left in place. --write does not insert
 briefing facts and does not set a fact to active.

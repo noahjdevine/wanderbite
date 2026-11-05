@@ -78,6 +78,8 @@ export const WEB_SEARCH_MICRODOLLARS_PER_REQUEST = 10_000;
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
 const SEARCH_TIMEOUT_MS = 60_000;
 const SEARCH_CONTINUATION_CAP = 2;
+const OWN_DOMAIN_FOLLOWUP =
+  'Those results are listings or the wrong host. Search again for the restaurant\'s own website. Skip city guides, ordering marketplaces, social sites, and directories.';
 
 const HOSTED_PROJECT_REF = 'yiajoycgiyxjvznndjge';
 const FETCH_TIMEOUT_MS = 8_000;
@@ -112,6 +114,11 @@ const LISTING_HOSTS = [
   'eater.com',
   'timeout.com',
   'zagat.com',
+  'visitmckinney.com',
+  'toasttab.com',
+  'roadtrippers.com',
+  'mindtrip.ai',
+  'joe.coffee',
 ];
 
 const SKIP_HOSTS = [
@@ -127,6 +134,7 @@ const SKIP_HOSTS = [
   'googleusercontent.com',
   'wikipedia.org',
   'tiktok.com',
+  'nextdoor.com',
 ];
 
 /**
@@ -445,11 +453,152 @@ export function htmlToText(html: string): string {
     .trim();
 }
 
-function nameTokens(name: string): string[] {
+/**
+ * The web search is pinned to McKinney. That city word shows up in restaurant
+ * names and on city-guide hosts, so it never counts as the restaurant's name.
+ */
+const LAUNCH_PLACE_TOKENS = ['mckinney'] as const;
+
+const STATE_NAMES: Record<string, string> = {
+  tx: 'texas',
+};
+
+const REGION_WORDS = new Set(['tx', 'texas']);
+
+const CHAIN_LOCATION_MARKERS = new Set(['location', 'locations', 'store', 'stores']);
+
+const CONTENT_WORDS = new Set([
+  'about',
+  'contact',
+  'event',
+  'events',
+  'faq',
+  'galleries',
+  'gallery',
+  'home',
+  'hours',
+  'index',
+  'menu',
+  'menus',
+  'parking',
+  'photo',
+  'photos',
+  'reservation',
+  'reservations',
+  'story',
+  'visit',
+]);
+
+function addPlaceWords(tokens: Set<string>, value: string): void {
+  for (const word of value.toLowerCase().split(/[^a-z0-9]+/)) {
+    if (word.length >= 4 && /[a-z]/.test(word)) tokens.add(word);
+  }
+}
+
+/** City and region words. A host match on these is not the restaurant. */
+function locationTokens(address: string | null | undefined): string[] {
+  const tokens = new Set<string>(LAUNCH_PLACE_TOKENS);
+  const parts = (address ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  let city = '';
+  let region = '';
+  for (let i = parts.length - 1; i >= 0; i -= 1) {
+    if (/^[a-z]{2}\b/i.test(parts[i] ?? '')) {
+      region = parts[i] ?? '';
+      city = parts[i - 1] ?? '';
+      break;
+    }
+  }
+  if (!region && parts.length >= 2) {
+    city = parts[parts.length - 2] ?? '';
+    region = parts[parts.length - 1] ?? '';
+  }
+  addPlaceWords(tokens, city);
+  addPlaceWords(tokens, region);
+  const abbrev = /^([a-z]{2})\b/i.exec(region)?.[1]?.toLowerCase();
+  const stateName = abbrev ? STATE_NAMES[abbrev] : undefined;
+  if (stateName) tokens.add(stateName);
+  return [...tokens];
+}
+
+function nameTokens(name: string, address?: string | null): string[] {
+  const places = new Set(locationTokens(address));
   return name
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .filter((token) => token.length >= 4 && token !== 'cafe' && token !== 'the');
+    .filter(
+      (token) => token.length >= 4 && token !== 'cafe' && token !== 'the' && !places.has(token),
+    );
+}
+
+function pathSegments(pathname: string): string[] {
+  return pathname
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => segment.replace(/\.html?$/i, ''));
+}
+
+function segmentIsPlaceSlug(segment: string, places: readonly string[]): boolean {
+  const words = segment
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  if (words.length === 0 || words.length > 3) return false;
+  const place = new Set(places);
+  return words.every((word) => place.has(word) || REGION_WORDS.has(word));
+}
+
+function segmentIsContent(segment: string): boolean {
+  const lower = segment.toLowerCase();
+  if (lower === 'private-dining' || lower === 'our-story') return true;
+  if (CONTENT_WORDS.has(lower)) return true;
+  return lower
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .some((word) => CONTENT_WORDS.has(word));
+}
+
+/** `/locations/mckinney` or a bare city slug. Content under that slug is dropped. */
+function chainLocationPath(pathname: string, places: readonly string[]): string | null {
+  const segments = pathSegments(pathname);
+  if (segments.length === 0) return null;
+  const markerAt = segments.findIndex((segment) => CHAIN_LOCATION_MARKERS.has(segment.toLowerCase()));
+  if (markerAt >= 0 && markerAt < segments.length - 1) {
+    return `/${segments.slice(0, markerAt + 2).join('/')}`;
+  }
+  if (segments.length === 1 && segmentIsPlaceSlug(segments[0] ?? '', places)) {
+    return `/${segments[0]}`;
+  }
+  return null;
+}
+
+function prefersHomepage(pathname: string): boolean {
+  const segments = pathSegments(pathname);
+  if (segments.length === 0) return false;
+  if (segments.length === 1 && CHAIN_LOCATION_MARKERS.has((segments[0] ?? '').toLowerCase())) return true;
+  return segments.some((segment) => segmentIsContent(segment));
+}
+
+/**
+ * Store the site root for a content path such as /gallery or /visit.
+ * A multi-location chain keeps its location page.
+ */
+export function canonicalOfficialWebsite(raw: string, address?: string | null): string | null {
+  const normalized = normalizeHttpsUrl(raw);
+  if (!normalized) return null;
+  const url = new URL(normalized);
+  const locationPath = chainLocationPath(url.pathname, locationTokens(address));
+  if (locationPath) {
+    url.pathname = locationPath;
+    url.search = '';
+    return normalizeHttpsUrl(url.toString()) ?? normalized;
+  }
+  if (!prefersHomepage(url.pathname)) return normalized;
+  url.pathname = '/';
+  url.search = '';
+  return url.toString();
 }
 
 function matchesStoredHost(host: string, officialHosts: readonly string[]): boolean {
@@ -461,6 +610,7 @@ function urlClass(
   raw: string,
   restaurantName: string,
   officialHosts: readonly string[],
+  address?: string | null,
 ): 'official' | 'listing' | 'blocked' | 'other' {
   const normalized = normalizeHttpsUrl(raw);
   if (!normalized) return 'blocked';
@@ -472,17 +622,26 @@ function urlClass(
   }
   if (LISTING_HOSTS.some((suffix) => hostMatches(host, suffix))) return 'listing';
   if (matchesStoredHost(host, officialHosts)) return 'official';
-  const tokens = nameTokens(restaurantName);
+  const tokens = nameTokens(restaurantName, address);
   if (tokens.some((token) => host.includes(token))) return 'official';
   return 'other';
+}
+
+function needsOwnDomainSearch(urls: readonly string[], restaurant: BriefingRestaurant): boolean {
+  if (urls.length === 0) return false;
+  return urls.every((url) => {
+    const kind = urlClass(url, restaurant.name, [], restaurant.address);
+    return kind === 'listing' || kind === 'blocked';
+  });
 }
 
 function classifyUrl(
   raw: string,
   restaurantName: string,
   officialHosts: readonly string[] = [],
+  address?: string | null,
 ): 'official' | 'listing' | 'skip' {
-  const kind = urlClass(raw, restaurantName, officialHosts);
+  const kind = urlClass(raw, restaurantName, officialHosts, address);
   if (kind === 'official') return 'official';
   if (kind === 'listing') return 'listing';
   return 'skip';
@@ -496,6 +655,7 @@ export function rankBriefingUrls(
   urls: readonly string[],
   restaurantName: string,
   officialHosts: readonly string[] = [],
+  address?: string | null,
 ): string[] {
   const official: string[] = [];
   const listings: string[] = [];
@@ -504,17 +664,22 @@ export function rankBriefingUrls(
     const normalized = normalizeHttpsUrl(raw);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
-    const kind = classifyUrl(normalized, restaurantName, officialHosts);
+    const kind = classifyUrl(normalized, restaurantName, officialHosts, address);
     if (kind === 'official') official.push(normalized);
     else if (kind === 'listing') listings.push(normalized);
   }
   return [...official, ...listings];
 }
 
-/** A name-token host, or the first https host that is not a listing and not blocked. */
+/**
+ * A name-token host, or the first https host that is not a listing and not blocked.
+ * City and location tokens do not count. A rejected host does not end the scan.
+ * Content paths collapse to the site root. A chain location path stays.
+ */
 export function proposeOfficialFromUrls(
   urls: readonly string[],
   restaurantName: string,
+  address?: string | null,
 ): { url: string | null; kind: 'official' | 'unclassified' | 'none' } {
   let unclassified: string | null = null;
   const seen = new Set<string>();
@@ -522,18 +687,26 @@ export function proposeOfficialFromUrls(
     const normalized = normalizeHttpsUrl(raw);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
-    const kind = urlClass(normalized, restaurantName, []);
-    if (kind === 'official') return { url: normalized, kind: 'official' };
+    const kind = urlClass(normalized, restaurantName, [], address);
+    if (kind === 'official') {
+      return { url: canonicalOfficialWebsite(normalized, address) ?? normalized, kind: 'official' };
+    }
     if (kind === 'other' && !unclassified) unclassified = normalized;
   }
-  if (unclassified) return { url: unclassified, kind: 'unclassified' };
+  if (unclassified) {
+    return { url: canonicalOfficialWebsite(unclassified, address) ?? unclassified, kind: 'unclassified' };
+  }
   return { url: null, kind: 'none' };
 }
 
-export function isStorableOfficialWebsite(raw: string, restaurantName: string): boolean {
+export function isStorableOfficialWebsite(
+  raw: string,
+  restaurantName: string,
+  address?: string | null,
+): boolean {
   const normalized = normalizeHttpsUrl(raw);
   if (!normalized) return false;
-  const kind = urlClass(normalized, restaurantName, []);
+  const kind = urlClass(normalized, restaurantName, [], address);
   return kind === 'official' || kind === 'other';
 }
 
@@ -1267,7 +1440,9 @@ async function postAnthropicMessage(args: {
 /**
  * One Messages API turn with server-side web_search. Candidate URLs come from
  * the tool result, not from model prose. A paused turn continues until the
- * per-restaurant search cap is used or two continuations have run.
+ * per-restaurant search cap is used or two continuations have run. A turn whose
+ * candidates are all listings or skipped hosts asks for the restaurant's own
+ * domain instead of stopping on the listing.
  */
 export async function discoverBriefingUrls(args: {
   restaurant: BriefingRestaurant;
@@ -1291,6 +1466,8 @@ export async function discoverBriefingUrls(args: {
   const seen = new Set<string>();
   const errorCodes: string[] = [];
   const seenErrors = new Set<string>();
+  const extraWarnings: string[] = [];
+  let askedForOwnDomain = false;
   let paused = false;
 
   for (let turn = 0; turn <= SEARCH_CONTINUATION_CAP; turn += 1) {
@@ -1315,7 +1492,7 @@ export async function discoverBriefingUrls(args: {
           urls,
           units,
           failure: null,
-          warnings: [...errorCodes.map(webSearchErrorReason), posted.reason],
+          warnings: [...errorCodes.map(webSearchErrorReason), posted.reason, ...extraWarnings],
         };
       }
       return { urls, units, failure: posted.reason, warnings: [] };
@@ -1336,12 +1513,27 @@ export async function discoverBriefingUrls(args: {
       posted.parsed && typeof posted.parsed === 'object' && !Array.isArray(posted.parsed)
         ? (posted.parsed as { stop_reason?: unknown; content?: unknown })
         : null;
-    if (record?.stop_reason !== 'pause_turn' || !Array.isArray(record.content)) {
-      paused = false;
-      break;
+    if (record?.stop_reason === 'pause_turn' && Array.isArray(record.content)) {
+      paused = true;
+      messages.push({ role: 'assistant', content: record.content });
+      continue;
     }
-    paused = true;
-    messages.push({ role: 'assistant', content: record.content });
+    if (
+      needsOwnDomainSearch(urls, args.restaurant) &&
+      Array.isArray(record?.content) &&
+      turn < SEARCH_CONTINUATION_CAP
+    ) {
+      paused = false;
+      if (!askedForOwnDomain) {
+        extraWarnings.push('Search continued after a listing or skipped host.');
+        askedForOwnDomain = true;
+      }
+      messages.push({ role: 'assistant', content: record.content });
+      messages.push({ role: 'user', content: OWN_DOMAIN_FOLLOWUP });
+      continue;
+    }
+    paused = false;
+    break;
   }
 
   if (urls.length === 0) {
@@ -1357,7 +1549,7 @@ export async function discoverBriefingUrls(args: {
     urls,
     units,
     failure: null,
-    warnings: errorCodes.map(webSearchErrorReason),
+    warnings: [...errorCodes.map(webSearchErrorReason), ...extraWarnings],
   };
 }
 
@@ -1488,7 +1680,12 @@ export async function researchOneRestaurant(args: {
     notes.push(search.failure);
   } else {
     for (const warning of search.warnings) notes.push(warning);
-    const ranked = rankBriefingUrls(search.urls, args.restaurant.name, officialHosts);
+    const ranked = rankBriefingUrls(
+      search.urls,
+      args.restaurant.name,
+      officialHosts,
+      args.restaurant.address,
+    );
     if (ranked.length === 0 && !storedPage) {
       notes.push('no official site or reputable listing in the search results');
     }
@@ -1505,7 +1702,10 @@ export async function researchOneRestaurant(args: {
   }
   const official =
     storedPage ??
-    searchPages.find((page) => classifyUrl(page.url, args.restaurant.name, officialHosts) === 'official');
+    searchPages.find(
+      (page) =>
+        classifyUrl(page.url, args.restaurant.name, officialHosts, args.restaurant.address) === 'official',
+    );
   const subpages = official
     ? await takeBriefingPages({
         urls: discoverOfficialSubpages(official.html, official.url, BRIEFING_SUBPAGE_CANDIDATE_CAP),
@@ -1518,10 +1718,10 @@ export async function researchOneRestaurant(args: {
       })
     : [];
   const officialSearch = searchPages.filter(
-    (page) => classifyUrl(page.url, args.restaurant.name, officialHosts) === 'official',
+    (page) => classifyUrl(page.url, args.restaurant.name, officialHosts, args.restaurant.address) === 'official',
   );
   const listings = searchPages.filter(
-    (page) => classifyUrl(page.url, args.restaurant.name, officialHosts) !== 'official',
+    (page) => classifyUrl(page.url, args.restaurant.name, officialHosts, args.restaurant.address) !== 'official',
   );
   const ordered = [
     ...(storedPage ? [storedPage] : []),

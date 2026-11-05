@@ -83,4 +83,104 @@ describe('proposeRestaurantWebsite', () => {
     expect(proposal.kind).toBe('unclassified');
     expect(proposal.notes.join('\n')).toMatch(/yelp\.com/);
   });
+
+  it('stores the site root when Places returns a content path', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(':searchText')) return jsonResponse({ places: [{ id: 'ChIJtestplace01' }] });
+      return jsonResponse({
+        id: 'ChIJtestplace01',
+        displayName: { text: "Bob's Burgers" },
+        formattedAddress: '100 Main St, McKinney, TX',
+        websiteUri: 'https://bobs.example.com/gallery',
+      });
+    }) as typeof fetch;
+    const proposal = await proposeRestaurantWebsite({
+      restaurant: RESTAURANT,
+      placesKey: 'places-test-key',
+      anthropicKey: 'anthropic-test-key',
+      fetchImpl,
+      outboundDisabled: false,
+    });
+    expect(proposal.kind).toBe('places');
+    expect(proposal.proposed).toBe('https://bobs.example.com/');
+    expect(vi.mocked(fetchImpl).mock.calls.some((call) => String(call[0]).includes('anthropic.com'))).toBe(false);
+  });
+
+  it('keeps a chain location page from Places', async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(':searchText')) return jsonResponse({ places: [{ id: 'ChIJtestplace01' }] });
+      return jsonResponse({
+        id: 'ChIJtestplace01',
+        displayName: { text: "Bob's Burgers" },
+        formattedAddress: '100 Main St, McKinney, TX',
+        websiteUri: 'https://bobs.example.com/locations/mckinney/menu',
+      });
+    }) as typeof fetch;
+    const proposal = await proposeRestaurantWebsite({
+      restaurant: { ...RESTAURANT, name: "Bob's McKinney" },
+      placesKey: 'places-test-key',
+      anthropicKey: 'anthropic-test-key',
+      fetchImpl,
+      outboundDisabled: false,
+    });
+    expect(proposal.kind).toBe('places');
+    expect(proposal.proposed).toBe('https://bobs.example.com/locations/mckinney');
+  });
+
+  it('rejects a city listing from Places and keeps searching for the restaurant domain', async () => {
+    let searches = 0;
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith(':searchText')) return jsonResponse({ places: [{ id: 'ChIJtestplace01' }] });
+      if (url.includes('places.googleapis.com')) {
+        return jsonResponse({
+          id: 'ChIJtestplace01',
+        displayName: { text: 'Bobs Grill McKinney' },
+        formattedAddress: '100 Main St, McKinney, TX',
+        websiteUri: 'https://www.visitmckinney.com/restaurants/bobs',
+        });
+      }
+      searches += 1;
+      if (searches === 1) {
+        return jsonResponse({
+          stop_reason: 'end_turn',
+          content: [
+            {
+              type: 'web_search_tool_result',
+              content: [
+                { type: 'web_search_result', url: 'https://order.toasttab.com/online/bobs', title: 'Toast' },
+                { type: 'web_search_result', url: 'https://nextdoor.com/pages/bobs', title: 'Nextdoor' },
+                { type: 'web_search_result', url: 'https://mindtrip.ai/restaurant/bobs', title: 'Mindtrip' },
+              ],
+            },
+          ],
+          usage: { server_tool_use: { web_search_requests: 1 } },
+        });
+      }
+      return jsonResponse({
+        stop_reason: 'end_turn',
+        content: [
+          {
+            type: 'web_search_tool_result',
+            content: [{ type: 'web_search_result', url: 'https://bobs.example.com/visit', title: 'Visit' }],
+          },
+        ],
+        usage: { server_tool_use: { web_search_requests: 1 } },
+      });
+    }) as typeof fetch;
+    const proposal = await proposeRestaurantWebsite({
+      restaurant: { ...RESTAURANT, name: 'Bobs Grill McKinney' },
+      placesKey: 'places-test-key',
+      anthropicKey: 'anthropic-test-key',
+      fetchImpl,
+      outboundDisabled: false,
+    });
+    expect(searches).toBe(2);
+    expect(proposal.kind).toBe('official');
+    expect(proposal.proposed).toBe('https://bobs.example.com/');
+    expect(proposal.notes.join('\n')).toMatch(/visitmckinney\.com/);
+    expect(proposal.notes.join('\n')).toMatch(/Search continued/);
+  });
 });
