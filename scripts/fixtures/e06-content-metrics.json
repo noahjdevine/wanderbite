@@ -1,0 +1,65 @@
+{
+  "sources": [
+    { "id": "menu", "kind": "public_menu" },
+    { "id": "venue", "kind": "venue_page" },
+    { "id": "event", "kind": "event_page" },
+    { "id": "restaurant", "kind": "restaurant_page" }
+  ],
+  "attempts": [
+    { "sourceId": "menu", "attemptedAt": "2026-11-05T15:00:00.000Z", "outcome": "unchanged" },
+    { "sourceId": "event", "attemptedAt": "2026-11-05T15:05:00.000Z", "outcome": "http_error" },
+    { "sourceId": "venue", "attemptedAt": "2026-11-05T18:00:00.000Z", "outcome": "ok" }
+  ],
+  "drafts": [
+    {
+      "sourceId": "restaurant",
+      "subjectType": "briefing",
+      "status": "pending_review",
+      "extractedAt": "2026-11-05T16:00:00.000Z",
+      "changeSummary": "Parking moved to the side lot."
+    }
+  ],
+  "ledger": [
+    {
+      "featureClass": "maintenance",
+      "accountTier": "ops",
+      "status": "settled",
+      "dayKey": "2026-11-05",
+      "settledAt": "2026-11-06T05:30:00.000Z",
+      "settledPlatformMicrodollars": 250000
+    },
+    {
+      "featureClass": "maintenance",
+      "accountTier": "ops",
+      "status": "dispatched",
+      "dayKey": "2026-11-05",
+      "settledAt": null,
+      "settledPlatformMicrodollars": 999999
+    },
+    {
+      "featureClass": "optional",
+      "accountTier": "paid",
+      "status": "settled",
+      "dayKey": "2026-11-05",
+      "settledAt": "2026-11-05T18:00:00.000Z",
+      "settledPlatformMicrodollars": 5000
+    },
+    {
+      "featureClass": "maintenance",
+      "accountTier": "ops",
+      "status": "settled",
+      "dayKey": "2026-10-01",
+      "settledAt": "2026-10-01T18:00:00.000Z",
+      "settledPlatformMicrodollars": 1000
+    }
+  ],
+  "audits": [
+    { "action": "content.exception_edit", "createdAt": "2026-11-05T20:00:00.000Z", "published": true },
+    { "action": "content.exception_approve", "createdAt": "2026-11-05T20:05:00.000Z", "published": false },
+    { "action": "restaurant.import", "createdAt": "2026-11-05T20:10:00.000Z", "published": null }
+  ],
+  "exceptions": [
+    { "sourceId": "venue", "status": "edited", "resolvedAt": "2026-11-05T19:30:00.000Z" },
+    { "sourceId": "event", "status": "open", "resolvedAt": null }
+  ]
+}

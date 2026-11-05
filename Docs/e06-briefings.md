@@ -28,7 +28,9 @@ The shared cron includes due `restaurant_page` rows when `E05_CONTENT_REFRESH_CR
 
 Migration `20261105212138_e06_b4_briefing_updates.sql` is applied to hosted (2026-11-05) as `schema_migrations` version `20261105212138`. The filename matches that version. The SQL is unchanged from the file that was previously named `20261105213000_e06_b4_briefing_updates.sql`. This rename does not run `supabase db push` or `npm run types:db`.
 
-Migration `20261105223000_e06_b5_draft_summaries.sql` replaces `apply_briefing_field_fact` and `apply_activity_field_fact` so `source_facts.value` can keep `change_summary` and so a matching open draft is not inserted again. It is not applied to hosted. No new column. The function signatures are unchanged. `npm run types:db` was not run. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` note that. Revert this PR to remove the callers. The replaced functions still accept the previous JSON. No drop is required.
+Migration `20261105214940_e06_b5_draft_summaries.sql` replaces `apply_briefing_field_fact` and `apply_activity_field_fact` so `source_facts.value` can keep `change_summary` and so a matching open draft is not inserted again. The file was previously named `20261105223000_e06_b5_draft_summaries.sql`. Hosted `schema_migrations` applied it on 2026-11-05 as version `20261105214940` (name `e06_b5_draft_summaries`). The SQL is unchanged. This rename does not run `supabase db push` or `npm run types:db`. No new column. The function signatures are unchanged. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` note that. The replaced functions still accept the previous JSON. No drop is required.
+
+`npm run content:metrics` counts a `restaurant_page` verification or an unmatched briefing draft in automatic updates. The formulas, the Chicago window, and the other three numbers are in `Docs/e05-content-pipeline.md`. The command is read-only. It does not set `restaurant_briefing_facts.status` to `active` and it does not turn on `E06_BRIEFINGS_ENABLED`. This does not claim D00 acceptance.
 
 ## Sample data
 
