@@ -13,9 +13,16 @@ vi.mock('next/image', () => ({
 }));
 
 const loadDiscoverViewer = vi.fn(async () => ({ firstName: null, savedDietary: [] as const }));
+const getUser = vi.hoisted(() => vi.fn(async () => ({ data: { user: null } })));
 
 vi.mock('@/lib/discover/viewer', () => ({
   loadDiscoverViewer: () => loadDiscoverViewer(),
+}));
+
+vi.mock('@/lib/supabase/server', () => ({
+  createClient: async () => ({
+    auth: { getUser },
+  }),
 }));
 
 import RoulettePage from '@/app/(site)/roulette/page';
@@ -23,6 +30,8 @@ import RoulettePage from '@/app/(site)/roulette/page';
 describe('roulette page flag switch', () => {
   beforeEach(() => {
     loadDiscoverViewer.mockClear();
+    getUser.mockClear();
+    getUser.mockResolvedValue({ data: { user: null } });
     vi.stubEnv('DISCOVER_STREAM_ENABLED', '');
   });
 

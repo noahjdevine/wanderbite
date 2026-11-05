@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Link from 'next/link';
 import { format } from 'date-fns';
 import { PreferencesForm, type PreferencesValues } from '@/components/forms/PreferencesForm';
 import { ProfileForm, type ProfileValues } from '@/components/forms/ProfileForm';
@@ -135,7 +136,7 @@ export function AccountClient({
             <span>{initial.email ?? '—'}</span>
           </div>
           <p className="wb-account-fine">
-            Email change can be added here once enabled in Supabase Auth settings.
+            To change your email, <Link href="/contact">contact us</Link>.
           </p>
           <label className="wb-account-reminder">
             <input

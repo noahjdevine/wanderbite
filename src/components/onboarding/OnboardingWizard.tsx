@@ -74,6 +74,7 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
   const [step, setStep] = useState<WizardStep>(initial.step);
   const [prefs, setPrefs] = useState<PreferencesValues>(initial.preferences);
   const [profile, setProfile] = useState<ProfileValues>(initial.profile);
+  const [attested, setAttested] = useState(initial.hasCurrentAttestation);
 
   const completed = useMemo(
     () => ({
@@ -234,17 +235,26 @@ export function OnboardingWizard({ initial }: { initial: OnboardingInitial }) {
                     </p>
                   </div>
                   <div className="wb-onboarding-attest">
-                    {initial.hasCurrentAttestation ? (
+                    {attested ? (
                       <p className="text-sm text-muted-foreground" role="status">
                         You confirmed you are 21 or older and agreed to terms version{' '}
                         {LEGAL_DOCUMENT_VERSION}.
                       </p>
                     ) : (
-                      <LegalAttestationForm renderedForUserId={initial.userId} tone="onboarding" />
+                      <LegalAttestationForm
+                        renderedForUserId={initial.userId}
+                        tone="onboarding"
+                        onSaved={() => setAttested(true)}
+                      />
                     )}
                   </div>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-3 pt-2">
+                  {attested ? (
+                    <Link href="/challenges" className="wb-onboarding-primary">
+                      Start exploring
+                    </Link>
+                  ) : null}
                   {ineligible ? <AreaHoldNotice /> : <LaunchHoldNotice />}
                   <p className="wb-onboarding-aside">
                     Prefer to browse first?{' '}

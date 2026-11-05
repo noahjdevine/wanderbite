@@ -293,6 +293,28 @@ describe('onboarding Golden Hour shell', () => {
     );
   });
 
+  it('shows Start exploring after age and terms succeed', async () => {
+    render(<OnboardingWizard initial={initial(3)} />);
+    expect(screen.queryByRole('link', { name: 'Start exploring' })).toBeNull();
+    fireEvent.click(screen.getByLabelText('I confirm I am 21 or older.'));
+    fireEvent.click(screen.getByLabelText(/I agree to the/));
+    fireEvent.submit(screen.getByRole('button', { name: 'Confirm age and terms' }).closest('form')!);
+    await waitFor(() => expect(recordLegalAttestation).toHaveBeenCalledTimes(1));
+    expect(recordLegalAttestation).toHaveBeenCalledWith(
+      { presentedVersion: LEGAL_DOCUMENT_VERSION, age21: true, agreeToTerms: true },
+      USER_ID,
+    );
+    const start = await screen.findByRole('link', { name: 'Start exploring' });
+    expect(start.getAttribute('href')).toBe('/challenges');
+    expect(start.className).toContain('wb-onboarding-primary');
+    expect(
+      screen.getByText(
+        `You confirmed you are 21 or older and agreed to terms version ${LEGAL_DOCUMENT_VERSION}.`,
+      ).getAttribute('role'),
+    ).toBe('status');
+    expect(screen.queryByRole('button', { name: 'Confirm age and terms' })).toBeNull();
+  });
+
   it('keeps the confirmed attestation sentence when it is already saved', () => {
     render(<OnboardingWizard initial={initial(3, { hasCurrentAttestation: true })} />);
     const confirmed = screen.getByText(
@@ -300,6 +322,9 @@ describe('onboarding Golden Hour shell', () => {
     );
     expect(confirmed.getAttribute('role')).toBe('status');
     expect(screen.queryByRole('button', { name: 'Confirm age and terms' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Start exploring' }).getAttribute('href')).toBe(
+      '/challenges',
+    );
   });
 
   it('leaves the default form markup unmarked and matches account tone to onboarding tone', () => {

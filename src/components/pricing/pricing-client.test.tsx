@@ -45,18 +45,30 @@ function expectSharedPlan() {
   }
   expect(screen.getByText(/Now launching in McKinney, Texas/)).toBeTruthy();
   expect(screen.getByText(/Plan \(when checkout reopens\): \$15\/month \(billed monthly\)/)).toBeTruthy();
-  expect(screen.getByRole('link', { name: 'Terms of Service' }).getAttribute('href')).toBe('/terms');
-  expect(screen.getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe('/privacy');
-  expect(screen.getByRole('link', { name: 'Discount & Challenge Rules' }).getAttribute('href')).toBe('/rules');
   expect(screen.queryByRole('button')).toBeNull();
   expect(createCheckoutSession).not.toHaveBeenCalled();
   expect(document.body.textContent ?? '').not.toMatch(/createCheckoutSession|Stripe|CHECKOUT_ENABLED/);
+}
+
+function expectAccountCreationLine() {
+  expect(screen.getByText(/By creating an account, you agree/)).toBeTruthy();
+  expect(screen.getByRole('link', { name: 'Terms of Service' }).getAttribute('href')).toBe('/terms');
+  expect(screen.getByRole('link', { name: 'Privacy Policy' }).getAttribute('href')).toBe('/privacy');
+  expect(screen.getByRole('link', { name: 'Discount & Challenge Rules' }).getAttribute('href')).toBe('/rules');
+}
+
+function expectNoAccountCreationLine() {
+  expect(screen.queryByText(/By creating an account/)).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Terms of Service' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Privacy Policy' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Discount & Challenge Rules' })).toBeNull();
 }
 
 describe('PricingClient branches', () => {
   it('shows the launch hold and a signup link when signed out', () => {
     render(<PricingClient />);
     expectSharedPlan();
+    expectAccountCreationLine();
     expect(screen.getByRole('heading', { level: 1, name: 'Simple, Transparent Pricing.' })).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain(LAUNCH_HOLD_HEADING);
     expect(screen.getByRole('status').textContent).toContain(LAUNCH_HOLD_BODY);
@@ -80,6 +92,7 @@ describe('PricingClient branches', () => {
       />,
     );
     expectSharedPlan();
+    expectNoAccountCreationLine();
     expect(
       screen.getByRole('heading', { level: 1, name: 'Welcome, Ada! Membership checkout is paused.' }),
     ).toBeTruthy();
@@ -99,6 +112,7 @@ describe('PricingClient branches', () => {
       screen.getByRole('heading', { level: 1, name: 'Welcome, Ada! Membership checkout is paused.' }),
     ).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain(LAUNCH_HOLD_BODY);
+    expectNoAccountCreationLine();
     expect(screen.queryByRole('link', { name: 'Create a free account' })).toBeNull();
     expect(createCheckoutSession).not.toHaveBeenCalled();
   });
@@ -113,6 +127,7 @@ describe('PricingClient branches', () => {
       />,
     );
     expectSharedPlan();
+    expectNoAccountCreationLine();
     expect(screen.getByRole('heading', { level: 1, name: 'Your Wanderbite Club plan' })).toBeTruthy();
     expect(screen.getByText('Manage your subscription anytime.')).toBeTruthy();
     const manage = screen.getByRole('link', { name: 'Manage my plan' });
@@ -133,6 +148,7 @@ describe('PricingClient branches', () => {
       />,
     );
     expectSharedPlan();
+    expectNoAccountCreationLine();
     expect(
       screen.getByRole('heading', { level: 1, name: 'Welcome, Ada! Membership checkout is paused.' }),
     ).toBeTruthy();
@@ -155,6 +171,7 @@ describe('PricingClient branches', () => {
       />,
     );
     expectSharedPlan();
+    expectNoAccountCreationLine();
     expect(
       screen.getByRole('heading', { level: 1, name: 'Welcome! Membership checkout is paused.' }),
     ).toBeTruthy();

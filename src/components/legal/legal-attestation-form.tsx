@@ -13,10 +13,13 @@ import {
 export function LegalAttestationForm({
   renderedForUserId,
   tone = 'default',
+  onSaved,
 }: {
   renderedForUserId: string;
   /** Account and onboarding wire the save error. Default markup is unchanged. */
   tone?: 'default' | 'account' | 'onboarding';
+  /** Called after a successful save. The attestation write itself is unchanged. */
+  onSaved?: () => void;
 }) {
   // Shared error wiring. Default stays off, so account and untouched callers match main.
   const account = tone === 'account' || tone === 'onboarding';
@@ -48,6 +51,7 @@ export function LegalAttestationForm({
         return;
       }
       setSaved(true);
+      onSaved?.();
     } catch {
       setError('Unable to save your confirmation right now. Please try again.');
     } finally {
