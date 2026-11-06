@@ -182,12 +182,20 @@ export function quoteBoost(input: {
     ? null
     : selectBoost(boosts, input.arrivalAt, version.timezone, version.validUntil);
 
-  const base = belowMinimum ? 0 : Math.max(0, quoted.tierCents);
-  const boostDiscount = belowMinimum ? 0 : Math.max(0, quoted.boostCents);
-  const total = Math.max(0, Math.min(quoted.discountCents, input.eligibleSubtotalCents));
+  let base = belowMinimum ? 0 : Math.max(0, quoted.tierCents);
+  let boostDiscount = belowMinimum ? 0 : Math.max(0, quoted.boostCents);
+  const total = belowMinimum
+    ? 0
+    : Math.max(0, Math.min(quoted.discountCents, input.eligibleSubtotalCents));
+  // Noah 2026-11-05: when the total is capped, reduce the Boost first so the
+  // stored parts sum to total_discount_cents. A base that still exceeds the
+  // total is reduced only after the Boost is zero. Below minimum stays 0 + 0.
   const capped = !belowMinimum && base + boostDiscount > total;
-  const appliedBoost =
-    chosen && boostDiscount > 0 && chosen.bonusCents === boostDiscount ? chosen : null;
+  if (capped) {
+    boostDiscount = Math.min(boostDiscount, Math.max(0, total - base));
+    if (base + boostDiscount > total) base = total - boostDiscount;
+  }
+  const appliedBoost = chosen && boostDiscount > 0 ? chosen : null;
 
   const reasons: BoostQuoteReason[] = [];
   if (belowMinimum) {

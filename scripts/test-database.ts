@@ -163,6 +163,8 @@ async function main() {
   process.stdout.write('PASS: E06-B4 briefing kind, subject, grants, paused drafts, conflict, and rollback history.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-b5-draft-summaries.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E06-B5 change summaries and pending-draft dedup.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-arrival-sessions.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E07-A2 arrival session grants, idempotency, one open session, and quote supersede.\n');
   await runE06B2ActivityMaintenanceDb({ sql });
   process.stdout.write('PASS: E06-B2 cron-path expiry, cadence selection, and flag-off leaves activities untouched.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-credit-safe-swaps.sql'), 'utf8')) + '\n');

@@ -172,11 +172,30 @@ describe('boost quote', () => {
       arrivalAt: fridayArrival,
     });
     expect(quote.base_discount_cents).toBe(1000);
-    expect(quote.boost_discount_cents).toBe(800);
+    expect(quote.boost_discount_cents).toBe(500);
+    expect(quote.boost_id).toBe('boost-5');
     expect(quote.total_discount_cents).toBe(1500);
+    expect(quote.base_discount_cents + quote.boost_discount_cents).toBe(quote.total_discount_cents);
     expect(quote.total_discount_cents).toBeLessThanOrEqual(quote.eligible_subtotal_cents);
     expect(quote.total_discount_cents).toBeGreaterThanOrEqual(0);
-    expect(quote.reasons).toContain('capped');
+    expect(quote.reasons).toEqual(['quoted', 'capped', 'boost_applied']);
+  });
+
+  it('reduces the base only after the Boost is zero when the base alone exceeds the subtotal', () => {
+    const quote = quoteOk({
+      offerVersion: version({
+        tiers: [{ thresholdCents: 1000, discountCents: 2000 }],
+        boosts: [{ ...fridayNight, bonusCents: 500 }],
+      }),
+      eligibleSubtotalCents: 1500,
+      arrivalAt: fridayArrival,
+    });
+    expect(quote.boost_discount_cents).toBe(0);
+    expect(quote.boost_id).toBeNull();
+    expect(quote.base_discount_cents).toBe(1500);
+    expect(quote.total_discount_cents).toBe(1500);
+    expect(quote.base_discount_cents + quote.boost_discount_cents).toBe(quote.total_discount_cents);
+    expect(quote.reasons).toEqual(['quoted', 'capped']);
   });
 
   it('refuses an unbound item instead of a fallback amount', () => {
