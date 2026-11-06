@@ -15,15 +15,19 @@ import {
  * instead of proposing that 0. The check calls `applyExclusions` again with
  * gross + 1. It does not subtract tax, tip, or categories itself.
  */
-export const BILL_SCAN_SOURCES = ['fixture', 'manual', 'ocr_stub'] as const;
+export const BILL_SCAN_SOURCES = ['fixture', 'manual', 'ocr_stub', 'azure_prebuilt_receipt'] as const;
 
 export type BillScanSource = (typeof BILL_SCAN_SOURCES)[number];
 
 /**
- * Confidence strictly below this is `low_confidence`. Helper default only.
- * Not a product decision.
+ * Product cutoff (Noah, 2026-11-06). A score strictly below this is
+ * `low_confidence`. Null is unknown and is also `low_confidence`. An omitted
+ * score is `low_confidence` for `ocr_stub` and `azure_prebuilt_receipt`.
+ * Fixture and manual scores may be omitted.
  */
 export const BILL_PROPOSAL_LOW_CONFIDENCE_BELOW = 0.8;
+
+const LOW_CONFIDENCE_WHEN_OMITTED = new Set<BillScanSource>(['ocr_stub', 'azure_prebuilt_receipt']);
 
 export const BILL_PROPOSAL_REFUSAL_CODES = [
   'invalid_bill',
@@ -156,7 +160,7 @@ function confidenceIsLow(
   value: number | null | undefined,
   source: BillScanSource,
 ): boolean {
-  if (value === undefined) return source === 'ocr_stub';
+  if (value === undefined) return LOW_CONFIDENCE_WHEN_OMITTED.has(source);
   if (value === null) return true;
   return value < BILL_PROPOSAL_LOW_CONFIDENCE_BELOW;
 }
