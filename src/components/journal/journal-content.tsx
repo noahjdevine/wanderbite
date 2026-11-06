@@ -1,6 +1,5 @@
-import type { ReactNode } from 'react';
 import { getBiteNotes, type BiteNoteRow } from '@/app/actions/bite-notes';
-import { FocusVisitFromHash } from '@/components/notes/focus-visit';
+import { JournalShell } from '@/components/journal/journal-shell';
 import { VisitNoteRead } from '@/components/notes/visit-note';
 import { requireUser } from '@/lib/auth/require-user';
 import { JOURNAL_SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
@@ -151,37 +150,6 @@ function statusChipClass(status: VisitStatus): string {
     return 'bg-[#fef3c7] text-[#78350f]';
   }
   return 'bg-[#f6f1e8] text-wb-ink';
-}
-
-function JournalShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="bg-wb-cream text-wb-ink">
-      <FocusVisitFromHash />
-      <header className="wb-dark relative overflow-hidden">
-        <div
-          aria-hidden="true"
-          className="wb-aurora pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(251,113,133,0.4) 0%, rgba(251,113,133,0) 70%)' }}
-        />
-        <div
-          aria-hidden="true"
-          className="wb-aurora-2 pointer-events-none absolute -left-28 top-36 h-80 w-80 rounded-full"
-          style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.55) 0%, rgba(139,92,246,0) 70%)' }}
-        />
-        <div className="relative mx-auto flex max-w-5xl flex-col gap-3 px-5 pb-16 pt-4 sm:px-8">
-          <h1 className="wb-display m-0 text-[40px] text-white sm:text-[52px]">
-            <em>Journal</em>
-          </h1>
-          <p className="m-0 max-w-md text-sm text-wb-lavender-2">
-            Your dining memories. You choose which ones to share.
-          </p>
-        </div>
-      </header>
-      <div className="wb-sheet wb-on-cream">
-        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-5 pb-16 pt-7 sm:px-8">{children}</div>
-      </div>
-    </div>
-  );
 }
 
 export async function JournalContent() {

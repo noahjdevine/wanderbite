@@ -358,6 +358,8 @@ describe('passport board', () => {
     const map = screen.getByRole('radio', { name: 'Map' });
     expect(map.getAttribute('href')).toBe('/journey?view=map');
     expect(map.getAttribute('aria-checked')).toBe('false');
+    expect(fireEvent.click(map)).toBe(false);
+    expect(push).toHaveBeenCalledWith('/journey?view=map');
     expect(map.getAttribute('aria-disabled')).toBeNull();
     const group = screen.getByRole('radiogroup', { name: 'Passport views' });
     expect(screen.getAllByRole('radio')).toHaveLength(2);
