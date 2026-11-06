@@ -1,8 +1,12 @@
 # E08 journal reflections
 
-E08-A1 is pure server-side helpers in `src/lib/notes/reflection.ts` and this design. Members and partners see nothing new. No feature flag is introduced or turned on. There is no RPC, no UI, no AI call, and no Google API call. Nothing under `src/app` imports the module. `src/app/actions/bite-notes.ts` is unchanged. `NOTE_MAX` is read from `src/lib/notes/note-rules.ts` and is still 280.
+E08-A1 is pure server-side helpers in `src/lib/notes/reflection.ts` and this design. Members and partners see nothing new while `E08_JOURNAL_REFLECTIONS_ENABLED` is unset. There is no RPC, no UI, no AI call, and no Google API call. `src/app/actions/bite-notes.ts` is unchanged. `NOTE_MAX` is read from `src/lib/notes/note-rules.ts` and is still 280.
 
-E08-A2 is landed-pending-merge. `supabase/migrations/20261106170000_e08_a2_journal_reflections.sql` creates the table below. It is not applied to hosted. Do not run `supabase db push` for that file. `npm run types:db` was not run.
+E08-A2 landed in #151 (merge `a0bd66bd0090eb433eebd29d283216975f968a06`). `supabase/migrations/20261106170000_e08_a2_journal_reflections.sql` creates the table below. It is not applied to hosted. Do not run `supabase db push` for that file. `npm run types:db` was not run.
+
+E08-B1 is landed-pending-merge. `src/app/actions/journal-reflections.ts` loads and saves one private reflection and resolves a Google review handoff for an owned redemption. The flag is `E08_JOURNAL_REFLECTIONS_ENABLED` in `src/lib/notes/flag.ts`. Only the exact string `true` turns the actions on. Unset, empty, `True`, and `1` stay off. Those calls return `disabled` and do not query `journal_reflections`. No page chrome. No publish into `bite_notes`. Save does not set `bite_note_id`. The action sets `updated_at` on the upsert, matching `saveBiteNote`. The before-update trigger `set_journal_reflections_updated_at` also sets `updated_at` on update. It does not run on insert.
+
+Action codes: `disabled`, `unauthorized`, `not_found` (missing redemption, or an id that is not a uuid), `forbidden` (the redemption belongs to someone else; the reflection is not read), `read_failed`, and `save_failed`. Save also returns the helper refusals `invalid_input`, `invalid_text`, `too_long`, and `invalid_return_interest`, with `field` when the helper sets one. It does not truncate. Handoff returns the helper URL and `source`, or `missing_destination`, `invalid_place_id`, `invalid_url`, `insecure_url`, or `disallowed_host`. Failures do not include reflection text, a place id, or a handoff URL. The actions do not log those values.
 
 Noah approved the helper slice on 2026-11-06 and is accepting these table defaults with E08-A2: caps 120 / 280 / 40 / 1500, the name `journal_reflections`, an owned `redemption_id` with optional `bite_note_id`, and no rating or sentiment column. The admin Maps URL column and the G13-A polish class stay open.
 
@@ -32,7 +36,7 @@ No other cap for these fields exists in the repo. These numbers are the helper's
 
 ## Proposed table
 
-Name: `journal_reflections`. E08-A2 adds it in `20261106170000_e08_a2_journal_reflections.sql` (landed-pending-merge). That migration is not applied to hosted.
+Name: `journal_reflections`. E08-A2 adds it in `20261106170000_e08_a2_journal_reflections.sql` (landed in #151, merge `a0bd66bd0090eb433eebd29d283216975f968a06`). That migration is not applied to hosted.
 
 | Column | Notes |
 | --- | --- |
@@ -61,7 +65,7 @@ Index `user_id` for the member's own list. `redemption_id` is unique. `bite_note
 
 ## RLS and grants
 
-Match `bill_scan_proposals` in `20261106150000_e07_b2_bill_receipts.sql`. Enable row level security. `revoke all` from `public`, `anon`, `authenticated`, and `service_role`. Grant `select`, `insert`, `update`, and `delete` to `service_role` only. No policy for `anon` or `authenticated`. No grant that lets the member client `select *`. The future server action uses `requireUser()` and still checks `user_id`. Do not trust a user id from the browser.
+Match `bill_scan_proposals` in `20261106150000_e07_b2_bill_receipts.sql`. Enable row level security. `revoke all` from `public`, `anon`, `authenticated`, and `service_role`. Grant `select`, `insert`, `update`, and `delete` to `service_role` only. No policy for `anon` or `authenticated`. No grant that lets the member client `select *`. E08-B1 uses `requireUser()` and the admin client, then checks `redemptions.user_id` against `auth.userId`. Do not trust a user id from the browser.
 
 No view and no public join of this table to `bite_notes`. A view in `public` would bypass RLS unless it is `security_invoker`, and this design does not add one. Do not add a `security definer` function that returns reflection text. `redemption_is_verified` already returns a boolean and can stay the public-note gate.
 
@@ -69,7 +73,7 @@ No view and no public join of this table to `bite_notes`. A view in `public` wou
 
 ## Explicit publish
 
-1. A later action validates with `validateReflectionFields` and writes only `journal_reflections`.
+1. `saveJournalReflection` validates with `validateReflectionFields` and writes only `journal_reflections`. It does not set `bite_note_id`. Publish is still a later action.
 2. The member chooses the public sentence and a rating. `composePublicNotePublishPlan` is the plan. Private fields are not arguments to the `bite_notes` write.
 3. The write uses the same columns as `saveBiteNote`: `note`, `rating`, `is_public`. A public save still requires a verified redemption (`PUBLIC_REVIEW_REQUIRES_VERIFIED`). A private `bite_notes` save is a different action and is not this publish.
 4. After that write, set `bite_note_id`. Do not copy `favorite_bite`, `atmosphere`, `return_interest`, `companion_label`, or the unpublished draft onto `bite_notes` unless the member passed that text as `publicNote` and it is at most `NOTE_MAX`.
@@ -80,7 +84,7 @@ Today's editor at `/journal/notes/[redemptionId]` is unchanged.
 
 ## Google handoff
 
-Verified in the repo: `restaurants.google_place_id` is `text`, added in `009_restaurants_google_places.sql`. The directory and the restaurant-image proxy use it. Prefer it. Build the writereview URL above. Do not call the Places API from this path.
+Verified in the repo: `restaurants.google_place_id` is `text`, added in `009_restaurants_google_places.sql`. The directory and the restaurant-image proxy use it. Prefer it. Build the writereview URL above. Do not call the Places API from this path. E08-B1 loads that column through the owned redemption and calls `buildGoogleReviewHandoff({ googlePlaceId })`. It does not pass a Maps URL, append a draft, or call Google.
 
 `restaurants.google_photo_url` is a photo reference (`009_restaurants_google_places.sql`). It is not a review link. Do not use it. `restaurants.official_website` (`20261105202512_e06_a2_restaurant_official_website.sql`) is an https site for the restaurant. It is not a Maps URL. Do not use it as the handoff.
 
@@ -119,6 +123,7 @@ Checkout stays frozen. Criterion 11, a real profile on `credits`, still needs se
 - Hosted apply of `20261106170000_e08_a2_journal_reflections.sql`. Not applied. Do not apply it here.
 - Live Azure. `E07_BILL_SCAN_AZURE_ENABLED` stays unset. Do not put Azure credentials on Vercel.
 - `E07_ARRIVAL_SESSIONS_ENABLED` stays unset.
+- `E08_JOURNAL_REFLECTIONS_ENABLED` stays unset. Do not set it in Vercel from this change.
 - The A2 filename is already `20261106034025_e07_a2_arrival_sessions.sql` on main from #149. Do not rename it. Do not rename the B2 file in this PR.
 
 ## Open questions for Noah
@@ -134,4 +139,4 @@ Checkout stays frozen. Criterion 11, a real profile on `credits`, still needs se
 
 ## Rollback
 
-Revert the PR before any hosted apply. `20261106170000_e08_a2_journal_reflections.sql` is forward-only and is not applied to hosted. If it were applied later, a separate cleanup migration would be required. Nothing under `src/app` calls the helpers.
+Revert the PR before any hosted apply. `20261106170000_e08_a2_journal_reflections.sql` is forward-only and is not applied to hosted. If it were applied later, a separate cleanup migration would be required. While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the actions return `disabled` and do not query the table. No page calls them.
