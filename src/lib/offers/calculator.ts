@@ -88,7 +88,11 @@ export function applyExclusions(bill: BillParts, policy: ExclusionPolicy): numbe
   return Math.max(0, cents);
 }
 
-function qualifyingTier(tiers: OfferTier[], eligibleSubtotalCents: number): OfferTier | null {
+/** Highest tier whose threshold is inclusive. Thresholds are not summed. */
+export function selectQualifyingTier(
+  tiers: OfferTier[],
+  eligibleSubtotalCents: number,
+): OfferTier | null {
   const ordered = [...tiers].sort((a, b) => a.thresholdCents - b.thresholdCents);
   let match: OfferTier | null = null;
   for (const tier of ordered) {
@@ -128,17 +132,21 @@ function boostContains(boost: OfferBoost, checkInAt: Date, timeZone: string): bo
   return weeklyContains(boost, checkInAt, timeZone);
 }
 
-function bestBoost(
+/**
+ * One Boost at check-in: highest bonus, then id. Null when check-in is missing
+ * or at/after valid_until. quoteOffer uses this for boostCents.
+ */
+export function selectBoost(
   boosts: OfferBoost[],
   checkInAt: Date | null,
   timeZone: string,
   validUntil: Date,
-): number {
-  if (!checkInAt || checkInAt.getTime() >= validUntil.getTime()) return 0;
+): OfferBoost | null {
+  if (!checkInAt || checkInAt.getTime() >= validUntil.getTime()) return null;
   const matches = boosts.filter((boost) => boostContains(boost, checkInAt, timeZone));
-  if (matches.length === 0) return 0;
+  if (matches.length === 0) return null;
   matches.sort((a, b) => b.bonusCents - a.bonusCents || a.id.localeCompare(b.id));
-  return matches[0]?.bonusCents ?? 0;
+  return matches[0] ?? null;
 }
 
 export function quoteOffer(input: {
@@ -181,9 +189,10 @@ export function quoteOffer(input: {
     if (!open) return none('ineligible');
   }
 
-  const tier = qualifyingTier(input.tiers, input.eligibleSubtotalCents);
+  const tier = selectQualifyingTier(input.tiers, input.eligibleSubtotalCents);
   if (!tier) return none('below_minimum');
-  const boostCents = bestBoost(input.boosts, input.checkInAt, input.timeZone, input.validUntil);
+  const boostCents =
+    selectBoost(input.boosts, input.checkInAt, input.timeZone, input.validUntil)?.bonusCents ?? 0;
   const raw = tier.discountCents + boostCents;
   const discountCents = Math.max(0, Math.min(raw, input.eligibleSubtotalCents));
   return {
