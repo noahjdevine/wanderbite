@@ -73,6 +73,7 @@ describe('member tab bar layout', () => {
 
     const links = within(nav).getAllByRole('link');
     expect(links.map((link) => link.textContent)).toEqual(['Discover', 'Challenges', 'Progress', 'Passport']);
+    expect(within(nav).queryByRole('link', { name: 'Journal' })).toBeNull();
     expect(links.map((link) => link.getAttribute('href'))).toEqual([...TAB_HREFS]);
     expect(links.every((link) => link.dataset.nextLink != null)).toBe(true);
     expect(links.every((link) => link.tabIndex >= 0)).toBe(true);

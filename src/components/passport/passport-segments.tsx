@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { segmentHref, type PassportSegmentId } from '@/lib/passport/passport-board';
 
@@ -15,8 +16,21 @@ type PassportSegmentsProps = {
 export function PassportSegments({ active }: PassportSegmentsProps) {
   const router = useRouter();
 
+  useEffect(() => {
+    if (typeof router.prefetch !== 'function') return;
+    router.prefetch(segmentHref('stamps'));
+    router.prefetch(segmentHref('map'));
+  }, [router]);
+
   function go(segment: PassportSegmentId) {
     router.push(segmentHref(segment));
+  }
+
+  function onSegmentClick(event: React.MouseEvent<HTMLAnchorElement>, segment: PassportSegmentId) {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+    event.preventDefault();
+    if (segment === active) return;
+    go(segment);
   }
 
   function onKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
@@ -61,6 +75,7 @@ export function PassportSegments({ active }: PassportSegmentsProps) {
             aria-checked={selected}
             tabIndex={selected ? 0 : -1}
             className={className}
+            onClick={(event) => onSegmentClick(event, segment.id)}
           >
             {segment.label}
           </a>

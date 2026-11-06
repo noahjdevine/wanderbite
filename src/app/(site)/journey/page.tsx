@@ -1,4 +1,3 @@
-import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
@@ -21,15 +20,6 @@ export async function generateMetadata({ searchParams }: JourneyPageProps): Prom
   return { title: 'Progress' };
 }
 
-function HubViewFallback() {
-  return (
-    <div className="mx-auto max-w-2xl animate-pulse space-y-4 py-8">
-      <div className="h-8 w-48 rounded-md bg-muted" />
-      <div className="h-40 rounded-lg bg-muted" />
-    </div>
-  );
-}
-
 export default async function JourneyPage({ searchParams }: JourneyPageProps) {
   const params = await searchParams;
   const view = parseMyJourneyView(params.view);
@@ -50,16 +40,8 @@ export default async function JourneyPage({ searchParams }: JourneyPageProps) {
   }
 
   if (view === 'journey') {
-    return (
-      <Suspense fallback={<HubViewFallback />}>
-        <JourneyContent userId={user.id} />
-      </Suspense>
-    );
+    return <JourneyContent userId={user.id} />;
   }
 
-  return (
-    <Suspense fallback={<HubViewFallback />}>
-      <PassportContent userId={user.id} segment={view === 'map' ? 'map' : 'stamps'} />
-    </Suspense>
-  );
+  return <PassportContent userId={user.id} segment={view === 'map' ? 'map' : 'stamps'} />;
 }
