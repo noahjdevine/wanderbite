@@ -1,12 +1,14 @@
 # E08 journal reflections
 
-E08-A1 is pure server-side helpers in `src/lib/notes/reflection.ts` and this design. Members and partners see nothing new while `E08_JOURNAL_REFLECTIONS_ENABLED` is unset. There is no RPC, no UI, no AI call, and no Google API call. `src/app/actions/bite-notes.ts` is unchanged. `NOTE_MAX` is read from `src/lib/notes/note-rules.ts` and is still 280.
+E08-A1 is pure server-side helpers in `src/lib/notes/reflection.ts` and this design. Members and partners see nothing new while `E08_JOURNAL_REFLECTIONS_ENABLED` is unset. A1 adds no RPC, no UI, no AI call, and no Google API call. `src/app/actions/bite-notes.ts` is unchanged. `NOTE_MAX` is read from `src/lib/notes/note-rules.ts` and is still 280.
 
 E08-A2 landed in #151 (merge `a0bd66bd0090eb433eebd29d283216975f968a06`). `supabase/migrations/20261106170000_e08_a2_journal_reflections.sql` creates the table below. It is not applied to hosted. Do not run `supabase db push` for that file. `npm run types:db` was not run.
 
-E08-B1 is landed-pending-merge. `src/app/actions/journal-reflections.ts` loads and saves one private reflection and resolves a Google review handoff for an owned redemption. The flag is `E08_JOURNAL_REFLECTIONS_ENABLED` in `src/lib/notes/flag.ts`. Only the exact string `true` turns the actions on. Unset, empty, `True`, and `1` stay off. Those calls return `disabled` and do not query `journal_reflections`. No page chrome. No publish into `bite_notes`. Save does not set `bite_note_id`. The action sets `updated_at` on the upsert, matching `saveBiteNote`. The before-update trigger `set_journal_reflections_updated_at` also sets `updated_at` on update. It does not run on insert.
+E08-B1 landed in #153 (merge `c906a7467390b6419ce1ba531b4d989f46da2974`). `src/app/actions/journal-reflections.ts` loads and saves one private reflection and resolves a Google review handoff for an owned redemption. The flag is `E08_JOURNAL_REFLECTIONS_ENABLED` in `src/lib/notes/flag.ts`. Only the exact string `true` turns the actions on. Unset, empty, `True`, and `1` stay off. Those calls return `disabled` and do not query `journal_reflections`. B1 itself adds no page chrome. No publish into `bite_notes`. Save does not set `bite_note_id`. The action sets `updated_at` on the upsert, matching `saveBiteNote`. The before-update trigger `set_journal_reflections_updated_at` also sets `updated_at` on update. It does not run on insert.
 
 Action codes: `disabled`, `unauthorized`, `not_found` (missing redemption, or an id that is not a uuid), `forbidden` (the redemption belongs to someone else; the reflection is not read), `read_failed`, and `save_failed`. Save also returns the helper refusals `invalid_input`, `invalid_text`, `too_long`, and `invalid_return_interest`, with `field` when the helper sets one. It does not truncate. Handoff returns the helper URL and `source`, or `missing_destination`, `invalid_place_id`, `invalid_url`, `insecure_url`, or `disallowed_host`. Failures do not include reflection text, a place id, or a handoff URL. The actions do not log those values.
+
+E08-B2 is landed-pending-merge. `/journal/notes/[redemptionId]` shows the private reflection form and the Google review handoff only when `E08_JOURNAL_REFLECTIONS_ENABLED` is the exact string `true`. While the flag is unset, that page does not render the section and does not call `getJournalReflection`. There is no publish control, no call to `composePublicNotePublishPlan`, and no `bite_note_id` write. The Journal list is unchanged (no per-visit reflection hint). Migration `20261106170000_e08_a2_journal_reflections.sql` is still not applied to hosted. The flag stays unset. No AI call and no Google API call.
 
 Noah approved the helper slice on 2026-11-06 and is accepting these table defaults with E08-A2: caps 120 / 280 / 40 / 1500, the name `journal_reflections`, an owned `redemption_id` with optional `bite_note_id`, and no rating or sentiment column. The admin Maps URL column and the G13-A polish class stay open.
 
@@ -80,7 +82,7 @@ No view and no public join of this table to `bite_notes`. A view in `public` wou
 5. Opening Google does not publish to WanderBite and does not set `is_public`.
 6. No XP, no discount, and no drawing entry for posting. No Yelp mirror. The handoff is not a Google API publish and it does not prefill review text.
 
-Today's editor at `/journal/notes/[redemptionId]` is unchanged.
+While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the editor at `/journal/notes/[redemptionId]` is the rating and bite note only. E08-B2 (landed-pending-merge) adds the private reflection form and the Google handoff on that page only when the flag is the exact string `true`. It does not publish.
 
 ## Google handoff
 
@@ -92,7 +94,7 @@ No `maps_url`, `google_maps_url`, or `place_url` column appears in `supabase/mig
 
 When `google_place_id` is missing, a later slice may pass an https Maps URL that an admin stored. This repo has nowhere to store that URL yet. UNKNOWN where it would live. Until it exists, `buildGoogleReviewHandoff` refuses `missing_destination`. It does not search Google and it does not put the restaurant name or the draft in a query.
 
-Later UI, not this PR:
+Google handoff UI (E08-B2, landed-pending-merge, flag unset):
 
 - Show the host and that the link opens Google's review or Maps page. Do not show the draft inside the URL.
 - Copy writes only the URL. If the clipboard fails, leave the URL in a readonly field the member can select.
@@ -139,4 +141,4 @@ Checkout stays frozen. Criterion 11, a real profile on `credits`, still needs se
 
 ## Rollback
 
-Revert the PR before any hosted apply. `20261106170000_e08_a2_journal_reflections.sql` is forward-only and is not applied to hosted. If it were applied later, a separate cleanup migration would be required. While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the actions return `disabled` and do not query the table. No page calls them.
+Revert the PR before any hosted apply. `20261106170000_e08_a2_journal_reflections.sql` is forward-only and is not applied to hosted. If it were applied later, a separate cleanup migration would be required. While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the actions return `disabled` and do not query the table. The note page does not call them and does not render the reflection section.
