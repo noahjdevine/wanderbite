@@ -610,6 +610,106 @@ export type Database = {
           },
         ]
       }
+      // Hand-edited for E07-A2. npm run types:db was not run against hosted.
+      boost_arrival_sessions: {
+        Row: {
+          arrival_at: string
+          challenge_item_id: string
+          created_at: string
+          created_by_token_hash: string
+          expires_at: string
+          id: string
+          idempotency_key: string
+          locked_boost_id: string | null
+          offer_version_id: string
+          redemption_id: string | null
+          restaurant_id: string
+          status: string
+        }
+        Insert: {
+          arrival_at: string
+          challenge_item_id: string
+          created_at?: string
+          created_by_token_hash: string
+          expires_at: string
+          id?: string
+          idempotency_key: string
+          locked_boost_id?: string | null
+          offer_version_id: string
+          redemption_id?: string | null
+          restaurant_id: string
+          status?: string
+        }
+        Update: {
+          arrival_at?: string
+          challenge_item_id?: string
+          created_at?: string
+          created_by_token_hash?: string
+          expires_at?: string
+          id?: string
+          idempotency_key?: string
+          locked_boost_id?: string | null
+          offer_version_id?: string
+          redemption_id?: string | null
+          restaurant_id?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      boost_quotes: {
+        Row: {
+          base_discount_cents: number
+          below_minimum: boolean
+          boost_discount_cents: number
+          boost_id: string | null
+          created_at: string
+          eligible_subtotal_cents: number
+          expires_at: string
+          id: string
+          offer_version_id: string
+          quote_version: number
+          reasons: Json
+          session_id: string
+          superseded_at: string | null
+          tier_id: string | null
+          total_discount_cents: number
+        }
+        Insert: {
+          base_discount_cents: number
+          below_minimum: boolean
+          boost_discount_cents: number
+          boost_id?: string | null
+          created_at?: string
+          eligible_subtotal_cents: number
+          expires_at: string
+          id?: string
+          offer_version_id: string
+          quote_version: number
+          reasons: Json
+          session_id: string
+          superseded_at?: string | null
+          tier_id?: string | null
+          total_discount_cents: number
+        }
+        Update: {
+          base_discount_cents?: number
+          below_minimum?: boolean
+          boost_discount_cents?: number
+          boost_id?: string | null
+          created_at?: string
+          eligible_subtotal_cents?: number
+          expires_at?: string
+          id?: string
+          offer_version_id?: string
+          quote_version?: number
+          reasons?: Json
+          session_id?: string
+          superseded_at?: string | null
+          tier_id?: string | null
+          total_discount_cents?: number
+        }
+        Relationships: []
+      }
       challenge_items: {
         Row: {
           cycle_id: string | null
@@ -4070,6 +4170,47 @@ export type Database = {
           table_name: string
         }
         Returns: string
+      }
+      // Hand-edited for E07-A2. npm run types:db was not run against hosted.
+      open_boost_arrival_session: {
+        Args: {
+          p_arrival_at: string
+          p_base_discount_cents: number
+          p_below_minimum: boolean
+          p_boost_discount_cents: number
+          p_boost_id: string | null
+          p_challenge_item_id: string
+          p_created_by_token_hash: string
+          p_eligible_subtotal_cents: number
+          p_expires_at: string
+          p_idempotency_key: string
+          p_locked_boost_id: string | null
+          p_offer_version_id: string
+          p_reasons: Json
+          p_redemption_id: string | null
+          p_restaurant_id: string
+          p_tier_id: string | null
+          p_total_discount_cents: number
+        }
+        Returns: Json
+      }
+      supersede_boost_arrival_quote: {
+        Args: {
+          p_base_discount_cents: number
+          p_below_minimum: boolean
+          p_boost_discount_cents: number
+          p_boost_id: string | null
+          p_eligible_subtotal_cents: number
+          p_expires_at: string
+          p_quote_version: number
+          p_reasons: Json
+          p_restaurant_id: string
+          p_session_id: string
+          p_superseded_at: string
+          p_tier_id: string | null
+          p_total_discount_cents: number
+        }
+        Returns: Json
       }
       verify_redemption: {
         Args: { p_restaurant_id: string; p_token_hash: string }
