@@ -341,6 +341,13 @@ describe('reflection module boundary', () => {
       }
     };
     walk(path.join(ROOT, 'src/app'));
-    expect(hits).toEqual([]);
+    expect(hits.map((hit) => path.relative(ROOT, hit))).toEqual([
+      'src/app/actions/journal-reflections.ts',
+    ]);
+    const action = readFileSync(hits[0] ?? '', 'utf8');
+    expect(action).toContain('validateReflectionFields');
+    expect(action).toContain('buildGoogleReviewHandoff');
+    expect(action).not.toContain('composePublicNotePublishPlan');
+    expect(action).not.toMatch(/fetch\(|anthropic|openai|azure/i);
   });
 });
