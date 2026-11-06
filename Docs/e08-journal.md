@@ -1,8 +1,10 @@
 # E08 journal reflections
 
-E08-A1 is pure server-side helpers in `src/lib/notes/reflection.ts` and this design. Members and partners see nothing new. No feature flag is introduced or turned on. There is no migration, no RPC, no UI, no AI call, and no Google API call. Nothing under `src/app` imports the module. `src/app/actions/bite-notes.ts` is unchanged. `NOTE_MAX` is read from `src/lib/notes/note-rules.ts` and is still 280.
+E08-A1 is pure server-side helpers in `src/lib/notes/reflection.ts` and this design. Members and partners see nothing new. No feature flag is introduced or turned on. There is no RPC, no UI, no AI call, and no Google API call. Nothing under `src/app` imports the module. `src/app/actions/bite-notes.ts` is unchanged. `NOTE_MAX` is read from `src/lib/notes/note-rules.ts` and is still 280.
 
-Noah approved starting this slice on 2026-11-06. The field caps, the table name, and the open questions below are recommended defaults. They are not product decisions.
+E08-A2 is landed-pending-merge. `supabase/migrations/20261106170000_e08_a2_journal_reflections.sql` creates the table below. It is not applied to hosted. Do not run `supabase db push` for that file. `npm run types:db` was not run.
+
+Noah approved the helper slice on 2026-11-06 and is accepting these table defaults with E08-A2: caps 120 / 280 / 40 / 1500, the name `journal_reflections`, an owned `redemption_id` with optional `bite_note_id`, and no rating or sentiment column. The admin Maps URL column and the G13-A polish class stay open.
 
 ## What the helpers do
 
@@ -30,7 +32,7 @@ No other cap for these fields exists in the repo. These numbers are the helper's
 
 ## Proposed table
 
-Name: `journal_reflections`. The name is not used elsewhere in the repo. A later slice would add it. This PR does not.
+Name: `journal_reflections`. E08-A2 adds it in `20261106170000_e08_a2_journal_reflections.sql` (landed-pending-merge). That migration is not applied to hosted.
 
 | Column | Notes |
 | --- | --- |
@@ -51,7 +53,7 @@ Do not add a rating column here. The public rating is supplied at publish time a
 
 A trigger, same posture as `bill_scan_proposals_scope`, rejects a row whose `user_id` is not `redemptions.user_id`. It checks ids only. It does not return reflection text. `search_path` is set. A later publish sets `bite_note_id` only when that note's `redemption_id` and `user_id` match this row.
 
-Index `user_id` for the member's own list. `redemption_id` is unique.
+Index `user_id` for the member's own list. `redemption_id` is unique. `bite_note_id` is indexed so `on delete set null` does not scan the table. `updated_at` is set on update by `set_journal_reflections_updated_at`, the same before-update touch as `recipes`, `activities`, and `restaurant_briefing_facts`. `bite_notes` has no touch trigger and is unchanged. No SQL check bans newlines. The helpers still refuse them.
 
 ## Why private columns stay off `bite_notes`
 
@@ -114,21 +116,22 @@ Checkout stays frozen. Criterion 11, a real profile on `credits`, still needs se
 - E07-D disputes. `Docs/e07-boost.md`. Not this PR.
 - Member "I'm here" and geolocation. Product decided. UI not built. `Docs/e07-bill-scan.md`. Not this PR.
 - Hosted apply of `20261106150000_e07_b2_bill_receipts.sql`. Not applied. Do not apply it here.
+- Hosted apply of `20261106170000_e08_a2_journal_reflections.sql`. Not applied. Do not apply it here.
 - Live Azure. `E07_BILL_SCAN_AZURE_ENABLED` stays unset. Do not put Azure credentials on Vercel.
 - `E07_ARRIVAL_SESSIONS_ENABLED` stays unset.
 - The A2 filename is already `20261106034025_e07_a2_arrival_sessions.sql` on main from #149. Do not rename it. Do not rename the B2 file in this PR.
 
 ## Open questions for Noah
 
-1. Are the caps 120, 280, 40, and 1500 the ones to keep?
-2. Should a reflection require an existing `bite_notes` row, or is an owned redemption enough until publish? This design uses the redemption, with `bite_note_id` optional.
-3. Is place id, then an admin https Maps URL, then refuse, the right order? Country hosts such as `www.google.co.uk` are refused for now.
-4. May `atmosphere` or the unpublished draft contain newlines? This helper refuses them as control characters.
-5. Is the table name `journal_reflections` acceptable?
-6. Which G13-A `feature_class` meters a later polish?
-7. Should a private rating exist before publish? This design keeps rating on `bite_notes` only.
-8. Where would an admin-verified Maps URL be stored? No column exists in the repo.
+1. Are the caps 120, 280, 40, and 1500 the ones to keep? Accepted with E08-A2.
+2. Should a reflection require an existing `bite_notes` row, or is an owned redemption enough until publish? Accepted with E08-A2: an owned redemption, with `bite_note_id` optional.
+3. Is place id, then an admin https Maps URL, then refuse, the right order? Still open. Country hosts such as `www.google.co.uk` are refused for now. This slice adds no Maps URL column.
+4. May `atmosphere` or the unpublished draft contain newlines? Still open. The helper refuses them as control characters. E08-A2 adds no SQL check that bans newlines.
+5. Is the table name `journal_reflections` acceptable? Accepted with E08-A2.
+6. Which G13-A `feature_class` meters a later polish? Still open.
+7. Should a private rating exist before publish? Accepted with E08-A2: rating stays on `bite_notes` only.
+8. Where would an admin-verified Maps URL be stored? Still open. No column exists in the repo. This slice did not query hosted.
 
 ## Rollback
 
-Revert the PR. Nothing calls the module. There is no migration.
+Revert the PR before any hosted apply. `20261106170000_e08_a2_journal_reflections.sql` is forward-only and is not applied to hosted. If it were applied later, a separate cleanup migration would be required. Nothing under `src/app` calls the helpers.

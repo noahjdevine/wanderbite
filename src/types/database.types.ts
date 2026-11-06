@@ -521,6 +521,49 @@ export type Database = {
           },
         ]
       }
+      // Hand-edited for E08-A2. npm run types:db was not run against hosted.
+      journal_reflections: {
+        Row: {
+          atmosphere: string | null
+          bite_note_id: string | null
+          companion_label: string | null
+          created_at: string
+          favorite_bite: string | null
+          id: string
+          redemption_id: string
+          return_interest: string | null
+          unpublished_review_draft: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          atmosphere?: string | null
+          bite_note_id?: string | null
+          companion_label?: string | null
+          created_at?: string
+          favorite_bite?: string | null
+          id?: string
+          redemption_id: string
+          return_interest?: string | null
+          unpublished_review_draft?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          atmosphere?: string | null
+          bite_note_id?: string | null
+          companion_label?: string | null
+          created_at?: string
+          favorite_bite?: string | null
+          id?: string
+          redemption_id?: string
+          return_interest?: string | null
+          unpublished_review_draft?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       challenge_cycles: {
         Row: {
           created_at: string | null
