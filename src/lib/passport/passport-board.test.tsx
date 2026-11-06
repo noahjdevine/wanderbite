@@ -194,11 +194,10 @@ describe('passport board', () => {
     expect(parseMyJourneyView('progress')).toBe('journey');
     expect(MY_JOURNEY_VIEWS).toEqual(['journey', 'journal', 'passport']);
     expect(segmentForJourneyView('passport')).toBe('stamps');
-    expect(segmentForJourneyView('journal')).toBe('timeline');
+    expect(segmentForJourneyView('journal')).toBeNull();
     expect(segmentForJourneyView('map')).toBe('map');
     expect(segmentForJourneyView('journey')).toBeNull();
     expect(segmentHref('stamps')).toBe('/journey?view=passport');
-    expect(segmentHref('timeline')).toBe('/journey?view=journal');
     expect(segmentHref('map')).toBe(MAP_SEGMENT_HREF);
     expect(MAP_SEGMENT_HREF).toBe('/journey?view=map');
   });
@@ -351,18 +350,19 @@ describe('passport board', () => {
     expect(screen.queryByText('0 months streak')).toBeNull();
   });
 
-  it('links Passport, Timeline, and Map', () => {
+  it('links Passport and Map', () => {
     render(<PassportSegments active="stamps" />);
     expect(screen.getByRole('radio', { name: 'Passport' }).getAttribute('href')).toBe('/journey?view=passport');
     expect(screen.getByRole('radio', { name: 'Passport' }).getAttribute('aria-checked')).toBe('true');
-    expect(screen.getByRole('radio', { name: 'Timeline' }).getAttribute('href')).toBe('/journey?view=journal');
+    expect(screen.queryByRole('radio', { name: 'Timeline' })).toBeNull();
     const map = screen.getByRole('radio', { name: 'Map' });
     expect(map.getAttribute('href')).toBe('/journey?view=map');
     expect(map.getAttribute('aria-checked')).toBe('false');
     expect(map.getAttribute('aria-disabled')).toBeNull();
     const group = screen.getByRole('radiogroup', { name: 'Passport views' });
+    expect(screen.getAllByRole('radio')).toHaveLength(2);
     fireEvent.keyDown(group, { key: 'ArrowRight' });
-    expect(push).toHaveBeenCalledWith('/journey?view=journal');
+    expect(push).toHaveBeenCalledWith('/journey?view=map');
     fireEvent.keyDown(group, { key: 'ArrowLeft' });
     expect(push).toHaveBeenCalledWith('/journey?view=map');
   });

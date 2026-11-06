@@ -1,17 +1,49 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useSupabaseUser } from '@/hooks/use-supabase-user';
 import {
   MEMBER_NAV_ITEMS,
   PUBLIC_NAV_ITEMS,
   isNavItemActive,
   resolveNavHref,
+  type NavItem,
 } from '@/lib/nav-items';
 import { cn } from '@/lib/utils';
 import { AccountMenu } from '@/components/layout/account-menu';
 import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
+
+function NavLinks({ items, search }: { items: NavItem[]; search: string }) {
+  const pathname = usePathname();
+  return (
+    <>
+      {items.map((item) => {
+        const href = resolveNavHref(item);
+        const active = isNavItemActive(item, pathname, search);
+        const Icon = item.icon;
+        return (
+          <Link
+            key={item.href + item.label}
+            href={href}
+            aria-label={item.ariaLabel}
+            aria-current={active ? 'page' : undefined}
+            className="wb-nav-link"
+          >
+            {Icon ? <Icon className="size-4 shrink-0" aria-hidden /> : null}
+            {item.label}
+          </Link>
+        );
+      })}
+    </>
+  );
+}
+
+function NavLinksWithSearch({ items }: { items: NavItem[] }) {
+  const search = useSearchParams().toString();
+  return <NavLinks items={items} search={search} />;
+}
 
 export function Navbar() {
   const { signedIn, loading } = useSupabaseUser();
@@ -33,23 +65,9 @@ export function Navbar() {
         <WanderbiteLogoLink />
 
         <div className="wb-nav-pill">
-          {items.map((item) => {
-            const href = resolveNavHref(item);
-            const active = isNavItemActive(item, pathname);
-            const Icon = item.icon;
-            return (
-              <Link
-                key={item.href + item.label}
-                href={href}
-                aria-label={item.ariaLabel}
-                aria-current={active ? 'page' : undefined}
-                className="wb-nav-link"
-              >
-                {Icon ? <Icon className="size-4 shrink-0" aria-hidden /> : null}
-                {item.label}
-              </Link>
-            );
-          })}
+          <Suspense fallback={<NavLinks items={items} search="" />}>
+            <NavLinksWithSearch items={items} />
+          </Suspense>
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-2">

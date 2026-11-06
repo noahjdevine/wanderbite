@@ -33,7 +33,7 @@ Import tab lists from `src/lib/nav-items.ts` only — **never** duplicate nav li
 | Auth | Tabs |
 |------|------|
 | Public | Home, How it Works, Discover, Restaurants, Pricing |
-| Member | Discover, Restaurants, Challenges, My Journey |
+| Member | Discover, Restaurants, Challenges, Progress, Journal, Passport |
 
 - Desktop and mobile must match within the same auth state.
 - Logged-in nav **replaces** public nav (not additive).
@@ -45,11 +45,13 @@ Import tab lists from `src/lib/nav-items.ts` only — **never** duplicate nav li
 
 `/challenges` is the post-signup/payment/onboarding destination. **Do not** rename, relocate, or wrap this route. Auth callback, Stripe success, and onboarding completion depend on it.
 
-## My Journey hub
+## Progress, Journal, and Passport
 
-- Hub route: `/journey` with sub-views via `?view=journal` | `?view=passport` (default = Journey).
-- Reuse `JourneyContent`, `JournalContent`, `PassportContent` — reorganize, don't rebuild.
-- Legacy `/journal` and `/passport` redirect into the hub; keep redirects if those routes exist.
+- Progress is `/journey`. It has no inner Progress / Journal / Passport tabs.
+- Journal is `/journal`: visit notes and ratings, not the passport cover. `/journey?view=journal` redirects there. The note editor stays at `/journal/notes/[redemptionId]`.
+- Passport stamps are `/journey?view=passport`. Map is `/journey?view=map`. The only inner switcher is Passport | Map. `/passport` redirects to stamps.
+- The bottom bar stays Discover, Challenges, Progress, Passport. Journal does not light Passport. Map does.
+- Desktop and the hamburger share `MEMBER_NAV_ITEMS`. Active state must tell Progress, Journal, and Passport apart when the pathname is `/journey`.
 
 ## Restaurant images
 

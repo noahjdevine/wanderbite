@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useSupabaseUser } from '@/hooks/use-supabase-user';
@@ -11,6 +11,7 @@ import {
   PUBLIC_NAV_ITEMS,
   isNavItemActive,
   resolveNavHref,
+  type NavItem,
 } from '@/lib/nav-items';
 import { AccountMenu } from '@/components/layout/account-menu';
 import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
@@ -22,6 +23,52 @@ function focusableElements(root: ParentNode): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
     (node) => node.tabIndex >= 0 && !node.hasAttribute('disabled'),
   );
+}
+
+function MenuLinks({
+  items,
+  search,
+  onNavigate,
+}: {
+  items: NavItem[];
+  search: string;
+  onNavigate: () => void;
+}) {
+  const pathname = usePathname();
+  return (
+    <ul className="space-y-1">
+      {items.map((item) => {
+        const href = resolveNavHref(item);
+        const active = isNavItemActive(item, pathname, search);
+        const Icon = item.icon;
+        return (
+          <li key={item.href + item.label}>
+            <Link
+              href={href}
+              onClick={onNavigate}
+              aria-label={item.ariaLabel}
+              aria-current={active ? 'page' : undefined}
+              className="wb-nav-menu-link"
+            >
+              {Icon ? <Icon className="size-5 shrink-0" aria-hidden /> : null}
+              {item.label}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function MenuLinksWithSearch({
+  items,
+  onNavigate,
+}: {
+  items: NavItem[];
+  onNavigate: () => void;
+}) {
+  const search = useSearchParams().toString();
+  return <MenuLinks items={items} search={search} onNavigate={onNavigate} />;
 }
 
 export function MobileNav() {
@@ -137,27 +184,9 @@ export function MobileNav() {
             aria-label="Menu"
             className="wb-nav-menu absolute left-0 right-0 top-full z-50 px-3 py-3"
           >
-            <ul className="space-y-1">
-              {items.map((item) => {
-                const href = resolveNavHref(item);
-                const active = isNavItemActive(item, pathname);
-                const Icon = item.icon;
-                return (
-                  <li key={item.href + item.label}>
-                    <Link
-                      href={href}
-                      onClick={closeDrawer}
-                      aria-label={item.ariaLabel}
-                      aria-current={active ? 'page' : undefined}
-                      className="wb-nav-menu-link"
-                    >
-                      {Icon ? <Icon className="size-5 shrink-0" aria-hidden /> : null}
-                      {item.label}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <Suspense fallback={<MenuLinks items={items} search="" onNavigate={closeDrawer} />}>
+              <MenuLinksWithSearch items={items} onNavigate={closeDrawer} />
+            </Suspense>
 
             <hr className="my-3 border-white/15" />
 

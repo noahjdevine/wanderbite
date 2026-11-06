@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import { isComponentGalleryEnabled } from '@/lib/dev/component-gallery';
-import { MapPreview, PassportPreview, TimelinePreview } from './passport-preview';
+import { JournalPreview, MapPreview, PassportPreview } from './passport-preview';
 import { ProgressPreview } from './progress-preview';
 import { RestaurantsPreview } from './restaurants-preview';
 import { ScreenPreview } from './screen-preview';
@@ -22,7 +22,7 @@ export default async function DevScreensPage({
   const params = await searchParams;
   if (params.screen === 'progress') return <ProgressPreview />;
   if (params.screen === 'passport') return <PassportPreview />;
-  if (params.screen === 'timeline') return <TimelinePreview />;
+  if (params.screen === 'journal' || params.screen === 'timeline') return <JournalPreview />;
   if (params.screen === 'map') return <MapPreview />;
   if (params.screen === 'stamp-unlock') return <StampUnlockPreview />;
   if (params.screen === 'restaurants') {

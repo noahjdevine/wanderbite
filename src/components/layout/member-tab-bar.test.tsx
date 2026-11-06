@@ -89,19 +89,40 @@ describe('member tab bar layout', () => {
     expect(names.filter((name) => name === 'Member')).toHaveLength(1);
   });
 
-  it('lights Passport on Timeline and Map, and Progress on a journey sub-route', () => {
+  it('leaves Journal unselected, lights Passport on Map, and Progress on a journey sub-route', () => {
     session.signedIn = true;
     pathname = '/journey';
     search = 'view=journal';
     const view = render(
       <SiteLayout>
-        <p>Timeline</p>
+        <p>Journal</p>
       </SiteLayout>,
     );
     let nav = screen.getByRole('navigation', { name: MEMBER_TAB_NAV_LABEL });
-    expect(within(nav).getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBe('page');
+    expect(within(nav).getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBeNull();
     expect(within(nav).getByRole('link', { name: 'Progress' }).getAttribute('aria-current')).toBeNull();
 
+    pathname = '/journal';
+    search = '';
+    view.rerender(
+      <SiteLayout>
+        <p>Journal page</p>
+      </SiteLayout>,
+    );
+    nav = screen.getByRole('navigation', { name: MEMBER_TAB_NAV_LABEL });
+    expect(within(nav).getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBeNull();
+    expect(within(nav).getByRole('link', { name: 'Progress' }).getAttribute('aria-current')).toBeNull();
+
+    pathname = '/journal/notes/red-1';
+    view.rerender(
+      <SiteLayout>
+        <p>Note editor</p>
+      </SiteLayout>,
+    );
+    nav = screen.getByRole('navigation', { name: MEMBER_TAB_NAV_LABEL });
+    expect(within(nav).getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBeNull();
+
+    pathname = '/journey';
     search = 'view=map';
     view.rerender(
       <SiteLayout>

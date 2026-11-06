@@ -1,8 +1,8 @@
 /**
- * Signed-in mobile tab bar. Routes are the live member URLs:
+ * Signed-in mobile tab bar. Four tabs:
  * Discover `/roulette`, Challenges `/challenges`, Progress `/journey`,
- * Passport `/journey?view=passport` (Stamps). Timeline is `/journey?view=journal`
- * and Map is `/journey?view=map`. Both are Passport segments.
+ * Passport `/journey?view=passport` (stamps). Map (`/journey?view=map`) is a
+ * Passport segment. Journal is its own page and does not light a tab.
  */
 
 export const DISCOVER_TAB_HREF = '/roulette';
@@ -10,8 +10,8 @@ export const CHALLENGES_TAB_HREF = '/challenges';
 export const PROGRESS_TAB_HREF = '/journey';
 export const PASSPORT_TAB_HREF = '/journey?view=passport';
 
-/** Views that light Passport. `journal` is the Timeline segment. */
-const PASSPORT_VIEWS = new Set(['passport', 'journal', 'map']);
+/** Passport segments. Journal is not one of them. */
+const PASSPORT_VIEWS = new Set(['passport', 'map']);
 
 /**
  * The bar is not mounted on partner, onboarding, checkout, or the dev gallery.
@@ -48,8 +48,9 @@ function pathMatches(path: string, prefix: string): boolean {
 
 /**
  * Href of the active tab, or null when the path is not one of the four.
- * `/journey/*` lights Progress. Passport query views, `/passport`, and `/journal`
- * (including the note editor) light Passport.
+ * `/journey/*` lights Progress, except Passport segments on `/journey` itself.
+ * `/passport` lights Passport. Journal (`/journal`, the note editor, and
+ * `/journey?view=journal`) leaves every tab inactive.
  */
 export function resolveMemberTabHref(pathname: string, search = ''): string | null {
   const path = normalizeMemberPath(pathname);
@@ -59,8 +60,9 @@ export function resolveMemberTabHref(pathname: string, search = ''): string | nu
   if (pathMatches(path, DISCOVER_TAB_HREF)) return DISCOVER_TAB_HREF;
   if (pathMatches(path, CHALLENGES_TAB_HREF)) return CHALLENGES_TAB_HREF;
   if (pathMatches(path, '/passport')) return PASSPORT_TAB_HREF;
-  if (pathMatches(path, '/journal')) return PASSPORT_TAB_HREF;
+  if (pathMatches(path, '/journal')) return null;
   if (pathMatches(path, PROGRESS_TAB_HREF)) {
+    if (path === PROGRESS_TAB_HREF && view === 'journal') return null;
     if (path === PROGRESS_TAB_HREF && view != null && PASSPORT_VIEWS.has(view)) {
       return PASSPORT_TAB_HREF;
     }

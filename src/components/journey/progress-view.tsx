@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { JourneySectionTabs } from '@/components/journey/journey-section-tabs';
 import { LevelRoad } from '@/components/journey/level-road';
 import { FocusVisitFromHash } from '@/components/notes/focus-visit';
 import { BadgeMedallion } from '@/components/wb/badge-medallion';
@@ -20,10 +19,9 @@ import type { VisitStatus } from '@/lib/visits/visit-status';
 type ProgressViewProps = {
   model: ProgressReadyModel;
   savedRecipes?: ReactNode;
-  showSectionTabs?: boolean;
 };
 
-export function ProgressView({ model, savedRecipes, showSectionTabs = true }: ProgressViewProps) {
+export function ProgressView({ model, savedRecipes }: ProgressViewProps) {
   const toGo =
     model.level.nextLevel != null ? model.level.nextLevel.xp - model.xp : null;
   const ringLabel =
@@ -71,8 +69,6 @@ export function ProgressView({ model, savedRecipes, showSectionTabs = true }: Pr
 
       <div className="wb-sheet wb-on-cream">
         <div className="mx-auto flex max-w-5xl flex-col gap-8 px-5 pb-16 pt-7 sm:px-8">
-          {showSectionTabs ? <JourneySectionTabs activeView="journey" /> : null}
-
           {model.activityUnavailable || !model.nextMove ? (
             <ProgressUnavailableNotice />
           ) : (
@@ -262,17 +258,10 @@ export function ProgressView({ model, savedRecipes, showSectionTabs = true }: Pr
   );
 }
 
-export function ProgressUnavailable({
-  headerLabel,
-  showSectionTabs = true,
-}: {
-  headerLabel: string;
-  showSectionTabs?: boolean;
-}) {
+export function ProgressUnavailable({ headerLabel }: { headerLabel: string }) {
   return (
     <div className="wb-sheet wb-on-cream" style={{ marginTop: 0 }}>
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-5 py-8 sm:px-8">
-        {showSectionTabs ? <JourneySectionTabs activeView="journey" /> : null}
         <h1 className="wb-display m-0 text-[40px] text-wb-ink">{headerLabel}</h1>
         <ProgressUnavailableNotice />
       </div>
