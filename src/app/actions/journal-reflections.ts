@@ -2,10 +2,13 @@
 
 import { requireUser } from '@/lib/auth/require-user';
 import { journalReflectionsEnabled } from '@/lib/notes/flag';
+import { redemptionIsVerified } from '@/lib/notes/note-rules';
 import {
   buildGoogleReviewHandoff,
+  composePublicNotePublishPlan,
   validateReflectionFields,
   type GoogleHandoffRefusalCode,
+  type PublishPlanRefusalCode,
   type ReflectionRefusal,
   type ReturnInterest,
 } from '@/lib/notes/reflection';
@@ -28,9 +31,18 @@ import { parseUuid } from '@/lib/uuid';
  *   Over-long text is refused. It is not truncated.
  * - handoff also returns `missing_destination`, `invalid_place_id`,
  *   `invalid_url`, `insecure_url`, and `disallowed_host`.
+ * - `publishJournalReflection` also returns `unverified`, `link_failed`, and the
+ *   plan codes `invalid_input`, `invalid_rating`, `invalid_text`, `too_long`,
+ *   and `invalid_reflection`. A public write still requires a verified
+ *   redemption. Over-long text is refused. It is not truncated.
  *
- * Nothing here is logged. Reflection text, drafts, place ids, and handoff URLs
- * stay out of logs. `bite_note_id` is not set. Publish is a later slice.
+ * Nothing here is logged. Reflection text, drafts, place ids, note text, and
+ * handoff URLs stay out of logs. Save does not set `bite_note_id`. Opening
+ * Google does not publish. Publish writes `bite_notes` (`note`, `rating`,
+ * `is_public: true`) and then sets `bite_note_id` on the owned reflection.
+ * Private reflection columns are not arguments to that write. If no reflection
+ * row exists yet, publish upserts one with those columns omitted so the
+ * database stores nulls, and an existing row keeps its private fields.
  * `updated_at` is set on the upsert, matching `saveBiteNote`. The before-update
  * trigger `set_journal_reflections_updated_at` also assigns `now()` on UPDATE.
  */
@@ -69,12 +81,25 @@ export type GoogleReviewHandoffActionResult =
   | { ok: true; url: string; source: 'place_id' | 'maps_url' }
   | { ok: false; code: Exclude<JournalReflectionActionCode, 'save_failed'> | GoogleHandoffRefusalCode };
 
+export type PublishJournalReflectionResult =
+  | { ok: true; biteNoteId: string }
+  | {
+      ok: false;
+      code:
+        | JournalReflectionActionCode
+        | 'unverified'
+        | 'link_failed'
+        | PublishPlanRefusalCode;
+    };
+
 type OwnedRedemption =
   | {
       ok: true;
       userId: string;
       redemptionId: string;
       restaurantId: string | null;
+      status: string | null;
+      verifiedAt: string | null;
     }
   | { ok: false; code: Exclude<JournalReflectionActionCode, 'save_failed'> };
 
@@ -112,7 +137,7 @@ async function ownedRedemption(redemptionId: unknown): Promise<OwnedRedemption> 
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from('redemptions')
-    .select('id, user_id, restaurant_id')
+    .select('id, user_id, restaurant_id, status, verified_at')
     .eq('id', id)
     .maybeSingle();
 
@@ -127,6 +152,18 @@ async function ownedRedemption(redemptionId: unknown): Promise<OwnedRedemption> 
     userId: auth.userId,
     redemptionId: id,
     restaurantId: data.restaurant_id,
+    status: data.status,
+    verifiedAt: data.verified_at,
+  };
+}
+
+/** Only the member-chosen sentence and rating. Private fields are dropped. */
+function publicNoteInput(input: unknown): unknown {
+  if (typeof input !== 'object' || input === null || Array.isArray(input)) return input;
+  const record = input as Record<string, unknown>;
+  return {
+    publicNote: record.publicNote,
+    rating: record.rating,
   };
 }
 
@@ -232,6 +269,78 @@ export async function saveJournalReflection(
 
   if (error) return { ok: false, code: 'save_failed' };
   return { ok: true };
+}
+
+/**
+ * Explicit public publish for one owned redemption.
+ * Flag, session, and ownership run first. An unverified redemption is refused
+ * before `composePublicNotePublishPlan` and before any write. The plan's
+ * `note`, `rating`, and `is_public: true` are the only bite-note columns taken
+ * from the member. `user_id`, `redemption_id`, and `restaurant_id` come from
+ * the owned redemption, never from the browser. `bite_note_id` is the id of
+ * the note just written for that redemption.
+ */
+export async function publishJournalReflection(
+  redemptionId: string,
+  input: unknown,
+): Promise<PublishJournalReflectionResult> {
+  const owned = await ownedRedemption(redemptionId);
+  if (!owned.ok) return owned;
+
+  if (!redemptionIsVerified(owned.status, owned.verifiedAt)) {
+    return { ok: false, code: 'unverified' };
+  }
+
+  const plan = composePublicNotePublishPlan(publicNoteInput(input));
+  if (!plan.ok) return plan;
+  if (!owned.restaurantId) return { ok: false, code: 'save_failed' };
+
+  const admin = getSupabaseAdmin();
+  const now = new Date().toISOString();
+  const { error: upsertErr } = await admin.from('bite_notes').upsert(
+    {
+      user_id: owned.userId,
+      redemption_id: owned.redemptionId,
+      restaurant_id: owned.restaurantId,
+      note: plan.write.note,
+      rating: plan.write.rating,
+      is_public: true,
+      updated_at: now,
+    },
+    { onConflict: 'redemption_id' },
+  );
+  if (upsertErr) return { ok: false, code: 'save_failed' };
+
+  const { data: note, error: noteErr } = await admin
+    .from('bite_notes')
+    .select('id, user_id, redemption_id, is_public')
+    .eq('redemption_id', owned.redemptionId)
+    .eq('user_id', owned.userId)
+    .maybeSingle();
+
+  if (
+    noteErr ||
+    !note ||
+    note.user_id !== owned.userId ||
+    note.redemption_id !== owned.redemptionId ||
+    note.is_public !== true ||
+    typeof note.id !== 'string' ||
+    !parseUuid(note.id)
+  ) {
+    return { ok: false, code: 'link_failed' };
+  }
+
+  const { error: linkErr } = await admin.from('journal_reflections').upsert(
+    {
+      user_id: owned.userId,
+      redemption_id: owned.redemptionId,
+      bite_note_id: note.id,
+      updated_at: now,
+    },
+    { onConflict: 'redemption_id' },
+  );
+  if (linkErr) return { ok: false, code: 'link_failed' };
+  return { ok: true, biteNoteId: note.id };
 }
 
 export async function getGoogleReviewHandoffForRedemption(

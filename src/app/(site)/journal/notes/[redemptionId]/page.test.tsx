@@ -16,6 +16,8 @@ const db = vi.hoisted(() => ({
   redemption: null as null | {
     id: string;
     user_id: string;
+    status?: string | null;
+    verified_at?: string | null;
     restaurants: { name: string } | null;
   },
   note: null as null | {
@@ -68,6 +70,7 @@ vi.mock('@/app/actions/journal-reflections', () => ({
   getJournalReflection: (...args: unknown[]) => getJournalReflection(...args),
   saveJournalReflection: vi.fn(),
   getGoogleReviewHandoffForRedemption: vi.fn(),
+  publishJournalReflection: vi.fn(),
 }));
 
 import NoteEditorPage from './page';
@@ -124,6 +127,8 @@ describe('note editor page reflection gate', () => {
       expect(screen.getByRole('heading', { name: 'Edit memory' })).toBeTruthy();
       expect(screen.getByDisplayValue('Tacos')).toBeTruthy();
       expect(screen.queryByRole('heading', { name: 'Private reflection' })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Publish on WanderBite' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Get Google review link' })).toBeNull();
       expect(getJournalReflection).not.toHaveBeenCalled();
       expect(tables).toEqual(['redemptions', 'bite_notes']);
@@ -144,6 +149,26 @@ describe('note editor page reflection gate', () => {
     expect((screen.getByLabelText('Would you go back?') as HTMLSelectElement).value).toBe('yes');
     expect(tables).not.toContain('journal_reflections');
     expect(screen.getByRole('heading', { name: 'Edit memory' })).toBeTruthy();
+    expect(screen.getByText('Only a verified visit can be shared publicly.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publish' })).toHaveProperty('disabled', true);
+  });
+
+  it('shows Publish for a verified visit when the flag is true', async () => {
+    process.env.E08_JOURNAL_REFLECTIONS_ENABLED = 'true';
+    db.redemption = {
+      id: REDEMPTION,
+      user_id: USER,
+      status: 'verified',
+      verified_at: '2026-11-06T18:00:00.000Z',
+      restaurants: { name: 'North Grill' },
+    };
+    getJournalReflection.mockResolvedValue({ ok: true, reflection: saved });
+    render(await page());
+    expect(screen.getByRole('heading', { name: 'Publish on WanderBite' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publish' })).toHaveProperty('disabled', false);
+    expect(screen.queryByText('Only a verified visit can be shared publicly.')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Edit memory' })).toBeTruthy();
+    expect(tables).toEqual(['redemptions', 'bite_notes']);
   });
 
   it('does not load a reflection for someone else even when the flag is true', async () => {
@@ -168,6 +193,7 @@ describe('note editor page reflection gate', () => {
     expect(screen.getByRole('heading', { name: 'Edit memory' })).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain('Your private reflection could not be loaded.');
     expect(screen.queryByLabelText('Favorite bite')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Get Google review link' })).toBeNull();
   });
 });

@@ -11,6 +11,8 @@ const PLACE_ID = 'ChIJN1t_tDeuEmsRUsoyG83frY4';
 const WRITEREVIEW = `https://search.google.com/local/writereview?placeid=${PLACE_ID}`;
 const DRAFT = 'SECRET_DRAFT_TEXT_e08';
 const OTHER_DRAFT = 'OTHER_MEMBER_DRAFT_e08';
+const PUBLIC_NOTE = 'PUBLIC_SENTENCE_e08c';
+const VERIFIED_AT = '2026-11-06T18:00:00.000Z';
 
 type Row = Record<string, unknown>;
 type Query = {
@@ -25,6 +27,7 @@ const db: Record<string, Row[]> = {
   redemptions: [],
   restaurants: [],
   journal_reflections: [],
+  bite_notes: [],
 };
 const queries: Query[] = [];
 const errors: Record<string, { message: string } | null> = {};
@@ -83,11 +86,14 @@ vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () => ({ from }),
 }));
 
+import { saveBiteNote } from '@/app/actions/bite-notes';
 import {
   getGoogleReviewHandoffForRedemption,
   getJournalReflection,
+  publishJournalReflection,
   saveJournalReflection,
 } from '@/app/actions/journal-reflections';
+import { NOTE_MAX } from '@/lib/notes/note-rules';
 
 const consoleSpies = [
   vi.spyOn(console, 'log').mockImplementation(() => undefined),
@@ -136,10 +142,23 @@ function consoleText() {
 describe('journal reflection actions', () => {
   beforeEach(() => {
     db.redemptions = [
-      { id: REDEMPTION, user_id: USER, restaurant_id: RESTAURANT },
-      { id: OTHER_REDEMPTION, user_id: OTHER, restaurant_id: RESTAURANT },
+      {
+        id: REDEMPTION,
+        user_id: USER,
+        restaurant_id: RESTAURANT,
+        status: 'verified',
+        verified_at: VERIFIED_AT,
+      },
+      {
+        id: OTHER_REDEMPTION,
+        user_id: OTHER,
+        restaurant_id: RESTAURANT,
+        status: 'verified',
+        verified_at: VERIFIED_AT,
+      },
     ];
     db.restaurants = [{ id: RESTAURANT, google_place_id: PLACE_ID }];
+    db.bite_notes = [];
     db.journal_reflections = [
       reflection(),
       reflection({
@@ -155,6 +174,7 @@ describe('journal reflection actions', () => {
     errors.redemptions = null;
     errors.restaurants = null;
     errors.journal_reflections = null;
+    errors.bite_notes = null;
     delete process.env.E08_JOURNAL_REFLECTIONS_ENABLED;
     requireUser.mockReset();
     requireUser.mockResolvedValue({ ok: true, userId: USER, email: 'member@example.com' });
@@ -185,6 +205,9 @@ describe('journal reflection actions', () => {
         ok: false,
         code: 'disabled',
       });
+      await expect(
+        publishJournalReflection(REDEMPTION, { publicNote: PUBLIC_NOTE, rating: 5 }),
+      ).resolves.toEqual({ ok: false, code: 'disabled' });
       expect(queries).toEqual([]);
       expect(requireUser).not.toHaveBeenCalled();
       expect(tablesTouched()).not.toContain('journal_reflections');
@@ -207,6 +230,9 @@ describe('journal reflection actions', () => {
       ok: false,
       code: 'unauthorized',
     });
+    await expect(
+      publishJournalReflection(REDEMPTION, { publicNote: PUBLIC_NOTE, rating: 5 }),
+    ).resolves.toEqual({ ok: false, code: 'unauthorized' });
     expect(queries).toEqual([]);
   });
 
@@ -228,8 +254,21 @@ describe('journal reflection actions', () => {
     await expect(
       saveJournalReflection(OTHER_REDEMPTION, { atmosphere: `nope\n${OTHER_DRAFT}` }),
     ).resolves.toEqual({ ok: false, code: 'forbidden' });
+    await expect(publishJournalReflection('not-a-uuid', { publicNote: PUBLIC_NOTE, rating: 5 })).resolves.toEqual({
+      ok: false,
+      code: 'not_found',
+    });
+    const foreign = await publishJournalReflection(OTHER_REDEMPTION, {
+      publicNote: PUBLIC_NOTE,
+      rating: 5,
+      bite_note_id: NOTE,
+    });
+    expect(foreign).toEqual({ ok: false, code: 'forbidden' });
+    expect(JSON.stringify(foreign)).not.toContain(OTHER_DRAFT);
+    expect(JSON.stringify(foreign)).not.toContain(PUBLIC_NOTE);
 
     expect(tablesTouched()).not.toContain('journal_reflections');
+    expect(tablesTouched()).not.toContain('bite_notes');
     expect(JSON.stringify(queries)).not.toContain(OTHER_DRAFT);
     expect(JSON.stringify(queries)).not.toContain(DRAFT);
   });
@@ -398,6 +437,9 @@ describe('journal reflection actions', () => {
       expect(result.url).not.toContain(DRAFT);
     }
     expect(tablesTouched()).toEqual(['redemptions', 'restaurants']);
+    expect(tablesTouched()).not.toContain('bite_notes');
+    expect(tablesTouched()).not.toContain('journal_reflections');
+    expect(db.journal_reflections.find((row) => row.user_id === USER)?.bite_note_id).toBeNull();
     expect(fetchSpy).not.toHaveBeenCalled();
     fetchSpy.mockRestore();
   });
@@ -433,12 +475,291 @@ describe('journal reflection actions', () => {
     await saveJournalReflection(REDEMPTION, validFields());
     await getGoogleReviewHandoffForRedemption(REDEMPTION);
     await getJournalReflection(OTHER_REDEMPTION);
+    await publishJournalReflection(REDEMPTION, {
+      publicNote: PUBLIC_NOTE,
+      rating: 4,
+      unpublished_review_draft: DRAFT,
+    });
 
     const logged = consoleText();
     expect(logged).not.toContain(DRAFT);
     expect(logged).not.toContain(OTHER_DRAFT);
+    expect(logged).not.toContain(PUBLIC_NOTE);
     expect(logged).not.toContain(PLACE_ID);
     expect(logged).not.toContain('writereview');
     expect(logged).not.toContain('search.google.com');
+  });
+
+  it('refuses an unverified redemption before any public write', async () => {
+    process.env.E08_JOURNAL_REFLECTIONS_ENABLED = 'true';
+    db.bite_notes = [
+      {
+        id: NOTE,
+        user_id: USER,
+        redemption_id: REDEMPTION,
+        restaurant_id: RESTAURANT,
+        note: 'private memory',
+        rating: 2,
+        is_public: false,
+      },
+    ];
+    db.journal_reflections = [reflection({ bite_note_id: null })];
+
+    db.redemptions[0] = {
+      id: REDEMPTION,
+      user_id: USER,
+      restaurant_id: RESTAURANT,
+      status: 'issued',
+      verified_at: VERIFIED_AT,
+    };
+    await expect(
+      publishJournalReflection(REDEMPTION, { publicNote: PUBLIC_NOTE, rating: 5 }),
+    ).resolves.toEqual({ ok: false, code: 'unverified' });
+
+    db.redemptions[0] = {
+      id: REDEMPTION,
+      user_id: USER,
+      restaurant_id: RESTAURANT,
+      status: 'verified',
+      verified_at: null,
+    };
+    await expect(
+      publishJournalReflection(REDEMPTION, { publicNote: `line\n${PUBLIC_NOTE}`, rating: 5 }),
+    ).resolves.toEqual({ ok: false, code: 'unverified' });
+
+    expect(queries.filter((query) => query.op === 'upsert')).toEqual([]);
+    expect(tablesTouched()).not.toContain('bite_notes');
+    expect(tablesTouched()).not.toContain('journal_reflections');
+    expect(db.bite_notes[0]).toEqual(
+      expect.objectContaining({ note: 'private memory', is_public: false, rating: 2 }),
+    );
+    expect(db.journal_reflections[0]?.bite_note_id).toBeNull();
+  });
+
+  it('refuses an over-long note and a newline without truncating or writing', async () => {
+    process.env.E08_JOURNAL_REFLECTIONS_ENABLED = 'true';
+    const tooLong = 'p'.repeat(NOTE_MAX + 1);
+
+    const longResult = await publishJournalReflection(REDEMPTION, {
+      publicNote: tooLong,
+      rating: 3,
+      unpublished_review_draft: DRAFT,
+    });
+    expect(longResult).toEqual({ ok: false, code: 'too_long' });
+    expect(JSON.stringify(longResult)).not.toContain('pppppppppp');
+
+    const newline = await publishJournalReflection(REDEMPTION, {
+      publicNote: 'Hi\nthere',
+      rating: 3,
+    });
+    expect(newline).toEqual({ ok: false, code: 'invalid_text' });
+
+    await expect(
+      publishJournalReflection(REDEMPTION, { publicNote: PUBLIC_NOTE, rating: 3.5 }),
+    ).resolves.toEqual({ ok: false, code: 'invalid_rating' });
+
+    expect(queries.filter((query) => query.op === 'upsert')).toEqual([]);
+    expect(tablesTouched()).not.toContain('bite_notes');
+    expect(db.journal_reflections[0]?.bite_note_id).toBeNull();
+    expect(db.journal_reflections[0]?.unpublished_review_draft).toBe(DRAFT);
+  });
+
+  it('publishes the chosen sentence and links bite_note_id without copying private fields', async () => {
+    process.env.E08_JOURNAL_REFLECTIONS_ENABLED = 'true';
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    db.bite_notes = [
+      {
+        id: NOTE,
+        user_id: USER,
+        redemption_id: REDEMPTION,
+        restaurant_id: RESTAURANT,
+        note: 'old private memory',
+        rating: 2,
+        is_public: false,
+      },
+    ];
+    db.journal_reflections = [
+      reflection({
+        bite_note_id: null,
+        favorite_bite: 'brisket',
+        atmosphere: 'warm room',
+        return_interest: 'yes',
+        companion_label: 'Ada',
+        unpublished_review_draft: DRAFT,
+      }),
+    ];
+
+    const result = await publishJournalReflection(REDEMPTION, {
+      publicNote: `  ${PUBLIC_NOTE}  `,
+      rating: 5,
+      bite_note_id: MISSING,
+      user_id: OTHER,
+      favorite_bite: DRAFT,
+      atmosphere: DRAFT,
+      unpublished_review_draft: DRAFT,
+      fromReflection: { unpublished_review_draft: DRAFT, favorite_bite: 'brisket' },
+    });
+
+    expect(result).toEqual({ ok: true, biteNoteId: NOTE });
+    expect(JSON.stringify(result)).not.toContain(PUBLIC_NOTE);
+    expect(JSON.stringify(result)).not.toContain(DRAFT);
+
+    const noteWrite = queries.find((query) => query.table === 'bite_notes' && query.op === 'upsert');
+    expect(noteWrite?.options).toEqual({ onConflict: 'redemption_id' });
+    expect(noteWrite?.payload).toEqual({
+      user_id: USER,
+      redemption_id: REDEMPTION,
+      restaurant_id: RESTAURANT,
+      note: PUBLIC_NOTE,
+      rating: 5,
+      is_public: true,
+      updated_at: expect.any(String),
+    });
+    expect(noteWrite?.payload).not.toHaveProperty('favorite_bite');
+    expect(noteWrite?.payload).not.toHaveProperty('unpublished_review_draft');
+    expect(JSON.stringify(noteWrite?.payload)).not.toContain(DRAFT);
+
+    const linkWrite = queries.find(
+      (query) => query.table === 'journal_reflections' && query.op === 'upsert',
+    );
+    expect(linkWrite?.payload).toEqual({
+      user_id: USER,
+      redemption_id: REDEMPTION,
+      bite_note_id: NOTE,
+      updated_at: expect.any(String),
+    });
+    expect(linkWrite?.payload).not.toHaveProperty('favorite_bite');
+    expect(linkWrite?.payload).not.toHaveProperty('unpublished_review_draft');
+
+    expect(db.bite_notes[0]).toEqual(
+      expect.objectContaining({
+        id: NOTE,
+        user_id: USER,
+        note: PUBLIC_NOTE,
+        rating: 5,
+        is_public: true,
+      }),
+    );
+    expect(db.bite_notes[0]).not.toHaveProperty('favorite_bite');
+    expect(JSON.stringify(db.bite_notes[0])).not.toContain(DRAFT);
+    expect(db.journal_reflections[0]).toEqual(
+      expect.objectContaining({
+        bite_note_id: NOTE,
+        favorite_bite: 'brisket',
+        atmosphere: 'warm room',
+        return_interest: 'yes',
+        companion_label: 'Ada',
+        unpublished_review_draft: DRAFT,
+      }),
+    );
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('creates a reflection row when publish is the first write', async () => {
+    process.env.E08_JOURNAL_REFLECTIONS_ENABLED = 'true';
+    db.journal_reflections = [];
+    db.bite_notes = [];
+
+    const result = await publishJournalReflection(REDEMPTION, {
+      publicNote: '',
+      rating: 1,
+      unpublished_review_draft: DRAFT,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.code);
+
+    expect(db.bite_notes).toHaveLength(1);
+    expect(db.bite_notes[0]).toEqual(
+      expect.objectContaining({
+        user_id: USER,
+        redemption_id: REDEMPTION,
+        restaurant_id: RESTAURANT,
+        note: null,
+        rating: 1,
+        is_public: true,
+      }),
+    );
+    expect(result.biteNoteId).toBe(db.bite_notes[0]?.id);
+    expect(db.journal_reflections).toHaveLength(1);
+    expect(db.journal_reflections[0]).toEqual(
+      expect.objectContaining({
+        user_id: USER,
+        redemption_id: REDEMPTION,
+        bite_note_id: result.biteNoteId,
+      }),
+    );
+    expect(db.journal_reflections[0]).not.toHaveProperty('favorite_bite');
+    expect(db.journal_reflections[0]).not.toHaveProperty('unpublished_review_draft');
+    expect(JSON.stringify(db.journal_reflections[0])).not.toContain(DRAFT);
+  });
+
+  it('hides save and link failures and does not link a note that failed to write', async () => {
+    process.env.E08_JOURNAL_REFLECTIONS_ENABLED = 'true';
+    db.journal_reflections = [reflection({ bite_note_id: null, unpublished_review_draft: DRAFT })];
+    errors.bite_notes = { message: `write ${DRAFT} ${PUBLIC_NOTE}` };
+
+    const saved = await publishJournalReflection(REDEMPTION, { publicNote: PUBLIC_NOTE, rating: 4 });
+    expect(saved).toEqual({ ok: false, code: 'save_failed' });
+    expect(JSON.stringify(saved)).not.toContain(DRAFT);
+    expect(JSON.stringify(saved)).not.toContain(PUBLIC_NOTE);
+    expect(queries.filter((query) => query.table === 'journal_reflections')).toEqual([]);
+    expect(db.journal_reflections[0]?.bite_note_id).toBeNull();
+
+    errors.bite_notes = null;
+    errors.journal_reflections = { message: `link ${DRAFT} ${PLACE_ID}` };
+    const linked = await publishJournalReflection(REDEMPTION, { publicNote: PUBLIC_NOTE, rating: 4 });
+    expect(linked).toEqual({ ok: false, code: 'link_failed' });
+    expect(JSON.stringify(linked)).not.toContain(DRAFT);
+    expect(JSON.stringify(linked)).not.toContain(PLACE_ID);
+    expect(JSON.stringify(linked)).not.toContain(PUBLIC_NOTE);
+    expect(db.bite_notes[0]).toEqual(expect.objectContaining({ note: PUBLIC_NOTE, is_public: true }));
+    expect(db.journal_reflections[0]?.bite_note_id).toBeNull();
+    expect(db.journal_reflections[0]?.unpublished_review_draft).toBe(DRAFT);
+  });
+
+  it('refuses a publish when the visit has no restaurant', async () => {
+    process.env.E08_JOURNAL_REFLECTIONS_ENABLED = 'true';
+    db.redemptions = [
+      {
+        id: REDEMPTION,
+        user_id: USER,
+        restaurant_id: null,
+        status: 'verified',
+        verified_at: VERIFIED_AT,
+      },
+    ];
+
+    await expect(
+      publishJournalReflection(REDEMPTION, { publicNote: PUBLIC_NOTE, rating: 4 }),
+    ).resolves.toEqual({ ok: false, code: 'save_failed' });
+    expect(queries.filter((query) => query.op === 'upsert')).toEqual([]);
+    expect(tablesTouched()).toEqual(['redemptions']);
+  });
+
+  it('keeps saveBiteNote off the journal reflection and off the publish flag', async () => {
+    delete process.env.E08_JOURNAL_REFLECTIONS_ENABLED;
+    db.journal_reflections = [reflection({ bite_note_id: NOTE, unpublished_review_draft: DRAFT })];
+    queries.length = 0;
+
+    await expect(saveBiteNote(REDEMPTION, 'Private memory', 4, false)).resolves.toEqual({ ok: true });
+
+    expect(tablesTouched()).toEqual(['redemptions', 'bite_notes']);
+    const write = queries.find((query) => query.op === 'upsert');
+    expect(write?.table).toBe('bite_notes');
+    expect(write?.payload).toEqual(
+      expect.objectContaining({
+        user_id: USER,
+        redemption_id: REDEMPTION,
+        note: 'Private memory',
+        rating: 4,
+        is_public: false,
+      }),
+    );
+    expect(write?.payload).not.toHaveProperty('favorite_bite');
+    expect(write?.payload).not.toHaveProperty('unpublished_review_draft');
+    expect(db.journal_reflections[0]?.bite_note_id).toBe(NOTE);
+    expect(db.journal_reflections[0]?.unpublished_review_draft).toBe(DRAFT);
+    expect(queries.some((query) => query.table === 'journal_reflections')).toBe(false);
   });
 });
