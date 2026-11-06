@@ -13,6 +13,8 @@ import {
   PASSWORD_RESET_UNAVAILABLE_MESSAGE,
   PASSWORD_RESET_VALIDATION_MESSAGE,
 } from '@/lib/password-reset';
+import { memberReceiptCleanupPort } from '@/lib/boost/receipt-admin';
+import { cleanupMemberReceiptObjects } from '@/lib/boost/receipt-retention';
 
 export type SendPasswordResetResult =
   | { ok: true }
@@ -141,6 +143,10 @@ export async function deleteAccount(): Promise<DeleteAccountResult> {
     }
 
     const admin = getSupabaseAdmin();
+    const receipts = await cleanupMemberReceiptObjects(memberReceiptCleanupPort(admin), user.id);
+    if (!receipts.ok) {
+      return { ok: false, error: 'Could not delete saved receipts for this account.' };
+    }
     const { error: deleteError } = await admin.auth.admin.deleteUser(user.id);
 
     if (deleteError) {

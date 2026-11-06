@@ -183,6 +183,29 @@ describe('bill proposal', () => {
     expect(unusedTax.uncertainty_flags).toEqual([]);
   });
 
+  it('treats an omitted azure score as low confidence and still returns cents', () => {
+    const result = proposeOk({
+      ...masterPlanEightyTwo,
+      meta: { source: 'azure_prebuilt_receipt', checkIdentity: 'azure-omit' },
+    });
+    expect(result.proposed_eligible_subtotal_cents).toBe(8200);
+    expect(result.uncertainty_flags).toEqual(['low_confidence']);
+    expect(result.source).toBe('azure_prebuilt_receipt');
+
+    const atCutoff = proposeOk({
+      ...masterPlanEightyTwo,
+      meta: { source: 'azure_prebuilt_receipt', confidence: 0.8, checkIdentity: 'azure-cutoff' },
+    });
+    expect(atCutoff.proposed_eligible_subtotal_cents).toBe(8200);
+    expect(atCutoff.uncertainty_flags).toEqual([]);
+
+    const manualOmitted = proposeOk({
+      ...masterPlanEightyTwo,
+      meta: { source: 'manual', checkIdentity: 'manual-omit' },
+    });
+    expect(manualOmitted.uncertainty_flags).toEqual([]);
+  });
+
   it('keeps calculator cents when confidence is low and the subtotal is present', () => {
     const result = proposeOk({
       ...masterPlanEightyTwo,

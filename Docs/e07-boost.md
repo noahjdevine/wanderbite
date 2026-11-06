@@ -1,6 +1,6 @@
 # E07 Boost quote and arrival sessions
 
-E07-A1 is the pure quote in `src/lib/boost/quote.ts`. E07-A2 is this slice: partner-authenticated arrival sessions and append-only quotes. Members and partners see no new page. `E07_ARRIVAL_SESSIONS_ENABLED` stays unset. The migration is not applied to hosted. Nothing in a page or component queries `boost_arrival_sessions` or `boost_quotes`.
+E07-A1 is the pure quote in `src/lib/boost/quote.ts`. E07-A2 is partner-authenticated arrival sessions and append-only quotes. Members and partners see no new page. `E07_ARRIVAL_SESSIONS_ENABLED` stays unset. Hosted `schema_migrations` version is `20261106034025`. The repo filename matches that version. Nothing in a page or component queries `boost_arrival_sessions` or `boost_quotes`.
 
 ## E07-A1 quote
 
@@ -40,7 +40,7 @@ The item must be `assigned`, and `challenge_items.offer_version_id` must be non-
 
 ### Table shape
 
-Migration `supabase/migrations/20261106030525_e07_a2_arrival_sessions.sql` (not applied to hosted):
+Migration `supabase/migrations/20261106034025_e07_a2_arrival_sessions.sql` (hosted version `20261106034025`; SQL body unchanged when the filename was aligned):
 
 `boost_arrival_sessions`:
 

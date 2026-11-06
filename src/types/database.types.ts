@@ -710,6 +710,61 @@ export type Database = {
         }
         Relationships: []
       }
+      // Hand-edited for E07-B2. npm run types:db was not run against hosted.
+      bill_scan_proposals: {
+        Row: {
+          arrival_session_id: string
+          byte_size: number
+          confirmed_eligible_subtotal_cents: number | null
+          content_type: string
+          created_at: string
+          deleted_at: string | null
+          height: number
+          id: string
+          object_path: string
+          proposal: Json
+          restaurant_id: string
+          retain_until: string
+          source: string
+          user_id: string
+          width: number
+        }
+        Insert: {
+          arrival_session_id: string
+          byte_size: number
+          confirmed_eligible_subtotal_cents?: number | null
+          content_type: string
+          created_at?: string
+          deleted_at?: string | null
+          height: number
+          id?: string
+          object_path: string
+          proposal: Json
+          restaurant_id: string
+          retain_until: string
+          source: string
+          user_id: string
+          width: number
+        }
+        Update: {
+          arrival_session_id?: string
+          byte_size?: number
+          confirmed_eligible_subtotal_cents?: number | null
+          content_type?: string
+          created_at?: string
+          deleted_at?: string | null
+          height?: number
+          id?: string
+          object_path?: string
+          proposal?: Json
+          restaurant_id?: string
+          retain_until?: string
+          source?: string
+          user_id?: string
+          width?: number
+        }
+        Relationships: []
+      }
       challenge_items: {
         Row: {
           cycle_id: string | null
