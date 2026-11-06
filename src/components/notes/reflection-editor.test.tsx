@@ -9,17 +9,19 @@ const NOTE = '55555555-5555-4555-8555-555555555555';
 const HANDOFF_URL = 'https://search.google.com/local/writereview?placeid=ChIJplaceid1';
 const DRAFT = 'Unpublished patio note';
 
-const { push, saveBiteNote, toggleNoteVisibility, saveJournalReflection, getGoogleReviewHandoffForRedemption } =
+const { push, refresh, saveBiteNote, toggleNoteVisibility, saveJournalReflection, getGoogleReviewHandoffForRedemption, publishJournalReflection } =
   vi.hoisted(() => ({
     push: vi.fn(),
+    refresh: vi.fn(),
     saveBiteNote: vi.fn(),
     toggleNoteVisibility: vi.fn(),
     saveJournalReflection: vi.fn(),
     getGoogleReviewHandoffForRedemption: vi.fn(),
+    publishJournalReflection: vi.fn(),
   }));
 
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push, refresh: vi.fn() }),
+  useRouter: () => ({ push, refresh }),
 }));
 
 vi.mock('@/app/actions/bite-notes', () => ({
@@ -31,10 +33,12 @@ vi.mock('@/app/actions/journal-reflections', () => ({
   saveJournalReflection: (...args: unknown[]) => saveJournalReflection(...args),
   getGoogleReviewHandoffForRedemption: (...args: unknown[]) =>
     getGoogleReviewHandoffForRedemption(...args),
+  publishJournalReflection: (...args: unknown[]) => publishJournalReflection(...args),
 }));
 
 import { NoteEditor } from '@/components/notes/note-editor';
 import { JournalReflectionSection } from '@/components/notes/reflection-editor';
+import { NOTE_MAX } from '@/lib/notes/note-rules';
 
 const reflection: JournalReflection = {
   id: '77777777-7777-4777-8777-777777777777',
@@ -59,6 +63,7 @@ function section(props: Partial<ComponentProps<typeof JournalReflectionSection>>
       enabled
       redemptionId={REDEMPTION}
       initialReflection={null}
+      verified
       {...props}
     />
   );
@@ -70,9 +75,12 @@ describe('JournalReflectionSection', () => {
     toggleNoteVisibility.mockReset();
     saveJournalReflection.mockReset();
     getGoogleReviewHandoffForRedemption.mockReset();
+    publishJournalReflection.mockReset();
     push.mockReset();
+    refresh.mockReset();
     saveBiteNote.mockResolvedValue({ ok: true });
     saveJournalReflection.mockResolvedValue({ ok: true });
+    publishJournalReflection.mockResolvedValue({ ok: true, biteNoteId: NOTE });
     getGoogleReviewHandoffForRedemption.mockResolvedValue({
       ok: true,
       url: HANDOFF_URL,
@@ -88,21 +96,27 @@ describe('JournalReflectionSection', () => {
   it('renders nothing when disabled, including a reflection that was passed in', () => {
     render(section({ enabled: false, initialReflection: reflection }));
     expect(screen.queryByRole('heading', { name: 'Private reflection' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Publish on WanderBite' })).toBeNull();
     expect(screen.queryByDisplayValue('Tacos')).toBeNull();
     expect(screen.queryByText(DRAFT)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Get Google review link' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /publish/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Publish' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Use draft' })).toBeNull();
     expect(saveJournalReflection).not.toHaveBeenCalled();
     expect(getGoogleReviewHandoffForRedemption).not.toHaveBeenCalled();
+    expect(publishJournalReflection).not.toHaveBeenCalled();
   });
 
   it('saves an empty reflection without truncating or publishing', async () => {
     render(section());
     expect(screen.getByRole('heading', { name: 'Private reflection' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Publish on WanderBite' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publish' })).toBeTruthy();
     expect(screen.getByText(/Stays off your public note until you publish/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /publish/i })).toBeNull();
+    expect(screen.getByText(/Posts the sentence and rating you choose on WanderBite/)).toBeTruthy();
     expect(document.body.textContent).toContain('Journal');
     expect(document.body.textContent).not.toContain('Timeline');
+    expect(document.body.textContent).not.toMatch(/XP|discount|drawing/i);
 
     fireEvent.click(screen.getByRole('button', { name: 'Save reflection' }));
     await waitFor(() => {
@@ -116,6 +130,7 @@ describe('JournalReflectionSection', () => {
     });
     const payload = saveJournalReflection.mock.calls[0]?.[1] as Record<string, unknown>;
     expect(payload.bite_note_id).toBeUndefined();
+    expect(publishJournalReflection).not.toHaveBeenCalled();
     expect((await screen.findByRole('status')).textContent).toContain('Saved');
   });
 
@@ -199,6 +214,8 @@ describe('JournalReflectionSection', () => {
     expect(await screen.findByRole('button', { name: 'Copied' })).toBeTruthy();
     expect(screen.queryByRole('textbox', { name: 'Google review link' })).toBeNull();
     expect(open).not.toHaveBeenCalled();
+    expect(publishJournalReflection).not.toHaveBeenCalled();
+    expect(saveJournalReflection).not.toHaveBeenCalled();
     open.mockRestore();
   });
 
@@ -262,6 +279,95 @@ describe('JournalReflectionSection', () => {
       expect(saveBiteNote).toHaveBeenCalledWith(REDEMPTION, 'Tacos', 4, false);
     });
     expect(saveJournalReflection).not.toHaveBeenCalled();
+    expect(publishJournalReflection).not.toHaveBeenCalled();
     expect(push).toHaveBeenCalledWith(`/journal#visit-${REDEMPTION}`);
+  });
+
+  it('copies a short draft into the public note and leaves a long draft unchanged', async () => {
+    const longDraft = 'd'.repeat(NOTE_MAX + 1);
+    render(
+      section({
+        initialReflection: { ...reflection, unpublished_review_draft: longDraft },
+      }),
+    );
+    const publicNote = screen.getByLabelText('Public note');
+    expect(valueOf(publicNote)).toBe('');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use draft' }));
+    expect(valueOf(publicNote)).toBe('');
+    expect(screen.getByText(/longer than 280 characters/)).toBeTruthy();
+    expect(valueOf(screen.getByLabelText('Review draft'))).toBe(longDraft);
+    expect(screen.getByText(/longer than 280 characters/)?.textContent).not.toContain(longDraft.slice(0, 40));
+    expect(publishJournalReflection).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Review draft'), {
+      target: { value: `  ${'n'.repeat(NOTE_MAX)}  ` },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Use draft' }));
+    expect(valueOf(publicNote)).toBe('n'.repeat(NOTE_MAX));
+    expect(screen.queryByText(/longer than 280 characters/)).toBeNull();
+    expect(publishJournalReflection).not.toHaveBeenCalled();
+  });
+
+  it('shows a successful publish and does not send private fields', async () => {
+    render(section({ initialReflection: reflection }));
+    fireEvent.change(screen.getByLabelText('Public note'), { target: { value: '  Great tacos  ' } });
+    fireEvent.click(screen.getByRole('radio', { name: '5' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+
+    await waitFor(() => {
+      expect(publishJournalReflection).toHaveBeenCalledWith(REDEMPTION, {
+        publicNote: '  Great tacos  ',
+        rating: 5,
+      });
+    });
+    const payload = publishJournalReflection.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(payload.favorite_bite).toBeUndefined();
+    expect(payload.unpublished_review_draft).toBeUndefined();
+    expect(payload.bite_note_id).toBeUndefined();
+    expect(await screen.findByText('This public note is on WanderBite.')).toBeTruthy();
+    expect(refresh).toHaveBeenCalled();
+    expect(saveBiteNote).not.toHaveBeenCalled();
+    expect(getGoogleReviewHandoffForRedemption).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toMatch(/XP|discount|drawing/i);
+    expect(document.body.textContent).not.toContain('Timeline');
+  });
+
+  it('shows plan and unverified refusals without writing', async () => {
+    const { unmount } = render(section());
+    fireEvent.change(screen.getByLabelText('Public note'), {
+      target: { value: 'p'.repeat(NOTE_MAX + 1) },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: '4' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(screen.getByRole('alert').textContent).toContain('Public note must be 280 characters or less.');
+    expect(valueOf(screen.getByLabelText('Public note'))).toBe('p'.repeat(NOTE_MAX + 1));
+    expect(publishJournalReflection).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Public note'), { target: { value: 'Hi\nthere' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(screen.getByRole('alert').textContent).toContain('line breaks or control characters');
+    expect(valueOf(screen.getByLabelText('Public note'))).toBe('Hi\nthere');
+    expect(publishJournalReflection).not.toHaveBeenCalled();
+    unmount();
+
+    publishJournalReflection.mockResolvedValue({ ok: false, code: 'unverified' });
+    render(section());
+    fireEvent.change(screen.getByLabelText('Public note'), { target: { value: 'A public line' } });
+    fireEvent.click(screen.getByRole('radio', { name: '3' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain('Only a verified visit can be shared publicly.');
+    });
+    expect(screen.queryByText('This public note is on WanderBite.')).toBeNull();
+
+    publishJournalReflection.mockClear();
+    cleanup();
+    render(section({ verified: false, initialReflection: reflection }));
+    expect(screen.getByText('Only a verified visit can be shared publicly.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Publish' })).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(publishJournalReflection).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Review draft')).toBeTruthy();
   });
 });

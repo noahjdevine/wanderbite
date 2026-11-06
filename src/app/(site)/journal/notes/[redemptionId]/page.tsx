@@ -5,7 +5,7 @@ import { NoteEditor, type NoteEditorNote } from '@/components/notes/note-editor'
 import { JournalReflectionSection } from '@/components/notes/reflection-editor';
 import { requireUser } from '@/lib/auth/require-user';
 import { journalReflectionsEnabled } from '@/lib/notes/flag';
-import { visitElementId } from '@/lib/notes/note-rules';
+import { redemptionIsVerified, visitElementId } from '@/lib/notes/note-rules';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 
@@ -38,10 +38,11 @@ export default async function NoteEditorPage({ params, searchParams }: PageProps
     return <p className="text-destructive">Redemption not found.</p>;
   }
 
+  const reflectionsOn = journalReflectionsEnabled();
   const admin = getSupabaseAdmin();
   const { data: redemption, error } = await admin
     .from('redemptions')
-    .select('id, user_id, restaurants(name)')
+    .select('id, user_id, status, verified_at, restaurants(name)')
     .eq('id', redemptionId)
     .maybeSingle();
 
@@ -52,6 +53,8 @@ export default async function NoteEditorPage({ params, searchParams }: PageProps
   const row = redemption as {
     id: string;
     user_id: string;
+    status?: string | null;
+    verified_at?: string | null;
     restaurants: { name: string } | { name: string }[] | null;
   };
   if (row.user_id !== auth.userId) {
@@ -84,7 +87,7 @@ export default async function NoteEditorPage({ params, searchParams }: PageProps
 
   // Flag off: do not call getJournalReflection and do not render the section.
   let reflection: ReactNode = null;
-  if (journalReflectionsEnabled()) {
+  if (reflectionsOn) {
     const loaded = await getJournalReflection(redemptionId);
     if (loaded.ok) {
       reflection = (
@@ -92,6 +95,7 @@ export default async function NoteEditorPage({ params, searchParams }: PageProps
           enabled
           redemptionId={redemptionId}
           initialReflection={loaded.reflection}
+          verified={redemptionIsVerified(row.status, row.verified_at)}
         />
       );
     } else if (loaded.code !== 'disabled') {

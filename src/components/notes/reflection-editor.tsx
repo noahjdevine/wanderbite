@@ -1,32 +1,40 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   getGoogleReviewHandoffForRedemption,
+  publishJournalReflection,
   saveJournalReflection,
   type JournalReflection,
 } from '@/app/actions/journal-reflections';
 import { Button } from '@/components/ui/button';
+import { NOTE_MAX, PUBLIC_REVIEW_REQUIRES_VERIFIED } from '@/lib/notes/note-rules';
 import {
   REFLECTION_LIMITS,
   RETURN_INTERESTS,
+  composePublicNotePublishPlan,
   validateReflectionFields,
   type ReflectionTextField,
   type ReturnInterest,
 } from '@/lib/notes/reflection';
 
 /**
- * Private journal reflection and a Google review handoff.
- * The note page renders this only when `journalReflectionsEnabled()` is true.
- * `enabled={false}` still renders nothing, including when a reflection object
- * was passed in. Save does not publish, does not set `bite_note_id`, and does
- * not append the draft to the Google URL.
+ * Private journal reflection, an explicit WanderBite publish, and a Google
+ * review handoff. The note page renders this only when
+ * `journalReflectionsEnabled()` is true. `enabled={false}` still renders
+ * nothing, including when a reflection object was passed in. Save does not
+ * publish and does not set `bite_note_id`. Publish writes only the sentence
+ * and rating the member chose. Opening Google does not publish and does not
+ * append the draft to the URL.
  */
 
 export type JournalReflectionSectionProps = {
   enabled: boolean;
   redemptionId: string;
   initialReflection: JournalReflection | null;
+  /** Verified redemption. Unverified visits can edit a reflection and cannot publish. */
+  verified: boolean;
 };
 
 type FormFields = {
@@ -132,6 +140,198 @@ function handoffErrorMessage(code: string): string {
   }
 }
 
+function publishErrorMessage(code: string): string {
+  switch (code) {
+    case 'too_long':
+      return `Public note must be ${NOTE_MAX} characters or less.`;
+    case 'invalid_text':
+      return 'Public note cannot include line breaks or control characters.';
+    case 'invalid_rating':
+      return 'Pick a rating from 1 to 5 stars.';
+    case 'unverified':
+      return PUBLIC_REVIEW_REQUIRES_VERIFIED;
+    case 'unauthorized':
+      return 'Sign in to publish a public note.';
+    case 'not_found':
+      return 'That visit was not found.';
+    case 'forbidden':
+      return 'You can publish a public note only for your own visit.';
+    case 'disabled':
+      return 'Publishing from your Journal is turned off.';
+    default:
+      return 'The public note could not be published. Try again.';
+  }
+}
+
+function JournalPublishSection({
+  redemptionId,
+  verified,
+  draft,
+  biteNoteId,
+}: {
+  redemptionId: string;
+  verified: boolean;
+  draft: string;
+  biteNoteId: string | null;
+}) {
+  const router = useRouter();
+  const [publicNote, setPublicNote] = useState('');
+  const [rating, setRating] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [draftNotice, setDraftNotice] = useState<string | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [linkedId, setLinkedId] = useState<string | null>(biteNoteId);
+  const headingId = `public-note-${redemptionId}`;
+  const legendId = `public-rating-${redemptionId}`;
+  const shownId = linkedId ?? biteNoteId;
+
+  function onUseDraft() {
+    const trimmed = draft.trim();
+    if (!trimmed) {
+      setDraftNotice('The review draft is empty.');
+      return;
+    }
+    if (trimmed.length > NOTE_MAX) {
+      setDraftNotice(
+        `That draft is longer than ${NOTE_MAX} characters. The public note was left unchanged.`,
+      );
+      return;
+    }
+    setPublicNote(trimmed);
+    setDraftNotice(null);
+    setError(null);
+  }
+
+  async function onPublish(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!verified) {
+      setError(PUBLIC_REVIEW_REQUIRES_VERIFIED);
+      return;
+    }
+    const plan = composePublicNotePublishPlan({ publicNote, rating });
+    if (!plan.ok) {
+      setError(publishErrorMessage(plan.code));
+      return;
+    }
+    setPublishing(true);
+    setError(null);
+    try {
+      const result = await publishJournalReflection(redemptionId, {
+        publicNote,
+        rating,
+      });
+      if (!result.ok) {
+        setError(publishErrorMessage(result.code));
+        return;
+      }
+      setLinkedId(result.biteNoteId);
+      router.refresh();
+    } catch {
+      setError(publishErrorMessage('save_failed'));
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  return (
+    <section
+      aria-labelledby={headingId}
+      data-journal-publish="public"
+      className="mx-auto mt-6 max-w-2xl space-y-4 rounded-md border border-input p-4"
+    >
+      <header className="space-y-1">
+        <h2 id={headingId} className="text-lg font-semibold tracking-tight">
+          Publish on WanderBite
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Posts the sentence and rating you choose on WanderBite. Your private reflection stays in your
+          Journal.
+        </p>
+      </header>
+
+      {!verified ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {PUBLIC_REVIEW_REQUIRES_VERIFIED}
+        </p>
+      ) : null}
+      {shownId ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          This public note is on WanderBite.
+        </p>
+      ) : null}
+
+      <form onSubmit={(event) => void onPublish(event)} className="space-y-4" noValidate>
+        <div className="space-y-1">
+          <label htmlFor={`public-note-${redemptionId}`} className="text-sm font-medium">
+            Public note
+          </label>
+          <textarea
+            id={`public-note-${redemptionId}`}
+            value={publicNote}
+            rows={4}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `public-note-error-${redemptionId}` : undefined}
+            autoComplete="off"
+            onChange={(event) => {
+              setPublicNote(event.target.value);
+              setError(null);
+            }}
+            className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/30"
+          />
+          <p
+            className={`text-right text-xs ${publicNote.length > NOTE_MAX ? 'text-destructive' : 'text-muted-foreground'}`}
+          >
+            {publicNote.length}/{NOTE_MAX}
+          </p>
+        </div>
+
+        <fieldset className="space-y-2">
+          <legend id={legendId} className="text-sm font-medium">
+            Public rating
+          </legend>
+          <div role="radiogroup" aria-labelledby={legendId} className="flex flex-wrap gap-3">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <label key={n} className="inline-flex items-center gap-1.5 text-sm">
+                <input
+                  type="radio"
+                  name={`public-rating-${redemptionId}`}
+                  value={n}
+                  checked={rating === n}
+                  onChange={() => {
+                    setRating(n);
+                    setError(null);
+                  }}
+                />
+                {n}
+              </label>
+            ))}
+          </div>
+        </fieldset>
+
+        {draftNotice ? (
+          <p role="status" className="text-sm text-muted-foreground">
+            {draftNotice}
+          </p>
+        ) : null}
+        {error ? (
+          <p id={`public-note-error-${redemptionId}`} role="alert" className="text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={onUseDraft}>
+            Use draft
+          </Button>
+          <Button type="submit" disabled={!verified || publishing}>
+            {publishing ? 'Publishing…' : 'Publish'}
+          </Button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
 function handoffTarget(url: string): { href: string; host: string } | null {
   if (!url.startsWith('https://')) return null;
   try {
@@ -147,6 +347,7 @@ export function JournalReflectionSection({
   enabled,
   redemptionId,
   initialReflection,
+  verified,
 }: JournalReflectionSectionProps) {
   const [fields, setFields] = useState<FormFields>(() => fieldsFrom(initialReflection));
   const [error, setError] = useState<ShownError | null>(null);
@@ -254,6 +455,7 @@ export function JournalReflectionSection({
   }
 
   return (
+    <>
     <section
       aria-labelledby={headingId}
       data-journal-reflection="private"
@@ -397,6 +599,13 @@ export function JournalReflectionSection({
         ) : null}
       </div>
     </section>
+    <JournalPublishSection
+      redemptionId={redemptionId}
+      verified={verified}
+      draft={fields.unpublished_review_draft}
+      biteNoteId={initialReflection?.bite_note_id ?? null}
+    />
+    </>
   );
 }
 

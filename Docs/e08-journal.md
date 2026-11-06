@@ -2,13 +2,15 @@
 
 E08-A1 is pure server-side helpers in `src/lib/notes/reflection.ts` and this design. Members and partners see nothing new while `E08_JOURNAL_REFLECTIONS_ENABLED` is unset. A1 adds no RPC, no UI, no AI call, and no Google API call. `src/app/actions/bite-notes.ts` is unchanged. `NOTE_MAX` is read from `src/lib/notes/note-rules.ts` and is still 280.
 
-E08-A2 landed in #151 (merge `a0bd66bd0090eb433eebd29d283216975f968a06`). `supabase/migrations/20261106170000_e08_a2_journal_reflections.sql` creates the table below. It is not applied to hosted. Do not run `supabase db push` for that file. `npm run types:db` was not run.
+E08-A2 landed in #151 (merge `a0bd66bd0090eb433eebd29d283216975f968a06`). `supabase/migrations/20261106170000_e08_a2_journal_reflections.sql` creates the table below. Hosted apply of that file was approved separately. This PR does not apply it. The filename stays `20261106170000` until a later rename PR. Do not run `supabase db push` for that file. `npm run types:db` was not run.
 
-E08-B1 landed in #153 (merge `c906a7467390b6419ce1ba531b4d989f46da2974`). `src/app/actions/journal-reflections.ts` loads and saves one private reflection and resolves a Google review handoff for an owned redemption. The flag is `E08_JOURNAL_REFLECTIONS_ENABLED` in `src/lib/notes/flag.ts`. Only the exact string `true` turns the actions on. Unset, empty, `True`, and `1` stay off. Those calls return `disabled` and do not query `journal_reflections`. B1 itself adds no page chrome. No publish into `bite_notes`. Save does not set `bite_note_id`. The action sets `updated_at` on the upsert, matching `saveBiteNote`. The before-update trigger `set_journal_reflections_updated_at` also sets `updated_at` on update. It does not run on insert.
+E08-B1 landed in #153 (merge `c906a7467390b6419ce1ba531b4d989f46da2974`). `src/app/actions/journal-reflections.ts` loads and saves one private reflection and resolves a Google review handoff for an owned redemption. The flag is `E08_JOURNAL_REFLECTIONS_ENABLED` in `src/lib/notes/flag.ts`. Only the exact string `true` turns the actions on. Unset, empty, `True`, and `1` stay off. Those calls return `disabled` and do not query `journal_reflections`. B1 itself adds no page chrome. That slice does not publish into `bite_notes`, and save does not set `bite_note_id`. The action sets `updated_at` on the upsert, matching `saveBiteNote`. The before-update trigger `set_journal_reflections_updated_at` also sets `updated_at` on update. It does not run on insert.
 
-Action codes: `disabled`, `unauthorized`, `not_found` (missing redemption, or an id that is not a uuid), `forbidden` (the redemption belongs to someone else; the reflection is not read), `read_failed`, and `save_failed`. Save also returns the helper refusals `invalid_input`, `invalid_text`, `too_long`, and `invalid_return_interest`, with `field` when the helper sets one. It does not truncate. Handoff returns the helper URL and `source`, or `missing_destination`, `invalid_place_id`, `invalid_url`, `insecure_url`, or `disallowed_host`. Failures do not include reflection text, a place id, or a handoff URL. The actions do not log those values.
+Action codes: `disabled`, `unauthorized`, `not_found` (missing redemption, or an id that is not a uuid), `forbidden` (the redemption belongs to someone else; the reflection is not read), `read_failed`, and `save_failed`. Save also returns the helper refusals `invalid_input`, `invalid_text`, `too_long`, and `invalid_return_interest`, with `field` when the helper sets one. It does not truncate. Handoff returns the helper URL and `source`, or `missing_destination`, `invalid_place_id`, `invalid_url`, `insecure_url`, or `disallowed_host`. Publish also returns `unverified`, `link_failed`, and the plan codes `invalid_input`, `invalid_rating`, `invalid_text`, `too_long`, and `invalid_reflection`. Failures do not include reflection text, a draft, a public note, a place id, or a handoff URL. The actions do not log those values.
 
-E08-B2 is landed-pending-merge. `/journal/notes/[redemptionId]` shows the private reflection form and the Google review handoff only when `E08_JOURNAL_REFLECTIONS_ENABLED` is the exact string `true`. While the flag is unset, that page does not render the section and does not call `getJournalReflection`. There is no publish control, no call to `composePublicNotePublishPlan`, and no `bite_note_id` write. The Journal list is unchanged (no per-visit reflection hint). Migration `20261106170000_e08_a2_journal_reflections.sql` is still not applied to hosted. The flag stays unset. No AI call and no Google API call.
+E08-B2 landed in #154 (merge `a3da580fbce1c6714a393b4b9533371ad4407a76`). `/journal/notes/[redemptionId]` shows the private reflection form and the Google review handoff only when `E08_JOURNAL_REFLECTIONS_ENABLED` is the exact string `true`. While the flag is unset, that page does not render the section and does not call `getJournalReflection`. The Journal list is unchanged (no per-visit reflection hint). The flag stays unset. No AI call and no Google API call.
+
+E08-C is landed-pending-merge. With the same flag set to the exact string `true`, the note page can Publish a member-chosen public sentence and rating. `publishJournalReflection` runs `composePublicNotePublishPlan`, upserts `bite_notes` with `is_public: true`, and sets `journal_reflections.bite_note_id`. Private reflection columns are not copied onto `bite_notes`. If no reflection row exists yet, publish upserts one and leaves those private columns unset so they store null, which also leaves an existing row's private fields in place. An unverified redemption is `unverified` and writes nothing. Over-long text and newlines are refused and are not truncated. Opening Google does not publish. While the flag is unset, the page does not render Publish and the action returns `disabled` before any `journal_reflections` or `bite_notes` write. No XP, discount, or drawing entry for posting. Hosted apply of `20261106170000_e08_a2_journal_reflections.sql` was approved separately. This PR does not apply it. The filename stays `20261106170000` until a later rename PR. `20261106150000_e07_b2_bill_receipts.sql` is still not applied to hosted. The flag stays unset.
 
 Noah approved the helper slice on 2026-11-06 and is accepting these table defaults with E08-A2: caps 120 / 280 / 40 / 1500, the name `journal_reflections`, an owned `redemption_id` with optional `bite_note_id`, and no rating or sentiment column. The admin Maps URL column and the G13-A polish class stay open.
 
@@ -38,7 +40,7 @@ No other cap for these fields exists in the repo. These numbers are the helper's
 
 ## Proposed table
 
-Name: `journal_reflections`. E08-A2 adds it in `20261106170000_e08_a2_journal_reflections.sql` (landed in #151, merge `a0bd66bd0090eb433eebd29d283216975f968a06`). That migration is not applied to hosted.
+Name: `journal_reflections`. E08-A2 adds it in `20261106170000_e08_a2_journal_reflections.sql` (landed in #151, merge `a0bd66bd0090eb433eebd29d283216975f968a06`). Hosted apply was approved separately. This PR does not apply it. The filename stays `20261106170000` until a later rename PR.
 
 | Column | Notes |
 | --- | --- |
@@ -75,14 +77,14 @@ No view and no public join of this table to `bite_notes`. A view in `public` wou
 
 ## Explicit publish
 
-1. `saveJournalReflection` validates with `validateReflectionFields` and writes only `journal_reflections`. It does not set `bite_note_id`. Publish is still a later action.
+1. `saveJournalReflection` validates with `validateReflectionFields` and writes only `journal_reflections`. It does not set `bite_note_id`. E08-C (landed-pending-merge) adds `publishJournalReflection` behind the same unset flag.
 2. The member chooses the public sentence and a rating. `composePublicNotePublishPlan` is the plan. Private fields are not arguments to the `bite_notes` write.
 3. The write uses the same columns as `saveBiteNote`: `note`, `rating`, `is_public`. A public save still requires a verified redemption (`PUBLIC_REVIEW_REQUIRES_VERIFIED`). A private `bite_notes` save is a different action and is not this publish.
 4. After that write, set `bite_note_id`. Do not copy `favorite_bite`, `atmosphere`, `return_interest`, `companion_label`, or the unpublished draft onto `bite_notes` unless the member passed that text as `publicNote` and it is at most `NOTE_MAX`.
 5. Opening Google does not publish to WanderBite and does not set `is_public`.
 6. No XP, no discount, and no drawing entry for posting. No Yelp mirror. The handoff is not a Google API publish and it does not prefill review text.
 
-While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the editor at `/journal/notes/[redemptionId]` is the rating and bite note only. E08-B2 (landed-pending-merge) adds the private reflection form and the Google handoff on that page only when the flag is the exact string `true`. It does not publish.
+While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the editor at `/journal/notes/[redemptionId]` is the rating and bite note only. E08-B2 (landed in #154, merge `a3da580fbce1c6714a393b4b9533371ad4407a76`) adds the private reflection form and the Google handoff on that page only when the flag is the exact string `true`. E08-C adds Publish on that same page, still only when the flag is the exact string `true`.
 
 ## Google handoff
 
@@ -94,7 +96,7 @@ No `maps_url`, `google_maps_url`, or `place_url` column appears in `supabase/mig
 
 When `google_place_id` is missing, a later slice may pass an https Maps URL that an admin stored. This repo has nowhere to store that URL yet. UNKNOWN where it would live. Until it exists, `buildGoogleReviewHandoff` refuses `missing_destination`. It does not search Google and it does not put the restaurant name or the draft in a query.
 
-Google handoff UI (E08-B2, landed-pending-merge, flag unset):
+Google handoff UI (E08-B2, landed in #154, merge `a3da580fbce1c6714a393b4b9533371ad4407a76`, flag unset):
 
 - Show the host and that the link opens Google's review or Maps page. Do not show the draft inside the URL.
 - Copy writes only the URL. If the clipboard fails, leave the URL in a readonly field the member can select.
@@ -121,8 +123,8 @@ Checkout stays frozen. Criterion 11, a real profile on `credits`, still needs se
 - E07-C confirmation, atomic savings, and QR UI. `Docs/e07-boost.md`. Not this PR.
 - E07-D disputes. `Docs/e07-boost.md`. Not this PR.
 - Member "I'm here" and geolocation. Product decided. UI not built. `Docs/e07-bill-scan.md`. Not this PR.
-- Hosted apply of `20261106150000_e07_b2_bill_receipts.sql`. Not applied. Do not apply it here.
-- Hosted apply of `20261106170000_e08_a2_journal_reflections.sql`. Not applied. Do not apply it here.
+- Hosted apply of `20261106150000_e07_b2_bill_receipts.sql`. Still not applied. Do not apply it here.
+- Hosted apply of `20261106170000_e08_a2_journal_reflections.sql`. Approved separately. This PR does not apply it. The filename stays `20261106170000` until a later rename PR.
 - Live Azure. `E07_BILL_SCAN_AZURE_ENABLED` stays unset. Do not put Azure credentials on Vercel.
 - `E07_ARRIVAL_SESSIONS_ENABLED` stays unset.
 - `E08_JOURNAL_REFLECTIONS_ENABLED` stays unset. Do not set it in Vercel from this change.
@@ -141,4 +143,4 @@ Checkout stays frozen. Criterion 11, a real profile on `credits`, still needs se
 
 ## Rollback
 
-Revert the PR before any hosted apply. `20261106170000_e08_a2_journal_reflections.sql` is forward-only and is not applied to hosted. If it were applied later, a separate cleanup migration would be required. While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the actions return `disabled` and do not query the table. The note page does not call them and does not render the reflection section.
+Revert the PR. `20261106170000_e08_a2_journal_reflections.sql` is forward-only. This PR does not apply it. Hosted apply was approved separately, and the filename stays `20261106170000` until a later rename PR. If it is applied, a separate cleanup migration would be required to remove it. While `E08_JOURNAL_REFLECTIONS_ENABLED` is unset, the actions return `disabled` and do not query `journal_reflections` or publish into `bite_notes`. The note page does not call them and does not render the reflection section or Publish.

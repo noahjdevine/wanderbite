@@ -347,7 +347,9 @@ describe('reflection module boundary', () => {
     const action = readFileSync(hits[0] ?? '', 'utf8');
     expect(action).toContain('validateReflectionFields');
     expect(action).toContain('buildGoogleReviewHandoff');
-    expect(action).not.toContain('composePublicNotePublishPlan');
+    expect(action).toContain('composePublicNotePublishPlan');
+    expect(action).not.toMatch(/saveBiteNote\s*\(/);
+    expect(action).not.toContain("from '@/app/actions/bite-notes'");
     expect(action).not.toMatch(/fetch\(|anthropic|openai|azure/i);
   });
 });
