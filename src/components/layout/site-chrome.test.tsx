@@ -10,6 +10,7 @@ const session = vi.hoisted(() => ({
 
 vi.mock('next/navigation', () => ({
   usePathname: () => pathname,
+  useSearchParams: () => new URLSearchParams(search),
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }));
 
@@ -26,6 +27,7 @@ import { MobileNav } from '@/components/layout/MobileNav';
 import { Navbar } from '@/components/layout/Navbar';
 
 let pathname = '/';
+let search = '';
 
 const PUBLIC_LINKS = [
   ['Home', '/'],
@@ -40,6 +42,8 @@ const MEMBER_LINKS = [
   ['Restaurants', '/restaurants'],
   ['Challenges', '/challenges'],
   ['Progress', '/journey'],
+  ['Journal', '/journal'],
+  ['Passport', '/journey?view=passport'],
 ] as const;
 
 const FOOTER_LINKS = [
@@ -95,6 +99,7 @@ function token(css: string, name: string) {
 describe('site header and footer', () => {
   beforeEach(() => {
     pathname = '/';
+    search = '';
     session.signedIn = false;
     session.loading = false;
   });
@@ -135,6 +140,55 @@ describe('site header and footer', () => {
     expect(header?.className).not.toContain('absolute');
     expect(screen.getByRole('link', { name: 'Restaurants' }).getAttribute('aria-current')).toBe('page');
     expect(screen.getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('marks Progress, Journal, and Passport apart when they share /journey', () => {
+    session.signedIn = true;
+    pathname = '/journey';
+    search = '';
+    const view = render(<Navbar />);
+    expect(screen.getByRole('link', { name: 'Progress' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Journal' }).getAttribute('aria-current')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBeNull();
+
+    search = 'view=passport';
+    view.rerender(<Navbar />);
+    expect(screen.getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Progress' }).getAttribute('aria-current')).toBeNull();
+
+    search = 'view=map';
+    view.rerender(<Navbar />);
+    expect(screen.getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Journal' }).getAttribute('aria-current')).toBeNull();
+
+    search = 'view=journal';
+    view.rerender(<Navbar />);
+    expect(screen.getByRole('link', { name: 'Journal' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Progress' }).getAttribute('aria-current')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBeNull();
+
+    pathname = '/journal/notes/abc';
+    search = '';
+    view.rerender(<Navbar />);
+    expect(screen.getByRole('link', { name: 'Journal' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBeNull();
+
+    pathname = '/passport';
+    view.rerender(<Navbar />);
+    expect(screen.getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('link', { name: 'Progress' }).getAttribute('aria-current')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Journal' }).getAttribute('aria-current')).toBeNull();
+  });
+
+  it('marks Journal in the hamburger and leaves Passport dark', () => {
+    session.signedIn = true;
+    pathname = '/journal';
+    render(<MobileNav />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    const menu = screen.getByRole('dialog', { name: 'Menu' });
+    expect(within(menu).getByRole('link', { name: 'Journal' }).getAttribute('aria-current')).toBe('page');
+    expect(within(menu).getByRole('link', { name: 'Passport' }).getAttribute('aria-current')).toBeNull();
+    expect(within(menu).getByRole('link', { name: 'Progress' }).getAttribute('aria-current')).toBeNull();
   });
 
   it('keeps the signed-in desktop links and the same account actions', () => {

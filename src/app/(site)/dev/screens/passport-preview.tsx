@@ -1,6 +1,5 @@
 import { PassportClient, type PassportVisit } from '@/components/passport/passport-client';
 import { PassportMapScreen } from '@/components/passport/passport-map-screen';
-import { PassportChrome } from '@/components/passport/passport-chrome';
 import { chicagoVisitDate } from '@/lib/passport/passport-board';
 import type { VisitStatus } from '@/lib/visits/visit-status';
 
@@ -191,51 +190,48 @@ export function MapPreview() {
   );
 }
 
-export function TimelinePreview() {
+export function JournalPreview() {
   return (
-    <PassportChrome
-      displayName="Noah"
-      segment="timeline"
-      progressUnavailable={false}
-      verifiedVisits={2}
-      uniqueRestaurants={2}
-      neighborhoods={1}
-      currentStreak={2}
-      longestStreak={2}
-      pendingVisits={1}
-      earnedBadges={[{ id: 'first_bite', name: 'First Bite', earnedOn: 'Earned on Feb 2, 2026' }]}
-      showFirstBiteLocked={false}
-      retryHref="/journey?view=journal"
-    >
-      <header className="space-y-2">
-        <h2 className="font-display m-0 text-[30px] text-wb-ink">Timeline</h2>
-        <p className="m-0 text-sm text-wb-muted">Your dining memories. You choose which ones to share.</p>
+    <div className="bg-wb-cream text-wb-ink">
+      <header className="wb-dark relative overflow-hidden">
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-3 px-5 pb-16 pt-4 sm:px-8">
+          <h1 className="wb-display m-0 text-[40px] text-white sm:text-[52px]">
+            <em>Journal</em>
+          </h1>
+          <p className="m-0 max-w-md text-sm text-wb-lavender-2">
+            Your dining memories. You choose which ones to share.
+          </p>
+        </div>
       </header>
-      <ul className="m-0 flex list-none flex-col gap-4 p-0">
-        <li>
-          <article className="rounded-[26px] bg-white p-4 shadow-[0_14px_34px_rgba(42,20,66,0.08)]">
-            <h3 className="font-display m-0 text-[28px] leading-none text-wb-ink">The Yard</h3>
-            <p className="m-0 mt-1 text-[13px] text-wb-muted">April 26, 2026 · Downtown</p>
-            <p className="mt-3">
-              <span data-visit-status="note_added" className="inline-flex rounded-full bg-[#dcfce7] px-2.5 py-1 text-xs font-bold text-[#14532d]">
-                Note added
-              </span>
-            </p>
-            <p className="font-display mt-3 text-[22px] text-wb-plum italic">“Amazing outdoor atmosphere and great service!”</p>
-          </article>
-        </li>
-        <li>
-          <article className="rounded-[26px] bg-white p-4 shadow-[0_14px_34px_rgba(42,20,66,0.08)]">
-            <h3 className="font-display m-0 text-[28px] leading-none text-wb-ink">Cadillac Pizza Pub</h3>
-            <p className="m-0 mt-1 text-[13px] text-wb-muted">October 31, 2026 · Downtown</p>
-            <p className="mt-3">
-              <span data-visit-status="verified" className="inline-flex rounded-full bg-[#dcfce7] px-2.5 py-1 text-xs font-bold text-[#14532d]">
-                Verified
-              </span>
-            </p>
-          </article>
-        </li>
-      </ul>
-    </PassportChrome>
+      <div className="wb-sheet wb-on-cream">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-5 pb-16 pt-7 sm:px-8">
+          <ul className="m-0 flex list-none flex-col gap-4 p-0">
+            <li>
+              <article className="rounded-[26px] bg-white p-4 shadow-[0_14px_34px_rgba(42,20,66,0.08)]">
+                <h3 className="font-display m-0 text-[28px] leading-none text-wb-ink">The Yard</h3>
+                <p className="m-0 mt-1 text-[13px] text-wb-muted">April 26, 2026 · Downtown</p>
+                <p className="mt-3">
+                  <span data-visit-status="note_added" className="inline-flex rounded-full bg-[#dcfce7] px-2.5 py-1 text-xs font-bold text-[#14532d]">
+                    Note added
+                  </span>
+                </p>
+                <p className="font-display mt-3 text-[22px] text-wb-plum italic">“Amazing outdoor atmosphere and great service!”</p>
+              </article>
+            </li>
+            <li>
+              <article className="rounded-[26px] bg-white p-4 shadow-[0_14px_34px_rgba(42,20,66,0.08)]">
+                <h3 className="font-display m-0 text-[28px] leading-none text-wb-ink">Cadillac Pizza Pub</h3>
+                <p className="m-0 mt-1 text-[13px] text-wb-muted">October 31, 2026 · Downtown</p>
+                <p className="mt-3">
+                  <span data-visit-status="verified" className="inline-flex rounded-full bg-[#dcfce7] px-2.5 py-1 text-xs font-bold text-[#14532d]">
+                    Verified
+                  </span>
+                </p>
+              </article>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
   );
 }

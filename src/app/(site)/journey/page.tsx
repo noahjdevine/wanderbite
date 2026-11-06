@@ -3,7 +3,6 @@ import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { JourneyContent } from '@/components/journey/journey-content';
-import { JournalContent } from '@/components/journal/journal-content';
 import { PassportContent } from '@/components/passport/passport-content';
 import { parseMyJourneyView } from '@/lib/my-journey-views';
 
@@ -17,7 +16,7 @@ export async function generateMetadata({ searchParams }: JourneyPageProps): Prom
   const params = await searchParams;
   const view = parseMyJourneyView(params.view);
   if (view === 'passport') return { title: 'Passport' };
-  if (view === 'journal') return { title: 'Timeline' };
+  if (view === 'journal') return { title: 'Journal' };
   if (view === 'map') return { title: 'Map' };
   return { title: 'Progress' };
 }
@@ -42,8 +41,12 @@ export default async function JourneyPage({ searchParams }: JourneyPageProps) {
 
   if (!user) {
     const redirectTo =
-      view === 'journey' ? '/journey' : `/journey?view=${view}`;
+      view === 'journal' ? '/journal' : view === 'journey' ? '/journey' : `/journey?view=${view}`;
     redirect(`/signin?redirectTo=${encodeURIComponent(redirectTo)}`);
+  }
+
+  if (view === 'journal') {
+    redirect('/journal');
   }
 
   if (view === 'journey') {
@@ -56,11 +59,7 @@ export default async function JourneyPage({ searchParams }: JourneyPageProps) {
 
   return (
     <Suspense fallback={<HubViewFallback />}>
-      {view === 'journal' ? (
-        <JournalContent />
-      ) : (
-        <PassportContent userId={user.id} segment={view === 'map' ? 'map' : 'stamps'} />
-      )}
+      <PassportContent userId={user.id} segment={view === 'map' ? 'map' : 'stamps'} />
     </Suspense>
   );
 }

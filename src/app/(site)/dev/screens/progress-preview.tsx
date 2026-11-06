@@ -119,7 +119,7 @@ export function ProgressPreview() {
       <p className="bg-wb-night m-0 px-5 py-2 text-center text-xs text-white/70">
         Sample progress data for the dev gallery. Not a member account.
       </p>
-      <ProgressView model={model} showSectionTabs={false} />
+      <ProgressView model={model} />
     </div>
   );
 }

@@ -5,7 +5,6 @@ import { segmentHref, type PassportSegmentId } from '@/lib/passport/passport-boa
 
 const SEGMENTS: { id: PassportSegmentId; label: string }[] = [
   { id: 'stamps', label: 'Passport' },
-  { id: 'timeline', label: 'Timeline' },
   { id: 'map', label: 'Map' },
 ];
 
@@ -44,7 +43,7 @@ export function PassportSegments({ active }: PassportSegmentsProps) {
     <div
       role="radiogroup"
       aria-label="Passport views"
-      className="grid grid-cols-3 gap-1 rounded-full border border-white/20 bg-white/10 p-1"
+      className="grid grid-cols-2 gap-1 rounded-full border border-white/20 bg-white/10 p-1"
       onKeyDown={onKeyDown}
     >
       {SEGMENTS.map((segment) => {

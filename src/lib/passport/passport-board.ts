@@ -40,8 +40,6 @@ export const PASSPORT_UNAVAILABLE_MESSAGE = 'Passport temporarily unavailable';
 
 export const PASSPORT_RETRY_HREF = '/journey?view=passport';
 
-export const JOURNAL_SEGMENT_HREF = '/journey?view=journal';
-
 export const PASSPORT_SEGMENT_HREF = '/journey?view=passport';
 
 export const MAP_SEGMENT_HREF = '/journey?view=map';
@@ -200,11 +198,11 @@ export function chicagoVisitDate(iso: string | null | undefined): ChicagoVisitDa
   };
 }
 
-export type PassportSegmentId = 'stamps' | 'timeline' | 'map';
+/** Member-facing Passport switcher. Journal is not a Passport segment. */
+export type PassportSegmentId = 'stamps' | 'map';
 
 export function segmentForJourneyView(view: MyJourneyView): PassportSegmentId | null {
   if (view === 'passport') return 'stamps';
-  if (view === 'journal') return 'timeline';
   if (view === 'map') return 'map';
   return null;
 }
@@ -243,7 +241,6 @@ export function passportIssuedOn(verifiedAt: readonly (string | null | undefined
 
 export function segmentHref(segment: PassportSegmentId): string {
   if (segment === 'stamps') return PASSPORT_SEGMENT_HREF;
-  if (segment === 'timeline') return JOURNAL_SEGMENT_HREF;
   return MAP_SEGMENT_HREF;
 }
 

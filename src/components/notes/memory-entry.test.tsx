@@ -406,8 +406,12 @@ describe('memory entry points', () => {
 
     const ui = await JournalContent();
     const view = await render(ui);
+    expect(view.querySelector('h1')?.textContent).toBe('Journal');
     expect(view.textContent).toContain('Your dining memories. You choose which ones to share.');
+    expect(view.textContent).not.toContain('Timeline');
+    expect(view.textContent).not.toContain('Share My Passport');
     expect(view.textContent?.toLowerCase()).not.toContain('only you can see');
+    expect(view.textContent).not.toContain('Passport');
 
     const links = [...view.querySelectorAll('[data-memory-action]')].map((el) => ({
       label: el.textContent,

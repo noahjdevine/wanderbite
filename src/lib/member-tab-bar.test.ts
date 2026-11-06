@@ -23,11 +23,8 @@ describe('resolveMemberTabHref', () => {
     expect(resolveMemberTabHref('/journey/memories')).toBe(PROGRESS_TAB_HREF);
     expect(resolveMemberTabHref('/journey/', '')).toBe(PROGRESS_TAB_HREF);
     expect(resolveMemberTabHref('/journey', 'view=map')).toBe(PASSPORT_TAB_HREF);
-    expect(resolveMemberTabHref('/journey', 'view=journal')).toBe(PASSPORT_TAB_HREF);
-    expect(resolveMemberTabHref('/journey', 'view=journal&page=2')).toBe(PASSPORT_TAB_HREF);
     expect(resolveMemberTabHref('/passport')).toBe(PASSPORT_TAB_HREF);
-    expect(resolveMemberTabHref('/journal')).toBe(PASSPORT_TAB_HREF);
-    expect(resolveMemberTabHref('/journal/notes/red-1')).toBe(PASSPORT_TAB_HREF);
+    expect(resolveMemberTabHref('/passport/share')).toBe(PASSPORT_TAB_HREF);
   });
 
   it('leaves an unknown path with no active tab', () => {
@@ -37,6 +34,10 @@ describe('resolveMemberTabHref', () => {
     expect(resolveMemberTabHref('/billing')).toBeNull();
     expect(resolveMemberTabHref('/no-such-page')).toBeNull();
     expect(resolveMemberTabHref('/journey', 'view=nope')).toBe(PROGRESS_TAB_HREF);
+    expect(resolveMemberTabHref('/journey', 'view=journal')).toBeNull();
+    expect(resolveMemberTabHref('/journey', 'view=journal&page=2')).toBeNull();
+    expect(resolveMemberTabHref('/journal')).toBeNull();
+    expect(resolveMemberTabHref('/journal/notes/red-1')).toBeNull();
   });
 });
 

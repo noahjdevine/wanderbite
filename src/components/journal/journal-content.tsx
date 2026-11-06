@@ -1,13 +1,11 @@
+import type { ReactNode } from 'react';
 import { getBiteNotes, type BiteNoteRow } from '@/app/actions/bite-notes';
-import { PassportChrome } from '@/components/passport/passport-chrome';
 import { FocusVisitFromHash } from '@/components/notes/focus-visit';
 import { VisitNoteRead } from '@/components/notes/visit-note';
 import { requireUser } from '@/lib/auth/require-user';
 import { JOURNAL_SAVED_RECIPES_HEADING } from '@/lib/recipes/display';
 import { loadJournalSavedRecipeLinks } from '@/lib/recipes/journal-links';
-import { chicagoVisitDate, JOURNAL_SEGMENT_HREF } from '@/lib/passport/passport-board';
-import { getMemberProgress, presentMemberProgress } from '@/lib/progress/get-member-progress';
-import { memberHeaderLabel, NEUTRAL_MEMBER_HEADER } from '@/lib/progress/rules';
+import { chicagoVisitDate } from '@/lib/passport/passport-board';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
 import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
@@ -143,7 +141,7 @@ async function verifiedVisitsWithoutNotes(
   return { ok: true, visits };
 }
 
-const JOURNAL_RETURN = '/journey?view=journal';
+const JOURNAL_RETURN = '/journal';
 
 function statusChipClass(status: VisitStatus): string {
   if (status === 'verified' || status === 'note_added') {
@@ -155,43 +153,55 @@ function statusChipClass(status: VisitStatus): string {
   return 'bg-[#f6f1e8] text-wb-ink';
 }
 
+function JournalShell({ children }: { children: ReactNode }) {
+  return (
+    <div className="bg-wb-cream text-wb-ink">
+      <FocusVisitFromHash />
+      <header className="wb-dark relative overflow-hidden">
+        <div
+          aria-hidden="true"
+          className="wb-aurora pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(251,113,133,0.4) 0%, rgba(251,113,133,0) 70%)' }}
+        />
+        <div
+          aria-hidden="true"
+          className="wb-aurora-2 pointer-events-none absolute -left-28 top-36 h-80 w-80 rounded-full"
+          style={{ background: 'radial-gradient(circle, rgba(139,92,246,0.55) 0%, rgba(139,92,246,0) 70%)' }}
+        />
+        <div className="relative mx-auto flex max-w-5xl flex-col gap-3 px-5 pb-16 pt-4 sm:px-8">
+          <h1 className="wb-display m-0 text-[40px] text-white sm:text-[52px]">
+            <em>Journal</em>
+          </h1>
+          <p className="m-0 max-w-md text-sm text-wb-lavender-2">
+            Your dining memories. You choose which ones to share.
+          </p>
+        </div>
+      </header>
+      <div className="wb-sheet wb-on-cream">
+        <div className="mx-auto flex max-w-5xl flex-col gap-4 px-5 pb-16 pt-7 sm:px-8">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 export async function JournalContent() {
   const auth = await requireUser();
   if (!auth.ok) {
-    return <p className="text-destructive">{auth.error}</p>;
+    return (
+      <JournalShell>
+        <p className="text-destructive">{auth.error}</p>
+      </JournalShell>
+    );
   }
 
   const now = new Date();
-  const admin = getSupabaseAdmin();
-  const [res, progress, profileResult] = await Promise.all([
-    getBiteNotes(),
-    getMemberProgress(auth.userId, now),
-    admin.from('user_profiles').select('full_name').eq('id', auth.userId),
-  ]);
-  const presented = presentMemberProgress(progress);
-  const profileRows = (profileResult.data ?? []) as { full_name: string | null }[];
-  const first = memberHeaderLabel(profileRows[0]?.full_name);
-  const displayName = first === NEUTRAL_MEMBER_HEADER ? 'Your' : first;
-  const pendingVisits = 'error' in progress ? 0 : progress.pendingVisits;
+  const res = await getBiteNotes();
 
   if (!res.ok) {
     return (
-      <PassportChrome
-        displayName={displayName}
-        segment="timeline"
-        progressUnavailable={presented.progressUnavailable}
-        verifiedVisits={presented.verifiedVisits}
-        uniqueRestaurants={presented.uniqueRestaurants}
-        neighborhoods={presented.neighborhoods}
-        currentStreak={presented.streak.currentStreak}
-        longestStreak={presented.streak.longestStreak}
-        pendingVisits={pendingVisits}
-        earnedBadges={presented.earnedBadges}
-        showFirstBiteLocked={presented.showFirstBiteLocked}
-        retryHref={JOURNAL_SEGMENT_HREF}
-      >
+      <JournalShell>
         <p className="text-destructive">{res.error}</p>
-      </PassportChrome>
+      </JournalShell>
     );
   }
 
@@ -211,28 +221,7 @@ export async function JournalContent() {
   );
 
   return (
-    <PassportChrome
-      displayName={displayName}
-      segment="timeline"
-      progressUnavailable={presented.progressUnavailable}
-      verifiedVisits={presented.verifiedVisits}
-      uniqueRestaurants={presented.uniqueRestaurants}
-      neighborhoods={presented.neighborhoods}
-      currentStreak={presented.streak.currentStreak}
-      longestStreak={presented.streak.longestStreak}
-      pendingVisits={pendingVisits}
-      earnedBadges={presented.earnedBadges}
-      showFirstBiteLocked={presented.showFirstBiteLocked}
-      retryHref={JOURNAL_SEGMENT_HREF}
-    >
-      <FocusVisitFromHash />
-      <header className="space-y-2">
-        <h2 className="font-display m-0 text-[30px] text-wb-ink">Timeline</h2>
-        <p className="m-0 text-sm text-wb-muted">
-          Your dining memories. You choose which ones to share.
-        </p>
-      </header>
-
+    <JournalShell>
       {openMemories.ok && openMemories.visits.length > 0 ? (
         <ul className="m-0 flex list-none flex-col gap-4 p-0">
           {openMemories.visits.map((visit) => (
@@ -331,6 +320,6 @@ export async function JournalContent() {
           })}
         </ul>
       ) : null}
-    </PassportChrome>
+    </JournalShell>
   );
 }

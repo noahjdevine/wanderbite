@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MyJourneyHub } from '@/components/journey/my-journey-hub';
 import { ProgressUnavailable, ProgressView } from '@/components/journey/progress-view';
 import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { chicagoMonthStart } from '@/lib/cron-period';
@@ -379,7 +378,7 @@ describe('noPairCta', () => {
       now: NOW,
       activity: { ok: true, hasPair: false, adventures: [], noPair: cta },
     });
-    render(<ProgressView model={model} showSectionTabs={false} />);
+    render(<ProgressView model={model} />);
     expect(model.nextMove?.kind).toBe('no_pair');
     expect(model.nextMove?.accent).toBeNull();
     expect(screen.getByText('Your credits are waiting.')).toBeTruthy();
@@ -483,13 +482,12 @@ describe('Progress page', () => {
   });
 
   it('labels savings estimated only when the read says so', () => {
-    render(<ProgressView model={readyModel({ xp: 0 })} showSectionTabs={false} />);
+    render(<ProgressView model={readyModel({ xp: 0 })} />);
     expect(screen.getByText(/\(estimated\)/)).toBeTruthy();
     cleanup();
     render(
       <ProgressView
         model={readyModel({ xp: 0, savings: { amount: 20, isEstimate: false } })}
-        showSectionTabs={false}
       />,
     );
     expect(screen.queryByText(/estimated/i)).toBeNull();
@@ -497,7 +495,7 @@ describe('Progress page', () => {
   });
 
   it('shows the unavailable message and a retry link instead of zeros', () => {
-    render(<ProgressUnavailable headerLabel="Noah" showSectionTabs={false} />);
+    render(<ProgressUnavailable headerLabel="Noah" />);
     expect(screen.getByText(PROGRESS_UNAVAILABLE_MESSAGE)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Retry' }).getAttribute('href')).toBe('/journey');
     expect(screen.queryByText('0')).toBeNull();
@@ -506,7 +504,7 @@ describe('Progress page', () => {
   });
 
   it('shows an empty visit list without sample restaurants', () => {
-    render(<ProgressView model={readyModel({ xp: 0 })} showSectionTabs={false} />);
+    render(<ProgressView model={readyModel({ xp: 0 })} />);
     expect(screen.getByText('No visits yet. A verified visit will show up here.')).toBeTruthy();
     expect(screen.queryByText('The Common Table')).toBeNull();
     expect(screen.getAllByText('0').length).toBeGreaterThan(0);
@@ -518,7 +516,7 @@ describe('Progress page', () => {
       badge('first_bite', 'First Bite copy', '2026-02-02T18:00:00.000Z', 1, 1),
       badge('hat_trick', 'Hat Trick', null, 2, 3),
     ];
-    render(<ProgressView model={readyModel({ xp: 200, badges })} showSectionTabs={false} />);
+    render(<ProgressView model={readyModel({ xp: 200, badges })} />);
     expect(screen.getAllByText('First Bite')).toHaveLength(1);
     expect(screen.queryByText('First Bite copy')).toBeNull();
     expect(screen.getByText('Earned on Feb 2, 2026')).toBeTruthy();
@@ -527,7 +525,7 @@ describe('Progress page', () => {
   });
 
   it('opens the level road from the keyboard button', () => {
-    render(<ProgressView model={readyModel({ xp: 1000 })} showSectionTabs={false} />);
+    render(<ProgressView model={readyModel({ xp: 1000 })} />);
     const button = screen.getByRole('button', { name: /Road to Local Legend/ });
     expect(button.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(button);
@@ -579,7 +577,7 @@ describe('Progress page', () => {
       now: NOW,
       activity: { ok: true, hasPair: true, adventures: issued, noPair: GENERATE },
     });
-    render(<ProgressView model={model} showSectionTabs={false} />);
+    render(<ProgressView model={model} />);
     expect(screen.getByRole('link', { name: 'Show code' }).getAttribute('href')).toBe(
       '/challenges/show/red-zen',
     );
@@ -610,7 +608,7 @@ describe('Progress page', () => {
         ],
       },
     });
-    render(<ProgressView model={model} showSectionTabs={false} />);
+    render(<ProgressView model={model} />);
     const links = screen.getAllByRole('link', { name: 'Add memory' });
     expect(links.length).toBeGreaterThan(0);
     for (const link of links) {
@@ -622,8 +620,15 @@ describe('Progress page', () => {
 });
 
 describe('Progress label', () => {
-  it('renames the nav and hub tab and keeps the journey URLs', () => {
-    expect(MEMBER_NAV_ITEMS.find((item) => item.href === '/journey')?.label).toBe('Progress');
+  it('keeps Progress, Journal, and Passport as separate destinations', () => {
+    expect(MEMBER_NAV_ITEMS.map((item) => [item.label, item.href])).toEqual([
+      ['Discover', '/roulette'],
+      ['Restaurants', '/restaurants'],
+      ['Challenges', '/challenges'],
+      ['Progress', '/journey'],
+      ['Journal', '/journal'],
+      ['Passport', '/journey?view=passport'],
+    ]);
     expect(MY_JOURNEY_VIEW_LABELS.journey).toBe('Progress');
     expect(MY_JOURNEY_VIEW_LABELS.journal).toBe('Journal');
     expect(MY_JOURNEY_VIEW_LABELS.passport).toBe('Passport');
@@ -632,33 +637,27 @@ describe('Progress label', () => {
     expect(parseMyJourneyView('passport')).toBe('passport');
     expect(parseMyJourneyView('progress')).toBe('journey');
     expect(myJourneyHref('journey')).toBe('/journey');
-    expect(myJourneyHref('journal')).toBe('/journey?view=journal');
+    expect(myJourneyHref('journal')).toBe('/journal');
     expect(myJourneyHref('passport')).toBe('/journey?view=passport');
 
     const page = readFileSync(path.join(ROOT, 'src/app/(site)/journey/page.tsx'), 'utf8');
     expect(page).not.toContain('MyJourneyHub');
     expect(page).not.toContain('JourneySectionTabs');
-    render(<ProgressView model={readyModel()} />);
-    expect(screen.getAllByRole('tablist', { name: 'Progress sections' })).toHaveLength(1);
-    expect(screen.getByRole('tab', { name: 'Progress' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByRole('tab', { name: 'Journal' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Passport' })).toBeTruthy();
-    cleanup();
-
-    render(
-      <MyJourneyHub activeView="passport">
-        <p>Passport body</p>
-      </MyJourneyHub>,
-    );
-    expect(screen.getByRole('heading', { name: 'Progress' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Progress' }).getAttribute('aria-selected')).toBe('false');
-    expect(screen.getByRole('tab', { name: 'Passport' }).getAttribute('aria-selected')).toBe('true');
-    expect(screen.getByText('Passport body')).toBeTruthy();
-
-    expect(page).toContain('view === \'journey\' ? \'/journey\' : `/journey?view=${view}`');
+    expect(page).not.toContain('Timeline');
+    expect(page).toContain("redirect('/journal')");
     expect(page).toContain('redirect(`/signin?redirectTo=${encodeURIComponent(redirectTo)}`)');
     expect(page).toContain('<PassportContent');
-    expect(page).toContain('<JournalContent');
+    expect(page).not.toContain('<JournalContent');
+    render(<ProgressView model={readyModel()} />);
+    expect(screen.queryByRole('tablist', { name: 'Progress sections' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Journal' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Passport' })).toBeNull();
+    cleanup();
+
+    const journal = readFileSync(path.join(ROOT, 'src/app/(site)/journal/page.tsx'), 'utf8');
+    expect(journal).toContain("title: 'Journal'");
+    expect(journal).toContain('<JournalContent');
+    expect(journal).not.toContain("redirect('/journey?view=journal')");
 
     const css = readFileSync(path.join(ROOT, 'src/app/styles/wanderbite-theme.css'), 'utf8');
     const reduced = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)'));
@@ -676,7 +675,7 @@ describe('Progress label', () => {
 
 function panel(xp: number): string {
   cleanup();
-  const view = render(<ProgressView model={readyModel({ xp })} showSectionTabs={false} />);
+  const view = render(<ProgressView model={readyModel({ xp })} />);
   return view.container.textContent ?? '';
 }
 
