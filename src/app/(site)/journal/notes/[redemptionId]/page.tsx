@@ -1,6 +1,10 @@
+import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
+import { getJournalReflection } from '@/app/actions/journal-reflections';
 import { NoteEditor, type NoteEditorNote } from '@/components/notes/note-editor';
+import { JournalReflectionSection } from '@/components/notes/reflection-editor';
 import { requireUser } from '@/lib/auth/require-user';
+import { journalReflectionsEnabled } from '@/lib/notes/flag';
 import { visitElementId } from '@/lib/notes/note-rules';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { unwrapJoin } from '@/lib/supabase/unwrap-join';
@@ -78,6 +82,27 @@ export default async function NoteEditorPage({ params, searchParams }: PageProps
 
   const restaurantName = unwrapJoin(row.restaurants)?.name ?? 'Restaurant';
 
+  // Flag off: do not call getJournalReflection and do not render the section.
+  let reflection: ReactNode = null;
+  if (journalReflectionsEnabled()) {
+    const loaded = await getJournalReflection(redemptionId);
+    if (loaded.ok) {
+      reflection = (
+        <JournalReflectionSection
+          enabled
+          redemptionId={redemptionId}
+          initialReflection={loaded.reflection}
+        />
+      );
+    } else if (loaded.code !== 'disabled') {
+      reflection = (
+        <p role="alert" className="mx-auto mt-10 max-w-2xl text-sm text-muted-foreground">
+          Your private reflection could not be loaded. Your rating and note above are unchanged.
+        </p>
+      );
+    }
+  }
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
       <NoteEditor
@@ -86,6 +111,7 @@ export default async function NoteEditorPage({ params, searchParams }: PageProps
         returnTo={returnTo}
         restaurantName={restaurantName}
       />
+      {reflection}
     </div>
   );
 }
