@@ -502,8 +502,10 @@ describe('boost arrival sessions', () => {
           walk(full);
           continue;
         }
-        if (!/\.(ts|tsx)$/.test(name) || name.endsWith('.test.ts')) continue;
+        if (!/\.(ts|tsx)$/.test(name) || name.endsWith('.test.ts') || name.endsWith('.test.tsx')) continue;
         if (full.endsWith(`${path.sep}partner-boost-arrival.ts`)) continue;
+        if (full.endsWith(`${path.sep}partner-bill-scan.ts`)) continue;
+        if (full.endsWith(`${path.sep}partner-arrival-client.tsx`)) continue;
         const text = readFileSync(full, 'utf8');
         if (
           text.includes('boost_arrival_sessions') ||
@@ -526,5 +528,18 @@ describe('boost arrival sessions', () => {
     expect(sessionSource).not.toMatch(/bill-proposal|verify_redemption|assertAdmin/);
     expect(actionSource).not.toMatch(/bill-proposal|verify_redemption|assertAdmin/);
     expect(actionSource).toMatch(/E07_ARRIVAL_SESSIONS_ENABLED|arrivalSessionsEnabled/);
+
+    const billScan = readFileSync(path.join(ROOT, 'src/app/actions/partner-bill-scan.ts'), 'utf8');
+    const arrivalPage = readFileSync(path.join(ROOT, 'src/app/partner/[slug]/arrival/page.tsx'), 'utf8');
+    const arrivalClient = readFileSync(
+      path.join(ROOT, 'src/components/partner/partner-arrival-client.tsx'),
+      'utf8',
+    );
+    expect(billScan).toMatch(/arrivalSessionsEnabled/);
+    expect(billScan).not.toMatch(/verify_redemption|verifyRedemptionTokenForPartner|\bquoteBoost\s*\(/);
+    expect(arrivalPage).toMatch(/arrivalSessionsEnabled/);
+    expect(arrivalPage).not.toMatch(/boost_arrival_sessions|boost_quotes/);
+    expect(arrivalClient).toMatch(/createBoostArrivalSession/);
+    expect(arrivalClient).toMatch(/eligibleSubtotalCents: 0/);
   });
 });

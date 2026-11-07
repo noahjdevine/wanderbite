@@ -1,10 +1,10 @@
 # E07 bill scan
 
-E07-B1 is the pure proposal helper. E07-B2 stores a private receipt and maps a Microsoft Azure Document Intelligence prebuilt-receipt result into that helper. Members and partners see no new page. OCR may propose. It never finalizes a discount. Only a staff-confirmed integer may later be passed to `quoteBoost`. This PR does not call `quoteBoost` and does not change verification.
+E07-B1 is the pure proposal helper. E07-B2 stores a private receipt and maps a Microsoft Azure Document Intelligence prebuilt-receipt result into that helper. E07-B3 is the partner check-in and receipt screen. Members see no new page. OCR may propose. It never finalizes a discount. Only a staff-confirmed integer is passed to `supersedeBoostArrivalQuote`, which calls `quoteBoost`. The scan action does not call `quoteBoost`. Verification is unchanged.
 
 E07-A2 landed in #147 (merge `d0424a1914eca0799c05355a2d123e5478be5788`). Hosted `schema_migrations` version is `20261106034025` (name `e07_a2_arrival_sessions`). This PR renames the repo file to `supabase/migrations/20261106034025_e07_a2_arrival_sessions.sql`. The SQL body is unchanged. Noah's nine arrival answers live in `Docs/e07-boost.md`. They are not reopened here.
 
-`E07_ARRIVAL_SESSIONS_ENABLED` stays unset. `E07_BILL_SCAN_AZURE_ENABLED` stays unset. This PR does not apply the new migration to hosted and does not run `npm run types:db` against hosted.
+`E07_ARRIVAL_SESSIONS_ENABLED` stays unset in the repo, CI, and Vercel config. `E07_BILL_SCAN_AZURE_ENABLED` stays unset the same way. Both must be the exact string `true` or the new screen and the Azure read stay off. Hosted `schema_migrations` records the bill-receipts migration as version `20261107230502`. The repo file is still `supabase/migrations/20261106150000_e07_b2_bill_receipts.sql`. E07-B3 does not add a migration, does not rename that file, does not run `supabase db push`, and does not run `npm run types:db`.
 
 ## Noah's decisions (2026-11-06)
 
@@ -48,7 +48,7 @@ Rules:
 
 Synthetic inputs live in `src/lib/boost/fixtures/bill-scan.ts`. The $82 case is gross 10000, tax 800, tip 1000, tax and tip excluded, eligible 8200. That 8200 is the eligible subtotal in the E07-A1 quote example. The gross, tax, and tip are not from a receipt.
 
-This module does not import `src/lib/boost/quote.ts` or `src/app`. Nothing under `src/app` imports it. A later slice passes only `confirmed_eligible_subtotal_cents` into `quoteBoost`.
+This module does not import `src/lib/boost/quote.ts` or `src/app`. E07-B3's partner action imports `proposeBillEligibleSubtotal` and `mergeStaffBillOverride`. It does not import `quote.ts`. The scan still does not choose a tier or a Boost.
 
 ## E07-B2 storage
 
@@ -101,12 +101,13 @@ The call runs only when `E07_BILL_SCAN_AZURE_ENABLED` is exactly `true` and both
 
 ## How a proposal reaches `quoteBoost`
 
-1. Validate the upload, require an open arrival session, strip metadata, and store the object plus a proposal row.
-2. Run the Azure adapter or accept staff-entered parts. `proposeBillEligibleSubtotal` records the proposal and the flags.
-3. Staff confirm an integer. `mergeStaffBillOverride` keeps the proposal for audit and returns `confirmed_eligible_subtotal_cents`. A later slice may write that integer on the row. This PR's store leaves the column null.
-4. Only that integer is `eligibleSubtotalCents` on `quoteBoost`, along with the session's arrival instant and locked Boost. The scan does not choose either.
+1. The partner checks in an in-progress challenge item. `createBoostArrivalSession` locks the visit with `eligibleSubtotalCents: 0`, so the first quote is below the offer minimum and the discount is $0.
+2. On that open session, validate one image, strip metadata, and store the object plus one proposal row. The row is written once. When `E07_BILL_SCAN_AZURE_ENABLED` is exactly `true`, the action reads Azure before that insert so the stored proposal is the read. When the flag is not exactly `true`, Azure is not called and the stored proposal is `manual`.
+3. The screen shows the parsed receipt total, the proposed eligible subtotal, and the confidence. A score under 0.8, a `low_confidence` flag, a null subtotal, or a manual proposal requires the partner to type the amount. The upload does not call `quoteBoost` or `supersedeBoostArrivalQuote`.
+4. The partner presses Confirm. `mergeStaffBillOverride` keeps the proposal. The action writes `confirmed_eligible_subtotal_cents` and then calls `supersedeBoostArrivalQuote` with that integer. The proposal jsonb and the object path do not change.
+5. Only that integer is `eligibleSubtotalCents` on the superseded quote, along with the session's arrival instant and locked Boost. The scan does not choose either. Each Challenge Credit's 1000-cent minimum discount rule is unchanged: `quoteBoost` still uses the offer's own tiers, and a subtotal under the lowest tier stays `below_minimum` with a $0 discount.
 
-Uncertainty flags do not by themselves become a discount. A null proposal subtotal can still be confirmed by staff. The confirmation is the only figure the quote sees.
+Uncertainty flags do not by themselves become a discount. A null proposal subtotal can still be confirmed by the partner. The confirmation is the only figure the quote sees.
 
 ## Retention, cleanup, account deletion
 
@@ -127,13 +128,35 @@ Four clocks stay separate. This slice does not read or write the first three.
 
 Do not change `verify_redemption` or `verifyRedemptionTokenForPartner`.
 
+## E07-B3 partner flow
+
+Signed-in partner of that restaurant only. No member page.
+
+`/partner/[slug]/arrival` calls `notFound()` unless `E07_ARRIVAL_SESSIONS_ENABLED` is exactly `true`. The partner dashboard link is absent in that same case. The page does not query `boost_arrival_sessions` while the flag is off.
+
+The screen asks for the guest email and lists that member's assigned, bound challenge item at this restaurant while the visit window is open. Check in calls `createBoostArrivalSession` with idempotency key `e07-arrival:{challengeItemId}` and `eligibleSubtotalCents: 0`. The restaurant id comes from the partner session.
+
+On the open session the partner uploads one image: jpeg, png, webp, heic, or heif, at most 10,000,000 bytes. `uploadPartnerBillReceipt` stores it with `storeBillScanProposal`. It calls `readAzurePrebuiltReceipt` only when `E07_BILL_SCAN_AZURE_ENABLED` is exactly `true`. Otherwise it stores a manual proposal and the screen asks for the eligible subtotal. A parsed score under 0.8, or a `low_confidence` flag, shows the parsed total and confidence and still requires the typed amount. Confirm is a separate action. It does not run from the upload.
+
+Server action body size is 12,000,000 bytes so the multipart wrapper can carry a 10,000,000-byte file. The action still refuses a larger file.
+
+## Preview test checklist
+
+This pull request does not set either flag. A preview test turns them on only in that preview environment.
+
+- `E07_ARRIVAL_SESSIONS_ENABLED=true` shows Arrival check-in for a signed-in partner of the restaurant. Any other value, including unset, shows no link and `/partner/[slug]/arrival` is a 404. A member account is not a partner session.
+- `E07_BILL_SCAN_AZURE_ENABLED=true` plus the preview's existing `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` and `AZURE_DOCUMENT_INTELLIGENCE_KEY` parses a receipt. With the Azure flag unset, the upload still stores and asks for the amount. No Azure call in that case.
+- Test data: one member email, one `challenge_items` row at that restaurant with `status = assigned`, a non-null `offer_version_id`, and a visit deadline still in the future. The offer version `exclusions` object has `exclude_tax`, `exclude_tip`, and `categories`. Hosted already has bill receipts as `schema_migrations` version `20261107230502`. Do not run `supabase db push`.
+- One receipt image, jpeg, png, webp, heic, or heif, at or under 10,000,000 bytes. None is committed in this repo.
+- Check-in shows no discount. The scan shows parsed total and confidence. Under 0.8 there is no confirm-from-scan button. The quote changes only after Confirm. A subtotal under the offer's own tier stays a $0 discount. The 1000-cent credit floor is not edited.
+
 ## Blocked elsewhere
 
-- Member "I'm here" and location check-in. Boost hours apply. Staff backup is rare. Staff session creation already exists behind `E07_ARRIVAL_SESSIONS_ENABLED`, which stays unset. This PR does not add a member geo check-in or a member insert of arrival sessions.
-- E07-C confirmation and QR. Not in this PR.
-- E07-D disputes. Not in this PR.
-- Do not turn on `E07_BILL_SCAN_AZURE_ENABLED` or `E07_ARRIVAL_SESSIONS_ENABLED`.
-- Do not apply `20261106150000_e07_b2_bill_receipts.sql` to hosted in this PR. Do not put Azure credentials on Vercel.
+- Member "I'm here" and location check-in. This slice does not add a member geo check-in or a member insert of arrival sessions.
+- E07-C redemption QR and savings. Confirming a subtotal supersedes the quote. It does not verify a redemption or write a badge.
+- E07-D disputes. Not in this slice.
+- Do not set `E07_BILL_SCAN_AZURE_ENABLED` or `E07_ARRIVAL_SESSIONS_ENABLED` in repo config, CI, or production. A preview test may set them on that preview only.
+- Do not add or apply a migration in this slice. Do not rename `20261106150000_e07_b2_bill_receipts.sql`. Hosted version `20261107230502` is already recorded. Do not put new Azure credentials on Vercel. The preview already has the endpoint and key.
 
 ## Rollback
 

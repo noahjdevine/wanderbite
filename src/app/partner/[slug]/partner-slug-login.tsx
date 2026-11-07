@@ -13,6 +13,8 @@ type PartnerSlugLoginProps = {
   mode?: 'dashboard' | 'redeem';
   redirectSlug?: string;
   initialCode?: string | null;
+  /** Same-origin path used after a successful PIN. Overrides the mode default. */
+  afterLoginPath?: string;
 };
 
 const PIN_ERROR_ID = 'partner-slug-pin-error';
@@ -29,12 +31,14 @@ export function PartnerSlugLogin({
   mode = 'dashboard',
   redirectSlug,
   initialCode,
+  afterLoginPath,
 }: PartnerSlugLoginProps) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState(loginPartnerFromForm, null);
   const invalid = Boolean(state && !state.ok);
-  const nextPath =
-    mode === 'redeem' && redirectSlug
+  const nextPath = afterLoginPath
+    ? afterLoginPath
+    : mode === 'redeem' && redirectSlug
       ? `/partner/${redirectSlug}/redeem`
       : redirectSlug
         ? `/partner/${redirectSlug}`
@@ -50,7 +54,9 @@ export function PartnerSlugLogin({
     if (!state) return;
     if (state.ok) {
       toast.success(`Welcome, ${state.restaurantName}`);
-      if (mode === 'redeem' && redirectSlug) {
+      if (afterLoginPath) {
+        router.replace(afterLoginPath);
+      } else if (mode === 'redeem' && redirectSlug) {
         router.replace(`/partner/${redirectSlug}/redeem`);
       } else {
         router.refresh();
@@ -58,7 +64,7 @@ export function PartnerSlugLogin({
       return;
     }
     toast.error(pinErrorCopy(state.error));
-  }, [state, mode, redirectSlug, router]);
+  }, [state, mode, redirectSlug, afterLoginPath, router]);
 
   return (
     <div className="wb-partner-card">
