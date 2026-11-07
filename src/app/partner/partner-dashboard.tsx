@@ -13,6 +13,8 @@ type PartnerDashboardProps = {
   restaurantName: string;
   restaurantSlug: string;
   analytics: PartnerAnalyticsResult | null;
+  /** Exact `E07_ARRIVAL_SESSIONS_ENABLED=true` only. Otherwise the link is absent. */
+  arrivalCheckIn?: boolean;
 };
 
 const CODE_HINT_ID = 'partner-dashboard-code-hint';
@@ -22,6 +24,7 @@ export function PartnerDashboard({
   restaurantName,
   restaurantSlug,
   analytics,
+  arrivalCheckIn = false,
 }: PartnerDashboardProps) {
   const router = useRouter();
   const [code, setCode] = useState('');
@@ -100,6 +103,11 @@ export function PartnerDashboard({
           <p className="wb-partner-name">{restaurantName}</p>
         </div>
         <div className="wb-partner-page-actions">
+          {arrivalCheckIn ? (
+            <Link href={`/partner/${restaurantSlug}/arrival`} className="wb-cta-secondary wb-cta-secondary-cream wb-partner-secondary">
+              Arrival check-in
+            </Link>
+          ) : null}
           <Link href={`/partner/${restaurantSlug}/redeem`} className="wb-cta wb-partner-cta">
             Redeem mode
           </Link>

@@ -298,6 +298,7 @@ describe('bill proposal', () => {
           continue;
         }
         if (!/\.(ts|tsx)$/.test(name)) continue;
+        if (full.endsWith(`${path.sep}partner-bill-scan.ts`)) continue;
         const text = readFileSync(full, 'utf8');
         if (text.includes('@/lib/boost/bill-proposal') || text.includes('lib/boost/bill-proposal')) {
           hits.push(full);
@@ -306,5 +307,8 @@ describe('bill proposal', () => {
     };
     walk(path.join(ROOT, 'src/app'));
     expect(hits).toEqual([]);
+    const billScan = readFileSync(path.join(ROOT, 'src/app/actions/partner-bill-scan.ts'), 'utf8');
+    expect(billScan).toMatch(/proposeBillEligibleSubtotal/);
+    expect(billScan).not.toMatch(/from ['"]@\/lib\/boost\/quote|\bquoteBoost\s*\(/);
   });
 });

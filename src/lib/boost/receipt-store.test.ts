@@ -308,6 +308,7 @@ describe('receipt retention and account cleanup', () => {
         }
         if (!/\.(ts|tsx)$/.test(name) || name.endsWith('.test.ts')) continue;
         if (full.endsWith(`${path.sep}auth.ts`)) continue;
+        if (full.endsWith(`${path.sep}partner-bill-scan.ts`)) continue;
         const text = readFileSync(full, 'utf8');
         if (
           text.includes('storeBillScanProposal') ||
@@ -323,6 +324,13 @@ describe('receipt retention and account cleanup', () => {
     walk(path.join(ROOT, 'src/app'));
     walk(path.join(ROOT, 'src/components'));
     expect(hits).toEqual([]);
+
+    const billScan = readFileSync(path.join(ROOT, 'src/app/actions/partner-bill-scan.ts'), 'utf8');
+    expect(billScan).toMatch(/storeBillScanProposal/);
+    expect(billScan).toMatch(/readAzurePrebuiltReceipt/);
+    expect(billScan).toMatch(/azureBillScanEnabled|E07_BILL_SCAN_AZURE_ENABLED/);
+    expect(billScan).not.toMatch(/E07_BILL_SCAN_AZURE_ENABLED\s*=\s*'true'/);
+    expect(billScan).not.toMatch(/\bquoteBoost\s*\(/);
 
     const vercel = readFileSync(path.join(ROOT, 'vercel.json'), 'utf8');
     const ci = readFileSync(path.join(ROOT, '.github/workflows/ci.yml'), 'utf8');

@@ -1,3 +1,4 @@
+import { arrivalSessionsEnabled } from '@/lib/boost/flag';
 import { createClient } from '@/lib/supabase/server';
 import {
   getPartnerSession,
@@ -62,6 +63,7 @@ export default async function PartnerSlugPage({ params }: PageProps) {
           restaurantName={session.restaurantName}
           restaurantSlug={restaurant.slug}
           analytics={analytics}
+          arrivalCheckIn={arrivalSessionsEnabled()}
         />
       </div>
     );

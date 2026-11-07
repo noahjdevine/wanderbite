@@ -4,6 +4,13 @@ import { buildSecurityHeaderSources } from "./src/lib/security-headers";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ['happy-dom'],
+  experimental: {
+    serverActions: {
+      // Multipart framing sits on top of the 10,000,000-byte receipt cap.
+      // The action still refuses a file over that cap.
+      bodySizeLimit: 12_000_000,
+    },
+  },
   env: {
     NEXT_PUBLIC_POSTHOG_HOST: process.env.POSTHOG_HOST,
   },
