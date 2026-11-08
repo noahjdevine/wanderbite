@@ -96,6 +96,8 @@ type DashboardClientProps = {
   briefings?: RestaurantBriefings;
   /** Challenges uses the Golden Hour sheet. Dashboard keeps the classic stack. */
   appearance?: 'classic' | 'golden';
+  /** Exact E07_ARRIVAL_SESSIONS_ENABLED. Default false shows no Boost check-in. */
+  boostCheckIn?: boolean;
   /** Golden sheet only. The classic page renders this notice itself. */
   showIncompleteProfile?: boolean;
 };
@@ -120,6 +122,7 @@ export function DashboardClient({
   briefings = { byRestaurantId: {} },
   appearance = 'classic',
   showIncompleteProfile = false,
+  boostCheckIn = false,
 }: DashboardClientProps) {
   const router = useRouter();
   const [headerNow] = useState(() => new Date());
@@ -270,6 +273,7 @@ export function DashboardClient({
               recipeExclusionLine={recipeSections.exclusionLine}
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
               briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
+              boostCheckIn={boostCheckIn}
             />
           ) : (
             <RestaurantCard

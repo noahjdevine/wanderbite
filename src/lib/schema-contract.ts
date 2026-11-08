@@ -154,6 +154,8 @@ export const SCHEMA_CONTRACT = {
     'expires_at',
     'idempotency_key',
     'created_by_token_hash',
+    'created_by_user_id',
+    'check_in_method',
     'status',
     'created_at',
   ],

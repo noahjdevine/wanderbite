@@ -4,7 +4,7 @@ E07-B1 is the pure proposal helper. E07-B2 stores a private receipt and maps a M
 
 E07-A2 landed in #147 (merge `d0424a1914eca0799c05355a2d123e5478be5788`). Hosted `schema_migrations` version is `20261106034025` (name `e07_a2_arrival_sessions`). This PR renames the repo file to `supabase/migrations/20261106034025_e07_a2_arrival_sessions.sql`. The SQL body is unchanged. Noah's nine arrival answers live in `Docs/e07-boost.md`. They are not reopened here.
 
-`E07_ARRIVAL_SESSIONS_ENABLED` stays unset in the repo, CI, and Vercel config. `E07_BILL_SCAN_AZURE_ENABLED` stays unset the same way. Both must be the exact string `true` or the new screen and the Azure read stay off. Hosted `schema_migrations` records the bill-receipts migration as version `20261107230502`. The repo file is still `supabase/migrations/20261106150000_e07_b2_bill_receipts.sql`. E07-B3 does not add a migration, does not rename that file, does not run `supabase db push`, and does not run `npm run types:db`.
+`E07_ARRIVAL_SESSIONS_ENABLED` stays unset in the repo, CI, and Vercel config. `E07_BILL_SCAN_AZURE_ENABLED` stays unset the same way. Both must be the exact string `true` or the new screen and the Azure read stay off. Hosted `schema_migrations` records the bill-receipts migration as version `20261107230502`. The repo file is `supabase/migrations/20261107230502_e07_b2_bill_receipts.sql` (renamed later so the stamp matches; the SQL body is unchanged). E07-B3 does not add a migration, does not run `supabase db push`, and does not run `npm run types:db`.
 
 ## Noah's decisions (2026-11-06)
 
@@ -52,7 +52,7 @@ This module does not import `src/lib/boost/quote.ts` or `src/app`. E07-B3's part
 
 ## E07-B2 storage
 
-Private bucket `bill-receipts` (`supabase/migrations/20261106150000_e07_b2_bill_receipts.sql`). `public` is false. MIME types are `image/jpeg`, `image/png`, `image/webp`, `image/heic`, and `image/heif`. File size limit is 10,000,000 bytes. There is no public read policy. Service role may insert, select, and delete objects in that bucket only. `restaurant-photos` is unchanged: public, jpeg/png/webp, 5 MiB.
+Private bucket `bill-receipts` (`supabase/migrations/20261107230502_e07_b2_bill_receipts.sql`). `public` is false. MIME types are `image/jpeg`, `image/png`, `image/webp`, `image/heic`, and `image/heif`. File size limit is 10,000,000 bytes. There is no public read policy. Service role may insert, select, and delete objects in that bucket only. `restaurant-photos` is unchanged: public, jpeg/png/webp, 5 MiB.
 
 Table `bill_scan_proposals`:
 
@@ -152,11 +152,11 @@ This pull request does not set either flag. A preview test turns them on only in
 
 ## Blocked elsewhere
 
-- Member "I'm here" and location check-in. This slice does not add a member geo check-in or a member insert of arrival sessions.
+- Member "I'm here" is E07-A3 (landed-pending-merge) on the Challenges ticket. This bill-scan screen does not add it.
 - E07-C redemption QR and savings. Confirming a subtotal supersedes the quote. It does not verify a redemption or write a badge.
 - E07-D disputes. Not in this slice.
 - Do not set `E07_BILL_SCAN_AZURE_ENABLED` or `E07_ARRIVAL_SESSIONS_ENABLED` in repo config, CI, or production. A preview test may set them on that preview only.
-- Do not add or apply a migration in this slice. Do not rename `20261106150000_e07_b2_bill_receipts.sql`. Hosted version `20261107230502` is already recorded. Do not put new Azure credentials on Vercel. The preview already has the endpoint and key.
+- Hosted bill receipts are already version `20261107230502`. The repo filename now matches. Do not apply it again. Do not apply the A3 member migration from this note. Do not put new Azure credentials on Vercel. The preview already has the endpoint and key.
 
 ## Rollback
 

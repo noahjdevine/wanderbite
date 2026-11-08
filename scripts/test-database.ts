@@ -165,6 +165,8 @@ async function main() {
   process.stdout.write('PASS: E06-B5 change summaries and pending-draft dedup.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-arrival-sessions.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E07-A2 arrival session grants, idempotency, one open session, and quote supersede.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-a3-member-check-in.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E07-A3 member check-in creator check, grants, and idempotent member insert.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-bill-receipts.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E07-B2 private bill-receipts bucket, proposal grants, and open-session scope.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e08-journal-reflections.sql'), 'utf8')) + '\n');

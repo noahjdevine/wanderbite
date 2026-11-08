@@ -20,6 +20,7 @@ import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-re
 import { loadActivitySuggestions } from '@/lib/activities/load';
 import { loadRestaurantBriefings } from '@/lib/briefings/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
+import { arrivalSessionsEnabled } from '@/lib/boost/flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -194,6 +195,7 @@ export default async function ChallengesPage() {
       </Suspense>
       <DashboardClient
         appearance="golden"
+        boostCheckIn={arrivalSessionsEnabled()}
         showIncompleteProfile={!gate.profileComplete}
         launchEligible={area === 'eligible'}
         currentChallenge={currentChallenge}

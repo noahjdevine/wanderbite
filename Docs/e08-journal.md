@@ -10,7 +10,7 @@ Action codes: `disabled`, `unauthorized`, `not_found` (missing redemption, or an
 
 E08-B2 landed in #154 (merge `a3da580fbce1c6714a393b4b9533371ad4407a76`). `/journal/notes/[redemptionId]` shows the private reflection form and the Google review handoff only when `E08_JOURNAL_REFLECTIONS_ENABLED` is the exact string `true`. While the flag is unset, that page does not render the section and does not call `getJournalReflection`. The Journal list is unchanged (no per-visit reflection hint). The flag stays unset. No AI call and no Google API call.
 
-E08-C is landed-pending-merge. With the same flag set to the exact string `true`, the note page can Publish a member-chosen public sentence and rating. `publishJournalReflection` runs `composePublicNotePublishPlan`, upserts `bite_notes` with `is_public: true`, and sets `journal_reflections.bite_note_id`. Private reflection columns are not copied onto `bite_notes`. If no reflection row exists yet, publish upserts one and leaves those private columns unset so they store null, which also leaves an existing row's private fields in place. An unverified redemption is `unverified` and writes nothing. Over-long text and newlines are refused and are not truncated. Opening Google does not publish. While the flag is unset, the page does not render Publish and the action returns `disabled` before any `journal_reflections` or `bite_notes` write. No XP, discount, or drawing entry for posting. Hosted apply of `20261106184105_e08_a2_journal_reflections.sql` was approved separately. This PR does not apply it. The repo filename matches hosted version `20261106184105`. That rename does not apply hosted. `20261106150000_e07_b2_bill_receipts.sql` is still not applied to hosted. The flag stays unset.
+E08-C landed in #155 (merge `25bfdc72c45c5b0def854f44f59e6178645ee6e1`). With the same flag set to the exact string `true`, the note page can Publish a member-chosen public sentence and rating. `publishJournalReflection` runs `composePublicNotePublishPlan`, upserts `bite_notes` with `is_public: true`, and sets `journal_reflections.bite_note_id`. Private reflection columns are not copied onto `bite_notes`. If no reflection row exists yet, publish upserts one and leaves those private columns unset so they store null, which also leaves an existing row's private fields in place. An unverified redemption is `unverified` and writes nothing. Over-long text and newlines are refused and are not truncated. Opening Google does not publish. While the flag is unset, the page does not render Publish and the action returns `disabled` before any `journal_reflections` or `bite_notes` write. No XP, discount, or drawing entry for posting. Hosted apply of `20261106184105_e08_a2_journal_reflections.sql` was approved separately. This PR does not apply it. The repo filename matches hosted version `20261106184105`. That rename does not apply hosted. Hosted bill receipts are version `20261107230502`. The repo file is `supabase/migrations/20261107230502_e07_b2_bill_receipts.sql` (SQL unchanged). The flag stays unset. Member "I'm here" is E07-A3 (landed-pending-merge) on Challenges, not Journal. AI polish stays blocked on open Q6.
 
 Noah approved the helper slice on 2026-11-06 and is accepting these table defaults with E08-A2: caps 120 / 280 / 40 / 1500, the name `journal_reflections`, an owned `redemption_id` with optional `bite_note_id`, and no rating or sentiment column. The admin Maps URL column and the G13-A polish class stay open.
 
@@ -69,7 +69,7 @@ Index `user_id` for the member's own list. `redemption_id` is unique. `bite_note
 
 ## RLS and grants
 
-Match `bill_scan_proposals` in `20261106150000_e07_b2_bill_receipts.sql`. Enable row level security. `revoke all` from `public`, `anon`, `authenticated`, and `service_role`. Grant `select`, `insert`, `update`, and `delete` to `service_role` only. No policy for `anon` or `authenticated`. No grant that lets the member client `select *`. E08-B1 uses `requireUser()` and the admin client, then checks `redemptions.user_id` against `auth.userId`. Do not trust a user id from the browser.
+Match `bill_scan_proposals` in `20261107230502_e07_b2_bill_receipts.sql`. Enable row level security. `revoke all` from `public`, `anon`, `authenticated`, and `service_role`. Grant `select`, `insert`, `update`, and `delete` to `service_role` only. No policy for `anon` or `authenticated`. No grant that lets the member client `select *`. E08-B1 uses `requireUser()` and the admin client, then checks `redemptions.user_id` against `auth.userId`. Do not trust a user id from the browser.
 
 No view and no public join of this table to `bite_notes`. A view in `public` would bypass RLS unless it is `security_invoker`, and this design does not add one. Do not add a `security definer` function that returns reflection text. `redemption_is_verified` already returns a boolean and can stay the public-note gate.
 
@@ -77,7 +77,7 @@ No view and no public join of this table to `bite_notes`. A view in `public` wou
 
 ## Explicit publish
 
-1. `saveJournalReflection` validates with `validateReflectionFields` and writes only `journal_reflections`. It does not set `bite_note_id`. E08-C (landed-pending-merge) adds `publishJournalReflection` behind the same unset flag.
+1. `saveJournalReflection` validates with `validateReflectionFields` and writes only `journal_reflections`. It does not set `bite_note_id`. E08-C (landed in #155) adds `publishJournalReflection` behind the same unset flag.
 2. The member chooses the public sentence and a rating. `composePublicNotePublishPlan` is the plan. Private fields are not arguments to the `bite_notes` write.
 3. The write uses the same columns as `saveBiteNote`: `note`, `rating`, `is_public`. A public save still requires a verified redemption (`PUBLIC_REVIEW_REQUIRES_VERIFIED`). A private `bite_notes` save is a different action and is not this publish.
 4. After that write, set `bite_note_id`. Do not copy `favorite_bite`, `atmosphere`, `return_interest`, `companion_label`, or the unpublished draft onto `bite_notes` unless the member passed that text as `publicNote` and it is at most `NOTE_MAX`.
@@ -122,8 +122,8 @@ Checkout stays frozen. Criterion 11, a real profile on `credits`, still needs se
 
 - E07-C confirmation, atomic savings, and QR UI. `Docs/e07-boost.md`. Not this PR.
 - E07-D disputes. `Docs/e07-boost.md`. Not this PR.
-- Member "I'm here" and geolocation. Product decided. UI not built. `Docs/e07-bill-scan.md`. Not this PR.
-- Hosted apply of `20261106150000_e07_b2_bill_receipts.sql`. Still not applied. Do not apply it here.
+- Member "I'm here" is E07-A3 (landed-pending-merge) on Challenges. `Docs/e07-boost.md`. Not a Journal change.
+- Hosted bill receipts are version `20261107230502`. The repo file matches that stamp. SQL was not edited in the rename. Do not apply the A3 migration here.
 - Hosted apply of `20261106184105_e08_a2_journal_reflections.sql`. Approved separately. This PR does not apply it. The repo filename matches hosted version `20261106184105`. That rename does not apply hosted.
 - Live Azure. `E07_BILL_SCAN_AZURE_ENABLED` stays unset. Do not put Azure credentials on Vercel.
 - `E07_ARRIVAL_SESSIONS_ENABLED` stays unset.

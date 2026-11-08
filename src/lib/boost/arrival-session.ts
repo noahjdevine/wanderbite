@@ -2,6 +2,7 @@ import 'server-only';
 
 import {
   arrivalSessionExpiresAt,
+  boostQualifyingAtArrival,
   qualifyingArrivalBoostId,
   sealBoostOfferVersion,
 } from '@/lib/boost/arrival';
@@ -34,6 +35,7 @@ export const ARRIVAL_SESSION_REFUSAL_CODES = [
   'version_mismatch',
   'unknown_boost',
   'boost_not_at_arrival',
+  'boost_not_available',
   'redemption_mismatch',
 ] as const;
 
@@ -118,23 +120,34 @@ function quoteFromRow(session: ArrivalSessionRecord, quote: ArrivalQuoteRecord):
   };
 }
 
+/** Check-in is before the bill. Same placeholder the partner screen sends. */
+export const MEMBER_CHECK_IN_SUBTOTAL_CENTS = 0;
+
+type ArrivalCreator = {
+  tokenHash: string | null;
+  userId: string | null;
+  method: 'partner' | 'member_geo';
+  /** Member path only. Partner check-in still opens when no Boost window matches. */
+  requireQualifyingBoost: boolean;
+};
+
 /**
- * Open or return the arrival session for this partner restaurant.
+ * Open or return the arrival session for this restaurant.
  * The same idempotency key returns the stored session and quote and does not
  * move expires_at. A second open session for the same challenge item is refused.
- * Staff-confirmed cents only. No bill scan and no redemption QR.
+ * No bill scan and no redemption QR.
  */
-export async function openBoostArrival(
+async function openArrival(
   input: {
     challengeItemId: string;
     idempotencyKey: string;
     eligibleSubtotalCents: number;
     redemptionId?: string | null;
   },
-  ctx: ArrivalContext,
+  ctx: { restaurantId: string; now: Date; store: ArrivalStore },
+  creator: ArrivalCreator,
 ): Promise<ArrivalSessionSuccess | ArrivalRefusal> {
   if (!validInstant(ctx.now)) return refuse('invalid_arrival');
-  if (!TOKEN_HASH.test(ctx.tokenHash)) return refuse('unavailable');
   const challengeItemId = parseUuid(input.challengeItemId);
   if (!challengeItemId) return refuse('not_found');
   const idempotencyKey = parseKey(input.idempotencyKey);
@@ -149,7 +162,10 @@ export async function openBoostArrival(
   }
 
   const existing = await ctx.store.findSessionByKey(ctx.restaurantId, idempotencyKey);
-  if (existing) return loadActive(ctx.store, existing);
+  if (existing) {
+    if (existing.challengeItemId !== challengeItemId) return refuse('invalid_idempotency_key');
+    return loadActive(ctx.store, existing);
+  }
 
   const item = await ctx.store.findItem(challengeItemId);
   if (!item) return refuse('not_found');
@@ -200,16 +216,24 @@ export async function openBoostArrival(
     return refuse('invalid_terms');
   }
 
+  const qualifyingId = boostQualifyingAtArrival(version, ctx.now);
+  if (creator.requireQualifyingBoost && !qualifyingId) return refuse('boost_not_available');
+  const lockedBoostId = creator.requireQualifyingBoost
+    ? qualifyingId
+    : qualifyingArrivalBoostId(version, ctx.now, quote);
+
   const opened = await ctx.store.openSession({
     restaurantId: ctx.restaurantId,
     challengeItemId,
     offerVersionId: version.id,
     redemptionId,
-    lockedBoostId: qualifyingArrivalBoostId(version, ctx.now, quote),
+    lockedBoostId,
     arrivalAt: ctx.now.toISOString(),
     expiresAt: expiresAt.toISOString(),
     idempotencyKey,
-    createdByTokenHash: ctx.tokenHash,
+    createdByTokenHash: creator.tokenHash,
+    createdByUserId: creator.userId,
+    checkInMethod: creator.method,
     tierId: quote.tier_id,
     baseDiscountCents: quote.base_discount_cents,
     boostId: quote.boost_id,
@@ -224,11 +248,65 @@ export async function openBoostArrival(
   if (opened.status === 'restaurant_mismatch') return refuse('restaurant_mismatch');
   if (opened.status === 'version_mismatch') return refuse('version_mismatch');
   if (opened.status === 'redemption_mismatch') return refuse('redemption_mismatch');
+  if (opened.status === 'forbidden') return refuse('forbidden');
   if (opened.status !== 'created' && opened.status !== 'existing') return refuse('unavailable');
 
   const session = await ctx.store.findSession(opened.sessionId, ctx.restaurantId);
   if (!session) return refuse('unavailable');
+  if (session.challengeItemId !== challengeItemId) return refuse('invalid_idempotency_key');
   return loadActive(ctx.store, session);
+}
+
+/**
+ * Open or return the arrival session for this partner restaurant.
+ * The same idempotency key returns the stored session and quote and does not
+ * move expires_at. A second open session for the same challenge item is refused.
+ * Staff-confirmed cents only. No bill scan and no redemption QR.
+ */
+export async function openBoostArrival(
+  input: {
+    challengeItemId: string;
+    idempotencyKey: string;
+    eligibleSubtotalCents: number;
+    redemptionId?: string | null;
+  },
+  ctx: ArrivalContext,
+): Promise<ArrivalSessionSuccess | ArrivalRefusal> {
+  if (!validInstant(ctx.now)) return refuse('invalid_arrival');
+  if (!TOKEN_HASH.test(ctx.tokenHash)) return refuse('unavailable');
+  return openArrival(input, ctx, {
+    tokenHash: ctx.tokenHash,
+    userId: null,
+    method: 'partner',
+    requireQualifyingBoost: false,
+  });
+}
+
+/**
+ * Member check-in. Restaurant id comes from the owned item, not the browser.
+ * Subtotal is the pre-bill placeholder. The session locks the Boost that
+ * contains server arrival. Outside that window, nothing is written.
+ */
+export async function openMemberBoostArrival(
+  input: {
+    challengeItemId: string;
+    idempotencyKey: string;
+    redemptionId?: string | null;
+  },
+  ctx: { restaurantId: string; userId: string; now: Date; store: ArrivalStore },
+): Promise<ArrivalSessionSuccess | ArrivalRefusal> {
+  if (!validInstant(ctx.now)) return refuse('invalid_arrival');
+  if (!parseUuid(ctx.userId)) return refuse('forbidden');
+  return openArrival(
+    { ...input, eligibleSubtotalCents: MEMBER_CHECK_IN_SUBTOTAL_CENTS },
+    ctx,
+    {
+      tokenHash: null,
+      userId: ctx.userId,
+      method: 'member_geo',
+      requireQualifyingBoost: true,
+    },
+  );
 }
 
 async function supersedeOnce(
