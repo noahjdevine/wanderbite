@@ -129,6 +129,10 @@
   min-height: 36px; padding: 0 14px; border-radius: 999px;
   background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.18); color: #fff;
 }
+.wb-chip-glass[aria-pressed="true"] {
+  border-color: var(--wb-blush);
+  background: rgba(255, 255, 255, 0.16);
+}
 .wb-orb { border-radius: 50%; background: var(--wb-orb-gradient); box-shadow: 0 0 24px rgba(167, 139, 250, 0.6); }
 
 /* Focus */

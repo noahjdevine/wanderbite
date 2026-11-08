@@ -5,10 +5,13 @@ import { useRouter } from 'next/navigation';
 import { CtaButton } from '@/components/wb/cta-button';
 import { GlowBorder } from '@/components/wb/glow-border';
 import {
-  HERO_PLACEHOLDERS,
+  HERO_NEED_CHIPS,
+  HERO_NEED_PLACEHOLDERS,
   HERO_QUICK_STARTS,
+  askIncludesNeed,
   discoverHref,
   placeholderDelaySeconds,
+  toggleAskNeed,
 } from '@/lib/home/hero';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
 
@@ -35,7 +38,12 @@ export function HomeHeroPrompt() {
   const [value, setValue] = useState('');
 
   function go(text: string) {
-    router.push(discoverHref(text));
+    const trimmed = text.trim();
+    if (!trimmed) {
+      router.push('/roulette');
+      return;
+    }
+    router.push(discoverHref(trimmed, crypto.randomUUID()));
   }
 
   return (
@@ -67,7 +75,7 @@ export function HomeHeroPrompt() {
               className="absolute inset-0 w-full bg-transparent text-[17px] text-white outline-none"
             />
             {value.length === 0
-              ? HERO_PLACEHOLDERS.map((prompt, index) => (
+              ? HERO_NEED_PLACEHOLDERS.map((prompt, index) => (
                   <span
                     key={prompt}
                     aria-hidden="true"
@@ -104,12 +112,48 @@ export function HomeHeroPrompt() {
         </form>
       </GlowBorder>
 
+      <div className="flex flex-col gap-2">
+        <p id="home-need-hint" className="text-[13px] text-white/75">
+          Optional. Add a dietary or religious need.
+        </p>
+        <div role="group" aria-labelledby="home-need-hint" className="flex flex-wrap gap-2">
+          {HERO_NEED_CHIPS.map((label) => {
+            const pressed = askIncludesNeed(value, label);
+            return (
+              <button
+                key={label}
+                type="button"
+                aria-pressed={pressed}
+                className="wb-chip-glass min-h-11 cursor-pointer px-4 text-sm font-medium"
+                onClick={() => setValue((current) => toggleAskNeed(current, label))}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="flex flex-wrap gap-2.5">
         {HERO_QUICK_STARTS.map((label) => (
           <a
             key={label}
             href={discoverHref(label)}
             className="wb-chip-glass min-h-11 cursor-pointer px-4 text-sm font-medium no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wb-blush"
+            onClick={(event) => {
+              if (
+                event.defaultPrevented ||
+                event.metaKey ||
+                event.ctrlKey ||
+                event.shiftKey ||
+                event.altKey ||
+                event.button !== 0
+              ) {
+                return;
+              }
+              event.preventDefault();
+              go(label);
+            }}
           >
             {label}
           </a>

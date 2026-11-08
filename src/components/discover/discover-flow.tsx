@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { DiscoverAsk } from '@/components/discover/discover-ask';
 import { DiscoverPick } from '@/components/discover/discover-pick';
 import { DiscoverThinking } from '@/components/discover/discover-thinking';
+import { useDiscoverAutoStart } from '@/components/discover/use-discover-auto-start';
 import { RecipeQaAnswer, type RecipeQaAnswerView } from '@/components/recipes/recipe-qa-answer';
 import { postDiscoverAsk } from '@/lib/discover/client';
 import type { DiscoverEvent } from '@/lib/discover/events';
@@ -47,9 +48,12 @@ function prefersReducedMotion(): boolean {
 
 export function DiscoverFlow({
   initialMessage,
+  autoStartToken = null,
   viewer,
 }: {
   initialMessage: string;
+  /** Homepage submit id. Absent for a typed visit, a refresh, or a shared link. */
+  autoStartToken?: string | null;
   viewer: DiscoverViewer;
 }) {
   const excludedCuisines = useSyncExternalStore(
@@ -152,6 +156,15 @@ export function DiscoverFlow({
     },
     [excludedCuisines],
   );
+
+  useDiscoverAutoStart({
+    token: autoStartToken,
+    initialMessage,
+    currentMessage: draft.message,
+    onStart: () => {
+      void run(draft, true);
+    },
+  });
 
   useEffect(() => {
     if (phase !== 'thinking' || events.length === 0) return;

@@ -1,6 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { RouletteClient } from '@/components/roulette/roulette-client';
+import {
+  forgetDiscoverAutoStartMemory,
+  resetDiscoverAutoStartClaims,
+} from '@/lib/discover/auto-start';
 import { RouletteOptionsFields, type RouletteSelections } from '@/components/roulette/roulette-options-fields';
 
 vi.mock('@/app/actions/bite-notes', () => ({
@@ -80,6 +85,54 @@ describe('Discover join upsell', () => {
     await showResult('active');
     expect(screen.queryByRole('link', { name: 'Join for $15/month →' })).toBeNull();
     expect(screen.queryByText(/Wanderbite members see the discount/)).toBeNull();
+  });
+});
+
+describe('legacy Discover auto-start', () => {
+  const run = '33333333-3333-4333-8333-333333333333';
+
+  beforeEach(() => {
+    resetDiscoverAutoStartClaims();
+    stubSpin();
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('starts the homepage ask once and keeps a manual submit', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const first = render(
+      <RouletteClient initialMessage="spicy noodles" autoStartToken={run} />,
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toBe('/api/roulette');
+    const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit).body));
+    expect(body.message).toBe('spicy noodles');
+    first.unmount();
+
+    forgetDiscoverAutoStartMemory();
+    vi.mocked(fetch).mockClear();
+    render(<RouletteClient initialMessage="spicy noodles" autoStartToken={run} />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetch).not.toHaveBeenCalled();
+
+    cleanup();
+    resetDiscoverAutoStartClaims();
+    render(<RouletteClient initialMessage="soup" />);
+    expect(screen.getByLabelText('What are you in the mood for?')).toHaveProperty('value', 'soup');
+    fireEvent.submit(screen.getByRole('button', { name: 'Find a spot' }).closest('form')!);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 
