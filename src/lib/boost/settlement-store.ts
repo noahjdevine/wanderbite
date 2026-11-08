@@ -16,7 +16,7 @@ import { getSupabaseAdmin } from '@/lib/supabase-admin';
  * or scan a bill.
  */
 
-const SETTLEMENT_COLUMNS =
+export const SETTLEMENT_COLUMNS =
   'settlement_kind, settled_at, quote_id, quote_version, base_discount_cents, boost_discount_cents, total_discount_cents, eligible_subtotal_cents, below_minimum, tier_id, boost_id, locked_boost_id, quote_expires_at, sealed_discount_amount_cents, sealed_min_spend_cents';
 
 export type StoredRedemptionSettlement = {
