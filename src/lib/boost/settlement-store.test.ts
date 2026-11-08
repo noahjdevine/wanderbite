@@ -324,8 +324,8 @@ describe('readRecordedBoostSettlement', () => {
   });
 });
 
-describe('settlement store stays unused', () => {
-  it('is not imported from src/app or the verify SQL', () => {
+describe('settlement store stays off verify SQL and progress', () => {
+  it('is not referenced by getMemberProgress or the verify SQL', () => {
     const source = readFileSync(path.join(ROOT, 'src/lib/boost/settlement-store.ts'), 'utf8');
     expect(source.startsWith("import 'server-only';")).toBe(true);
     expect(source).not.toMatch(/planBoostConfirmation\s*\(|\bquoteBoost\s*\(|supersedeBoostQuote\s*\(|verify_redemption|from 'next|src\/app/);
@@ -333,6 +333,10 @@ describe('settlement store stays unused', () => {
       'src/lib/boost/settlement-store.ts',
       'src/lib/boost/settlement-store.test.ts',
       'src/lib/boost/confirm.test.ts',
+      'src/lib/boost/confirm-visit.ts',
+      'src/lib/boost/confirm-visit.test.ts',
+      'src/app/actions/partner-verify.ts',
+      'src/app/actions/partner-verify.test.ts',
       'src/types/database.types.ts',
       'src/lib/schema-contract.ts',
     ]);
@@ -364,8 +368,11 @@ describe('settlement store stays unused', () => {
       'supabase/migrations/20260907174245_redemptions_verify_rpc.sql',
       'supabase/migrations/20260925175518_e02_capacity_binding.sql',
       'supabase/migrations/20260925215534_e02_b_credit_ledger.sql',
+      'src/lib/progress/get-member-progress.ts',
     ]) {
-      expect(readFileSync(path.join(ROOT, file), 'utf8')).not.toContain('settlement_kind');
+      const text = readFileSync(path.join(ROOT, file), 'utf8');
+      expect(text).not.toContain('settlement_kind');
+      expect(text).not.toContain('record_boost_settlement');
     }
     expect(hits).toEqual([]);
   });

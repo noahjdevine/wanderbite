@@ -356,7 +356,7 @@ describe('planBoostConfirmation', () => {
     expect(plan({ session: null, now: new Date(Number.NaN) }).kind).toBe('use_sealed_base');
   });
 
-  it('is unused outside this helper and its test', () => {
+  it('is only called from the settlement store types and confirm-visit', () => {
     const source = readFileSync(path.join(ROOT, 'src/lib/boost/confirm.ts'), 'utf8');
     expect(source).not.toMatch(/supabase|from 'next|use server|server-only|quoteBoost|supersedeBoostQuote|lowestSealedBase|getSupabaseAdmin/);
     const store = readFileSync(path.join(ROOT, 'src/lib/boost/settlement-store.ts'), 'utf8');
@@ -375,15 +375,17 @@ describe('planBoostConfirmation', () => {
           full.endsWith(`${path.sep}confirm.ts`) ||
           full.endsWith(`${path.sep}confirm.test.ts`) ||
           full.endsWith(`${path.sep}settlement-store.ts`) ||
-          full.endsWith(`${path.sep}settlement-store.test.ts`)
+          full.endsWith(`${path.sep}settlement-store.test.ts`) ||
+          full.endsWith(`${path.sep}confirm-visit.ts`) ||
+          full.endsWith(`${path.sep}confirm-visit.test.ts`)
         ) {
           continue;
         }
         const text = readFileSync(full, 'utf8');
         if (
-          text.includes('planBoostConfirmation') ||
-          text.includes('@/lib/boost/confirm') ||
-          text.includes('lib/boost/confirm')
+          /planBoostConfirmation\b/.test(text) ||
+          /@\/lib\/boost\/confirm['"]/.test(text) ||
+          /lib\/boost\/confirm['"]/.test(text)
         ) {
           hits.push(path.relative(ROOT, full));
         }

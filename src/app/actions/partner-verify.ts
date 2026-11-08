@@ -12,7 +12,12 @@ import {
   VERIFY_UNAVAILABLE_MESSAGE,
   enforcePartnerVerifyLimit,
 } from '@/lib/partner-verify-limit';
-import { lowestSealedBase } from '@/lib/offers/sealed-base';
+import { createSupabaseArrivalStore } from '@/lib/boost/arrival-store';
+import { persistVerifiedBoostConfirmation } from '@/lib/boost/confirm-visit';
+import { arrivalSessionsEnabled } from '@/lib/boost/flag';
+import { createSupabaseSettlementStore } from '@/lib/boost/settlement-store';
+import { verifyBoostFields } from '@/lib/boost/savings-copy';
+import { lowestSealedBase, type SealedBase } from '@/lib/offers/sealed-base';
 import { reportVerifyIntegrityError } from '@/lib/report-verify-integrity-error';
 import { badgeIdsEarnedByVerifiedVisits } from '@/lib/progress/rules';
 
@@ -39,6 +44,10 @@ export type VerifyRedemptionResult =
       hideDiscountAmount: boolean;
       sealedDiscountCents: number | null;
       sealedMinSpendCents: number | null;
+      confirmedTotalDiscountCents: number | null;
+      confirmedBaseDiscountCents: number | null;
+      confirmedBoostDiscountCents: number | null;
+      needsSubtotal: boolean;
     }
   | { success: false; message: string };
 
@@ -237,6 +246,10 @@ export async function verifyRedemptionTokenForPartner(
     let hideDiscountAmount = false;
     let sealedDiscountCents: number | null = null;
     let sealedMinSpendCents: number | null = null;
+    let confirmedTotalDiscountCents: number | null = null;
+    let confirmedBaseDiscountCents: number | null = null;
+    let confirmedBoostDiscountCents: number | null = null;
+    let needsSubtotal = false;
     if (redemption.challenge_item_id) {
       const { data: item } = await supabase
         .from('challenge_items')
@@ -245,17 +258,37 @@ export async function verifyRedemptionTokenForPartner(
         .maybeSingle();
       const versionId = (item as { offer_version_id: string | null } | null)?.offer_version_id;
       hideDiscountAmount = Boolean(versionId);
+      let sealedBase: SealedBase | null = null;
       if (versionId) {
         const { data: version } = await supabase
           .from('offer_versions')
           .select('tiers')
           .eq('id', versionId)
           .maybeSingle();
-        const base = lowestSealedBase((version as { tiers: Json } | null)?.tiers);
-        if (base) {
-          sealedDiscountCents = base.discount_amount_cents;
-          sealedMinSpendCents = base.min_spend_cents;
+        sealedBase = lowestSealedBase((version as { tiers: Json } | null)?.tiers);
+        if (sealedBase) {
+          sealedDiscountCents = sealedBase.discount_amount_cents;
+          sealedMinSpendCents = sealedBase.min_spend_cents;
         }
+      }
+      if (arrivalSessionsEnabled() && redemption.id) {
+        const verifiedAtDate = redemption.verified_at ? new Date(redemption.verified_at) : new Date();
+        const settledAt = Number.isFinite(verifiedAtDate.getTime()) ? verifiedAtDate : new Date();
+        const view = await persistVerifiedBoostConfirmation({
+          redemptionId: redemption.id,
+          challengeItemId: redemption.challenge_item_id,
+          now: settledAt,
+          settledAt,
+          sealedBase,
+          arrival: createSupabaseArrivalStore(supabase),
+          settlement: createSupabaseSettlementStore(supabase),
+        });
+        const fields = verifyBoostFields(Boolean(versionId), view);
+        hideDiscountAmount = fields.hideDiscountAmount;
+        confirmedTotalDiscountCents = fields.confirmedTotalDiscountCents;
+        confirmedBaseDiscountCents = fields.confirmedBaseDiscountCents;
+        confirmedBoostDiscountCents = fields.confirmedBoostDiscountCents;
+        needsSubtotal = fields.needsSubtotal;
       }
     }
 
@@ -266,6 +299,10 @@ export async function verifyRedemptionTokenForPartner(
       hideDiscountAmount,
       sealedDiscountCents,
       sealedMinSpendCents,
+      confirmedTotalDiscountCents,
+      confirmedBaseDiscountCents,
+      confirmedBoostDiscountCents,
+      needsSubtotal,
     };
   }
 

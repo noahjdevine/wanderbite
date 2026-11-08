@@ -93,6 +93,8 @@ type ShowRedemptionCodeProps = {
   restaurantSlug: string;
   discountLabel: string;
   minSpendLabel: string;
+  /** Confirmed quote total. Omitted when the arrival flag is off or there is no quote to show. */
+  confirmedDiscountLabel?: string | null;
   status: 'issued' | 'verified' | 'expired';
   verifiedAt?: string | null;
   /** ISO `verified_at`. The display string above is not used for the slam. */
@@ -116,6 +118,7 @@ export function ShowRedemptionCode({
   restaurantSlug,
   discountLabel,
   minSpendLabel,
+  confirmedDiscountLabel = null,
   status,
   verifiedAt,
   verifiedAtIso = null,
@@ -373,7 +376,16 @@ export function ShowRedemptionCode({
       ) : (
         <>
           <div className="mt-6 rounded-[28px] bg-white p-5 shadow-[var(--wb-shadow-card)]">
-            <QRCode value={scanUrl} size={280} level="M" />
+            {confirmedDiscountLabel ? (
+              <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+                <QRCode value={scanUrl} size={280} level="M" />
+                <p className="font-display text-center text-[28px] leading-none text-wb-plum" data-confirmed-discount="">
+                  {confirmedDiscountLabel}
+                </p>
+              </div>
+            ) : (
+              <QRCode value={scanUrl} size={280} level="M" />
+            )}
           </div>
 
           <p className="mt-4 max-w-sm text-center text-sm text-wb-muted">

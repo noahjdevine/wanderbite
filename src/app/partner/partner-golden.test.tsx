@@ -283,6 +283,52 @@ describe('partner verify form', () => {
     fireEvent.submit(sealed.closest('form') as HTMLFormElement);
     expect(await screen.findByText('Valid — $15 off $40')).toBeTruthy();
   });
+
+  it('shows a confirmed quote before the sealed line, and bill-needs-confirm without $0', async () => {
+    verifyRedemptionTokenForPartner.mockResolvedValueOnce({
+      success: true,
+      redemptionDetails: { email: null, restaurantName: 'North Grill', verifiedAt: 'Nov 4, 2026' },
+      newBadgesEarned: [],
+      hideDiscountAmount: false,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: 2500,
+      confirmedBaseDiscountCents: 2000,
+      confirmedBoostDiscountCents: 500,
+      needsSubtotal: false,
+    });
+    render(
+      <PartnerDashboard restaurantName="North Grill" restaurantSlug="north-grill" analytics={null} />,
+    );
+    const input = screen.getByLabelText('Redeem Customer Code');
+    fireEvent.change(input, { target: { value: 'WB-QUOTE' } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    expect(await screen.findByText('Valid — $25 off ($20 base + $5 Boost)')).toBeTruthy();
+
+    cleanup();
+    verifyRedemptionTokenForPartner.mockResolvedValueOnce({
+      success: true,
+      redemptionDetails: { email: null, restaurantName: 'North Grill', verifiedAt: 'Nov 4, 2026' },
+      newBadgesEarned: [],
+      hideDiscountAmount: true,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: null,
+      confirmedBaseDiscountCents: null,
+      confirmedBoostDiscountCents: null,
+      needsSubtotal: true,
+    });
+    render(
+      <PartnerDashboard restaurantName="North Grill" restaurantSlug="north-grill" analytics={null} />,
+    );
+    const again = screen.getByLabelText('Redeem Customer Code');
+    fireEvent.change(again, { target: { value: 'WB-NEED' } });
+    fireEvent.submit(again.closest('form') as HTMLFormElement);
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Valid — bill needs confirm');
+    expect(alert.textContent).not.toContain('$0');
+    expect(alert.textContent).not.toContain('$15');
+  });
 });
 
 describe('partner login forms', () => {

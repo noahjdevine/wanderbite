@@ -55,6 +55,25 @@ describe('ShowRedemptionCode', () => {
     return container;
   }
 
+  it('shows a confirmed total beside the live QR and keeps the 15-minute copy', async () => {
+    const expiresAt = new Date(Date.now() + 14 * 60 * 1000).toISOString();
+    const view = await render(
+      <ShowRedemptionCode
+        {...base}
+        code="WB-LIVE1"
+        expiresAt={expiresAt}
+        status="issued"
+        confirmedDiscountLabel="$25 off"
+      />,
+    );
+    expect(view.querySelector('[data-confirmed-discount]')?.textContent).toBe('$25 off');
+    expect(view.querySelector('svg')).toBeTruthy();
+    expect(view.textContent).toContain('WB-LIVE1');
+    expect(view.textContent).toContain('$10 off');
+    expect(view.textContent).toContain('Codes expire after 15 minutes.');
+    expect(view.textContent).not.toContain('$0');
+  });
+
   it('counts down from the server deadline and re-reads when the page regains focus', async () => {
     const expiresAt = new Date(Date.now() + 14 * 60 * 1000 + 20_000).toISOString();
     getRedemptionCode.mockResolvedValue({

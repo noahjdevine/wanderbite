@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
 import { createClient } from '@/lib/supabase/server';
+import { memberQrConfirmedDiscountLabel } from '@/lib/boost/confirm-visit';
 import { formatCents, lowestSealedBase } from '@/lib/offers/sealed-base';
 import { visitWindowOpen } from '@/lib/redemption-expiry';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -123,7 +124,17 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     : `${formatCents(minSpendCents)} minimum spend`;
 
   const now = new Date();
-  const codeResult = row.status === 'verified' ? null : await getRedemptionCode(redemptionId);
+  const [confirmedDiscountLabel, codeResult] = await Promise.all([
+    row.challenge_item_id
+      ? memberQrConfirmedDiscountLabel({
+          challengeItemId: row.challenge_item_id,
+          redemptionId: row.id,
+          now,
+          sealedBase: sealed,
+        })
+      : Promise.resolve(null),
+    row.status === 'verified' ? Promise.resolve(null) : getRedemptionCode(redemptionId),
+  ]);
   if (
     row.status !== 'verified'
     && codeResult?.state !== 'verified'
@@ -164,6 +175,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
         restaurantSlug={rest.slug}
         discountLabel={discountLabel}
         minSpendLabel={minSpendLabel}
+        confirmedDiscountLabel={confirmedDiscountLabel}
         status={phase}
         verifiedAt={verifiedAt}
         verifiedAtIso={verifiedIso}
