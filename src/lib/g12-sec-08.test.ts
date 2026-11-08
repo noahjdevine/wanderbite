@@ -66,6 +66,9 @@ describe('G12-A effective document headers', () => {
     expect(headers[ENFORCING_CSP_HEADER]).toBeUndefined();
     expect(hasEnforcingDocumentCsp(headers)).toBe(false);
     expect(headers['Permissions-Policy']).toBe(BASE_PERMISSIONS_POLICY);
+    expect(headers['Permissions-Policy']).toMatch(/geolocation=\(self\)/);
+    expect(headers['Permissions-Policy']).not.toMatch(/geolocation=\(\)/);
+    expect(headers['Permissions-Policy']).toMatch(/payment=\(\), usb=\(\), browsing-topics=\(\)/);
     expect(headers['Permissions-Policy']).not.toMatch(/camera=\(\)/);
     expect(headers['Permissions-Policy']).not.toMatch(/microphone=\(\)/);
   });
@@ -80,6 +83,9 @@ describe('G12-A effective document headers', () => {
       expect(headers['Permissions-Policy']).toBe(MEDIA_DEVICE_PERMISSIONS_POLICY);
       expect(headers['Permissions-Policy']).toMatch(/camera=\(self\)/);
       expect(headers['Permissions-Policy']).toMatch(/microphone=\(self\)/);
+      expect(headers['Permissions-Policy']).toMatch(/geolocation=\(self\)/);
+      expect(headers['Permissions-Policy']).not.toMatch(/geolocation=\(\)/);
+      expect(headers['Permissions-Policy']).toMatch(/payment=\(\), usb=\(\), browsing-topics=\(\)/);
       expect(headers['Permissions-Policy']).not.toMatch(/camera=\(\)/);
       expect(headers['Permissions-Policy']).not.toMatch(/microphone=\(\)/);
     },
@@ -214,6 +220,7 @@ describe('G12-A map tile origin', () => {
     expect(hasEnforcingDocumentCsp(headers)).toBe(false);
     expect(headers['X-Frame-Options']).toBe(X_FRAME_OPTIONS_VALUE);
     expect(headers['Permissions-Policy']).toBe(BASE_PERMISSIONS_POLICY);
+    expect(headers['Permissions-Policy']).toMatch(/geolocation=\(self\)/);
   });
 
   it('keeps an http localhost port and drops the path', () => {
