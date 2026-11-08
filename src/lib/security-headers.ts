@@ -12,9 +12,11 @@ export const REPORT_ONLY_CSP_HEADER = 'Content-Security-Policy-Report-Only';
 export const REFERRER_POLICY_VALUE = 'strict-origin';
 export const X_FRAME_OPTIONS_VALUE = 'DENY';
 
-/** Powerful features omitted here on purpose: never ship camera=() / microphone=() globally. */
+/** Powerful features omitted here on purpose: never ship camera=() / microphone=() globally.
+ *  geolocation is same-origin so Boost check-in can call navigator.geolocation.
+ */
 export const BASE_PERMISSIONS_POLICY =
-  'geolocation=(), payment=(), usb=(), browsing-topics=()';
+  'geolocation=(self), payment=(), usb=(), browsing-topics=()';
 
 /** First-party camera/mic for future voice (E03) and receipt/QR (E07) routes. */
 export const MEDIA_DEVICE_PERMISSIONS_POLICY = `camera=(self), microphone=(self), ${BASE_PERMISSIONS_POLICY}`;
