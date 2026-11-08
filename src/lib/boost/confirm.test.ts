@@ -359,6 +359,9 @@ describe('planBoostConfirmation', () => {
   it('is unused outside this helper and its test', () => {
     const source = readFileSync(path.join(ROOT, 'src/lib/boost/confirm.ts'), 'utf8');
     expect(source).not.toMatch(/supabase|from 'next|use server|server-only|quoteBoost|supersedeBoostQuote|lowestSealedBase|getSupabaseAdmin/);
+    const store = readFileSync(path.join(ROOT, 'src/lib/boost/settlement-store.ts'), 'utf8');
+    expect(store).toContain("from '@/lib/boost/confirm'");
+    expect(store).not.toMatch(/planBoostConfirmation\s*\(/);
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -368,7 +371,14 @@ describe('planBoostConfirmation', () => {
           continue;
         }
         if (!/\.(ts|tsx|sql)$/.test(name)) continue;
-        if (full.endsWith(`${path.sep}confirm.ts`) || full.endsWith(`${path.sep}confirm.test.ts`)) continue;
+        if (
+          full.endsWith(`${path.sep}confirm.ts`) ||
+          full.endsWith(`${path.sep}confirm.test.ts`) ||
+          full.endsWith(`${path.sep}settlement-store.ts`) ||
+          full.endsWith(`${path.sep}settlement-store.test.ts`)
+        ) {
+          continue;
+        }
         const text = readFileSync(full, 'utf8');
         if (
           text.includes('planBoostConfirmation') ||
