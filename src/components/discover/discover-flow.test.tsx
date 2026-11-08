@@ -1,7 +1,11 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { act } from 'react';
+import { StrictMode, act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiscoverFlow } from '@/components/discover/discover-flow';
+import {
+  forgetDiscoverAutoStartMemory,
+  resetDiscoverAutoStartClaims,
+} from '@/lib/discover/auto-start';
 import { encodeDiscoverSse, type DiscoverEvent } from '@/lib/discover/events';
 import {
   DISCOVERY_ALLERGY_ERROR,
@@ -94,8 +98,12 @@ function postedBodies(): {
     });
 }
 
+const RUN = '11111111-1111-4111-8111-111111111111';
+const NEXT_RUN = '22222222-2222-4222-8222-222222222222';
+
 describe('DiscoverFlow', () => {
   beforeEach(() => {
+    resetDiscoverAutoStartClaims();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     vi.stubGlobal(
       'fetch',
@@ -277,6 +285,95 @@ describe('DiscoverFlow', () => {
     expect(screen.getByText(message)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back to Ask' }));
     expect(screen.getByLabelText('Tell Bea what you are craving')).toHaveProperty('value', 'spicy noodles');
+  });
+
+  it('starts a homepage ask once and still accepts a manual submit', async () => {
+    render(
+      <DiscoverFlow
+        initialMessage="tacos near downtown, Halal"
+        autoStartToken={RUN}
+        viewer={{ firstName: null, savedDietary: [] }}
+      />,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(postedBodies()[0]?.message).toBe('tacos near downtown, Halal');
+    expect(postedBodies()[0]).not.toHaveProperty('dietaryQuick');
+    expect(screen.getByText('“tacos near downtown, Halal”')).toBeTruthy();
+
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'tacos near downtown, Halal, extra spicy' },
+    });
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(postedBodies()[1]?.message).toBe('tacos near downtown, Halal, extra spicy');
+  });
+
+  it('does not start twice under strict mode, refresh, or a repeated back visit', async () => {
+    const { unmount } = render(
+      <StrictMode>
+        <DiscoverFlow
+          initialMessage="spicy noodles"
+          autoStartToken={RUN}
+          viewer={{ firstName: null, savedDietary: [] }}
+        />
+      </StrictMode>,
+    );
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    unmount();
+
+    forgetDiscoverAutoStartMemory();
+    vi.mocked(fetch).mockClear();
+    const reloaded = render(
+      <DiscoverFlow
+        initialMessage="spicy noodles"
+        autoStartToken={RUN}
+        viewer={{ firstName: null, savedDietary: [] }}
+      />,
+    );
+    await flush();
+    expect(fetch).not.toHaveBeenCalled();
+    reloaded.unmount();
+
+    vi.mocked(fetch).mockClear();
+    render(
+      <DiscoverFlow
+        initialMessage="spicy noodles"
+        autoStartToken={NEXT_RUN}
+        viewer={{ firstName: null, savedDietary: [] }}
+      />,
+    );
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(postedBodies()[0]?.message).toBe('spicy noodles');
+  });
+
+  it('does not auto-start after the ask is edited', async () => {
+    render(
+      <DiscoverFlow
+        initialMessage="spicy noodles"
+        autoStartToken={RUN}
+        viewer={{ firstName: null, savedDietary: [] }}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'spicy noodles, keep it mild' },
+    });
+    await flush();
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(postedBodies()[0]?.message).toBe('spicy noodles, keep it mild');
   });
 
   it('shows a broken stream and returns to Ask', async () => {

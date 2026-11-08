@@ -4,9 +4,12 @@ import { describe, expect, it } from 'vitest';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
 import {
   CURATED_ADVENTURES_PER_MONTH,
+  HERO_NEED_CHIPS,
+  HERO_NEED_PLACEHOLDERS,
   HERO_PLACEHOLDERS,
   PLACEHOLDER_CYCLE_MS,
   activeDirectoryRows,
+  askIncludesNeed,
   chooseHeroPick,
   curatedAdventuresFact,
   discoverHref,
@@ -14,11 +17,13 @@ import {
   marketSealCity,
   nowCuratingLabel,
   parseDiscoverQuery,
+  parseDiscoverRunToken,
   partnerNamesForMarquee,
   partnerSpotCount,
   partnerSpotLabel,
   placeholderDelaySeconds,
   placeholderIndex,
+  toggleAskNeed,
 } from '@/lib/home/hero';
 
 const root = path.resolve(__dirname, '../../..');
@@ -180,6 +185,61 @@ describe('parseDiscoverQuery', () => {
     expect(parseDiscoverQuery(`${max}ZZ`)).toBe(max);
     expect(discoverHref('spicy noodles')).toBe('/roulette?q=spicy%20noodles');
     expect(discoverHref('   ')).toBe('/roulette');
+    expect(discoverHref('spicy noodles', '11111111-1111-4111-8111-111111111111')).toBe(
+      '/roulette?q=spicy%20noodles&run=11111111-1111-4111-8111-111111111111',
+    );
+  });
+});
+
+describe('homepage need chips', () => {
+  it('keeps three dietary examples on the same placeholder clock', () => {
+    expect(HERO_NEED_PLACEHOLDERS).toEqual([
+      'halal tacos near downtown…',
+      'vegan brunch for 4…',
+      'gluten-free date night…',
+    ]);
+    expect(HERO_NEED_PLACEHOLDERS).toHaveLength(HERO_PLACEHOLDERS.length);
+    expect(HERO_NEED_CHIPS).toEqual([
+      'Vegetarian',
+      'Vegan',
+      'Halal',
+      'Kosher',
+      'Gluten-free',
+      'Nut allergy',
+      'Dairy-free',
+    ]);
+  });
+
+  it('appends a need and removes that phrase on the next toggle', () => {
+    expect(toggleAskNeed('', 'Halal')).toBe('Halal');
+    expect(toggleAskNeed('tacos near downtown', 'Halal')).toBe('tacos near downtown, Halal');
+    expect(askIncludesNeed('tacos near downtown, Halal', 'Halal')).toBe(true);
+    expect(toggleAskNeed('tacos near downtown, Halal', 'Halal')).toBe('tacos near downtown');
+    expect(toggleAskNeed('halal tacos near downtown', 'Halal')).toBe('tacos near downtown');
+    expect(toggleAskNeed('tacos, Vegetarian, Vegan', 'Vegetarian')).toBe('tacos, Vegan');
+    expect(toggleAskNeed('gluten-free date night', 'Gluten-free')).toBe('date night');
+    expect(askIncludesNeed('vegetarian tacos', 'Vegan')).toBe(false);
+    expect(askIncludesNeed('Veganish', 'Vegan')).toBe(false);
+  });
+
+  it('leaves the ask unchanged when an append would pass the limit', () => {
+    const full = 'a'.repeat(ROULETTE_MAX_MESSAGE_CHARS);
+    expect(toggleAskNeed(full, 'Vegan')).toBe(full);
+    expect(askIncludesNeed(full, 'Vegan')).toBe(false);
+  });
+});
+
+describe('parseDiscoverRunToken', () => {
+  it('accepts one uuid and ignores everything else', () => {
+    expect(parseDiscoverRunToken(undefined)).toBeNull();
+    expect(parseDiscoverRunToken('1')).toBeNull();
+    expect(parseDiscoverRunToken('not-a-token')).toBeNull();
+    expect(parseDiscoverRunToken(['11111111-1111-4111-8111-111111111111', 'other'])).toBe(
+      '11111111-1111-4111-8111-111111111111',
+    );
+    expect(parseDiscoverRunToken('11111111-1111-4111-8111-111111111111')).toBe(
+      '11111111-1111-4111-8111-111111111111',
+    );
   });
 });
 

@@ -14,6 +14,27 @@ export const HERO_PLACEHOLDERS = [
   'somewhere cozy for a rainy Tuesday…',
 ] as const;
 
+/**
+ * Homepage prompt examples. Same count as `HERO_PLACEHOLDERS` so the 12s
+ * placeholder cycle still shows one line at a time.
+ */
+export const HERO_NEED_PLACEHOLDERS = [
+  'halal tacos near downtown…',
+  'vegan brunch for 4…',
+  'gluten-free date night…',
+] as const;
+
+/** Optional homepage chips. They only edit the ask text. Nothing is saved. */
+export const HERO_NEED_CHIPS = [
+  'Vegetarian',
+  'Vegan',
+  'Halal',
+  'Kosher',
+  'Gluten-free',
+  'Nut allergy',
+  'Dairy-free',
+] as const;
+
 /** Three placeholders share one 12s loop (4s each). */
 export const PLACEHOLDER_CYCLE_MS = 12_000;
 
@@ -156,7 +177,7 @@ export function placeholderDelaySeconds(index: number): number {
 
 /**
  * First `q` value, trimmed, capped at the Discover message limit.
- * Empty, missing, and non-strings become ''. Nothing here submits the ask.
+ * Empty, missing, and non-strings become ''. The text alone does not submit.
  */
 export function parseDiscoverQuery(value: string | string[] | undefined | null): string {
   const raw = Array.isArray(value) ? value[0] : value;
@@ -167,8 +188,68 @@ export function parseDiscoverQuery(value: string | string[] | undefined | null):
   return trimmed.slice(0, ROULETTE_MAX_MESSAGE_CHARS);
 }
 
-export function discoverHref(text: string): string {
+const DISCOVER_RUN_TOKEN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * One-shot id the homepage mints per submit. Refresh and back keep the same
+ * id; the next submit mints a new one. Anything else does not auto-start.
+ */
+export function parseDiscoverRunToken(value: string | string[] | undefined | null): string | null {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!DISCOVER_RUN_TOKEN.test(trimmed)) return null;
+  return trimmed.toLowerCase();
+}
+
+export function discoverHref(text: string, runToken?: string | null): string {
   const q = text.trim();
   if (!q) return '/roulette';
-  return `/roulette?q=${encodeURIComponent(q)}`;
+  const base = `/roulette?q=${encodeURIComponent(q)}`;
+  if (!runToken) return base;
+  return `${base}&run=${encodeURIComponent(runToken)}`;
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** A need counts only as its own phrase, not as part of a longer word. */
+function needMatcher(need: string): RegExp {
+  return new RegExp(`(?:^|[\\s,])${escapeRegExp(need)}(?=$|[\\s,])`, 'i');
+}
+
+export function askIncludesNeed(text: string, need: string): boolean {
+  const phrase = need.trim();
+  if (!phrase) return false;
+  return needMatcher(phrase).test(text);
+}
+
+function tidyAsk(text: string): string {
+  return text
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\s+,/g, ',')
+    .replace(/,(?:\s*,)+/g, ',')
+    .replace(/^[\s,]+|[\s,]+$/g, '')
+    .trim();
+}
+
+/**
+ * Adds `, Need` or removes that phrase. The rest of the ask stays as written.
+ * An append that would pass the Discover limit is left unchanged.
+ */
+export function toggleAskNeed(text: string, need: string): string {
+  const phrase = need.trim();
+  if (!phrase) return text;
+  const match = needMatcher(phrase).exec(text);
+  if (!match) {
+    const trimmed = text.trim();
+    const next = trimmed ? `${trimmed}, ${phrase}` : phrase;
+    if (next.length > ROULETTE_MAX_MESSAGE_CHARS) return text;
+    return next;
+  }
+  const start = match.index;
+  const end = start + match[0].length;
+  return tidyAsk(`${text.slice(0, start)}${text.slice(end)}`);
 }

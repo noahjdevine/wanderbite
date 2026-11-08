@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('next/image', () => ({
@@ -46,9 +47,14 @@ vi.mock('@/lib/supabase/server', () => ({
 }));
 
 import RoulettePage from '@/app/(site)/roulette/page';
+import { resetDiscoverAutoStartClaims } from '@/lib/discover/auto-start';
+import { encodeDiscoverSse, type DiscoverEvent } from '@/lib/discover/events';
+
+const HOME_RUN = '44444444-4444-4444-8444-444444444444';
 
 describe('roulette page flag switch', () => {
   beforeEach(() => {
+    resetDiscoverAutoStartClaims();
     loadDiscoverViewer.mockClear();
     getUser.mockClear();
     from.mockClear();
@@ -106,6 +112,50 @@ describe('roulette page flag switch', () => {
       const source = readFileSync(resolve(process.cwd(), file), 'utf8');
       expect(source).not.toContain('DISCOVER_STREAM_ENABLED');
     }
+  });
+
+  it('auto-starts once when the homepage hands over a run token', async () => {
+    vi.stubEnv('DISCOVER_STREAM_ENABLED', 'true');
+    const events: DiscoverEvent[] = [
+      {
+        type: 'step',
+        id: 'parse',
+        label: 'Reading your vibe',
+        constraints: [{ key: 'vibe', label: 'spicy noodles', required: false }],
+      },
+    ];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(encodeDiscoverSse(events), {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream; charset=utf-8' },
+      })),
+    );
+    vi.stubGlobal('matchMedia', () => ({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    const ui = await RoulettePage({
+      searchParams: Promise.resolve({ q: 'spicy noodles', run: HOME_RUN }),
+    });
+    render(ui);
+    expect(await screen.findByText('Reading your vibe')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String((vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit).body));
+    expect(body.message).toBe('spicy noodles');
+
+    cleanup();
+    vi.mocked(fetch).mockClear();
+    const again = await RoulettePage({
+      searchParams: Promise.resolve({ q: 'spicy noodles', run: HOME_RUN }),
+    });
+    render(again);
+    expect(screen.getByLabelText('Tell Bea what you are craving')).toHaveProperty('value', 'spicy noodles');
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it.each([

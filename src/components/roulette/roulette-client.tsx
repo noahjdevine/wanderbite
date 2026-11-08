@@ -25,6 +25,7 @@ import { RestaurantReviews } from '@/components/restaurants/restaurant-reviews';
 import { DiscoveryVoiceControls } from '@/components/roulette/discovery-voice-controls';
 import { RecipeQaAnswer, type RecipeQaAnswerView } from '@/components/recipes/recipe-qa-answer';
 import { celebrate } from '@/lib/confetti';
+import { useDiscoverAutoStart } from '@/components/discover/use-discover-auto-start';
 
 export type RouletteApiResult = {
   restaurantId: string;
@@ -66,9 +67,12 @@ function RouletteResultPhoto({ result }: { result: RouletteApiResult }) {
 
 export function RouletteClient({
   initialMessage = '',
+  autoStartToken = null,
   subscriptionStatus = null,
 }: {
   initialMessage?: string;
+  /** Homepage submit id. Absent unless this visit should run the ask once. */
+  autoStartToken?: string | null;
   /**
    * Same active-membership check as PricingClient: hide the join upsell only
    * when subscription_status is exactly "active".
@@ -142,6 +146,15 @@ export function RouletteClient({
     },
     [excludedCuisines, message, selections],
   );
+
+  useDiscoverAutoStart({
+    token: autoStartToken,
+    initialMessage,
+    currentMessage: message,
+    onStart: () => {
+      void ask();
+    },
+  });
 
   const changeOptions = useCallback(() => {
     setPhase('form');
