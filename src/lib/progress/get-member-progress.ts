@@ -1,15 +1,24 @@
 import 'server-only';
 
+import { arrivalSessionsEnabled } from '@/lib/boost/flag';
+import {
+  recordedBoostSettlementFromRow,
+  SETTLEMENT_COLUMNS,
+  type StoredRedemptionSettlement,
+} from '@/lib/boost/settlement-store';
 import { lowestSealedBase } from '@/lib/offers/sealed-base';
 import { countDistinctNeighborhoods } from '@/lib/progress/neighborhoods';
 import {
   assembleBadges,
-  ESTIMATED_SAVINGS_FALLBACK_CENTS,
   formatEarnedOn,
   levelFromXp,
   xpFromVerifiedVisits,
   type CatalogBadge,
 } from '@/lib/progress/rules';
+import {
+  savingsCentsForVisits,
+  storedCentsFromParsedSettlement,
+} from '@/lib/progress/savings-cents';
 import { monthlyStreakFromVerifiedAt } from '@/lib/streaks';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
@@ -38,6 +47,9 @@ export type MemberLevel = {
  * Read model for Journey, Passport, and Challenges.
  * `neighborhoods` is a count because `restaurants.neighborhood` exists.
  * `xp` / `level` use the existing 100 XP rule. `savings.amount` is dollars.
+ * With the arrival flag off it is the sealed lowest tier, or 1000 cents when
+ * a visit has no sealed tier, and `isEstimate` is true. With the flag on, a
+ * stored settlement snapshot replaces that figure per visit.
  * `totalMonthsActive` is the distinct Chicago months already shown on Challenges.
  */
 export type MemberProgress =
@@ -122,6 +134,43 @@ function statusForRow(
     note: null,
     now,
   });
+}
+
+type Admin = ReturnType<typeof getSupabaseAdmin>;
+
+/**
+ * Settlement columns exist only after 20261108010000, which is not on hosted.
+ * Call this only when the arrival flag is exactly true. A missing column or
+ * any other read error returns null so Progress keeps today's sealed math.
+ * This uses the same admin client as the rest of the loader.
+ */
+async function loadStoredSavingsCents(
+  admin: Admin,
+  userId: string,
+  redemptionIds: readonly string[],
+): Promise<Map<string, number | null> | null> {
+  try {
+    const { data, error } = await admin
+      .from('redemptions')
+      .select(`id, ${SETTLEMENT_COLUMNS}`)
+      .eq('user_id', userId)
+      .in('id', [...redemptionIds]);
+    if (error) {
+      console.error('[progress] settlement read:', error.message);
+      return null;
+    }
+    const byId = new Map<string, number | null>();
+    for (const row of (data ?? []) as Array<StoredRedemptionSettlement & { id: string }>) {
+      byId.set(row.id, storedCentsFromParsedSettlement(recordedBoostSettlementFromRow(row)));
+    }
+    return byId;
+  } catch (error) {
+    console.error(
+      '[progress] settlement read:',
+      error instanceof Error ? error.message : 'unknown',
+    );
+    return null;
+  }
 }
 
 /**
@@ -211,13 +260,23 @@ export async function getMemberProgress(
       }
     }
 
-    let savingsCents = 0;
-    for (const row of verified) {
-      const sealed = row.challenge_item_id
-        ? sealedCentsByItem.get(row.challenge_item_id)
-        : undefined;
-      savingsCents += sealed ?? ESTIMATED_SAVINGS_FALLBACK_CENTS;
-    }
+    const storedById =
+      arrivalSessionsEnabled() && verified.length > 0
+        ? await loadStoredSavingsCents(
+            admin,
+            userId,
+            verified.map((row) => row.id),
+          )
+        : null;
+    const savings = savingsCentsForVisits(
+      verified.map((row) => ({
+        sealedCents: row.challenge_item_id
+          ? sealedCentsByItem.get(row.challenge_item_id)
+          : undefined,
+        storedCents: storedById ? (storedById.get(row.id) ?? null) : null,
+      })),
+      { useStoredSettlements: storedById != null },
+    );
 
     const { data: badgeData, error: badgeError } = await admin
       .from('badges')
@@ -258,7 +317,7 @@ export async function getMemberProgress(
       level: level.level,
       nextLevel: level.nextLevel,
       badges,
-      savings: { amount: savingsCents / 100, isEstimate: true },
+      savings: { amount: savings.amount, isEstimate: savings.isEstimate },
     };
   } catch (error) {
     return fail(error instanceof Error ? error.message : 'unknown');

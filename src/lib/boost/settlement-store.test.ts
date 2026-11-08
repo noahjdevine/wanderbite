@@ -324,8 +324,8 @@ describe('readRecordedBoostSettlement', () => {
   });
 });
 
-describe('settlement store stays off verify SQL and progress', () => {
-  it('is not referenced by getMemberProgress or the verify SQL', () => {
+describe('settlement store stays off verify SQL', () => {
+  it('is not referenced by the verify SQL, and progress only reads it', () => {
     const source = readFileSync(path.join(ROOT, 'src/lib/boost/settlement-store.ts'), 'utf8');
     expect(source.startsWith("import 'server-only';")).toBe(true);
     expect(source).not.toMatch(/planBoostConfirmation\s*\(|\bquoteBoost\s*\(|supersedeBoostQuote\s*\(|verify_redemption|from 'next|src\/app/);
@@ -339,6 +339,7 @@ describe('settlement store stays off verify SQL and progress', () => {
       'src/app/actions/partner-verify.test.ts',
       'src/types/database.types.ts',
       'src/lib/schema-contract.ts',
+      'src/lib/progress/get-member-progress.ts',
     ]);
     const hits: string[] = [];
     const walk = (dir: string) => {
@@ -368,12 +369,16 @@ describe('settlement store stays off verify SQL and progress', () => {
       'supabase/migrations/20260907174245_redemptions_verify_rpc.sql',
       'supabase/migrations/20260925175518_e02_capacity_binding.sql',
       'supabase/migrations/20260925215534_e02_b_credit_ledger.sql',
-      'src/lib/progress/get-member-progress.ts',
     ]) {
       const text = readFileSync(path.join(ROOT, file), 'utf8');
       expect(text).not.toContain('settlement_kind');
       expect(text).not.toContain('record_boost_settlement');
     }
+    const progress = readFileSync(path.join(ROOT, 'src/lib/progress/get-member-progress.ts'), 'utf8');
+    expect(progress).toContain('arrivalSessionsEnabled');
+    expect(progress).toContain('recordedBoostSettlementFromRow');
+    expect(progress).not.toContain('record_boost_settlement');
+    expect(progress).not.toContain('persistBoostSettlement');
     expect(hits).toEqual([]);
   });
 });

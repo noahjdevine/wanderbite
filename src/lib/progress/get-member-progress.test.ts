@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: vi.fn(),
@@ -24,12 +24,19 @@ const STORED_FIRST_BITE = '2026-09-15T18:00:00.000Z';
 type QueryResult = { data: unknown; error: { message: string } | null };
 
 const mutations: string[] = [];
+const selects: { table: string; columns: string }[] = [];
+const ORIGINAL_ARRIVAL_FLAG = process.env.E07_ARRIVAL_SESSIONS_ENABLED;
 
-function chain(result: QueryResult) {
+function chain(table: string, resolveResult: (columns: string) => QueryResult) {
+  let columns = '';
   const builder: Record<string, ReturnType<typeof vi.fn>> = {};
-  const passthrough = () => builder;
-  for (const method of ['select', 'eq', 'in', 'order', 'not', 'is']) {
-    builder[method] = vi.fn(passthrough);
+  builder.select = vi.fn((cols: string) => {
+    columns = String(cols);
+    selects.push({ table, columns });
+    return builder;
+  });
+  for (const method of ['eq', 'in', 'order', 'not', 'is']) {
+    builder[method] = vi.fn(() => builder);
   }
   for (const method of ['insert', 'update', 'upsert', 'delete']) {
     builder[method] = vi.fn(() => {
@@ -40,18 +47,32 @@ function chain(result: QueryResult) {
   (builder as { then?: unknown }).then = (
     resolve: (value: QueryResult) => unknown,
     reject?: (reason: unknown) => unknown,
-  ) => Promise.resolve(result).then(resolve, reject);
+  ) => Promise.resolve(resolveResult(columns)).then(resolve, reject);
   return builder;
 }
 
-function mockTables(tables: Record<string, QueryResult>) {
+function mockTables(
+  tables: Record<string, QueryResult>,
+  options?: { settlement?: QueryResult },
+) {
   mutations.length = 0;
+  selects.length = 0;
   (getSupabaseAdmin as ReturnType<typeof vi.fn>).mockReturnValue({
-    from: vi.fn((table: string) => {
-      const result = tables[table] ?? { data: [], error: null };
-      return chain(result);
-    }),
+    from: vi.fn((table: string) =>
+      chain(table, (columns) => {
+        if (table === 'redemptions' && columns.includes('settlement_kind')) {
+          return options?.settlement ?? { data: [], error: null };
+        }
+        return tables[table] ?? { data: [], error: null };
+      }),
+    ),
   });
+}
+
+function settlementSelected(): boolean {
+  return selects.some(
+    (entry) => entry.table === 'redemptions' && entry.columns.includes('settlement_kind'),
+  );
 }
 
 const CATALOG = [
@@ -158,6 +179,13 @@ describe('getMemberProgress', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mutations.length = 0;
+    selects.length = 0;
+    delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
+  });
+
+  afterAll(() => {
+    if (ORIGINAL_ARRIVAL_FLAG === undefined) delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
+    else process.env.E07_ARRIVAL_SESSIONS_ENABLED = ORIGINAL_ARRIVAL_FLAG;
   });
 
   it('counts a Chicago Sept–Oct streak on Nov 3 and the same longest streak', async () => {
@@ -267,6 +295,7 @@ describe('getMemberProgress', () => {
       progress: { current: 0, target: 1 },
     });
     expect(presentMemberProgress(progress).showFirstBiteLocked).toBe(true);
+    expect(settlementSelected()).toBe(false);
   });
 
   it('does not count a code at expires_at, an expired code, or a swapped issued code', async () => {
@@ -463,6 +492,206 @@ describe('getMemberProgress', () => {
       xp: 0,
       savings: { amount: 0, isEstimate: true },
     });
+    expect(settlementSelected()).toBe(false);
+  });
+
+  it('does not select settlement columns unless the arrival flag is exactly true', async () => {
+    const row = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    const tables = tablesFor({
+      redemptions: [row],
+      restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+      items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+      versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+    });
+    for (const flag of [undefined, '', 'false', 'TRUE'] as const) {
+      if (flag === undefined) delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
+      else process.env.E07_ARRIVAL_SESSIONS_ENABLED = flag;
+      mockTables(tables, { settlement: { data: [consumeQuoteRow(row.id, 1850)], error: null } });
+      const progress = await getMemberProgress('user-1', NOV_3);
+      expect(progress).toMatchObject({
+        verifiedVisits: 1,
+        xp: 100,
+        uniqueRestaurants: 1,
+        currentMonthlyStreak: 1,
+        savings: { amount: 15, isEstimate: true },
+      });
+      expect(settlementSelected()).toBe(false);
+    }
+  });
+
+  it('counts a stored consume_quote total when the arrival flag is exactly true', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const row = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    mockTables(
+      tablesFor({
+        redemptions: [row],
+        restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+        items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      { settlement: { data: [consumeQuoteRow(row.id, 1850)], error: null } },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 1,
+      pendingVisits: 0,
+      xp: 100,
+      level: 0,
+      uniqueRestaurants: 1,
+      neighborhoods: 1,
+      savings: { amount: 18.5, isEstimate: false },
+    });
+    expect(settlementSelected()).toBe(true);
+    expect(mutations).toEqual([]);
+  });
+
+  it('counts a stored sealed amount and ignores an issued code', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const visit = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    mockTables(
+      tablesFor({
+        redemptions: [
+          visit,
+          {
+            id: 'issued-code',
+            status: 'issued',
+            verified_at: null,
+            expires_at: '2026-12-01T18:00:00.000Z',
+            restaurant_id: 'rest-b',
+            challenge_item_id: null,
+          },
+        ],
+        restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+        items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      { settlement: { data: [sealedStoredRow(visit.id, 1200)], error: null } },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 1,
+      pendingVisits: 1,
+      xp: 100,
+      uniqueRestaurants: 1,
+      savings: { amount: 12, isEstimate: false },
+    });
+  });
+
+  it('keeps the estimate when a sealed miss or a missing snapshot uses read-time cents', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const miss = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    const bare = verified('2026-10-20T15:00:00.000Z', 'rest-b', 'item-2');
+    mockTables(
+      tablesFor({
+        redemptions: [miss, bare],
+        restaurants: [
+          { id: 'rest-a', neighborhood: 'Adriatica' },
+          { id: 'rest-b', neighborhood: 'Craig Ranch' },
+        ],
+        items: [
+          { id: 'item-1', offer_version_id: 'ver-1' },
+          { id: 'item-2', offer_version_id: null },
+        ],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      { settlement: { data: [sealedStoredRow(miss.id, null)], error: null } },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 2,
+      uniqueRestaurants: 2,
+      xp: 200,
+      savings: { amount: 25, isEstimate: true },
+    });
+  });
+
+  it('drops the estimate only when every verified visit has stored cents', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const quote = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    const sealed = verified('2026-10-20T15:00:00.000Z', 'rest-b', 'item-2');
+    mockTables(
+      tablesFor({
+        redemptions: [quote, sealed],
+        restaurants: [
+          { id: 'rest-a', neighborhood: 'Adriatica' },
+          { id: 'rest-b', neighborhood: 'Craig Ranch' },
+        ],
+        items: [
+          { id: 'item-1', offer_version_id: 'ver-1' },
+          { id: 'item-2', offer_version_id: 'ver-1' },
+        ],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      {
+        settlement: {
+          data: [consumeQuoteRow(quote.id, 1850), sealedStoredRow(sealed.id, 1200)],
+          error: null,
+        },
+      },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 2,
+      xp: 200,
+      uniqueRestaurants: 2,
+      currentMonthlyStreak: 1,
+      savings: { amount: 30.5, isEstimate: false },
+    });
+  });
+
+  it('uses the sealed tier when a stored consume_quote row cannot be read', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const row = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    const broken = { ...consumeQuoteRow(row.id, 1850), quote_id: null };
+    mockTables(
+      tablesFor({
+        redemptions: [row],
+        restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+        items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      { settlement: { data: [broken], error: null } },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 1,
+      xp: 100,
+      savings: { amount: 15, isEstimate: true },
+    });
+  });
+
+  it('falls back to today\'s total when the settlement select errors', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const row = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    mockTables(
+      tablesFor({
+        redemptions: [row],
+        restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+        items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      { settlement: { data: null, error: { message: 'column settlement_kind does not exist' } } },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 1,
+      xp: 100,
+      uniqueRestaurants: 1,
+      savings: { amount: 15, isEstimate: true },
+    });
+    expect(settlementSelected()).toBe(true);
+  });
+
+  it('keeps the estimate at zero visits when the arrival flag is on', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    mockTables(tablesFor({ redemptions: [] }));
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 0,
+      xp: 0,
+      savings: { amount: 0, isEstimate: true },
+    });
+    expect(settlementSelected()).toBe(false);
   });
 });
 
@@ -500,5 +729,47 @@ function verified(verifiedAt: string, restaurantId: string, challengeItemId: str
     expires_at: '2026-12-01T00:00:00.000Z',
     restaurant_id: restaurantId,
     challenge_item_id: challengeItemId,
+  };
+}
+
+function consumeQuoteRow(id: string, totalCents: number) {
+  return {
+    id,
+    settlement_kind: 'consume_quote',
+    settled_at: '2026-11-08T18:05:00.000Z',
+    quote_id: '22222222-2222-4222-8222-222222222222',
+    quote_version: 1,
+    base_discount_cents: 1000,
+    boost_discount_cents: totalCents - 1000,
+    total_discount_cents: totalCents,
+    eligible_subtotal_cents: 8000,
+    below_minimum: false,
+    tier_id: 'threshold:4000',
+    boost_id: 'boost-1',
+    locked_boost_id: 'boost-1',
+    quote_expires_at: '2026-11-08T22:00:00.000Z',
+    sealed_discount_amount_cents: null,
+    sealed_min_spend_cents: null,
+  };
+}
+
+function sealedStoredRow(id: string, cents: number | null) {
+  return {
+    id,
+    settlement_kind: 'use_sealed_base',
+    settled_at: '2026-11-08T18:05:00.000Z',
+    quote_id: null,
+    quote_version: null,
+    base_discount_cents: null,
+    boost_discount_cents: null,
+    total_discount_cents: null,
+    eligible_subtotal_cents: null,
+    below_minimum: null,
+    tier_id: null,
+    boost_id: null,
+    locked_boost_id: null,
+    quote_expires_at: null,
+    sealed_discount_amount_cents: cents,
+    sealed_min_spend_cents: cents == null ? null : 4000,
   };
 }
