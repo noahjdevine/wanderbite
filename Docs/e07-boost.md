@@ -117,7 +117,9 @@ Check-in does not verify a redemption and does not write savings, a badge, or XP
 
 E07-B1 (landed in #146) can suggest a subtotal. Only the staff-confirmed integer cents is passed to `quoteBoost`. The scan does not choose a tier or a Boost. This slice does not call `src/lib/boost/bill-proposal.ts`.
 
-E07-C (confirmation and atomic savings) consumes the active quote. Until that exists, verification is still `verify_redemption` / `verify_redemption_and_settle`. A quote is not a verified redemption and does not award a badge.
+E07-C1 is pure confirmation planning in `src/lib/boost/confirm.ts` (`planBoostConfirmation`). No page, action, or RPC imports it. `verify_redemption` and `verify_redemption_and_settle` are unchanged. A quote is still not a verified redemption and does not award a badge. Savings are not written. `redemptions` has no discount or savings columns. C2 will persist the snapshot. C3 will show the amount beside the QR.
+
+Noah confirmed on 2026-11-08: no arrival session stays on today's sealed lowest tier (`use_sealed_base`), including a null snapshot when that tier is missing. The 1000-cent display fallback stays in `getMemberProgress`. An open session whose active quote is the $0 placeholder (`eligible_subtotal_cents === 0`, or `below_minimum` with no positive staff subtotal) is `needs_subtotal` and does not fall back to the sealed base. A locked Boost still applies when confirmation is after session `expires_at` and before `redemption_deadline`. `expires_at` in the past is not by itself a refusal, and this helper does not move it. Instants are compared as absolute times. This slice does not apply the E01 fall-back clock face. A recorded snapshot replays as `already_settled` and is not discounted again.
 
 E07-D (disputes) reads the quote chain, including superseded rows. It does not mint a later `expires_at`.
 

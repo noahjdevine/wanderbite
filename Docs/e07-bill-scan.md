@@ -152,8 +152,8 @@ This pull request does not set either flag. A preview test turns them on only in
 
 ## Blocked elsewhere
 
-- Member "I'm here" is E07-A3 (landed-pending-merge) on the Challenges ticket. This bill-scan screen does not add it.
-- E07-C redemption QR and savings. Confirming a subtotal supersedes the quote. It does not verify a redemption or write a badge.
+- Member "I'm here" is E07-A3, landed in #158 (merge `4130bfbf3fa7af03a72af6057fc7eccce4d90fa8`), on the Challenges ticket. This bill-scan screen does not add it.
+- E07-C1 is the next blocked-elsewhere item: helpers in `src/lib/boost/confirm.ts`, not the QR UI yet. Confirming a subtotal supersedes the quote. It does not verify a redemption or write a badge. C2 will persist savings. C3 will show the amount beside the QR.
 - E07-D disputes. Not in this slice.
 - Do not set `E07_BILL_SCAN_AZURE_ENABLED` or `E07_ARRIVAL_SESSIONS_ENABLED` in repo config, CI, or production. A preview test may set them on that preview only.
 - Hosted bill receipts are already version `20261107230502`. The repo filename now matches. Do not apply it again. Do not apply the A3 member migration from this note. Do not put new Azure credentials on Vercel. The preview already has the endpoint and key.
