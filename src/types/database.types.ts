@@ -653,13 +653,15 @@ export type Database = {
           },
         ]
       }
-      // Hand-edited for E07-A2. npm run types:db was not run against hosted.
+      // Hand-edited for E07-A2 and E07-A3. npm run types:db was not run against hosted.
       boost_arrival_sessions: {
         Row: {
           arrival_at: string
           challenge_item_id: string
+          check_in_method: string
           created_at: string
-          created_by_token_hash: string
+          created_by_token_hash: string | null
+          created_by_user_id: string | null
           expires_at: string
           id: string
           idempotency_key: string
@@ -672,8 +674,10 @@ export type Database = {
         Insert: {
           arrival_at: string
           challenge_item_id: string
+          check_in_method?: string
           created_at?: string
-          created_by_token_hash: string
+          created_by_token_hash?: string | null
+          created_by_user_id?: string | null
           expires_at: string
           id?: string
           idempotency_key: string
@@ -686,8 +690,10 @@ export type Database = {
         Update: {
           arrival_at?: string
           challenge_item_id?: string
+          check_in_method?: string
           created_at?: string
-          created_by_token_hash?: string
+          created_by_token_hash?: string | null
+          created_by_user_id?: string | null
           expires_at?: string
           id?: string
           idempotency_key?: string
@@ -4268,6 +4274,29 @@ export type Database = {
           table_name: string
         }
         Returns: string
+      }
+      // Hand-edited for E07-A3. npm run types:db was not run against hosted.
+      open_member_boost_arrival_session: {
+        Args: {
+          p_arrival_at: string
+          p_base_discount_cents: number
+          p_below_minimum: boolean
+          p_boost_discount_cents: number
+          p_boost_id: string | null
+          p_challenge_item_id: string
+          p_created_by_user_id: string
+          p_eligible_subtotal_cents: number
+          p_expires_at: string
+          p_idempotency_key: string
+          p_locked_boost_id: string | null
+          p_offer_version_id: string
+          p_reasons: Json
+          p_redemption_id: string | null
+          p_restaurant_id: string
+          p_tier_id: string | null
+          p_total_discount_cents: number
+        }
+        Returns: Json
       }
       // Hand-edited for E07-A2. npm run types:db was not run against hosted.
       open_boost_arrival_session: {

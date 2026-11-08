@@ -3,6 +3,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   openBoostArrival,
+  openMemberBoostArrival,
   supersedeBoostArrival,
   type ArrivalContext,
 } from '@/lib/boost/arrival-session';
@@ -73,6 +74,7 @@ class MemoryStore implements ArrivalStore {
   sessions: ArrivalSessionRecord[] = [];
   quotes: ArrivalQuoteRecord[] = [];
   opens = 0;
+  lastOpen: OpenArrivalSessionInput | null = null;
   private seq = 0;
 
   async findItem(id: string) {
@@ -98,6 +100,7 @@ class MemoryStore implements ArrivalStore {
   }
   async openSession(input: OpenArrivalSessionInput): Promise<OpenArrivalSessionResult> {
     this.opens += 1;
+    this.lastOpen = input;
     const existing = await this.findSessionByKey(input.restaurantId, input.idempotencyKey);
     if (existing) return { status: 'existing', sessionId: existing.id };
     if (this.sessions.some((session) => session.challengeItemId === input.challengeItemId && session.status === 'open')) {
@@ -493,6 +496,66 @@ describe('boost arrival sessions', () => {
     expect(opened.quote.eligibleSubtotalCents).toBe(8200);
   });
 
+  it('opens a member session only during Boost hours and locks that Boost', async () => {
+    const userId = '55555555-5555-4555-8555-555555555555';
+    const store = new MemoryStore();
+    seed(store);
+    const opened = await openMemberBoostArrival(
+      { challengeItemId: ITEM, idempotencyKey: 'member-1' },
+      { restaurantId: RESTAURANT, userId, now: FRIDAY, store },
+    );
+    expect(opened.ok).toBe(true);
+    if (!opened.ok) return;
+    expect(opened.session.lockedBoostId).toBe('boost-large');
+    expect(opened.quote.belowMinimum).toBe(true);
+    expect(opened.quote.eligibleSubtotalCents).toBe(0);
+    expect(opened.quote.totalDiscountCents).toBe(0);
+    expect(store.lastOpen?.checkInMethod).toBe('member_geo');
+    expect(store.lastOpen?.createdByUserId).toBe(userId);
+    expect(store.lastOpen?.createdByTokenHash).toBeNull();
+    const expiresAt = opened.session.expiresAt;
+
+    const again = await openMemberBoostArrival(
+      { challengeItemId: ITEM, idempotencyKey: 'member-1' },
+      { restaurantId: RESTAURANT, userId, now: new Date('2026-09-19T05:00:00.000Z'), store },
+    );
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.session.expiresAt).toBe(expiresAt);
+    expect(again.session.arrivalAt).toBe(FRIDAY.toISOString());
+    expect(store.sessions).toHaveLength(1);
+
+    const outside = new MemoryStore();
+    seed(outside);
+    const refused = await openMemberBoostArrival(
+      { challengeItemId: ITEM, idempotencyKey: 'member-late' },
+      { restaurantId: RESTAURANT, userId, now: AFTER_WINDOW, store: outside },
+    );
+    expect(refused).toEqual({ ok: false, code: 'boost_not_available' });
+    expect(outside.sessions).toHaveLength(0);
+    expect(outside.opens).toBe(0);
+  });
+
+  it('does not return another item when the idempotency key is already used', async () => {
+    const otherItem = '88888888-8888-4888-8888-888888888888';
+    const userId = '55555555-5555-4555-8555-555555555555';
+    const store = new MemoryStore();
+    seed(store);
+    store.items.set(otherItem, itemRow({ id: otherItem }));
+    const opened = await openBoostArrival(
+      { challengeItemId: ITEM, idempotencyKey: 'shared-key', eligibleSubtotalCents: 8200 },
+      context(store, FRIDAY),
+    );
+    expect(opened.ok).toBe(true);
+    const reused = await openMemberBoostArrival(
+      { challengeItemId: otherItem, idempotencyKey: 'shared-key' },
+      { restaurantId: RESTAURANT, userId, now: FRIDAY, store },
+    );
+    expect(reused).toEqual({ ok: false, code: 'invalid_idempotency_key' });
+    expect(store.sessions).toHaveLength(1);
+    expect(store.sessions[0]?.challengeItemId).toBe(ITEM);
+  });
+
   it('does not let a page or component query the new tables', () => {
     const hits: string[] = [];
     const walk = (dir: string) => {
@@ -506,6 +569,7 @@ describe('boost arrival sessions', () => {
         if (full.endsWith(`${path.sep}partner-boost-arrival.ts`)) continue;
         if (full.endsWith(`${path.sep}partner-bill-scan.ts`)) continue;
         if (full.endsWith(`${path.sep}partner-arrival-client.tsx`)) continue;
+        if (full.endsWith(`${path.sep}member-boost-arrival.ts`)) continue;
         const text = readFileSync(full, 'utf8');
         if (
           text.includes('boost_arrival_sessions') ||
@@ -541,5 +605,10 @@ describe('boost arrival sessions', () => {
     expect(arrivalPage).not.toMatch(/boost_arrival_sessions|boost_quotes/);
     expect(arrivalClient).toMatch(/createBoostArrivalSession/);
     expect(arrivalClient).toMatch(/eligibleSubtotalCents: 0/);
+
+    const memberAction = readFileSync(path.join(ROOT, 'src/app/actions/member-boost-arrival.ts'), 'utf8');
+    expect(memberAction).toMatch(/arrivalSessionsEnabled/);
+    expect(memberAction).not.toMatch(/readAzure|AZURE_DOCUMENT|verify_redemption/);
+    expect(memberAction.indexOf('arrivalSessionsEnabled')).toBeLessThan(memberAction.indexOf('requireUser'));
   });
 });

@@ -140,3 +140,15 @@ export function qualifyingArrivalBoostId(
   if (!quote.reasons.includes('capped')) return null;
   return selectBoost(version.boosts, arrivalAt, version.timezone, version.validUntil)?.id ?? null;
 }
+
+/**
+ * The Boost that contains arrival, independent of the bill.
+ * Null when none contains that instant. Does not write a session.
+ */
+export function boostQualifyingAtArrival(
+  version: SealedBoostOfferVersion,
+  arrivalAt: Date,
+): string | null {
+  if (!(arrivalAt instanceof Date) || Number.isNaN(arrivalAt.getTime())) return null;
+  return selectBoost(version.boosts, arrivalAt, version.timezone, version.validUntil)?.id ?? null;
+}

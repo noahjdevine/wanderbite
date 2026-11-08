@@ -71,7 +71,9 @@ export type OpenArrivalSessionInput = {
   arrivalAt: string;
   expiresAt: string;
   idempotencyKey: string;
-  createdByTokenHash: string;
+  createdByTokenHash: string | null;
+  createdByUserId: string | null;
+  checkInMethod: 'partner' | 'member_geo';
   tierId: string | null;
   baseDiscountCents: number;
   boostId: string | null;
@@ -90,6 +92,7 @@ export type OpenArrivalSessionResult =
         | 'restaurant_mismatch'
         | 'version_mismatch'
         | 'redemption_mismatch'
+        | 'forbidden'
         | 'invalid_quote'
         | 'unavailable';
     };
@@ -220,8 +223,25 @@ const OPEN_STATUSES = new Set([
   'restaurant_mismatch',
   'version_mismatch',
   'redemption_mismatch',
+  'forbidden',
   'invalid_quote',
 ]);
+
+function readOpenResult(data: Json | null, error: unknown): OpenArrivalSessionResult {
+  if (error) return { status: 'unavailable' };
+  const parsed = rpcStatus(data);
+  if (!parsed) return { status: 'unavailable' };
+  if (parsed.status === 'created' || parsed.status === 'existing') {
+    if (!parsed.sessionId) return { status: 'unavailable' };
+    return { status: parsed.status, sessionId: parsed.sessionId };
+  }
+  if (OPEN_STATUSES.has(parsed.status)) {
+    return {
+      status: parsed.status as Exclude<OpenArrivalSessionResult, { status: 'created' | 'existing' }>['status'],
+    };
+  }
+  return { status: 'unavailable' };
+}
 
 const SUPERSEDE_STATUSES = new Set([
   'created',
@@ -309,6 +329,30 @@ export function createSupabaseArrivalStore(admin: Admin): ArrivalStore {
       return mapQuote(data);
     },
     async openSession(input) {
+      if (input.checkInMethod === 'member_geo') {
+        if (!input.createdByUserId) return { status: 'unavailable' };
+        const { data, error } = await admin.rpc('open_member_boost_arrival_session', {
+          p_restaurant_id: input.restaurantId,
+          p_challenge_item_id: input.challengeItemId,
+          p_offer_version_id: input.offerVersionId,
+          p_redemption_id: input.redemptionId,
+          p_locked_boost_id: input.lockedBoostId,
+          p_arrival_at: input.arrivalAt,
+          p_expires_at: input.expiresAt,
+          p_idempotency_key: input.idempotencyKey,
+          p_created_by_user_id: input.createdByUserId,
+          p_tier_id: input.tierId,
+          p_base_discount_cents: input.baseDiscountCents,
+          p_boost_id: input.boostId,
+          p_boost_discount_cents: input.boostDiscountCents,
+          p_total_discount_cents: input.totalDiscountCents,
+          p_eligible_subtotal_cents: input.eligibleSubtotalCents,
+          p_below_minimum: input.belowMinimum,
+          p_reasons: input.reasons,
+        });
+        return readOpenResult(data, error);
+      }
+      if (!input.createdByTokenHash) return { status: 'unavailable' };
       const { data, error } = await admin.rpc('open_boost_arrival_session', {
         p_restaurant_id: input.restaurantId,
         p_challenge_item_id: input.challengeItemId,
@@ -328,17 +372,7 @@ export function createSupabaseArrivalStore(admin: Admin): ArrivalStore {
         p_below_minimum: input.belowMinimum,
         p_reasons: input.reasons,
       });
-      if (error) return { status: 'unavailable' };
-      const parsed = rpcStatus(data);
-      if (!parsed) return { status: 'unavailable' };
-      if (parsed.status === 'created' || parsed.status === 'existing') {
-        if (!parsed.sessionId) return { status: 'unavailable' };
-        return { status: parsed.status, sessionId: parsed.sessionId };
-      }
-      if (OPEN_STATUSES.has(parsed.status)) {
-        return { status: parsed.status as Exclude<OpenArrivalSessionResult, { status: 'created' | 'existing' }>['status'] };
-      }
-      return { status: 'unavailable' };
+      return readOpenResult(data, error);
     },
     async supersedeQuote(input) {
       const { data, error } = await admin.rpc('supersede_boost_arrival_quote', {

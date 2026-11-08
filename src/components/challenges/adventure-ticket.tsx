@@ -16,6 +16,7 @@ import {
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
+import { BoostCheckIn } from '@/components/challenges/boost-check-in';
 import { FirstVisitBriefing } from '@/components/briefings/first-visit';
 import { VisitNoteRead } from '@/components/notes/visit-note';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
@@ -108,6 +109,11 @@ type AdventureTicketProps = {
   activities?: ActivitySuggestion[];
   /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
   briefings?: BriefingFact[];
+  /**
+   * Exact E07_ARRIVAL_SESSIONS_ENABLED. Default false hides Boost check-in
+   * and does not ask for a location.
+   */
+  boostCheckIn?: boolean;
 };
 
 export function AdventureTicket({
@@ -129,6 +135,7 @@ export function AdventureTicket({
   recipeExclusionLine = null,
   activities = [],
   briefings = [],
+  boostCheckIn = false,
 }: AdventureTicketProps) {
   const [nowMs] = useState(() => Date.now());
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
@@ -264,6 +271,12 @@ export function AdventureTicket({
       badgeTone={badge?.tone}
       note={swapNote}
     >
+      <BoostCheckIn
+        enabled={
+          boostCheckIn && isAssigned && !windowClosed && Boolean(item.challengeItem.offer_version_id) && hasCoords
+        }
+        challengeItemId={item.challengeItem.id}
+      />
       {isAssigned && !windowClosed && canSwap ? (
         <CtaButton
           variant="secondary-cream"
