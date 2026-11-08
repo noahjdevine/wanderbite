@@ -1639,41 +1639,86 @@ export type Database = {
       }
       redemptions: {
         Row: {
+          base_discount_cents: number | null
+          below_minimum: boolean | null
+          boost_discount_cents: number | null
+          boost_id: string | null
           challenge_item_id: string | null
           code_iv: string | null
           created_at: string | null
+          eligible_subtotal_cents: number | null
           encrypted_code: string | null
           expires_at: string
           id: string
+          locked_boost_id: string | null
+          quote_expires_at: string | null
+          quote_id: string | null
+          quote_version: number | null
           restaurant_id: string | null
+          sealed_discount_amount_cents: number | null
+          sealed_min_spend_cents: number | null
+          settled_at: string | null
+          settlement_kind: string | null
           status: string | null
+          tier_id: string | null
           token_hash: string | null
+          total_discount_cents: number | null
           user_id: string | null
           verified_at: string | null
         }
         Insert: {
+          base_discount_cents?: number | null
+          below_minimum?: boolean | null
+          boost_discount_cents?: number | null
+          boost_id?: string | null
           challenge_item_id?: string | null
           code_iv?: string | null
           created_at?: string | null
+          eligible_subtotal_cents?: number | null
           encrypted_code?: string | null
           expires_at?: string
           id?: string
+          locked_boost_id?: string | null
+          quote_expires_at?: string | null
+          quote_id?: string | null
+          quote_version?: number | null
           restaurant_id?: string | null
+          sealed_discount_amount_cents?: number | null
+          sealed_min_spend_cents?: number | null
+          settled_at?: string | null
+          settlement_kind?: string | null
           status?: string | null
+          tier_id?: string | null
           token_hash?: string | null
+          total_discount_cents?: number | null
           user_id?: string | null
           verified_at?: string | null
         }
         Update: {
+          base_discount_cents?: number | null
+          below_minimum?: boolean | null
+          boost_discount_cents?: number | null
+          boost_id?: string | null
           challenge_item_id?: string | null
           code_iv?: string | null
           created_at?: string | null
+          eligible_subtotal_cents?: number | null
           encrypted_code?: string | null
           expires_at?: string
           id?: string
+          locked_boost_id?: string | null
+          quote_expires_at?: string | null
+          quote_id?: string | null
+          quote_version?: number | null
           restaurant_id?: string | null
+          sealed_discount_amount_cents?: number | null
+          sealed_min_spend_cents?: number | null
+          settled_at?: string | null
+          settlement_kind?: string | null
           status?: string | null
+          tier_id?: string | null
           token_hash?: string | null
+          total_discount_cents?: number | null
           user_id?: string | null
           verified_at?: string | null
         }
@@ -1704,6 +1749,13 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "redemptions_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: true
+            referencedRelation: "boost_quotes"
             referencedColumns: ["id"]
           },
         ]
@@ -4298,6 +4350,28 @@ export type Database = {
         }
         Returns: Json
       }
+      // Hand-edited for E07-C2. npm run types:db was not run against hosted.
+      record_boost_settlement: {
+        Args: {
+          p_base_discount_cents: number | null
+          p_below_minimum: boolean | null
+          p_boost_discount_cents: number | null
+          p_boost_id: string | null
+          p_eligible_subtotal_cents: number | null
+          p_locked_boost_id: string | null
+          p_quote_expires_at: string | null
+          p_quote_id: string | null
+          p_quote_version: number | null
+          p_redemption_id: string
+          p_sealed_discount_amount_cents: number | null
+          p_sealed_min_spend_cents: number | null
+          p_settled_at: string
+          p_settlement_kind: string
+          p_tier_id: string | null
+          p_total_discount_cents: number | null
+        }
+        Returns: Json
+      }
       // Hand-edited for E07-A2. npm run types:db was not run against hosted.
       open_boost_arrival_session: {
         Args: {
@@ -4342,15 +4416,30 @@ export type Database = {
       verify_redemption: {
         Args: { p_restaurant_id: string; p_token_hash: string }
         Returns: {
+          base_discount_cents: number | null
+          below_minimum: boolean | null
+          boost_discount_cents: number | null
+          boost_id: string | null
           challenge_item_id: string | null
           code_iv: string | null
           created_at: string | null
+          eligible_subtotal_cents: number | null
           encrypted_code: string | null
           expires_at: string
           id: string
+          locked_boost_id: string | null
+          quote_expires_at: string | null
+          quote_id: string | null
+          quote_version: number | null
           restaurant_id: string | null
+          sealed_discount_amount_cents: number | null
+          sealed_min_spend_cents: number | null
+          settled_at: string | null
+          settlement_kind: string | null
           status: string | null
+          tier_id: string | null
           token_hash: string | null
+          total_discount_cents: number | null
           user_id: string | null
           verified_at: string | null
         }[]
