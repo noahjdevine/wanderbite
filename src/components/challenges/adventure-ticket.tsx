@@ -33,6 +33,7 @@ import {
   challengeCardExpired,
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
+import { challengeTicketOffer } from '@/lib/boost/savings-copy';
 import { memoryActionForStatus } from '@/lib/notes/note-rules';
 import { REDEMPTION_CODE_LIFETIME_LABEL } from '@/lib/redemption-expiry';
 import { RECIPES_SECTION_HEADING, type RecipeCardModel } from '@/lib/recipes/display';
@@ -40,19 +41,6 @@ import type { VisitStatus } from '@/lib/visits/visit-status';
 
 /** Fixed frame. A portrait photo cannot change the ticket height. */
 export const TICKET_PHOTO_HEIGHT = 180;
-
-function money(cents: number): string {
-  const dollars = cents / 100;
-  return Number.isInteger(dollars) ? String(dollars) : dollars.toFixed(2);
-}
-
-function offerParts(offer: GeneratedChallengeItem['offer']): { amount: string; requirement: string } {
-  if (!offer.available) return { amount: 'Offer unavailable', requirement: '' };
-  return {
-    amount: `$${money(offer.discount_amount_cents)} off`,
-    requirement: `when you spend $${money(offer.min_spend_cents)}+`,
-  };
-}
 
 function ticketArea(item: GeneratedChallengeItem): string {
   const tags = (item.restaurant.cuisine_tags ?? []).filter((tag) => tag.trim());
@@ -152,7 +140,11 @@ export function AdventureTicket({
     : useStoredDeadline && storedDeadline
       ? formatChicagoDeadline(storedDeadline)
       : '';
-  const offer = offerParts(item.offer);
+  const offer = challengeTicketOffer({
+    offer: item.offer,
+    visitStatus: item.visitStatus,
+    storedSavingsCents: item.storedSavingsCents,
+  });
   const status = trackStatus(item);
   const badge = photoBadge(item.visitStatus);
   const isAssigned = item.challengeItem.status === 'assigned';

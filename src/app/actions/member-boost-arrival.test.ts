@@ -137,6 +137,45 @@ describe('member boost check-in action', () => {
     expect(openMemberBoostArrival).not.toHaveBeenCalled();
   });
 
+  it('accepts accuracy of 100 metres and still enforces radius and freshness', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const { checkInMemberBoost } = await import('@/app/actions/member-boost-arrival');
+    const atCap = await checkInMemberBoost({
+      challengeItemId: ITEM,
+      idempotencyKey: 'member-key',
+      location: freshLocation({ accuracy: 100 }),
+    });
+    expect(atCap.ok).toBe(true);
+    const under = await checkInMemberBoost({
+      challengeItemId: ITEM,
+      idempotencyKey: 'member-key-under',
+      location: freshLocation({ accuracy: 99.9 }),
+    });
+    expect(under.ok).toBe(true);
+    await expect(
+      checkInMemberBoost({
+        challengeItemId: ITEM,
+        idempotencyKey: 'member-key-over',
+        location: freshLocation({ accuracy: 100.1 }),
+      }),
+    ).resolves.toEqual({ ok: false, code: 'poor_accuracy' });
+    await expect(
+      checkInMemberBoost({
+        challengeItemId: ITEM,
+        idempotencyKey: 'member-key-far',
+        location: freshLocation({ accuracy: 100, lat: LAT + 1 }),
+      }),
+    ).resolves.toEqual({ ok: false, code: 'out_of_radius' });
+    await expect(
+      checkInMemberBoost({
+        challengeItemId: ITEM,
+        idempotencyKey: 'member-key-stale',
+        location: freshLocation({ accuracy: 99.9, timestamp: Date.now() - 61_000 }),
+      }),
+    ).resolves.toEqual({ ok: false, code: 'stale_location' });
+    expect(openMemberBoostArrival).toHaveBeenCalledTimes(2);
+  });
+
   it('opens with the restaurant on the owned item', async () => {
     process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
     const { checkInMemberBoost } = await import('@/app/actions/member-boost-arrival');

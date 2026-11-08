@@ -47,7 +47,7 @@ import PartnerLayout from './layout';
 import PartnerFallbackPage from './page';
 import PartnerSlugPage from './[slug]/page';
 import PartnerRedeemPage from './[slug]/redeem/page';
-import { PartnerDashboard } from './partner-dashboard';
+import { PartnerDashboard, partnerArrivalHref } from './partner-dashboard';
 import { PartnerLoginForm } from './partner-login-form';
 import { PartnerSlugLogin } from './[slug]/partner-slug-login';
 
@@ -166,6 +166,7 @@ describe('partner portal pages', () => {
     expect(screen.getByRole('link', { name: 'Redeem mode' }).getAttribute('href')).toBe(
       '/partner/north-grill/redeem',
     );
+    expect(screen.queryByRole('link', { name: 'Arrival check-in' })).toBeNull();
     expect(screen.getByText('Performance History')).toBeTruthy();
     expect(screen.getByText('Recent Guests')).toBeTruthy();
     expect(screen.getByRole('columnheader', { name: 'Guest Email' })).toBeTruthy();
@@ -208,6 +209,33 @@ describe('partner portal pages', () => {
     const middleware = readFileSync(path.join(ROOT, 'src/lib/supabase/middleware.ts'), 'utf8');
     expect(middleware).toMatch(/pathname === '\/partner'/);
     expect(middleware).toMatch(/pathname\.startsWith\('\/partner\/'\)/);
+  });
+});
+
+describe('partner arrival entry', () => {
+  it('loads the arrival page from the dashboard control', () => {
+    expect(partnerArrivalHref('qa-test-kitchen-not-real')).toBe(
+      '/partner/qa-test-kitchen-not-real/arrival',
+    );
+    render(
+      <PartnerDashboard
+        restaurantName="QA Test Kitchen"
+        restaurantSlug="qa-test-kitchen-not-real"
+        analytics={null}
+        arrivalCheckIn
+      />,
+    );
+    const link = screen.getByRole('link', { name: 'Arrival check-in' });
+    expect(link.tagName).toBe('A');
+    expect(link.getAttribute('href')).toBe('/partner/qa-test-kitchen-not-real/arrival');
+    expect(link.closest('form')).toBeNull();
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true });
+    link.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+
+    const source = readFileSync(path.join(ROOT, 'src/app/partner/partner-dashboard.tsx'), 'utf8');
+    expect(source).toMatch(/<a\s+href=\{partnerArrivalHref\(restaurantSlug\)\}/);
+    expect(source).not.toMatch(/<Link[^>]*arrival/);
   });
 });
 

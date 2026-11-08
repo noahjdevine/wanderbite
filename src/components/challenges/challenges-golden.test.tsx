@@ -49,6 +49,7 @@ function item(
   status: 'assigned' | 'redeemed' | 'expired',
   visitStatus: VisitStatus,
   cents: { discount: number; min: number } = { discount: 1000, min: 4000 },
+  storedSavingsCents?: number | null,
 ): GeneratedChallenge['items'][number] {
   return {
     challengeItem: {
@@ -75,6 +76,7 @@ function item(
     offer: { available: true, discount_amount_cents: cents.discount, min_spend_cents: cents.min },
     visitStatus,
     redemptionId: status === 'redeemed' ? `red-${id}` : null,
+    ...(storedSavingsCents != null ? { storedSavingsCents } : {}),
   };
 }
 
@@ -167,6 +169,53 @@ describe('golden challenges', () => {
       .filter((height) => height);
     expect(heights).toContain(`${TICKET_PHOTO_HEIGHT}px`);
     expect(heights.every((height) => height === `${TICKET_PHOTO_HEIGHT}px`)).toBe(true);
+  });
+
+  it('shows a stored settlement on a verified card and keeps the offer when none is stored', async () => {
+    const settled = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([
+          item('done-1', 'QA Kitchen', 'redeemed', 'verified', { discount: 1000, min: 4000 }, 1500),
+        ])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const settledText = settled.textContent ?? '';
+    expect(settledText).toContain('Verified');
+    expect(settledText).toContain('Saved $15');
+    expect(settledText).toContain('Offer $10 off $40+');
+    expect(settledText).not.toContain('when you spend $40+');
+
+    const fallback = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([item('done-2', 'QA Kitchen', 'redeemed', 'verified')])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const fallbackText = fallback.textContent ?? '';
+    expect(fallbackText).toContain('Verified');
+    expect(fallbackText).toContain('$10 off when you spend $40+');
+    expect(fallbackText).not.toContain('Saved $');
+
+    const open = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([
+          item('open-1', 'QA Kitchen', 'assigned', 'ready', { discount: 1000, min: 4000 }, 1500),
+        ])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    expect(open.textContent ?? '').toContain('$10 off when you spend $40+');
+    expect(open.textContent ?? '').not.toContain('Saved $15');
   });
 
   it('maps code_expired to the code step and a closed visit to the ended adventure', async () => {

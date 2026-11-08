@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  challengeTicketOffer,
   partnerVerifiedOfferLine,
   qrLabelForView,
   redeemSavingsCopy,
@@ -11,6 +12,46 @@ const quote: BoostSavingsView = {
   kind: 'quote',
   savings: { totalDiscountCents: 2500, baseDiscountCents: 2000, boostDiscountCents: 500 },
 };
+
+const offer = { available: true as const, discount_amount_cents: 1000, min_spend_cents: 4000 };
+
+describe('challenge ticket offer', () => {
+  it('shows a stored settlement on a verified visit and keeps the offer beside it', () => {
+    expect(
+      challengeTicketOffer({ offer, visitStatus: 'verified', storedSavingsCents: 1500 }),
+    ).toEqual({ amount: 'Saved $15', requirement: 'Offer $10 off $40+' });
+    expect(
+      challengeTicketOffer({ offer, visitStatus: 'note_added', storedSavingsCents: 0 }),
+    ).toEqual({ amount: 'Saved $0', requirement: 'Offer $10 off $40+' });
+  });
+
+  it('keeps the offer when there is no stored settlement or the visit is not verified', () => {
+    expect(challengeTicketOffer({ offer, visitStatus: 'verified', storedSavingsCents: null })).toEqual({
+      amount: '$10 off',
+      requirement: 'when you spend $40+',
+    });
+    expect(challengeTicketOffer({ offer, visitStatus: 'verified' })).toEqual({
+      amount: '$10 off',
+      requirement: 'when you spend $40+',
+    });
+    expect(
+      challengeTicketOffer({ offer, visitStatus: 'ready', storedSavingsCents: 1500 }),
+    ).toEqual({ amount: '$10 off', requirement: 'when you spend $40+' });
+    expect(
+      challengeTicketOffer({ offer, visitStatus: 'code_issued', storedSavingsCents: 1500 }),
+    ).toEqual({ amount: '$10 off', requirement: 'when you spend $40+' });
+    expect(
+      challengeTicketOffer({ offer, visitStatus: 'verified', storedSavingsCents: 10.5 }),
+    ).toEqual({ amount: '$10 off', requirement: 'when you spend $40+' });
+    expect(
+      challengeTicketOffer({
+        offer: { available: false },
+        visitStatus: 'verified',
+        storedSavingsCents: 1500,
+      }),
+    ).toEqual({ amount: 'Saved $15', requirement: '' });
+  });
+});
 
 describe('boost savings copy', () => {
   it('shows a consume_quote total and its parts', () => {

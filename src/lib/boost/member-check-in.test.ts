@@ -32,6 +32,37 @@ function reading(
 }
 
 describe('member check-in geolocation', () => {
+  it('accepts accuracy of exactly 100 metres and refuses just above it', () => {
+    expect(
+      assessMemberCheckIn({
+        member: reading(RESTAURANT, { accuracy: 99.9 }),
+        restaurant: RESTAURANT,
+        now: NOW,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      assessMemberCheckIn({
+        member: reading(RESTAURANT, { accuracy: 100 }),
+        restaurant: RESTAURANT,
+        now: NOW,
+      }),
+    ).toEqual({ ok: true });
+    expect(
+      assessMemberCheckIn({
+        member: reading(RESTAURANT, { accuracy: 100.1 }),
+        restaurant: RESTAURANT,
+        now: NOW,
+      }),
+    ).toEqual({ ok: false, code: 'poor_accuracy' });
+    expect(
+      assessMemberCheckIn({
+        member: reading(northOfRestaurant(100.1), { accuracy: 20 }),
+        restaurant: RESTAURANT,
+        now: NOW,
+      }),
+    ).toEqual({ ok: false, code: 'out_of_radius' });
+  });
+
   it('accepts a fresh reading inside 100 meters with accuracy at the cap', () => {
     const edge = assessMemberCheckIn({
       member: reading(northOfRestaurant(100), { accuracy: MEMBER_CHECK_IN_MAX_ACCURACY_METERS }),

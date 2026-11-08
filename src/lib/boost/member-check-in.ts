@@ -46,7 +46,7 @@ function finiteNumber(value: unknown): number | null {
  * Live geolocation gate. No database write.
  * Accuracy is required: a successful GeolocationPosition always carries
  * GeolocationCoordinates.accuracy in meters. Omission is missing_accuracy.
- * A finite accuracy above 100 meters is poor_accuracy.
+ * Accuracy of 100 meters is accepted. A finite accuracy above 100 meters is poor_accuracy.
  * First failure wins: restaurant pin, member coordinates, accuracy, freshness, radius.
  */
 export function assessMemberCheckIn(input: {
@@ -68,7 +68,8 @@ export function assessMemberCheckIn(input: {
   if (!present(input.member.accuracy)) return { ok: false, code: 'missing_accuracy' };
   const accuracy = finiteNumber(input.member.accuracy);
   if (accuracy == null || accuracy < 0) return { ok: false, code: 'missing_accuracy' };
-  if (accuracy > MEMBER_CHECK_IN_MAX_ACCURACY_METERS) return { ok: false, code: 'poor_accuracy' };
+  // Inclusive cap. Exactly 100 m is a usable reading; only a worse finite value is poor.
+  if (!(accuracy <= MEMBER_CHECK_IN_MAX_ACCURACY_METERS)) return { ok: false, code: 'poor_accuracy' };
 
   if (!(input.now instanceof Date) || Number.isNaN(input.now.getTime())) {
     return { ok: false, code: 'stale_location' };

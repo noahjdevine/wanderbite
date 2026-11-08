@@ -27,6 +27,7 @@ import { varietyCycleMonthLowerBound } from '@/lib/challenges/restaurant-safety'
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
+import { loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
 import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
 import {
   deriveDistanceMatch,
@@ -114,6 +115,12 @@ export type GeneratedChallengeItem = {
   redemptionId?: string | null;
   /** Derived on the server. Issued codes are not visits. */
   visitStatus?: VisitStatus;
+  /**
+   * Whole cents from a stored settlement. Set only when that snapshot parses.
+   * Absent when the arrival flag is off, or the visit has no usable snapshot.
+   * Not a recomputed quote.
+   */
+  storedSavingsCents?: number | null;
   /** Aggregate Bite Note ratings for this restaurant (from all users). */
   socialProof?: { avgRating: number | null; totalRatings: number };
 };
@@ -877,15 +884,24 @@ async function loadChallengeItemsWithRestaurants(
 
   const noteByRedemptionId = new Map<string, { note: string | null }>();
   const redemptionIds = [...redemptionByItemId.values()].map((row) => row.id);
-  if (redemptionIds.length > 0) {
-    const { data: noteRows } = await supabase
-      .from('bite_notes')
-      .select('redemption_id, note')
-      .in('redemption_id', redemptionIds);
-    for (const row of noteRows ?? []) {
-      const note = row as { redemption_id: string; note: string | null };
-      noteByRedemptionId.set(note.redemption_id, { note: note.note });
-    }
+  const noteQuery =
+    redemptionIds.length > 0
+      ? supabase
+          .from('bite_notes')
+          .select('redemption_id, note')
+          .in('redemption_id', redemptionIds)
+      : Promise.resolve({ data: [] as { redemption_id: string; note: string | null }[] });
+  const [noteResult, storedSavings] = await Promise.all([
+    noteQuery,
+    // The admin client's generics are too deep to check against this read port.
+    loadStoredChallengeSavings(
+      supabase as unknown as Parameters<typeof loadStoredChallengeSavings>[0],
+      redemptionIds,
+    ),
+  ]);
+  for (const row of noteResult.data ?? []) {
+    const note = row as { redemption_id: string; note: string | null };
+    noteByRedemptionId.set(note.redemption_id, { note: note.note });
   }
 
   const ratingsMap = await getRestaurantRatings(restIds);
@@ -897,6 +913,7 @@ async function loadChallengeItemsWithRestaurants(
     const stats = ratingsMap.get(item.restaurant_id);
     const redemption = redemptionByItemId.get(item.id) ?? null;
     const note = redemption ? noteByRedemptionId.get(redemption.id) ?? null : null;
+    const storedSavingsCents = redemption ? storedSavings.get(redemption.id) : undefined;
     return {
       challengeItem: item,
       restaurant: {
@@ -925,6 +942,7 @@ async function loadChallengeItemsWithRestaurants(
           : { available: true, discount_amount_cents: 1000, min_spend_cents: 4000 },
       redemptionToken: null,
       redemptionId: item.status === 'redeemed' ? redemption?.id ?? null : null,
+      ...(storedSavingsCents != null ? { storedSavingsCents } : {}),
       visitStatus: deriveVisitStatus({
         item: {
           status: item.status,
