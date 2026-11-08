@@ -20,6 +20,11 @@ type PartnerDashboardProps = {
 const CODE_HINT_ID = 'partner-dashboard-code-hint';
 const CODE_ERROR_ID = 'partner-dashboard-code-error';
 
+/** Document URL for arrival. A client transition to this flag-gated route stays on the dashboard. */
+export function partnerArrivalHref(restaurantSlug: string): string {
+  return `/partner/${encodeURIComponent(restaurantSlug)}/arrival`;
+}
+
 export function PartnerDashboard({
   restaurantName,
   restaurantSlug,
@@ -112,9 +117,12 @@ export function PartnerDashboard({
         </div>
         <div className="wb-partner-page-actions">
           {arrivalCheckIn ? (
-            <Link href={`/partner/${restaurantSlug}/arrival`} className="wb-cta-secondary wb-cta-secondary-cream wb-partner-secondary">
+            <a
+              href={partnerArrivalHref(restaurantSlug)}
+              className="wb-cta-secondary wb-cta-secondary-cream wb-partner-secondary"
+            >
               Arrival check-in
-            </Link>
+            </a>
           ) : null}
           <Link href={`/partner/${restaurantSlug}/redeem`} className="wb-cta wb-partner-cta">
             Redeem mode

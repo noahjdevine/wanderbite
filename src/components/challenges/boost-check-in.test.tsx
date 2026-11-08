@@ -138,4 +138,42 @@ describe('Boost check-in on the challenge ticket', () => {
     const options = getCurrentPosition.mock.calls[0]?.[2] as { maximumAge?: number };
     expect(options.maximumAge).toBe(0);
   });
+
+  it('forwards browser accuracy of 100 metres and just either side without rewriting it', async () => {
+    checkInMemberBoost.mockResolvedValue({ ok: false, code: 'boost_not_available' });
+    const view = await render(ticket(true));
+    const button = Array.from(view.querySelectorAll('button')).find((node) =>
+      node.textContent?.includes(BOOST_CHECK_IN_LABEL),
+    );
+    for (const accuracy of [99.9, 100, 100.1]) {
+      getCurrentPosition.mockImplementation((success: (position: GeolocationPosition) => void) => {
+        success({
+          coords: {
+            latitude: 33.2,
+            longitude: -96.6,
+            accuracy,
+            altitude: null,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+            toJSON() {
+              return {};
+            },
+          },
+          timestamp: 1_700_000_000_000,
+          toJSON() {
+            return {};
+          },
+        });
+      });
+      await act(async () => {
+        button?.click();
+      });
+    }
+    expect(checkInMemberBoost.mock.calls.map((call) => (call[0] as { location: { accuracy: number } }).location.accuracy)).toEqual([
+      99.9,
+      100,
+      100.1,
+    ]);
+  });
 });

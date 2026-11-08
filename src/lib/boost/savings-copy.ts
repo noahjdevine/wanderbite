@@ -1,4 +1,5 @@
 import { formatCents } from '@/lib/offers/sealed-base';
+import { visitStatusCountsAsVisit, type VisitStatus } from '@/lib/visits/visit-status';
 
 /**
  * What partner redeem and the member QR may show after confirmation planning.
@@ -67,6 +68,41 @@ export function redeemSavingsCopy(input: {
   const boost = input.confirmedBoostDiscountCents;
   if (base == null || boost == null) return total;
   return `${total} (${formatCents(base)} base + ${formatCents(boost)} Boost)`;
+}
+
+type ChallengeOffer =
+  | { available: false }
+  | { available: true; discount_amount_cents: number; min_spend_cents: number };
+
+function wholeSavingsCents(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) return null;
+  return value;
+}
+
+/**
+ * Challenges ticket offer line.
+ * A verified visit with a stored whole-cent settlement shows that saved amount.
+ * The sealed offer stays a separate "Offer" line. Anything else keeps today's offer.
+ * This does not recompute a quote and does not invent the 1000-cent fallback.
+ */
+export function challengeTicketOffer(input: {
+  offer: ChallengeOffer;
+  visitStatus?: VisitStatus | null;
+  storedSavingsCents?: number | null;
+}): { amount: string; requirement: string } {
+  const stored = wholeSavingsCents(input.storedSavingsCents);
+  const counted = input.visitStatus != null && visitStatusCountsAsVisit(input.visitStatus);
+  if (counted && stored != null) {
+    const requirement = input.offer.available
+      ? `Offer ${formatCents(input.offer.discount_amount_cents)} off ${formatCents(input.offer.min_spend_cents)}+`
+      : '';
+    return { amount: `Saved ${formatCents(stored)}`, requirement };
+  }
+  if (!input.offer.available) return { amount: 'Offer unavailable', requirement: '' };
+  return {
+    amount: `${formatCents(input.offer.discount_amount_cents)} off`,
+    requirement: `when you spend ${formatCents(input.offer.min_spend_cents)}+`,
+  };
 }
 
 /**

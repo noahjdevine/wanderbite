@@ -340,6 +340,8 @@ describe('settlement store stays off verify SQL', () => {
       'src/types/database.types.ts',
       'src/lib/schema-contract.ts',
       'src/lib/progress/get-member-progress.ts',
+      'src/lib/boost/challenge-settlement.ts',
+      'src/lib/boost/challenge-settlement.test.ts',
     ]);
     const hits: string[] = [];
     const walk = (dir: string) => {
@@ -379,6 +381,11 @@ describe('settlement store stays off verify SQL', () => {
     expect(progress).toContain('recordedBoostSettlementFromRow');
     expect(progress).not.toContain('record_boost_settlement');
     expect(progress).not.toContain('persistBoostSettlement');
+    const challenges = readFileSync(path.join(ROOT, 'src/lib/boost/challenge-settlement.ts'), 'utf8');
+    expect(challenges).toContain('arrivalSessionsEnabled');
+    expect(challenges).toContain('recordedBoostSettlementFromRow');
+    expect(challenges).not.toContain('record_boost_settlement');
+    expect(challenges).not.toContain('persistBoostSettlement');
     expect(hits).toEqual([]);
   });
 });
