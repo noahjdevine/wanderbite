@@ -95,6 +95,15 @@ class MemoryStore implements ArrivalStore {
   async findSession(id: string, restaurantId: string) {
     return this.sessions.find((session) => session.id === id && session.restaurantId === restaurantId) ?? null;
   }
+  async findOpenSessionByChallengeItem(challengeItemId: string) {
+    const matches = this.sessions.filter(
+      (session) => session.challengeItemId === challengeItemId && session.status === 'open',
+    );
+    if (matches.length > 1) return { status: 'unavailable' as const };
+    const session = matches[0];
+    if (!session) return { status: 'none' as const };
+    return { status: 'found' as const, session };
+  }
   async findActiveQuote(sessionId: string) {
     return this.quotes.find((quote) => quote.sessionId === sessionId && quote.supersededAt == null) ?? null;
   }
@@ -481,6 +490,7 @@ describe('boost arrival sessions', () => {
       findVersion: async () => versionRow(),
       findSessionByKey: async () => null,
       findSession: async (id) => (id === seeded.id ? seeded : null),
+      findOpenSessionByChallengeItem: async () => ({ status: 'none' as const }),
       findActiveQuote: async () => quote,
       openSession: async () => ({ status: 'existing', sessionId: seeded.id }),
       supersedeQuote: async () => ({ status: 'unavailable' }),

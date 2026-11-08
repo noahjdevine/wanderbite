@@ -47,6 +47,15 @@ vi.mock('@/lib/supabase-admin', () => ({
   }),
 }));
 
+const ITEM = '44444444-4444-4444-8444-444444444444';
+const SESSION = '55555555-5555-4555-8555-555555555555';
+const QUOTE = '22222222-2222-4222-8222-222222222222';
+const VERSION = '77777777-7777-4777-8777-777777777777';
+const EXPIRES = '2026-11-08T22:00:00.000Z';
+const VERIFIED_AT = '2026-11-08T18:05:00.000Z';
+
+type QueryResult = { data: unknown; error: { message: string } | null; count?: number | null };
+
 function issuedRow(overrides: Record<string, unknown> = {}) {
   return {
     id: 'redemption-1',
@@ -67,6 +76,7 @@ describe('verifyRedemptionTokenForPartner', () => {
     rpc.mockReset();
     reportVerifyIntegrityError.mockReset();
     from.mockReset();
+    delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
     requirePartnerSession.mockResolvedValue({
       ok: true,
       restaurantId: ACTIVE_ID,
@@ -258,7 +268,12 @@ describe('verifyRedemptionTokenForPartner', () => {
       hideDiscountAmount: true,
       sealedDiscountCents: 1500,
       sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: null,
+      needsSubtotal: false,
     });
+    expect(from.mock.calls.map((call) => call[0])).not.toContain('boost_arrival_sessions');
+    expect(from.mock.calls.map((call) => call[0])).not.toContain('boost_quotes');
+    expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
   });
 
   it('treats a second empty RPC result as already used', async () => {
@@ -418,4 +433,329 @@ describe('verifyRedemptionTokenForPartner', () => {
       message: 'Invalid code',
     });
   });
+
+  it('does not settle when the arrival flag is off, even if a quote exists', async () => {
+    installVisit({});
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(result).toMatchObject({
+      success: true,
+      hideDiscountAmount: true,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: null,
+      needsSubtotal: false,
+    });
+    expect(from.mock.calls.map((call) => call[0])).not.toContain('boost_arrival_sessions');
+    expect(from.mock.calls.map((call) => call[0])).not.toContain('boost_quotes');
+    expect(rpc.mock.calls.map((call) => call[0])).toEqual(['verify_redemption_and_settle']);
+  });
+
+  it('writes the consume_quote snapshot once and shows its parts', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    const installed = installVisit({});
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(result).toMatchObject({
+      success: true,
+      hideDiscountAmount: false,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: 2500,
+      confirmedBaseDiscountCents: 2000,
+      confirmedBoostDiscountCents: 500,
+      needsSubtotal: false,
+      newBadgesEarned: ['First Bite'],
+    });
+    const record = rpc.mock.calls.find((call) => call[0] === 'record_boost_settlement');
+    expect(record?.[1]).toMatchObject({
+      p_settlement_kind: 'consume_quote',
+      p_settled_at: VERIFIED_AT,
+      p_total_discount_cents: 2500,
+      p_base_discount_cents: 2000,
+      p_boost_discount_cents: 500,
+      p_locked_boost_id: 'boost-5',
+      p_quote_id: QUOTE,
+    });
+    expect(installed.events.indexOf('badges')).toBeGreaterThanOrEqual(0);
+    expect(installed.events.indexOf('badges')).toBeLessThan(installed.events.indexOf('record'));
+    expect(installed.filters).toContainEqual({
+      table: 'boost_arrival_sessions',
+      column: 'challenge_item_id',
+      value: ITEM,
+    });
+    expect(installed.filters).toContainEqual({
+      table: 'boost_arrival_sessions',
+      column: 'status',
+      value: 'open',
+    });
+    expect(installed.filters).toContainEqual({
+      table: 'boost_quotes',
+      column: 'superseded_at',
+      value: null,
+    });
+  });
+
+  it('keeps the first snapshot when the redemption is already settled', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    installVisit({
+      settlementRow: {
+        settlement_kind: 'consume_quote',
+        settled_at: VERIFIED_AT,
+        quote_id: QUOTE,
+        quote_version: 2,
+        base_discount_cents: 2000,
+        boost_discount_cents: 500,
+        total_discount_cents: 2500,
+        eligible_subtotal_cents: 8200,
+        below_minimum: false,
+        tier_id: 'threshold:8000',
+        boost_id: 'boost-5',
+        locked_boost_id: 'boost-5',
+        quote_expires_at: EXPIRES,
+        sealed_discount_amount_cents: null,
+        sealed_min_spend_cents: null,
+      },
+      quote: quoteRow({ total_discount_cents: 1800, base_discount_cents: 1800, boost_discount_cents: 0 }),
+    });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(result).toMatchObject({
+      success: true,
+      confirmedTotalDiscountCents: 2500,
+      confirmedBaseDiscountCents: 2000,
+      confirmedBoostDiscountCents: 500,
+      hideDiscountAmount: false,
+    });
+    expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
+  });
+
+  it('verifies a placeholder quote without writing or showing $0', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    installVisit({ quote: quoteRow({
+      base_discount_cents: 0,
+      boost_discount_cents: 0,
+      total_discount_cents: 0,
+      eligible_subtotal_cents: 0,
+      below_minimum: true,
+      reasons: ['below_minimum'],
+      tier_id: null,
+      boost_id: null,
+    }) });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(result).toMatchObject({
+      success: true,
+      hideDiscountAmount: true,
+      needsSubtotal: true,
+      confirmedTotalDiscountCents: null,
+      sealedDiscountCents: 1500,
+    });
+    expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
+  });
+
+  it('verifies a past deadline without writing a snapshot', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    installVisit({ deadline: '2020-01-01T00:00:00.000Z' });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(result).toMatchObject({
+      success: true,
+      hideDiscountAmount: true,
+      needsSubtotal: false,
+      confirmedTotalDiscountCents: null,
+    });
+    expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
+  });
+
+  it('stores a sealed snapshot and still hides the amount when there is no session', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    installVisit({ session: null });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(result).toMatchObject({
+      success: true,
+      hideDiscountAmount: true,
+      confirmedTotalDiscountCents: null,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+    });
+    const record = rpc.mock.calls.find((call) => call[0] === 'record_boost_settlement');
+    expect(record?.[1]).toMatchObject({
+      p_settlement_kind: 'use_sealed_base',
+      p_sealed_discount_amount_cents: 1500,
+      p_sealed_min_spend_cents: 4000,
+    });
+  });
+
+  it('still verifies and keeps awarded badges when settlement persistence is unavailable', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    const installed = installVisit({ recordError: true });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(result).toMatchObject({
+      success: true,
+      newBadgesEarned: ['First Bite'],
+      hideDiscountAmount: true,
+      confirmedTotalDiscountCents: null,
+    });
+    expect(installed.events).toEqual(['badges', 'record']);
+  });
 });
+
+function quoteRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: QUOTE,
+    session_id: SESSION,
+    quote_version: 2,
+    offer_version_id: VERSION,
+    tier_id: 'threshold:8000',
+    base_discount_cents: 2000,
+    boost_id: 'boost-5',
+    boost_discount_cents: 500,
+    total_discount_cents: 2500,
+    eligible_subtotal_cents: 8200,
+    below_minimum: false,
+    reasons: ['quoted', 'boost_applied'],
+    expires_at: EXPIRES,
+    superseded_at: null,
+    ...overrides,
+  };
+}
+
+function sessionRow() {
+  return {
+    id: SESSION,
+    restaurant_id: ACTIVE_ID,
+    challenge_item_id: ITEM,
+    offer_version_id: VERSION,
+    redemption_id: null,
+    locked_boost_id: 'boost-5',
+    arrival_at: '2026-11-08T17:00:00.000Z',
+    expires_at: EXPIRES,
+    idempotency_key: `e07-member-geo:${ITEM}`,
+    status: 'open',
+  };
+}
+
+function chain(table: string, result: QueryResult, filters: Array<{ table: string; column: string; value: unknown }>) {
+  const builder = {
+    select() {
+      return builder;
+    },
+    eq(column: string, value: unknown) {
+      filters.push({ table, column, value });
+      return builder;
+    },
+    is(column: string, value: unknown) {
+      filters.push({ table, column, value });
+      return builder;
+    },
+    in() {
+      return Promise.resolve(result);
+    },
+    limit() {
+      return Promise.resolve(result);
+    },
+    maybeSingle() {
+      return Promise.resolve(result);
+    },
+    then(resolve: (value: QueryResult) => unknown, reject?: (reason: unknown) => unknown) {
+      return Promise.resolve(result).then(resolve, reject);
+    },
+  };
+  return builder;
+}
+
+function installVisit(options: {
+  throwOnArrival?: boolean;
+  session?: Record<string, unknown> | null;
+  quote?: Record<string, unknown> | null;
+  settlementRow?: Record<string, unknown> | null;
+  recordError?: boolean;
+  deadline?: string;
+}) {
+  const filters: Array<{ table: string; column: string; value: unknown }> = [];
+  const events: string[] = [];
+  const deadline = options.deadline ?? '2026-12-31T00:00:00.000Z';
+  const item = {
+    id: ITEM,
+    restaurant_id: ACTIVE_ID,
+    status: 'assigned',
+    offer_version_id: VERSION,
+    redemption_deadline: deadline,
+  };
+  rpc.mockImplementation((fn: string, args: Record<string, unknown>) => {
+    if (fn === 'record_boost_settlement') {
+      events.push('record');
+      if (options.recordError) return Promise.resolve({ data: null, error: { message: 'missing function' } });
+      return Promise.resolve({
+        data: {
+          status: 'created',
+          snapshot: {
+            settlement_kind: args.p_settlement_kind,
+            settled_at: args.p_settled_at,
+            quote_id: args.p_quote_id,
+            quote_version: args.p_quote_version,
+            base_discount_cents: args.p_base_discount_cents,
+            boost_discount_cents: args.p_boost_discount_cents,
+            total_discount_cents: args.p_total_discount_cents,
+            eligible_subtotal_cents: args.p_eligible_subtotal_cents,
+            below_minimum: args.p_below_minimum,
+            tier_id: args.p_tier_id,
+            boost_id: args.p_boost_id,
+            locked_boost_id: args.p_locked_boost_id,
+            quote_expires_at: args.p_quote_expires_at,
+            sealed_discount_amount_cents: args.p_sealed_discount_amount_cents,
+            sealed_min_spend_cents: args.p_sealed_min_spend_cents,
+          },
+        },
+        error: null,
+      });
+    }
+    return Promise.resolve({
+      data: [issuedRow({ status: 'verified', verified_at: VERIFIED_AT, challenge_item_id: ITEM, id: 'redemption-1' })],
+      error: null,
+    });
+  });
+  from.mockImplementation((table: string) => {
+    if (options.throwOnArrival && (table === 'boost_arrival_sessions' || table === 'boost_quotes')) {
+      throw new Error(`unexpected ${table}`);
+    }
+    const resultFor = (): QueryResult => {
+      if (table === 'challenge_items') return { data: item, error: null };
+      if (table === 'offer_versions') {
+        return { data: { tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }, error: null };
+      }
+      if (table === 'user_profiles') return { data: { email: 'a@b.c' }, error: null };
+      if (table === 'restaurants') return { data: { name: 'Active Grill' }, error: null };
+      if (table === 'boost_arrival_sessions') {
+        return { data: options.session === undefined ? sessionRow() : options.session, error: null };
+      }
+      if (table === 'boost_quotes') return { data: options.quote === undefined ? quoteRow() : options.quote, error: null };
+      return { data: null, error: null };
+    };
+    if (table === 'user_badges') {
+      return {
+        select: () => chain(table, { data: [], error: null }, filters),
+        upsert: async () => {
+          events.push('badges');
+          return { error: null };
+        },
+      };
+    }
+    if (table === 'redemptions') {
+      return {
+        select: (columns: string) => {
+          if (columns === '*') return chain(table, { data: null, error: null, count: 1 }, filters);
+          if (columns.includes('settlement_kind')) {
+            return chain(table, { data: options.settlementRow ?? null, error: null }, filters);
+          }
+          return chain(table, { data: { challenge_item_id: ITEM }, error: null }, filters);
+        },
+      };
+    }
+    return { select: () => chain(table, resultFor(), filters) };
+  });
+  return { filters, events };
+}

@@ -125,11 +125,18 @@ export type SupersedeArrivalQuoteResult = {
     | 'unavailable';
 };
 
+/** One open session per challenge item. More than one row is `unavailable`. */
+export type OpenSessionByItemResult =
+  | { status: 'found'; session: ArrivalSessionRecord }
+  | { status: 'none' }
+  | { status: 'unavailable' };
+
 export type ArrivalStore = {
   findItem(id: string): Promise<ArrivalItemRecord | null>;
   findVersion(id: string, restaurantId: string): Promise<ArrivalVersionRecord | null>;
   findSessionByKey(restaurantId: string, idempotencyKey: string): Promise<ArrivalSessionRecord | null>;
   findSession(id: string, restaurantId: string): Promise<ArrivalSessionRecord | null>;
+  findOpenSessionByChallengeItem(challengeItemId: string): Promise<OpenSessionByItemResult>;
   findActiveQuote(sessionId: string): Promise<ArrivalQuoteRecord | null>;
   openSession(input: OpenArrivalSessionInput): Promise<OpenArrivalSessionResult>;
   supersedeQuote(input: SupersedeArrivalQuoteInput): Promise<SupersedeArrivalQuoteResult>;
@@ -218,6 +225,9 @@ function mapQuote(row: {
   };
 }
 
+const SESSION_COLUMNS =
+  'id, restaurant_id, challenge_item_id, offer_version_id, redemption_id, locked_boost_id, arrival_at, expires_at, idempotency_key, status';
+
 const OPEN_STATUSES = new Set([
   'session_open',
   'restaurant_mismatch',
@@ -295,9 +305,7 @@ export function createSupabaseArrivalStore(admin: Admin): ArrivalStore {
     async findSessionByKey(restaurantId, idempotencyKey) {
       const { data, error } = await admin
         .from('boost_arrival_sessions')
-        .select(
-          'id, restaurant_id, challenge_item_id, offer_version_id, redemption_id, locked_boost_id, arrival_at, expires_at, idempotency_key, status',
-        )
+        .select(SESSION_COLUMNS)
         .eq('restaurant_id', restaurantId)
         .eq('idempotency_key', idempotencyKey)
         .maybeSingle();
@@ -307,14 +315,25 @@ export function createSupabaseArrivalStore(admin: Admin): ArrivalStore {
     async findSession(id, restaurantId) {
       const { data, error } = await admin
         .from('boost_arrival_sessions')
-        .select(
-          'id, restaurant_id, challenge_item_id, offer_version_id, redemption_id, locked_boost_id, arrival_at, expires_at, idempotency_key, status',
-        )
+        .select(SESSION_COLUMNS)
         .eq('id', id)
         .eq('restaurant_id', restaurantId)
         .maybeSingle();
       if (error || !data) return null;
       return mapSession(data);
+    },
+    async findOpenSessionByChallengeItem(challengeItemId) {
+      const { data, error } = await admin
+        .from('boost_arrival_sessions')
+        .select(SESSION_COLUMNS)
+        .eq('challenge_item_id', challengeItemId)
+        .eq('status', 'open')
+        .maybeSingle();
+      if (error) return { status: 'unavailable' };
+      if (!data) return { status: 'none' };
+      const session = mapSession(data);
+      if (!session) return { status: 'unavailable' };
+      return { status: 'found', session };
     },
     async findActiveQuote(sessionId) {
       const { data, error } = await admin

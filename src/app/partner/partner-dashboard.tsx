@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
-import { formatCents } from '@/lib/offers/sealed-base';
+import { partnerVerifiedOfferLine } from '@/lib/boost/savings-copy';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import type { PartnerAnalyticsResult } from '@/app/actions/partner-auth';
@@ -37,6 +37,10 @@ export function PartnerDashboard({
         hideDiscountAmount: boolean;
         sealedDiscountCents: number | null;
         sealedMinSpendCents: number | null;
+        confirmedTotalDiscountCents: number | null;
+        confirmedBaseDiscountCents: number | null;
+        confirmedBoostDiscountCents: number | null;
+        needsSubtotal: boolean;
       }
     | { success: false; message: string }
     | null
@@ -70,6 +74,10 @@ export function PartnerDashboard({
           hideDiscountAmount: res.hideDiscountAmount,
           sealedDiscountCents: res.sealedDiscountCents,
           sealedMinSpendCents: res.sealedMinSpendCents,
+          confirmedTotalDiscountCents: res.confirmedTotalDiscountCents,
+          confirmedBaseDiscountCents: res.confirmedBaseDiscountCents,
+          confirmedBoostDiscountCents: res.confirmedBoostDiscountCents,
+          needsSubtotal: res.needsSubtotal,
         });
         setCode('');
         router.refresh();
@@ -153,13 +161,7 @@ export function PartnerDashboard({
 
         {result?.success && (
           <div className="wb-partner-alert wb-partner-alert-ok wb-partner-follow" role="alert" aria-live="assertive">
-            <p className="wb-partner-alert-title">
-              {result.sealedDiscountCents != null && result.sealedMinSpendCents != null
-                ? `Valid — ${formatCents(result.sealedDiscountCents)} off ${formatCents(result.sealedMinSpendCents)}`
-                : result.hideDiscountAmount
-                  ? 'Valid'
-                  : 'Valid — $10 discount applied'}
-            </p>
+            <p className="wb-partner-alert-title">{partnerVerifiedOfferLine(result)}</p>
             <div>
               {result.email && (
                 <p>

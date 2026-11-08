@@ -10,9 +10,10 @@ import type { Json } from '@/types/database.types';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 /**
- * Unused writer for an already-computed Boost confirmation plan.
- * No page or action imports this module. It does not re-run the planner,
- * verify a redemption, quote a Boost, or scan a bill.
+ * Writer for an already-computed Boost confirmation plan.
+ * Partner verify calls this after a successful claim when the arrival flag
+ * is on. It does not re-run the planner, verify a redemption, quote a Boost,
+ * or scan a bill.
  */
 
 const SETTLEMENT_COLUMNS =

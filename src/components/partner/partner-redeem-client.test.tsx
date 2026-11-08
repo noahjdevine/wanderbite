@@ -94,6 +94,61 @@ describe('PartnerRedeemClient', () => {
     expect(status.getAttribute('aria-live')).toBe('polite');
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('button', { name: 'Redeem another code' })).toBeTruthy();
+    expect(status.textContent).not.toContain('$0');
+    expect(status.querySelector('[data-confirmed-discount]')).toBeNull();
+  });
+
+  it('shows a confirmed quote total and its parts', async () => {
+    verifyRedemptionTokenForPartner.mockResolvedValue({
+      success: true,
+      redemptionDetails: {
+        email: 'guest@example.com',
+        restaurantName: 'North Grill',
+        verifiedAt: 'Nov 4, 2026, 3:00 PM',
+      },
+      newBadgesEarned: [],
+      hideDiscountAmount: false,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: 2500,
+      confirmedBaseDiscountCents: 2000,
+      confirmedBoostDiscountCents: 500,
+      needsSubtotal: false,
+    });
+    render(<PartnerRedeemClient restaurantName="North Grill" slug="north-grill" />);
+    fireEvent.change(screen.getByLabelText('Customer code'), { target: { value: 'WB-OK' } });
+    fireEvent.submit(screen.getByLabelText('Customer code').closest('form') as HTMLFormElement);
+    const status = await screen.findByRole('status');
+    expect(status.querySelector('[data-confirmed-discount]')?.textContent).toBe(
+      '$25 off ($20 base + $5 Boost)',
+    );
+    expect(status.textContent).toContain("Apply the Wanderbite discount on the guest's check.");
+  });
+
+  it('says the bill needs confirm and does not show $0', async () => {
+    verifyRedemptionTokenForPartner.mockResolvedValue({
+      success: true,
+      redemptionDetails: {
+        email: null,
+        restaurantName: 'North Grill',
+        verifiedAt: 'Nov 4, 2026, 3:00 PM',
+      },
+      newBadgesEarned: [],
+      hideDiscountAmount: true,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: null,
+      confirmedBaseDiscountCents: null,
+      confirmedBoostDiscountCents: null,
+      needsSubtotal: true,
+    });
+    render(<PartnerRedeemClient restaurantName="North Grill" slug="north-grill" />);
+    fireEvent.change(screen.getByLabelText('Customer code'), { target: { value: 'WB-OK' } });
+    fireEvent.submit(screen.getByLabelText('Customer code').closest('form') as HTMLFormElement);
+    const status = await screen.findByRole('status');
+    expect(status.textContent).toContain('Bill needs confirm');
+    expect(status.textContent).not.toContain('$0');
+    expect(status.textContent).not.toContain('$15');
   });
 
   it('still auto-verifies a pending code once', async () => {

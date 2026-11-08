@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
+import { redeemSavingsCopy } from '@/lib/boost/savings-copy';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import {
@@ -16,7 +17,7 @@ import {
 type VerifyState =
   | { status: 'idle' }
   | { status: 'verifying' }
-  | { status: 'success'; email: string | null; verifiedAt: string }
+  | { status: 'success'; email: string | null; verifiedAt: string; savingsCopy: string | null }
   | { status: 'error'; message: string };
 
 function normalizeCode(raw: string): string {
@@ -52,6 +53,7 @@ export function PartnerRedeemClient({
           status: 'success',
           email: res.redemptionDetails.email,
           verifiedAt: res.redemptionDetails.verifiedAt,
+          savingsCopy: redeemSavingsCopy(res),
         });
         setCode('');
         router.refresh();
@@ -108,6 +110,7 @@ export function PartnerRedeemClient({
         <div className="wb-partner-alert wb-partner-alert-ok wb-partner-result" role="status" aria-live="polite">
           <CheckCircle2 className="size-10" aria-hidden />
           <p className="wb-partner-alert-title">Verified</p>
+          {state.savingsCopy ? <p data-confirmed-discount="">{state.savingsCopy}</p> : null}
           <p>Apply the Wanderbite discount on the guest&apos;s check.</p>
           {state.email && <p>Guest: {state.email}</p>}
           <p>{state.verifiedAt}</p>
