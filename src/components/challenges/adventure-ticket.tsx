@@ -17,6 +17,7 @@ import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
 import { BoostCheckIn } from '@/components/challenges/boost-check-in';
+import { ReportVisitProblem } from '@/components/challenges/report-visit-problem';
 import { FirstVisitBriefing } from '@/components/briefings/first-visit';
 import { VisitNoteRead } from '@/components/notes/visit-note';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
@@ -102,6 +103,11 @@ type AdventureTicketProps = {
    * and does not ask for a location.
    */
   boostCheckIn?: boolean;
+  /**
+   * Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting
+   * and does not read visit cases.
+   */
+  visitProblems?: boolean;
 };
 
 export function AdventureTicket({
@@ -124,6 +130,7 @@ export function AdventureTicket({
   activities = [],
   briefings = [],
   boostCheckIn = false,
+  visitProblems = false,
 }: AdventureTicketProps) {
   const [nowMs] = useState(() => Date.now());
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
@@ -263,6 +270,12 @@ export function AdventureTicket({
       badgeTone={badge?.tone}
       note={swapNote}
     >
+      {visitProblems && item.challengeItem.status !== 'swapped_out' ? (
+        <ReportVisitProblem
+          challengeItemId={item.challengeItem.id}
+          redemptionId={item.redemptionId ?? null}
+        />
+      ) : null}
       <BoostCheckIn
         enabled={
           boostCheckIn && isAssigned && !windowClosed && Boolean(item.challengeItem.offer_version_id) && hasCoords

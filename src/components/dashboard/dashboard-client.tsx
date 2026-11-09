@@ -98,6 +98,8 @@ type DashboardClientProps = {
   appearance?: 'classic' | 'golden';
   /** Exact E07_ARRIVAL_SESSIONS_ENABLED. Default false shows no Boost check-in. */
   boostCheckIn?: boolean;
+  /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
+  visitProblems?: boolean;
   /** Golden sheet only. The classic page renders this notice itself. */
   showIncompleteProfile?: boolean;
 };
@@ -123,6 +125,7 @@ export function DashboardClient({
   appearance = 'classic',
   showIncompleteProfile = false,
   boostCheckIn = false,
+  visitProblems = false,
 }: DashboardClientProps) {
   const router = useRouter();
   const [headerNow] = useState(() => new Date());
@@ -274,6 +277,7 @@ export function DashboardClient({
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
               briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
               boostCheckIn={boostCheckIn}
+              visitProblems={visitProblems}
             />
           ) : (
             <RestaurantCard
@@ -297,6 +301,7 @@ export function DashboardClient({
               recipeExclusionLine={recipeSections.exclusionLine}
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
               briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
+              visitProblems={visitProblems}
             />
           ),
         )}
@@ -360,6 +365,7 @@ export function DashboardClient({
       recipeSections={recipeSections}
       activitySuggestions={activitySuggestions}
       briefings={briefings}
+      visitProblems={visitProblems}
     />
   );
 

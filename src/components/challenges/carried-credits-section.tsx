@@ -20,6 +20,8 @@ type CarriedCreditsSectionProps = {
   recipeSections?: RecipeSections;
   activitySuggestions?: ActivitySuggestions;
   briefings?: RestaurantBriefings;
+  /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
+  visitProblems?: boolean;
 };
 
 export function CarriedCreditsSection({
@@ -35,6 +37,7 @@ export function CarriedCreditsSection({
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
   activitySuggestions = { byRestaurantId: {} },
   briefings = { byRestaurantId: {} },
+  visitProblems = false,
 }: CarriedCreditsSectionProps) {
   if (credits.length === 0) return null;
   const swapCopy = swapsRemaining === 0 ? '0 swaps left' : '1 swap left';
@@ -78,6 +81,7 @@ export function CarriedCreditsSection({
               briefings={
                 credit.item ? briefings.byRestaurantId[credit.item.restaurant.id] ?? [] : []
               }
+              visitProblems={visitProblems}
             />
           );
         })}

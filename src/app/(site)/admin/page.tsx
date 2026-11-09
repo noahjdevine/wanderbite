@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { safeManualImagePath } from '@/lib/restaurant-image';
 import { AdminClient } from './admin-client';
 import { AdminMfaGate } from './admin-mfa-gate';
+import { visitProblemsEnabled } from '@/lib/boost/flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -179,6 +180,11 @@ export default async function AdminPage() {
             <Button variant="outline" size="sm" asChild>
               <Link href="/admin/content">Content review</Link>
             </Button>
+            {visitProblemsEnabled() ? (
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/admin/visit-problems">Visit problems</Link>
+              </Button>
+            ) : null}
             <Button variant="outline" size="sm" asChild>
               <Link href="/">Back to app</Link>
             </Button>

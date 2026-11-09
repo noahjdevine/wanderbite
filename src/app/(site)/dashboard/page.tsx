@@ -14,6 +14,7 @@ import { memberGenerateBlocked } from '@/lib/challenges/load-monthly-reveal';
 import { loadActivitySuggestions } from '@/lib/activities/load';
 import { loadRestaurantBriefings } from '@/lib/briefings/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
+import { visitProblemsEnabled } from '@/lib/boost/flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -151,6 +152,7 @@ export default async function DashboardPage() {
           recipeSections={recipeSections}
           activitySuggestions={activitySuggestions}
           briefings={briefings}
+          visitProblems={visitProblemsEnabled()}
         />
       </div>
     </main>

@@ -2410,6 +2410,49 @@ export type Database = {
           },
         ]
       }
+      // Hand-edited for E07-D1. npm run types:db was not run against hosted.
+      visit_problem_cases: {
+        Row: {
+          category: string
+          challenge_item_id: string
+          created_at: string
+          explanation: string
+          id: string
+          member_response: string | null
+          redemption_id: string | null
+          resolved_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          category: string
+          challenge_item_id: string
+          created_at?: string
+          explanation: string
+          id?: string
+          member_response?: string | null
+          redemption_id?: string | null
+          resolved_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          category?: string
+          challenge_item_id?: string
+          created_at?: string
+          explanation?: string
+          id?: string
+          member_response?: string | null
+          redemption_id?: string | null
+          resolved_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       webhook_outbox: {
         Row: {
           attempts: number
@@ -4347,6 +4390,17 @@ export type Database = {
           p_restaurant_id: string
           p_tier_id: string | null
           p_total_discount_cents: number
+        }
+        Returns: Json
+      }
+      // Hand-edited for E07-D1. npm run types:db was not run against hosted.
+      review_visit_problem_case: {
+        Args: {
+          p_actor_user_id: string
+          p_case_id: string
+          p_member_response: string | null
+          p_reason: string
+          p_status: string
         }
         Returns: Json
       }
