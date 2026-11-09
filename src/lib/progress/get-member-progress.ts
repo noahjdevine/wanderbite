@@ -1,6 +1,6 @@
 import 'server-only';
 
-import { arrivalSessionsEnabled } from '@/lib/boost/flag';
+import { arrivalSessionsEnabled, visitProblemsEnabled } from '@/lib/boost/flag';
 import {
   recordedBoostSettlementFromRow,
   SETTLEMENT_COLUMNS,
@@ -66,7 +66,7 @@ export type MemberProgress =
       level: number;
       nextLevel: MemberLevel | null;
       badges: MemberBadge[];
-      savings: { amount: number | null; isEstimate: boolean };
+      savings: { amount: number | null; isEstimate: boolean; corrected: boolean };
     };
 
 export type PresentedProgress = {
@@ -174,6 +174,48 @@ async function loadStoredSavingsCents(
 }
 
 /**
+ * Admin savings corrections exist only after 20261109210040. Call this only
+ * when E07_VISIT_PROBLEMS_ENABLED is exactly true. A missing table or any
+ * other read error returns null so Progress keeps the uncorrected total.
+ */
+async function loadSavingsCorrections(
+  admin: Admin,
+  userId: string,
+  redemptionIds: readonly string[],
+): Promise<Map<string, number> | null> {
+  try {
+    const { data, error } = await admin
+      .from('visit_problem_savings_adjustments')
+      .select('redemption_id, corrected_cents')
+      .eq('user_id', userId)
+      .in('redemption_id', [...redemptionIds]);
+    if (error) {
+      console.error('[progress] savings correction read:', error.message);
+      return null;
+    }
+    const byId = new Map<string, number>();
+    for (const row of (data ?? []) as Array<{ redemption_id: string; corrected_cents: number }>) {
+      if (byId.has(row.redemption_id)) continue;
+      if (
+        typeof row.corrected_cents !== 'number' ||
+        !Number.isInteger(row.corrected_cents) ||
+        row.corrected_cents < 0
+      ) {
+        continue;
+      }
+      byId.set(row.redemption_id, row.corrected_cents);
+    }
+    return byId;
+  } catch (error) {
+    console.error(
+      '[progress] savings correction read:',
+      error instanceof Error ? error.message : 'unknown',
+    );
+    return null;
+  }
+}
+
+/**
  * Pure read of one member's progress. Callers pass the signed-in user id
  * from the server. This function never inserts or updates.
  */
@@ -268,14 +310,24 @@ export async function getMemberProgress(
             verified.map((row) => row.id),
           )
         : null;
-    const savings = savingsCentsForVisits(
-      verified.map((row) => ({
-        sealedCents: row.challenge_item_id
-          ? sealedCentsByItem.get(row.challenge_item_id)
-          : undefined,
-        storedCents: storedById ? (storedById.get(row.id) ?? null) : null,
-      })),
-      { useStoredSettlements: storedById != null },
+    const correctedById =
+      visitProblemsEnabled() && verified.length > 0
+        ? await loadSavingsCorrections(
+            admin,
+            userId,
+            verified.map((row) => row.id),
+          )
+        : new Map<string, number>();
+    const savingsVisits = verified.map((row) => ({
+      sealedCents: row.challenge_item_id ? sealedCentsByItem.get(row.challenge_item_id) : undefined,
+      storedCents: storedById ? (storedById.get(row.id) ?? null) : null,
+      correctedCents: correctedById ? (correctedById.get(row.id) ?? null) : null,
+    }));
+    const savings = savingsCentsForVisits(savingsVisits, {
+      useStoredSettlements: storedById != null,
+    });
+    const savingsCorrected = savingsVisits.some(
+      (visit) => typeof visit.correctedCents === 'number',
     );
 
     const { data: badgeData, error: badgeError } = await admin
@@ -317,7 +369,11 @@ export async function getMemberProgress(
       level: level.level,
       nextLevel: level.nextLevel,
       badges,
-      savings: { amount: savings.amount, isEstimate: savings.isEstimate },
+      savings: {
+        amount: savings.amount,
+        isEstimate: savings.isEstimate,
+        corrected: savingsCorrected,
+      },
     };
   } catch (error) {
     return fail(error instanceof Error ? error.message : 'unknown');

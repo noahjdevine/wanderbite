@@ -131,17 +131,33 @@ E07-C4 reads those stored cents for Progress savings when the flag is exactly `t
 
 Noah confirmed on 2026-11-08: no arrival session stays on today's sealed lowest tier (`use_sealed_base`), including a null snapshot when that tier is missing. The 1000-cent display fallback stays in `getMemberProgress`. An open session whose active quote is the $0 placeholder (`eligible_subtotal_cents === 0`, or `below_minimum` with no positive staff subtotal) is `needs_subtotal` and does not fall back to the sealed base. A locked Boost still applies when confirmation is after session `expires_at` and before `redemption_deadline`. `expires_at` in the past is not by itself a refusal, and this helper does not move it. Instants are compared as absolute times. This slice does not apply the E01 fall-back clock face. A recorded snapshot replays as `already_settled` and is not discounted again.
 
-E07-D (disputes) reads the quote chain, including superseded rows. It does not mint a later `expires_at`. E07-D1, below, only records and reviews a member case. It does not read or change quotes. Correcting a visit is a separate later build.
+E07-D (disputes) reads the quote chain, including superseded rows. It does not mint a later `expires_at`. E07-D1, below, records and reviews a member case. E07-D2 corrects an open case without rewriting the quote or moving `expires_at`.
 
 ## E07-D1 visit problems
 
-`E07_VISIT_PROBLEMS_ENABLED` is the server flag. Only the exact string `true` turns the slice on. Unset, empty, `TRUE`, and `1` stay off. While it is off, the Challenges card, the visit screen at `/challenges/show/[redemptionId]`, and `/admin` do not render the new controls and do not query `visit_problem_cases`. `/admin/visit-problems` is a 404 before any read. The flag stays unset. This slice does not set it in Vercel, preview, or production.
+`E07_VISIT_PROBLEMS_ENABLED` is the server flag. Only the exact string `true` turns the slice on. Unset, empty, `TRUE`, and `1` stay off. While it is off, the Challenges card, the visit screen at `/challenges/show/[redemptionId]`, and `/admin` do not render the new controls and do not query `visit_problem_cases`. `/admin/visit-problems` is a 404 before any read. The flag is the exact string `true` on Preview only. It is off in production. This repo does not change that Vercel env.
 
 A signed-in member can report one open problem on their own challenge item from the Challenges card and from that item's existing code screen. No code is required. Categories are wrong discount, the restaurant would not honor the offer, check-in or code trouble, and other visit issue. The explanation is plain text, trimmed, and at most 500 characters. There are no attachments. Another member's item is refused and writes nothing. A second open case for the same item is refused and does not change the first explanation. Filing does not change the visit, quote, redemption, credit, badge, or subscription.
 
 Member-visible states are Submitted, Under review, and Resolved. The member read returns the category, explanation, state, and member-visible response. It does not return the admin actor or the internal reason. Noah, or another user whose `user_profiles.role` is `admin` and whose session is AAL2, reviews the queue. A resolution requires a member-visible explanation. Every admin change stores the actor, time, and reason in `admin_audit_log`. The original explanation and the visit stay as they were. A resolved case is sealed. Partners have no queue and no review path.
 
-Migration `supabase/migrations/20261109012530_e07_d1_visit_problem_cases.sql` is not applied to hosted. `npm run types:db` was not run. Checked-in database types for this table and `review_visit_problem_case` were hand-edited. Apply the migration before setting the flag. Setting the flag first would query a table that is not there yet. This paragraph does not claim E07-D acceptance. The later correction build still reads the quote chain, including superseded rows, and does not mint a later `expires_at`.
+The repo file stays `supabase/migrations/20261109012530_e07_d1_visit_problem_cases.sql`. Hosted applied that SQL as version `20261109021548`. The filename was not rewritten. `npm run types:db` was not run. Checked-in database types for this table and `review_visit_problem_case` were hand-edited. This paragraph does not claim E07-D acceptance.
+
+## E07-D2 audited corrections
+
+An admin with the same AAL2 check as D1 can correct an open case (Submitted or Under review). A resolved case accepts no further fix. Partners have no correction path. Opening a case, or resolving one, still grants nothing by itself.
+
+Wrong discount allows a savings fix. Restaurant wouldn't honor the offer, and check-in or code trouble, allow one make-up challenge. Other visit issue allows either or both. Each case gets at most one savings fix and at most one make-up. A repeat of the same savings amount, or a second make-up request, returns the existing row and does not write a second audit. A different savings amount does not replace the first.
+
+The savings fix is an append-only row in `visit_problem_savings_adjustments`, tied to the case and the original verified redemption. When that redemption has a settlement, the row copies `quote_id`, `settlement_kind`, and the original cents. It does not update or delete the redemption, the quote, or the arrival session, and it does not move `expires_at`. Progress, when `E07_VISIT_PROBLEMS_ENABLED` is exactly `true`, counts `corrected_cents` for that visit and shows "Corrected after review" on the savings figure. A failed correction read keeps today's total and does not fail Progress. While the flag is off, Progress does not query the adjustment table.
+
+The make-up fix inserts one `visit_problem_opportunities` row. The original visit stays recorded. It does not un-verify a redemption, release capacity, insert a credit, award a badge or XP, or mint a Boost session. Challenges shows "Make-up challenge" with the restaurant from that visit when the flag is exactly `true`. An empty list renders nothing. A failed read leaves Challenges up with no spot.
+
+Each successful fix writes its own `admin_audit_log` row: `visit_problem.correct_savings` or `visit_problem.restore_opportunity`. The member still sees the existing admin reply. The audit reason stays internal.
+
+Migration `supabase/migrations/20261109210040_e07_d2_visit_problem_corrections.sql` is not applied to hosted. Do not run `supabase db push` for it from this change. It reads the E07-C2 settlement columns, so those columns have to exist before this file is applied. `npm run types:db` was not run. Checked-in database types and `src/lib/schema-contract.ts` for the two tables and the two RPCs were hand-edited. A blank or whitespace-only member explanation now shows "Tell us what happened" on the report form. The server still rejects that text.
+
+This paragraph does not claim E07-D acceptance. No cash, refund, subscription change, or automatic credit is part of this slice.
 
 ## Noah's decisions (2026-11-05)
 

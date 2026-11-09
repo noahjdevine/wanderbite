@@ -6,10 +6,12 @@ type OpenStatProps = {
   label: ReactNode;
   /** When true, the caption says the figure is estimated. */
   estimated?: boolean;
+  /** Short note under the caption, such as a review correction. */
+  note?: string;
   divided?: boolean;
 };
 
-export function OpenStat({ value, label, estimated = false, divided = false }: OpenStatProps) {
+export function OpenStat({ value, label, estimated = false, note, divided = false }: OpenStatProps) {
   return (
     <div className={cn("wb-open-stat", divided && "border-l border-wb-line pl-3")}>
       <span className="font-display text-[44px] leading-none text-wb-plum">{value}</span>
@@ -19,6 +21,12 @@ export function OpenStat({ value, label, estimated = false, divided = false }: O
           <>
             <br />
             (estimated)
+          </>
+        ) : null}
+        {note ? (
+          <>
+            <br />
+            {note}
           </>
         ) : null}
       </span>

@@ -1,11 +1,16 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { visitProblemsEnabled } from '@/lib/boost/flag';
 import {
+  allowedVisitProblemFixes,
   currentMemberCase,
+  decideRestoreCorrection,
+  decideSavingsCorrection,
   decideVisitProblemReview,
+  parseRestoreCorrectionRpc,
   parseReviewRpc,
+  parseSavingsCorrectionRpc,
   readOwnedVisitProblem,
   submitOwnedVisitProblem,
   toMemberVisitProblem,
@@ -328,6 +333,118 @@ describe('visit problem database result mapping', () => {
   });
 });
 
+describe('visit problem corrections', () => {
+  it('allows a savings fix only for a wrong discount or other issue', () => {
+    expect(allowedVisitProblemFixes('wrong_discount')).toEqual({ savings: true, restore: false });
+    expect(allowedVisitProblemFixes('offer_refused')).toEqual({ savings: false, restore: true });
+    expect(allowedVisitProblemFixes('check_in_code')).toEqual({ savings: false, restore: true });
+    expect(allowedVisitProblemFixes('other')).toEqual({ savings: true, restore: true });
+  });
+
+  it('refuses a savings fix after the case is resolved and a restore the category does not allow', () => {
+    expect(
+      decideSavingsCorrection({
+        category: 'wrong_discount',
+        status: 'resolved',
+        correctedCents: 2500,
+        reason: 'Too late.',
+      }),
+    ).toEqual({ ok: false, code: 'terminal' });
+    expect(
+      decideSavingsCorrection({
+        category: 'offer_refused',
+        status: 'submitted',
+        correctedCents: 2500,
+        reason: 'Not this category.',
+      }),
+    ).toEqual({ ok: false, code: 'not_allowed' });
+    expect(
+      decideSavingsCorrection({
+        category: 'other',
+        status: 'under_review',
+        correctedCents: '  0 ',
+        reason: '  No savings were due.  ',
+      }),
+    ).toEqual({ ok: true, correctedCents: 0, reason: 'No savings were due.' });
+    expect(
+      decideSavingsCorrection({
+        category: 'wrong_discount',
+        status: 'submitted',
+        correctedCents: '12.5',
+        reason: 'Not whole cents.',
+      }),
+    ).toEqual({ ok: false, code: 'invalid_amount' });
+  });
+
+  it('refuses a make-up spot for a wrong discount and after the case is resolved', () => {
+    expect(
+      decideRestoreCorrection({
+        category: 'wrong_discount',
+        status: 'submitted',
+        reason: 'Not this category.',
+      }),
+    ).toEqual({ ok: false, code: 'not_allowed' });
+    expect(
+      decideRestoreCorrection({
+        category: 'check_in_code',
+        status: 'resolved',
+        reason: 'Too late.',
+      }),
+    ).toEqual({ ok: false, code: 'terminal' });
+    expect(
+      decideRestoreCorrection({
+        category: 'offer_refused',
+        status: 'under_review',
+        reason: ' Grant one visit. ',
+      }),
+    ).toEqual({ ok: true, reason: 'Grant one visit.' });
+  });
+
+  it('drops an internal reason from a correction result', () => {
+    expect(
+      parseSavingsCorrectionRpc({
+        ok: true,
+        already_applied: false,
+        corrected_cents: 2500,
+        redemption_id: 'redemption-1',
+        reason: 'internal-only',
+      }),
+    ).toEqual({ ok: false, code: 'unavailable' });
+    expect(
+      parseSavingsCorrectionRpc({
+        ok: true,
+        already_applied: true,
+        corrected_cents: 2500,
+        redemption_id: 'redemption-1',
+      }),
+    ).toEqual({
+      ok: true,
+      alreadyApplied: true,
+      correctedCents: 2500,
+      redemptionId: 'redemption-1',
+    });
+    expect(parseSavingsCorrectionRpc({ ok: false, error: 'not_admin' })).toEqual({
+      ok: false,
+      code: 'not_admin',
+    });
+    expect(parseSavingsCorrectionRpc({ ok: false, error: 'terminal' })).toEqual({
+      ok: false,
+      code: 'terminal',
+    });
+    expect(
+      parseRestoreCorrectionRpc({
+        ok: true,
+        already_applied: false,
+        opportunity_id: 'spot-1',
+      }),
+    ).toEqual({ ok: true, alreadyApplied: false, opportunityId: 'spot-1' });
+    expect(parseRestoreCorrectionRpc({ ok: false, error: 'already_applied' })).toEqual({
+      ok: false,
+      code: 'already_applied',
+    });
+  });
+});
+
 describe('visit problem boundaries', () => {
   const action = readFileSync(path.join(root, 'src/app/actions/visit-problems.ts'), 'utf8');
   const admin = readFileSync(path.join(root, 'src/app/(site)/admin/visit-problem-actions.ts'), 'utf8');
@@ -353,4 +470,38 @@ describe('visit problem boundaries', () => {
     expect(migration).toMatch(/grant select, insert on table public\.visit_problem_cases to service_role/);
     expect(migration).not.toMatch(/grant (update|delete|all) on table public\.visit_problem_cases to service_role/);
   });
+
+  it('keeps corrections admin-only and does not rewrite the original visit', () => {
+    const correction = readFileSync(
+      path.join(root, 'supabase/migrations/20261109210040_e07_d2_visit_problem_corrections.sql'),
+      'utf8',
+    );
+    const challenges = readFileSync(path.join(root, 'src/app/(site)/challenges/page.tsx'), 'utf8');
+    expect(correction).toMatch(/visit_problem\.correct_savings/);
+    expect(correction).toMatch(/visit_problem\.restore_opportunity/);
+    expect(correction).not.toMatch(/update\s+public\.redemptions/i);
+    expect(correction).not.toMatch(/insert\s+into\s+public\.boost_arrival_sessions/i);
+    expect(correction).not.toMatch(/insert\s+into\s+public\.boost_quotes/i);
+    expect(correction).not.toMatch(/insert\s+into\s+public\.entitlement_credits/i);
+    expect(correction).not.toMatch(/insert\s+into\s+public\.user_badges/i);
+    expect(correction).toMatch(/grant select on table public\.visit_problem_savings_adjustments to service_role/);
+    expect(correction).not.toMatch(
+      /grant (insert|update|delete) on table public\.visit_problem_savings_adjustments to service_role/,
+    );
+    expect(challenges).toMatch(/visitProblemsEnabled\(\)\s*\?\s*await loadMemberMakeupSpots/);
+    expect(partnerSource(path.join(root, 'src/app/partner'))).not.toMatch(
+      /correct_visit_problem_savings|restore_visit_problem_opportunity|visit_problem_savings_adjustments|visit_problem_opportunities/,
+    );
+  });
 });
+
+function partnerSource(dir: string): string {
+  return readdirSync(dir, { withFileTypes: true })
+    .flatMap((entry) => {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) return [partnerSource(full)];
+      if (!entry.name.endsWith('.ts') && !entry.name.endsWith('.tsx')) return [];
+      return [readFileSync(full, 'utf8')];
+    })
+    .join('\n');
+}

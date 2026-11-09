@@ -106,6 +106,41 @@ describe('savingsCentsForVisits', () => {
     ).toEqual({ cents: 2850, amount: 28.5, isEstimate: true });
   });
 
+  it('uses a corrected amount instead of the sealed tier or the stored snapshot', () => {
+    expect(
+      savingsCentsForVisits([{ sealedCents: 1500, storedCents: 1850, correctedCents: 2500 }], off),
+    ).toEqual({ cents: 2500, amount: 25, isEstimate: false });
+    expect(
+      savingsCentsForVisits([{ sealedCents: 1500, storedCents: 1850, correctedCents: 900 }], on),
+    ).toEqual({ cents: 900, amount: 9, isEstimate: false });
+    expect(savingsCentsForVisits([{ sealedCents: 1500, correctedCents: 0 }], off)).toEqual({
+      cents: 0,
+      amount: 0,
+      isEstimate: false,
+    });
+  });
+
+  it('keeps the total estimated when a corrected visit sits next to a read-time visit', () => {
+    expect(
+      savingsCentsForVisits(
+        [
+          { sealedCents: 1500, correctedCents: 2500 },
+          { sealedCents: 1200, storedCents: null },
+        ],
+        off,
+      ),
+    ).toEqual({ cents: 3700, amount: 37, isEstimate: true });
+    expect(
+      savingsCentsForVisits(
+        [
+          { sealedCents: 1500, storedCents: 1850, correctedCents: 2500 },
+          { sealedCents: 1200, storedCents: 1200 },
+        ],
+        on,
+      ),
+    ).toEqual({ cents: 3700, amount: 37, isEstimate: false });
+  });
+
   it('drops the estimate only when every visit has stored cents', () => {
     expect(
       savingsCentsForVisits(

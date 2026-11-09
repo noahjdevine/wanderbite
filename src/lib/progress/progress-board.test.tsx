@@ -487,11 +487,23 @@ describe('Progress page', () => {
     cleanup();
     render(
       <ProgressView
-        model={readyModel({ xp: 0, savings: { amount: 20, isEstimate: false } })}
+        model={readyModel({ xp: 0, savings: { amount: 20, isEstimate: false, corrected: false } })}
       />,
     );
     expect(screen.queryByText(/estimated/i)).toBeNull();
     expect(screen.getByText('$20')).toBeTruthy();
+    expect(screen.queryByText('Corrected after review')).toBeNull();
+    cleanup();
+    render(
+      <ProgressView
+        model={readyModel({
+          xp: 0,
+          savings: { amount: 25, isEstimate: false, corrected: true },
+        })}
+      />,
+    );
+    expect(screen.getByText('$25')).toBeTruthy();
+    expect(screen.getByText(/Corrected after review/)).toBeTruthy();
   });
 
   it('shows the unavailable message and a retry link instead of zeros', () => {
@@ -707,7 +719,7 @@ function baseProgress(
     level: level.level,
     nextLevel: level.nextLevel,
     badges: [],
-    savings: { amount: 0, isEstimate: true },
+    savings: { amount: 0, isEstimate: true, corrected: false },
     ...overrides,
   };
 }

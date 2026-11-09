@@ -33,6 +33,36 @@ export const VISIT_PROBLEM_STATUS_LABELS: Record<VisitProblemStatus, string> = {
 
 export const VISIT_PROBLEM_TEXT_MAX = 500;
 
+/** Corrected savings stay within this many cents. Zero is a real amount. */
+export const CORRECTED_SAVINGS_MAX_CENTS = 10_000_000;
+
+export type VisitProblemFixKind = 'savings' | 'restore';
+
+/** Which fixes an admin may apply for a category. Other allows both. */
+export function allowedVisitProblemFixes(category: VisitProblemCategory): {
+  savings: boolean;
+  restore: boolean;
+} {
+  if (category === 'wrong_discount') return { savings: true, restore: false };
+  if (category === 'offer_refused' || category === 'check_in_code') {
+    return { savings: false, restore: true };
+  }
+  return { savings: true, restore: true };
+}
+
+export function parseCorrectedCents(value: unknown): number | null {
+  if (typeof value === 'number') {
+    if (!Number.isInteger(value) || value < 0 || value > CORRECTED_SAVINGS_MAX_CENTS) return null;
+    return value;
+  }
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (!/^[0-9]+$/.test(text)) return null;
+  const parsed = Number(text);
+  if (!Number.isSafeInteger(parsed) || parsed > CORRECTED_SAVINGS_MAX_CENTS) return null;
+  return parsed;
+}
+
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/;
 
 export function parseVisitProblemText(value: unknown, max = VISIT_PROBLEM_TEXT_MAX): string | null {
@@ -124,6 +154,16 @@ export type AdminVisitProblem = {
   response: string | null;
   createdAt: string;
   latestReason: string | null;
+  /** Null when this case has no savings correction. */
+  savingsCorrectionCents: number | null;
+  /** True when this case already granted its one make-up opportunity. */
+  makeupGranted: boolean;
+};
+
+/** A member-visible make-up spot. No actor, audit reason, or case id. */
+export type MemberMakeupSpot = {
+  id: string;
+  restaurantName: string;
 };
 
 export function currentMemberCase(rows: readonly VisitProblemCaseRow[]): VisitProblemCaseRow | null {
@@ -277,6 +317,118 @@ export async function submitOwnedVisitProblem(
   });
   if (!inserted.ok) return inserted;
   return { ok: true, problem: toMemberVisitProblem(inserted.row) };
+}
+
+export type SavingsCorrectionCode =
+  | 'terminal'
+  | 'not_allowed'
+  | 'invalid_amount'
+  | 'invalid_reason';
+
+export type RestoreCorrectionCode = 'terminal' | 'not_allowed' | 'invalid_reason';
+
+/**
+ * Admin savings correction while the case is open. A resolved case is refused
+ * before the amount is judged. The reason is the audit text.
+ */
+export function decideSavingsCorrection(input: {
+  category: VisitProblemCategory;
+  status: VisitProblemStatus;
+  correctedCents: unknown;
+  reason: unknown;
+}): { ok: true; correctedCents: number; reason: string } | { ok: false; code: SavingsCorrectionCode } {
+  if (input.status === 'resolved') return { ok: false, code: 'terminal' };
+  if (!allowedVisitProblemFixes(input.category).savings) return { ok: false, code: 'not_allowed' };
+  const reason = parseVisitProblemText(input.reason);
+  if (!reason) return { ok: false, code: 'invalid_reason' };
+  const correctedCents = parseCorrectedCents(input.correctedCents);
+  if (correctedCents == null) return { ok: false, code: 'invalid_amount' };
+  return { ok: true, correctedCents, reason };
+}
+
+/** Admin make-up opportunity while the case is open. Resolving alone does not grant one. */
+export function decideRestoreCorrection(input: {
+  category: VisitProblemCategory;
+  status: VisitProblemStatus;
+  reason: unknown;
+}): { ok: true; reason: string } | { ok: false; code: RestoreCorrectionCode } {
+  if (input.status === 'resolved') return { ok: false, code: 'terminal' };
+  if (!allowedVisitProblemFixes(input.category).restore) return { ok: false, code: 'not_allowed' };
+  const reason = parseVisitProblemText(input.reason);
+  if (!reason) return { ok: false, code: 'invalid_reason' };
+  return { ok: true, reason };
+}
+
+const SAVINGS_RPC_ERRORS = [
+  'not_admin',
+  'not_found',
+  'terminal',
+  'not_allowed',
+  'invalid_reason',
+  'invalid_amount',
+  'already_applied',
+  'no_redemption',
+  'not_verified',
+] as const;
+
+const RESTORE_RPC_ERRORS = [
+  'not_admin',
+  'not_found',
+  'terminal',
+  'not_allowed',
+  'invalid_reason',
+  'already_applied',
+] as const;
+
+export type SavingsRpcCode = (typeof SAVINGS_RPC_ERRORS)[number];
+export type RestoreRpcCode = (typeof RESTORE_RPC_ERRORS)[number];
+
+export type SavingsCorrectionRpc =
+  | { ok: true; alreadyApplied: boolean; correctedCents: number; redemptionId: string }
+  | { ok: false; code: SavingsRpcCode | 'unavailable' };
+
+export type RestoreCorrectionRpc =
+  | { ok: true; alreadyApplied: boolean; opportunityId: string }
+  | { ok: false; code: RestoreRpcCode | 'unavailable' };
+
+function rpcObject(value: Json | null): Record<string, Json | undefined> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value;
+}
+
+export function parseSavingsCorrectionRpc(value: Json | null): SavingsCorrectionRpc {
+  const body = rpcObject(value);
+  if (!body) return { ok: false, code: 'unavailable' };
+  if (body.ok === true) {
+    const correctedCents = parseCorrectedCents(body.corrected_cents);
+    const redemptionId = typeof body.redemption_id === 'string' ? body.redemption_id : null;
+    if (correctedCents == null || !redemptionId || typeof body.already_applied !== 'boolean') {
+      return { ok: false, code: 'unavailable' };
+    }
+    if ('reason' in body) return { ok: false, code: 'unavailable' };
+    return { ok: true, alreadyApplied: body.already_applied, correctedCents, redemptionId };
+  }
+  if (typeof body.error === 'string' && (SAVINGS_RPC_ERRORS as readonly string[]).includes(body.error)) {
+    return { ok: false, code: body.error as SavingsRpcCode };
+  }
+  return { ok: false, code: 'unavailable' };
+}
+
+export function parseRestoreCorrectionRpc(value: Json | null): RestoreCorrectionRpc {
+  const body = rpcObject(value);
+  if (!body) return { ok: false, code: 'unavailable' };
+  if (body.ok === true) {
+    const opportunityId = typeof body.opportunity_id === 'string' ? body.opportunity_id : null;
+    if (!opportunityId || typeof body.already_applied !== 'boolean') {
+      return { ok: false, code: 'unavailable' };
+    }
+    if ('reason' in body) return { ok: false, code: 'unavailable' };
+    return { ok: true, alreadyApplied: body.already_applied, opportunityId };
+  }
+  if (typeof body.error === 'string' && (RESTORE_RPC_ERRORS as readonly string[]).includes(body.error)) {
+    return { ok: false, code: body.error as RestoreRpcCode };
+  }
+  return { ok: false, code: 'unavailable' };
 }
 
 export function visitProblemInsertCode(

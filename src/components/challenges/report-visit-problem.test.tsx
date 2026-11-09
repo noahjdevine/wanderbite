@@ -216,4 +216,33 @@ describe('report a visit problem', () => {
     expect(shown.textContent).not.toContain('Correct savings');
     expect(getOwnVisitProblem).toHaveBeenCalled();
   });
+
+  it('shows an inline error when the explanation is empty or only whitespace', async () => {
+    const view = await render(ticket(true));
+    const open = [...view.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Report a problem'),
+    );
+    await act(async () => {
+      open?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    const form = view.querySelector('form');
+    await act(async () => {
+      form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(view.textContent).toContain('Tell us what happened');
+    expect(submitVisitProblem).not.toHaveBeenCalled();
+
+    const explanation = view.querySelector('textarea');
+    if (explanation) {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      setter?.call(explanation, '   ');
+      explanation.dispatchEvent(new Event('input', { bubbles: true }));
+      explanation.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    await act(async () => {
+      form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    });
+    expect(view.textContent).toContain('Tell us what happened');
+    expect(submitVisitProblem).not.toHaveBeenCalled();
+  });
 });

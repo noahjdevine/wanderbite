@@ -205,6 +205,10 @@ The snapshot schema is `wanderbite.e02.supply_snapshot.v2`. `test_offer_version_
 
 **E07-A3 landed in #158 (merge `4130bfbf3fa7af03a72af6057fc7eccce4d90fa8`).** Member "I'm here — lock Boost" on the Challenges ticket, behind the same unset `E07_ARRIVAL_SESSIONS_ENABLED`. A fresh in-radius location during Boost hours opens a `member_geo` arrival session. The regular "I'm here — get my code" path is unchanged. Migration `20261108001500_e07_a3_member_check_in.sql` is not applied to hosted. No Azure call. Master E02 is open. Master E04 is open. Master E05 is open. This paragraph does not predict the D2=B measurement and does not claim acceptance.
 
+**E07-D1 is on hosted as version `20261109021548`.** The repo file remains `20261109012530_e07_d1_visit_problem_cases.sql`. `E07_VISIT_PROBLEMS_ENABLED` is true on Preview only and off in production.
+
+**E07-D2.** Audited savings correction and one make-up challenge for an open visit-problem case. Migration `20261109210040_e07_d2_visit_problem_corrections.sql` is not applied to hosted. Opening or resolving a case still grants nothing. Master E02 is open. This line does not claim E07 acceptance.
+
 **Redesign track.** Phase 1.1 (one source of truth for member progress) is done. Journey, Passport, and Challenges read streak, visit counts, and badges from `getMemberProgress()` in `src/lib/progress/get-member-progress.ts`. Streak months use `chicagoMonthStart` (America/Chicago). The read does not write `user_badges`.
 
 Follow-ups that are not nulls in the success payload: `neighborhoods` is the count of distinct `restaurants.neighborhood` values on verified visits (the column exists, so the field is a number, including 0). `xp` and `level` use the existing rule of 100 XP per verified visit and the 300 / 1000 / 1500 / 2500 tiers. `savings.amount` is dollars from the sealed lowest tier, with the existing 1000-cent fallback when a visit has no sealed tier, and `isEstimate` is true. `nextLevel` is null only at the max level. `earnedAt` is null when that catalog badge is locked.
