@@ -51,6 +51,7 @@ type CarriedCreditCardProps = {
   recipeExclusionLine?: string | null;
   activities?: ActivitySuggestion[];
   briefings?: BriefingFact[];
+  visitProblems?: boolean;
 };
 
 function offerLine(candidate: CarriedAssignCandidate): string {
@@ -72,6 +73,7 @@ export function CarriedCreditCard({
   recipeExclusionLine = null,
   activities = [],
   briefings = [],
+  visitProblems = false,
 }: CarriedCreditCardProps) {
   const router = useRouter();
   const [nowMs] = useState(() => Date.now());
@@ -155,6 +157,7 @@ export function CarriedCreditCard({
           recipeExclusionLine={recipeExclusionLine}
           activities={activities}
           briefings={briefings}
+          visitProblems={visitProblems}
         />
       </div>
     );

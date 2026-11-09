@@ -4,6 +4,7 @@ import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
 import { createClient } from '@/lib/supabase/server';
 import { memberQrConfirmedDiscountLabel } from '@/lib/boost/confirm-visit';
+import { visitProblemsEnabled } from '@/lib/boost/flag';
 import { formatCents, lowestSealedBase } from '@/lib/offers/sealed-base';
 import { visitWindowOpen } from '@/lib/redemption-expiry';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -183,6 +184,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
         neighborhood={rest.neighborhood}
         itemStatus={itemStatus}
         hasNote={hasNote}
+        visitProblems={visitProblemsEnabled()}
       />
     </main>
   );

@@ -169,6 +169,8 @@ async function main() {
   process.stdout.write('PASS: E07-A3 member check-in creator check, grants, and idempotent member insert.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-c2-settlement.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E07-C2 redemption settlement write, replay, quote uniqueness, and verify stays unsettled.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-d1-visit-problems.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E07-D1 visit problem ownership, one open case, review audit, and no visit correction.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-bill-receipts.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E07-B2 private bill-receipts bucket, proposal grants, and open-session scope.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e08-journal-reflections.sql'), 'utf8')) + '\n');

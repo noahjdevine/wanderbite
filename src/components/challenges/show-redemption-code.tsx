@@ -7,6 +7,7 @@ import QRCode from 'react-qr-code';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { redeemChallengeItem } from '@/app/actions/redeem-challenge';
 import { Button } from '@/components/ui/button';
+import { ReportVisitProblem } from '@/components/challenges/report-visit-problem';
 import { Stamp } from '@/components/wb';
 import { buildPartnerRedeemScanUrl } from '@/lib/partner-redeem-url';
 import { chicagoVisitDate, cuisineInk, stampRotationDegrees } from '@/lib/passport/passport-board';
@@ -105,6 +106,8 @@ type ShowRedemptionCodeProps = {
   itemStatus?: string | null;
   /** True when a bite_notes row exists for this redemption. */
   hasNote?: boolean;
+  /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
+  visitProblems?: boolean;
 };
 
 export function ShowRedemptionCode({
@@ -126,6 +129,7 @@ export function ShowRedemptionCode({
   neighborhood = null,
   itemStatus = null,
   hasNote = false,
+  visitProblems = false,
 }: ShowRedemptionCodeProps) {
   const [phase, setPhase] = useState(status);
   const [liveCode, setLiveCode] = useState(code);
@@ -406,6 +410,11 @@ export function ShowRedemptionCode({
         </>
       )}
 
+      {visitProblems && challengeItemId ? (
+        <div className="mt-8 w-full">
+          <ReportVisitProblem challengeItemId={challengeItemId} redemptionId={redemptionId} />
+        </div>
+      ) : null}
       <div className="mt-10 text-center">
         <Link href="/challenges" className="text-sm font-medium text-wb-plum underline-offset-4 hover:underline">
           Back to challenges

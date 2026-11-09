@@ -6,3 +6,12 @@ export function arrivalSessionsEnabled(
 ): boolean {
   return value === 'true';
 }
+
+/** Exact string only. Unset, empty, and every other value stay off. */
+export const VISIT_PROBLEMS_FLAG = 'E07_VISIT_PROBLEMS_ENABLED';
+
+export function visitProblemsEnabled(
+  value: string | undefined = process.env.E07_VISIT_PROBLEMS_ENABLED,
+): boolean {
+  return value === 'true';
+}

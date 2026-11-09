@@ -38,6 +38,7 @@ import {
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
+import { ReportVisitProblem } from '@/components/challenges/report-visit-problem';
 import { FirstVisitBriefing } from '@/components/briefings/first-visit';
 import type { ActivitySuggestion } from '@/lib/activities/types';
 import type { BriefingFact } from '@/lib/briefings/types';
@@ -75,6 +76,8 @@ export type RestaurantCardProps = {
   activities?: ActivitySuggestion[];
   /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
   briefings?: BriefingFact[];
+  /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
+  visitProblems?: boolean;
 };
 
 export function RestaurantCard({
@@ -95,6 +98,7 @@ export function RestaurantCard({
   recipeExclusionLine = null,
   activities = [],
   briefings = [],
+  visitProblems = false,
 }: RestaurantCardProps) {
   const [nowMs] = useState(() => Date.now());
   const isExpired = challengeCardExpired({
@@ -236,6 +240,12 @@ export function RestaurantCard({
                 ? { id: biteNote.id, note: biteNote.note, is_public: biteNote.is_public }
                 : null
             }
+          />
+        ) : null}
+        {visitProblems && item.challengeItem.status !== 'swapped_out' ? (
+          <ReportVisitProblem
+            challengeItemId={item.challengeItem.id}
+            redemptionId={item.redemptionId ?? null}
           />
         ) : null}
         <RecipeCards
