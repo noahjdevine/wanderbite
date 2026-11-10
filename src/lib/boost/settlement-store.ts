@@ -6,7 +6,7 @@ import type {
   BoostQuoteSavings,
   RecordedBoostSettlement,
 } from '@/lib/boost/confirm';
-import type { Json } from '@/types/database.types';
+import type { Database, Json } from '@/types/database.types';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 
 /**
@@ -310,7 +310,11 @@ export async function persistBoostSettlement(
 export function createSupabaseSettlementStore(admin: Admin = getSupabaseAdmin()): SettlementStorePort {
   return {
     async record(args) {
-      const { data, error } = await admin.rpc('record_boost_settlement', args);
+      const { data, error } = await admin.rpc(
+        'record_boost_settlement',
+        // Generated Args omit `| null`. Postgres still accepts null for the unused quote or sealed fields.
+        args as Database['public']['Functions']['record_boost_settlement']['Args'],
+      );
       return { data, error };
     },
     async load(redemptionId) {

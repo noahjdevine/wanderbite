@@ -17,7 +17,7 @@ Wanderbite is a gamified restaurant discovery app.
 
 ## Database Schema (Key Tables)
 
-Repository expectations from `supabase/migrations`. This is not a hosted snapshot. `src/types/database.types.ts` has been hand-edited; follow migrations when they disagree. Known drift: `offer_versions` relationships are empty in that types file, and `challenge_items` relationships there omit `credit_id` and `offer_version_id`. There is no `users` table and no `challenges` table.
+Repository expectations from `supabase/migrations`. `src/types/database.types.ts` is the generated hosted public schema (through migration `20261110004140`), not a hand-edited snapshot. There is no `users` table and no `challenges` table.
 
 Refer to these table names exactly in SQL generation:
 - `markets` (id, name, timezone, status in `active`/`paused`, slug, state, country, currency)

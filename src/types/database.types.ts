@@ -10,40 +10,10 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.1"
   }
   public: {
     Tables: {
-      admin_audit_log: {
-        Row: {
-          action: string
-          actor_user_id: string
-          created_at: string
-          id: number
-          metadata: Json | null
-          target_id: string | null
-          target_type: string
-        }
-        Insert: {
-          action: string
-          actor_user_id: string
-          created_at?: string
-          id?: number
-          metadata?: Json | null
-          target_id?: string | null
-          target_type: string
-        }
-        Update: {
-          action?: string
-          actor_user_id?: string
-          created_at?: string
-          id?: number
-          metadata?: Json | null
-          target_id?: string | null
-          target_type?: string
-        }
-        Relationships: [        ]
-      }
       activities: {
         Row: {
           booking_required: boolean
@@ -123,6 +93,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      admin_audit_log: {
+        Row: {
+          action: string
+          actor_user_id: string
+          created_at: string
+          id: number
+          metadata: Json | null
+          target_id: string | null
+          target_type: string
+        }
+        Insert: {
+          action: string
+          actor_user_id: string
+          created_at?: string
+          id?: number
+          metadata?: Json | null
+          target_id?: string | null
+          target_type: string
+        }
+        Update: {
+          action?: string
+          actor_user_id?: string
+          created_at?: string
+          id?: number
+          metadata?: Json | null
+          target_id?: string | null
+          target_type?: string
+        }
+        Relationships: []
       }
       ai_bucket_balances: {
         Row: {
@@ -456,6 +456,89 @@ export type Database = {
         }
         Relationships: []
       }
+      bill_scan_proposals: {
+        Row: {
+          arrival_session_id: string
+          byte_size: number
+          confirmed_eligible_subtotal_cents: number | null
+          content_type: string
+          created_at: string
+          deleted_at: string | null
+          height: number
+          id: string
+          object_path: string
+          proposal: Json
+          restaurant_id: string
+          retain_until: string
+          source: string
+          user_id: string
+          width: number
+        }
+        Insert: {
+          arrival_session_id: string
+          byte_size: number
+          confirmed_eligible_subtotal_cents?: number | null
+          content_type: string
+          created_at?: string
+          deleted_at?: string | null
+          height: number
+          id?: string
+          object_path: string
+          proposal: Json
+          restaurant_id: string
+          retain_until: string
+          source: string
+          user_id: string
+          width: number
+        }
+        Update: {
+          arrival_session_id?: string
+          byte_size?: number
+          confirmed_eligible_subtotal_cents?: number | null
+          content_type?: string
+          created_at?: string
+          deleted_at?: string | null
+          height?: number
+          id?: string
+          object_path?: string
+          proposal?: Json
+          restaurant_id?: string
+          retain_until?: string
+          source?: string
+          user_id?: string
+          width?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_scan_proposals_arrival_session_id_fkey"
+            columns: ["arrival_session_id"]
+            isOneToOne: false
+            referencedRelation: "boost_arrival_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_scan_proposals_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_scan_proposals_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_scan_proposals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bite_notes: {
         Row: {
           created_at: string | null
@@ -521,48 +604,213 @@ export type Database = {
           },
         ]
       }
-      // Hand-edited for E08-A2. npm run types:db was not run against hosted.
-      journal_reflections: {
+      boost_arrival_sessions: {
         Row: {
-          atmosphere: string | null
-          bite_note_id: string | null
-          companion_label: string | null
+          arrival_at: string
+          challenge_item_id: string
+          check_in_method: string
           created_at: string
-          favorite_bite: string | null
+          created_by_token_hash: string | null
+          created_by_user_id: string | null
+          expires_at: string
           id: string
-          redemption_id: string
-          return_interest: string | null
-          unpublished_review_draft: string | null
-          updated_at: string
-          user_id: string
+          idempotency_key: string
+          locked_boost_id: string | null
+          offer_version_id: string
+          redemption_id: string | null
+          restaurant_id: string
+          status: string
         }
         Insert: {
-          atmosphere?: string | null
-          bite_note_id?: string | null
-          companion_label?: string | null
+          arrival_at: string
+          challenge_item_id: string
+          check_in_method?: string
           created_at?: string
-          favorite_bite?: string | null
+          created_by_token_hash?: string | null
+          created_by_user_id?: string | null
+          expires_at: string
           id?: string
-          redemption_id: string
-          return_interest?: string | null
-          unpublished_review_draft?: string | null
-          updated_at?: string
-          user_id: string
+          idempotency_key: string
+          locked_boost_id?: string | null
+          offer_version_id: string
+          redemption_id?: string | null
+          restaurant_id: string
+          status?: string
         }
         Update: {
-          atmosphere?: string | null
-          bite_note_id?: string | null
-          companion_label?: string | null
+          arrival_at?: string
+          challenge_item_id?: string
+          check_in_method?: string
           created_at?: string
-          favorite_bite?: string | null
+          created_by_token_hash?: string | null
+          created_by_user_id?: string | null
+          expires_at?: string
           id?: string
-          redemption_id?: string
-          return_interest?: string | null
-          unpublished_review_draft?: string | null
-          updated_at?: string
-          user_id?: string
+          idempotency_key?: string
+          locked_boost_id?: string | null
+          offer_version_id?: string
+          redemption_id?: string | null
+          restaurant_id?: string
+          status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "boost_arrival_sessions_challenge_item_id_fkey"
+            columns: ["challenge_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_arrival_sessions_created_by_user_id_fkey"
+            columns: ["created_by_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_arrival_sessions_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: false
+            referencedRelation: "redemptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_arrival_sessions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_arrival_sessions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_arrival_sessions_version_restaurant_fkey"
+            columns: ["offer_version_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "offer_versions"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+        ]
+      }
+      boost_quotes: {
+        Row: {
+          base_discount_cents: number
+          below_minimum: boolean
+          boost_discount_cents: number
+          boost_id: string | null
+          created_at: string
+          eligible_subtotal_cents: number
+          expires_at: string
+          id: string
+          offer_version_id: string
+          quote_version: number
+          reasons: Json
+          session_id: string
+          superseded_at: string | null
+          tier_id: string | null
+          total_discount_cents: number
+        }
+        Insert: {
+          base_discount_cents: number
+          below_minimum: boolean
+          boost_discount_cents: number
+          boost_id?: string | null
+          created_at?: string
+          eligible_subtotal_cents: number
+          expires_at: string
+          id?: string
+          offer_version_id: string
+          quote_version: number
+          reasons: Json
+          session_id: string
+          superseded_at?: string | null
+          tier_id?: string | null
+          total_discount_cents: number
+        }
+        Update: {
+          base_discount_cents?: number
+          below_minimum?: boolean
+          boost_discount_cents?: number
+          boost_id?: string | null
+          created_at?: string
+          eligible_subtotal_cents?: number
+          expires_at?: string
+          id?: string
+          offer_version_id?: string
+          quote_version?: number
+          reasons?: Json
+          session_id?: string
+          superseded_at?: string | null
+          tier_id?: string | null
+          total_discount_cents?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "boost_quotes_offer_version_id_fkey"
+            columns: ["offer_version_id"]
+            isOneToOne: false
+            referencedRelation: "offer_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "boost_quotes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "boost_arrival_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      capacity_reservations: {
+        Row: {
+          bucket_start: string
+          capacity_timezone: string
+          challenge_item_id: string
+          id: string
+          offer_version_id: string
+          restaurant_id: string
+          status: string
+        }
+        Insert: {
+          bucket_start: string
+          capacity_timezone: string
+          challenge_item_id: string
+          id?: string
+          offer_version_id: string
+          restaurant_id: string
+          status: string
+        }
+        Update: {
+          bucket_start?: string
+          capacity_timezone?: string
+          challenge_item_id?: string
+          id?: string
+          offer_version_id?: string
+          restaurant_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "capacity_reservations_challenge_item_id_fkey"
+            columns: ["challenge_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "capacity_reservations_offer_version_id_restaurant_id_fkey"
+            columns: ["offer_version_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "offer_versions"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+        ]
       }
       challenge_cycles: {
         Row: {
@@ -595,6 +843,88 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      challenge_items: {
+        Row: {
+          assigned_at: string | null
+          credit_id: string | null
+          cycle_id: string | null
+          id: string
+          offer_version_id: string | null
+          redemption_deadline: string | null
+          restaurant_id: string | null
+          slot_number: number | null
+          status: string | null
+          swapped_from_item_id: string | null
+        }
+        Insert: {
+          assigned_at?: string | null
+          credit_id?: string | null
+          cycle_id?: string | null
+          id?: string
+          offer_version_id?: string | null
+          redemption_deadline?: string | null
+          restaurant_id?: string | null
+          slot_number?: number | null
+          status?: string | null
+          swapped_from_item_id?: string | null
+        }
+        Update: {
+          assigned_at?: string | null
+          credit_id?: string | null
+          cycle_id?: string | null
+          id?: string
+          offer_version_id?: string | null
+          redemption_deadline?: string | null
+          restaurant_id?: string | null
+          slot_number?: number | null
+          status?: string | null
+          swapped_from_item_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "challenge_items_credit_id_fkey"
+            columns: ["credit_id"]
+            isOneToOne: false
+            referencedRelation: "entitlement_credits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_cycle_id_fkey"
+            columns: ["cycle_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_cycles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_offer_version_fkey"
+            columns: ["offer_version_id", "restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "offer_versions"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+          {
+            foreignKeyName: "challenge_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_swapped_from_item_id_fkey"
+            columns: ["swapped_from_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
             referencedColumns: ["id"]
           },
         ]
@@ -653,264 +983,189 @@ export type Database = {
           },
         ]
       }
-      // Hand-edited for E07-A2 and E07-A3. npm run types:db was not run against hosted.
-      boost_arrival_sessions: {
+      content_exceptions: {
         Row: {
-          arrival_at: string
-          challenge_item_id: string
-          check_in_method: string
-          created_at: string
-          created_by_token_hash: string | null
-          created_by_user_id: string | null
-          expires_at: string
+          after: Json | null
+          before: Json | null
+          evidence_excerpt: string | null
+          field: string | null
           id: string
-          idempotency_key: string
-          locked_boost_id: string | null
-          offer_version_id: string
-          redemption_id: string | null
-          restaurant_id: string
+          reason: string
+          resolved_at: string | null
+          resolved_by: string | null
+          source_id: string
           status: string
+          subject_id: string | null
+          subject_type: string | null
         }
         Insert: {
-          arrival_at: string
-          challenge_item_id: string
-          check_in_method?: string
-          created_at?: string
-          created_by_token_hash?: string | null
-          created_by_user_id?: string | null
-          expires_at: string
+          after?: Json | null
+          before?: Json | null
+          evidence_excerpt?: string | null
+          field?: string | null
           id?: string
-          idempotency_key: string
-          locked_boost_id?: string | null
-          offer_version_id: string
-          redemption_id?: string | null
-          restaurant_id: string
+          reason: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id: string
           status?: string
+          subject_id?: string | null
+          subject_type?: string | null
         }
         Update: {
-          arrival_at?: string
-          challenge_item_id?: string
-          check_in_method?: string
-          created_at?: string
-          created_by_token_hash?: string | null
-          created_by_user_id?: string | null
-          expires_at?: string
+          after?: Json | null
+          before?: Json | null
+          evidence_excerpt?: string | null
+          field?: string | null
           id?: string
-          idempotency_key?: string
-          locked_boost_id?: string | null
-          offer_version_id?: string
-          redemption_id?: string | null
-          restaurant_id?: string
+          reason?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          source_id?: string
           status?: string
-        }
-        Relationships: []
-      }
-      boost_quotes: {
-        Row: {
-          base_discount_cents: number
-          below_minimum: boolean
-          boost_discount_cents: number
-          boost_id: string | null
-          created_at: string
-          eligible_subtotal_cents: number
-          expires_at: string
-          id: string
-          offer_version_id: string
-          quote_version: number
-          reasons: Json
-          session_id: string
-          superseded_at: string | null
-          tier_id: string | null
-          total_discount_cents: number
-        }
-        Insert: {
-          base_discount_cents: number
-          below_minimum: boolean
-          boost_discount_cents: number
-          boost_id?: string | null
-          created_at?: string
-          eligible_subtotal_cents: number
-          expires_at: string
-          id?: string
-          offer_version_id: string
-          quote_version: number
-          reasons: Json
-          session_id: string
-          superseded_at?: string | null
-          tier_id?: string | null
-          total_discount_cents: number
-        }
-        Update: {
-          base_discount_cents?: number
-          below_minimum?: boolean
-          boost_discount_cents?: number
-          boost_id?: string | null
-          created_at?: string
-          eligible_subtotal_cents?: number
-          expires_at?: string
-          id?: string
-          offer_version_id?: string
-          quote_version?: number
-          reasons?: Json
-          session_id?: string
-          superseded_at?: string | null
-          tier_id?: string | null
-          total_discount_cents?: number
-        }
-        Relationships: []
-      }
-      // Hand-edited for E07-B2. npm run types:db was not run against hosted.
-      bill_scan_proposals: {
-        Row: {
-          arrival_session_id: string
-          byte_size: number
-          confirmed_eligible_subtotal_cents: number | null
-          content_type: string
-          created_at: string
-          deleted_at: string | null
-          height: number
-          id: string
-          object_path: string
-          proposal: Json
-          restaurant_id: string
-          retain_until: string
-          source: string
-          user_id: string
-          width: number
-        }
-        Insert: {
-          arrival_session_id: string
-          byte_size: number
-          confirmed_eligible_subtotal_cents?: number | null
-          content_type: string
-          created_at?: string
-          deleted_at?: string | null
-          height: number
-          id?: string
-          object_path: string
-          proposal: Json
-          restaurant_id: string
-          retain_until: string
-          source: string
-          user_id: string
-          width: number
-        }
-        Update: {
-          arrival_session_id?: string
-          byte_size?: number
-          confirmed_eligible_subtotal_cents?: number | null
-          content_type?: string
-          created_at?: string
-          deleted_at?: string | null
-          height?: number
-          id?: string
-          object_path?: string
-          proposal?: Json
-          restaurant_id?: string
-          retain_until?: string
-          source?: string
-          user_id?: string
-          width?: number
-        }
-        Relationships: []
-      }
-      challenge_items: {
-        Row: {
-          cycle_id: string | null
-          id: string
-          restaurant_id: string | null
-          assigned_at: string | null
-          offer_version_id: string | null
-          redemption_deadline: string | null
-          slot_number: number | null
-          status: string | null
-          swapped_from_item_id: string | null
-          credit_id: string | null
-        }
-        Insert: {
-          assigned_at?: string | null
-          cycle_id?: string | null
-          id?: string
-          offer_version_id?: string | null
-          redemption_deadline?: string | null
-          restaurant_id?: string | null
-          slot_number?: number | null
-          status?: string | null
-          swapped_from_item_id?: string | null
-          credit_id?: string | null
-        }
-        Update: {
-          assigned_at?: string | null
-          cycle_id?: string | null
-          id?: string
-          offer_version_id?: string | null
-          redemption_deadline?: string | null
-          restaurant_id?: string | null
-          slot_number?: number | null
-          status?: string | null
-          swapped_from_item_id?: string | null
-          credit_id?: string | null
+          subject_id?: string | null
+          subject_type?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "challenge_items_cycle_id_fkey"
-            columns: ["cycle_id"]
+            foreignKeyName: "content_exceptions_source_id_fkey"
+            columns: ["source_id"]
             isOneToOne: false
-            referencedRelation: "challenge_cycles"
+            referencedRelation: "content_sources"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      content_sources: {
+        Row: {
+          approved_at: string
+          approved_by: string | null
+          id: string
+          kind: string
+          last_attempted_at: string | null
+          last_content_hash: string | null
+          last_verified_at: string | null
+          notes: string | null
+          restaurant_id: string | null
+          status: string
+          url: string
+        }
+        Insert: {
+          approved_at?: string
+          approved_by?: string | null
+          id?: string
+          kind: string
+          last_attempted_at?: string | null
+          last_content_hash?: string | null
+          last_verified_at?: string | null
+          notes?: string | null
+          restaurant_id?: string | null
+          status?: string
+          url: string
+        }
+        Update: {
+          approved_at?: string
+          approved_by?: string | null
+          id?: string
+          kind?: string
+          last_attempted_at?: string | null
+          last_content_hash?: string | null
+          last_verified_at?: string | null
+          notes?: string | null
+          restaurant_id?: string | null
+          status?: string
+          url?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "challenge_items_restaurant_id_fkey"
+            foreignKeyName: "content_sources_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "challenge_items_restaurant_id_fkey"
+            foreignKeyName: "content_sources_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants_public"
             referencedColumns: ["id"]
           },
+        ]
+      }
+      credit_rollover_exceptions: {
+        Row: {
+          chicago_month: string
+          created_at: string
+          future_t2_count: number
+          id: string
+          linked_uncompleted_count: number
+          reason: string
+          user_id: string
+        }
+        Insert: {
+          chicago_month: string
+          created_at?: string
+          future_t2_count: number
+          id?: string
+          linked_uncompleted_count: number
+          reason: string
+          user_id: string
+        }
+        Update: {
+          chicago_month?: string
+          created_at?: string
+          future_t2_count?: number
+          id?: string
+          linked_uncompleted_count?: number
+          reason?: string
+          user_id?: string
+        }
+        Relationships: [
           {
-            foreignKeyName: "challenge_items_swapped_from_item_id_fkey"
-            columns: ["swapped_from_item_id"]
+            foreignKeyName: "credit_rollover_exceptions_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
-            referencedRelation: "challenge_items"
+            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
       }
-      capacity_reservations: {
+      credit_swap_allowances: {
         Row: {
-          bucket_start: string
-          capacity_timezone: string
-          challenge_item_id: string
-          id: string
-          offer_version_id: string
-          restaurant_id: string
-          status: string
+          consumed_at: string
+          source_item_id: string
+          swap_month: string
+          user_id: string
         }
         Insert: {
-          bucket_start: string
-          capacity_timezone: string
-          challenge_item_id: string
-          id?: string
-          offer_version_id: string
-          restaurant_id: string
-          status: string
+          consumed_at?: string
+          source_item_id: string
+          swap_month: string
+          user_id: string
         }
         Update: {
-          bucket_start?: string
-          capacity_timezone?: string
-          challenge_item_id?: string
-          id?: string
-          offer_version_id?: string
-          restaurant_id?: string
-          status?: string
+          consumed_at?: string
+          source_item_id?: string
+          swap_month?: string
+          user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "credit_swap_allowances_source_item_id_fkey"
+            columns: ["source_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "credit_swap_allowances_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cron_job_leases: {
         Row: {
@@ -1083,68 +1338,6 @@ export type Database = {
           },
         ]
       }
-      reveal_pick_reminders: {
-        Row: {
-          claim_expires_at: string | null
-          claim_token: string | null
-          claimed_at: string | null
-          created_at: string
-          email_payload: Json | null
-          idempotency_key: string | null
-          idempotency_key_used_at: string | null
-          last_error: string | null
-          period_key: string
-          recipient_email: string | null
-          reconciliation_reason: string | null
-          resend_message_id: string | null
-          status: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          claim_expires_at?: string | null
-          claim_token?: string | null
-          claimed_at?: string | null
-          created_at?: string
-          email_payload?: Json | null
-          idempotency_key?: string | null
-          idempotency_key_used_at?: string | null
-          last_error?: string | null
-          period_key: string
-          recipient_email?: string | null
-          reconciliation_reason?: string | null
-          resend_message_id?: string | null
-          status?: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          claim_expires_at?: string | null
-          claim_token?: string | null
-          claimed_at?: string | null
-          created_at?: string
-          email_payload?: Json | null
-          idempotency_key?: string | null
-          idempotency_key_used_at?: string | null
-          last_error?: string | null
-          period_key?: string
-          recipient_email?: string | null
-          reconciliation_reason?: string | null
-          resend_message_id?: string | null
-          status?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "reveal_pick_reminders_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       email_suppressions: {
         Row: {
           created_at: string
@@ -1228,6 +1421,118 @@ export type Database = {
         }
         Relationships: []
       }
+      entitlement_credits: {
+        Row: {
+          challenge_item_id: string | null
+          expires_at: string
+          id: string
+          issue_period: string
+          issued_at: string
+          slot_number: number
+          status: string
+          user_id: string
+        }
+        Insert: {
+          challenge_item_id?: string | null
+          expires_at: string
+          id?: string
+          issue_period: string
+          issued_at?: string
+          slot_number: number
+          status: string
+          user_id: string
+        }
+        Update: {
+          challenge_item_id?: string | null
+          expires_at?: string
+          id?: string
+          issue_period?: string
+          issued_at?: string
+          slot_number?: number
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entitlement_credits_challenge_item_id_fkey"
+            columns: ["challenge_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "entitlement_credits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      journal_reflections: {
+        Row: {
+          atmosphere: string | null
+          bite_note_id: string | null
+          companion_label: string | null
+          created_at: string
+          favorite_bite: string | null
+          id: string
+          redemption_id: string
+          return_interest: string | null
+          unpublished_review_draft: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          atmosphere?: string | null
+          bite_note_id?: string | null
+          companion_label?: string | null
+          created_at?: string
+          favorite_bite?: string | null
+          id?: string
+          redemption_id: string
+          return_interest?: string | null
+          unpublished_review_draft?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          atmosphere?: string | null
+          bite_note_id?: string | null
+          companion_label?: string | null
+          created_at?: string
+          favorite_bite?: string | null
+          id?: string
+          redemption_id?: string
+          return_interest?: string | null
+          unpublished_review_draft?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "journal_reflections_bite_note_id_fkey"
+            columns: ["bite_note_id"]
+            isOneToOne: false
+            referencedRelation: "bite_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_reflections_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: true
+            referencedRelation: "redemptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "journal_reflections_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       legal_attestations: {
         Row: {
           age_21: boolean
@@ -1285,6 +1590,138 @@ export type Database = {
         }
         Relationships: []
       }
+      offer_drafts: {
+        Row: {
+          boost_session_minutes: number | null
+          boosts: Json
+          capacity_max_redemptions: number | null
+          capacity_timezone: string | null
+          capacity_window_kind: string | null
+          exclusions: Json
+          id: string
+          restaurant_id: string
+          tiers: Json
+          timezone: string | null
+          updated_at: string
+          valid_from: string | null
+          valid_until: string | null
+        }
+        Insert: {
+          boost_session_minutes?: number | null
+          boosts?: Json
+          capacity_max_redemptions?: number | null
+          capacity_timezone?: string | null
+          capacity_window_kind?: string | null
+          exclusions?: Json
+          id?: string
+          restaurant_id: string
+          tiers?: Json
+          timezone?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Update: {
+          boost_session_minutes?: number | null
+          boosts?: Json
+          capacity_max_redemptions?: number | null
+          capacity_timezone?: string | null
+          capacity_window_kind?: string | null
+          exclusions?: Json
+          id?: string
+          restaurant_id?: string
+          tiers?: Json
+          timezone?: string | null
+          updated_at?: string
+          valid_from?: string | null
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_drafts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offer_drafts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: true
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      offer_versions: {
+        Row: {
+          boost_session_minutes: number | null
+          boosts: Json
+          capacity_max_redemptions: number
+          capacity_timezone: string
+          capacity_window_kind: string
+          exclusions: Json
+          id: string
+          published_at: string
+          published_by: string | null
+          restaurant_id: string
+          tiers: Json
+          timezone: string
+          valid_from: string
+          valid_until: string
+          withdrawn_from_selection_at: string | null
+        }
+        Insert: {
+          boost_session_minutes?: number | null
+          boosts: Json
+          capacity_max_redemptions: number
+          capacity_timezone: string
+          capacity_window_kind: string
+          exclusions: Json
+          id?: string
+          published_at?: string
+          published_by?: string | null
+          restaurant_id: string
+          tiers: Json
+          timezone: string
+          valid_from: string
+          valid_until: string
+          withdrawn_from_selection_at?: string | null
+        }
+        Update: {
+          boost_session_minutes?: number | null
+          boosts?: Json
+          capacity_max_redemptions?: number
+          capacity_timezone?: string
+          capacity_window_kind?: string
+          exclusions?: Json
+          id?: string
+          published_at?: string
+          published_by?: string | null
+          restaurant_id?: string
+          tiers?: Json
+          timezone?: string
+          valid_from?: string
+          valid_until?: string
+          withdrawn_from_selection_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "offer_versions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "offer_versions_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       partner_sessions: {
         Row: {
           created_at: string
@@ -1321,197 +1758,6 @@ export type Database = {
           },
         ]
       }
-      content_exceptions: {
-        Row: {
-          after: Json | null
-          before: Json | null
-          evidence_excerpt: string | null
-          field: string | null
-          id: string
-          reason: string
-          resolved_at: string | null
-          resolved_by: string | null
-          source_id: string
-          status: string
-          subject_id: string | null
-          subject_type: string | null
-        }
-        Insert: {
-          after?: Json | null
-          before?: Json | null
-          evidence_excerpt?: string | null
-          field?: string | null
-          id?: string
-          reason: string
-          resolved_at?: string | null
-          resolved_by?: string | null
-          source_id: string
-          status?: string
-          subject_id?: string | null
-          subject_type?: string | null
-        }
-        Update: {
-          after?: Json | null
-          before?: Json | null
-          evidence_excerpt?: string | null
-          field?: string | null
-          id?: string
-          reason?: string
-          resolved_at?: string | null
-          resolved_by?: string | null
-          source_id?: string
-          status?: string
-          subject_id?: string | null
-          subject_type?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "content_exceptions_source_id_fkey"
-            columns: ["source_id"]
-            isOneToOne: false
-            referencedRelation: "content_sources"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      content_sources: {
-        Row: {
-          approved_at: string
-          approved_by: string | null
-          id: string
-          kind: string
-          last_attempted_at: string | null
-          last_content_hash: string | null
-          last_verified_at: string | null
-          notes: string | null
-          restaurant_id: string | null
-          status: string
-          url: string
-        }
-        Insert: {
-          approved_at?: string
-          approved_by?: string | null
-          id?: string
-          kind: string
-          last_attempted_at?: string | null
-          last_content_hash?: string | null
-          last_verified_at?: string | null
-          notes?: string | null
-          restaurant_id?: string | null
-          status?: string
-          url: string
-        }
-        Update: {
-          approved_at?: string
-          approved_by?: string | null
-          id?: string
-          kind?: string
-          last_attempted_at?: string | null
-          last_content_hash?: string | null
-          last_verified_at?: string | null
-          notes?: string | null
-          restaurant_id?: string | null
-          status?: string
-          url?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "content_sources_restaurant_id_fkey"
-            columns: ["restaurant_id"]
-            isOneToOne: false
-            referencedRelation: "restaurants"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      source_facts: {
-        Row: {
-          evidence_excerpt: string
-          extracted_at: string
-          field: string
-          id: string
-          source_id: string
-          status: string
-          subject_id: string | null
-          subject_type: string
-          value: Json
-          verified_at: string | null
-          version: number
-        }
-        Insert: {
-          evidence_excerpt: string
-          extracted_at?: string
-          field: string
-          id?: string
-          source_id: string
-          status: string
-          subject_id?: string | null
-          subject_type: string
-          value: Json
-          verified_at?: string | null
-          version: number
-        }
-        Update: {
-          evidence_excerpt?: string
-          extracted_at?: string
-          field?: string
-          id?: string
-          source_id?: string
-          status?: string
-          subject_id?: string | null
-          subject_type?: string
-          value?: Json
-          verified_at?: string | null
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "source_facts_source_id_fkey"
-            columns: ["source_id"]
-            isOneToOne: false
-            referencedRelation: "content_sources"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      source_fetch_attempts: {
-        Row: {
-          attempted_at: string
-          content_hash: string | null
-          error_code: string | null
-          http_status: number | null
-          id: string
-          outcome: string
-          source_id: string
-        }
-        Insert: {
-          attempted_at?: string
-          content_hash?: string | null
-          error_code?: string | null
-          http_status?: number | null
-          id?: string
-          outcome: string
-          source_id: string
-        }
-        Update: {
-          attempted_at?: string
-          content_hash?: string | null
-          error_code?: string | null
-          http_status?: number | null
-          id?: string
-          outcome?: string
-          source_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "source_fetch_attempts_source_id_fkey"
-            columns: ["source_id"]
-            isOneToOne: false
-            referencedRelation: "content_sources"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       recipes: {
         Row: {
           checked_at: string | null
@@ -1519,10 +1765,10 @@ export type Database = {
           description: string | null
           dietary_tags: string[]
           est_minutes: number
-          menu_wording: string | null
           id: string
           ingredients: Json
           is_demo: boolean
+          menu_wording: string | null
           recipe_type: string
           restaurant_id: string | null
           retrieved_at: string | null
@@ -1545,10 +1791,10 @@ export type Database = {
           description?: string | null
           dietary_tags?: string[]
           est_minutes: number
-          menu_wording?: string | null
           id?: string
           ingredients: Json
           is_demo?: boolean
+          menu_wording?: string | null
           recipe_type: string
           restaurant_id?: string | null
           retrieved_at?: string | null
@@ -1571,10 +1817,10 @@ export type Database = {
           description?: string | null
           dietary_tags?: string[]
           est_minutes?: number
-          menu_wording?: string | null
           id?: string
           ingredients?: Json
           is_demo?: boolean
+          menu_wording?: string | null
           recipe_type?: string
           restaurant_id?: string | null
           retrieved_at?: string | null
@@ -1599,40 +1845,11 @@ export type Database = {
             referencedRelation: "restaurants"
             referencedColumns: ["id"]
           },
-        ]
-      }
-      saved_recipes: {
-        Row: {
-          recipe_id: string
-          recipe_version: number
-          saved_at: string
-          user_id: string
-        }
-        Insert: {
-          recipe_id: string
-          recipe_version: number
-          saved_at?: string
-          user_id: string
-        }
-        Update: {
-          recipe_id?: string
-          recipe_version?: number
-          saved_at?: string
-          user_id?: string
-        }
-        Relationships: [
           {
-            foreignKeyName: "saved_recipes_recipe_id_fkey"
-            columns: ["recipe_id"]
+            foreignKeyName: "recipes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
             isOneToOne: false
-            referencedRelation: "recipes"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "saved_recipes_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
+            referencedRelation: "restaurants_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1731,6 +1948,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "redemptions_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "boost_quotes"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "redemptions_restaurant_id_fkey"
             columns: ["restaurant_id"]
             isOneToOne: false
@@ -1751,118 +1975,8 @@ export type Database = {
             referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "redemptions_quote_id_fkey"
-            columns: ["quote_id"]
-            isOneToOne: true
-            referencedRelation: "boost_quotes"
-            referencedColumns: ["id"]
-          },
         ]
       }
-      offer_drafts: {
-        Row: {
-          boost_session_minutes: number | null
-          boosts: Json
-          capacity_max_redemptions: number | null
-          capacity_timezone: string | null
-          capacity_window_kind: string | null
-          exclusions: Json
-          id: string
-          restaurant_id: string
-          tiers: Json
-          timezone: string | null
-          updated_at: string
-          valid_from: string | null
-          valid_until: string | null
-        }
-        Insert: {
-          boost_session_minutes?: number | null
-          boosts?: Json
-          capacity_max_redemptions?: number | null
-          capacity_timezone?: string | null
-          capacity_window_kind?: string | null
-          exclusions?: Json
-          id?: string
-          restaurant_id: string
-          tiers?: Json
-          timezone?: string | null
-          updated_at?: string
-          valid_from?: string | null
-          valid_until?: string | null
-        }
-        Update: {
-          boost_session_minutes?: number | null
-          boosts?: Json
-          capacity_max_redemptions?: number | null
-          capacity_timezone?: string | null
-          capacity_window_kind?: string | null
-          exclusions?: Json
-          id?: string
-          restaurant_id?: string
-          tiers?: Json
-          timezone?: string | null
-          updated_at?: string
-          valid_from?: string | null
-          valid_until?: string | null
-        }
-        Relationships: []
-      }
-      offer_versions: {
-        Row: {
-          boost_session_minutes: number | null
-          boosts: Json
-          capacity_max_redemptions: number
-          capacity_timezone: string
-          capacity_window_kind: string
-          exclusions: Json
-          id: string
-          published_at: string
-          published_by: string | null
-          restaurant_id: string
-          tiers: Json
-          timezone: string
-          valid_from: string
-          valid_until: string
-          withdrawn_from_selection_at: string | null
-        }
-        Insert: {
-          boost_session_minutes?: number | null
-          boosts: Json
-          capacity_max_redemptions: number
-          capacity_timezone: string
-          capacity_window_kind: string
-          exclusions: Json
-          id?: string
-          published_at?: string
-          published_by?: string | null
-          restaurant_id: string
-          tiers: Json
-          timezone: string
-          valid_from: string
-          valid_until: string
-          withdrawn_from_selection_at?: string | null
-        }
-        Update: {
-          boost_session_minutes?: number | null
-          boosts?: Json
-          capacity_max_redemptions?: number
-          capacity_timezone?: string
-          capacity_window_kind?: string
-          exclusions?: Json
-          id?: string
-          published_at?: string
-          published_by?: string | null
-          restaurant_id?: string
-          tiers?: Json
-          timezone?: string
-          valid_from?: string
-          valid_until?: string
-          withdrawn_from_selection_at?: string | null
-        }
-        Relationships: []
-      }
-      // Hand-edited for E06-A2. npm run types:db is a separate approved PR and was not run.
       restaurant_briefing_facts: {
         Row: {
           body: string
@@ -1909,6 +2023,13 @@ export type Database = {
             columns: ["restaurant_id"]
             isOneToOne: false
             referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_briefing_facts_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1988,8 +2109,8 @@ export type Database = {
         Row: {
           address: string | null
           created_at: string | null
-          current_offer_version_id: string | null
           cuisine_tags: string[] | null
+          current_offer_version_id: string | null
           description: string | null
           google_photo_url: string | null
           google_place_id: string | null
@@ -2071,6 +2192,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "restaurants_current_offer_version_fkey"
+            columns: ["current_offer_version_id", "id"]
+            isOneToOne: false
+            referencedRelation: "offer_versions"
+            referencedColumns: ["id", "restaurant_id"]
+          },
+          {
             foreignKeyName: "restaurants_market_id_fkey"
             columns: ["market_id"]
             isOneToOne: false
@@ -2082,6 +2210,192 @@ export type Database = {
             columns: ["org_id"]
             isOneToOne: false
             referencedRelation: "restaurant_orgs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reveal_pick_reminders: {
+        Row: {
+          claim_expires_at: string | null
+          claim_token: string | null
+          claimed_at: string | null
+          created_at: string
+          email_payload: Json | null
+          idempotency_key: string | null
+          idempotency_key_used_at: string | null
+          last_error: string | null
+          period_key: string
+          recipient_email: string | null
+          reconciliation_reason: string | null
+          resend_message_id: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          email_payload?: Json | null
+          idempotency_key?: string | null
+          idempotency_key_used_at?: string | null
+          last_error?: string | null
+          period_key: string
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          claim_expires_at?: string | null
+          claim_token?: string | null
+          claimed_at?: string | null
+          created_at?: string
+          email_payload?: Json | null
+          idempotency_key?: string | null
+          idempotency_key_used_at?: string | null
+          last_error?: string | null
+          period_key?: string
+          recipient_email?: string | null
+          reconciliation_reason?: string | null
+          resend_message_id?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reveal_pick_reminders_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      saved_recipes: {
+        Row: {
+          recipe_id: string
+          recipe_version: number
+          saved_at: string
+          user_id: string
+        }
+        Insert: {
+          recipe_id: string
+          recipe_version: number
+          saved_at?: string
+          user_id: string
+        }
+        Update: {
+          recipe_id?: string
+          recipe_version?: number
+          saved_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "saved_recipes_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "recipes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "saved_recipes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_facts: {
+        Row: {
+          evidence_excerpt: string
+          extracted_at: string
+          field: string
+          id: string
+          source_id: string
+          status: string
+          subject_id: string | null
+          subject_type: string
+          value: Json
+          verified_at: string | null
+          version: number
+        }
+        Insert: {
+          evidence_excerpt: string
+          extracted_at?: string
+          field: string
+          id?: string
+          source_id: string
+          status: string
+          subject_id?: string | null
+          subject_type: string
+          value: Json
+          verified_at?: string | null
+          version: number
+        }
+        Update: {
+          evidence_excerpt?: string
+          extracted_at?: string
+          field?: string
+          id?: string
+          source_id?: string
+          status?: string
+          subject_id?: string | null
+          subject_type?: string
+          value?: Json
+          verified_at?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_facts_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "content_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      source_fetch_attempts: {
+        Row: {
+          attempted_at: string
+          content_hash: string | null
+          error_code: string | null
+          http_status: number | null
+          id: string
+          outcome: string
+          source_id: string
+        }
+        Insert: {
+          attempted_at?: string
+          content_hash?: string | null
+          error_code?: string | null
+          http_status?: number | null
+          id?: string
+          outcome: string
+          source_id: string
+        }
+        Update: {
+          attempted_at?: string
+          content_hash?: string | null
+          error_code?: string | null
+          http_status?: number | null
+          id?: string
+          outcome?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "source_fetch_attempts_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "content_sources"
             referencedColumns: ["id"]
           },
         ]
@@ -2288,129 +2602,6 @@ export type Database = {
         }
         Relationships: []
       }
-      entitlement_credits: {
-        Row: {
-          id: string
-          user_id: string
-          issue_period: string
-          slot_number: number
-          status: string
-          challenge_item_id: string | null
-          issued_at: string
-          expires_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          issue_period: string
-          slot_number: number
-          status: string
-          challenge_item_id?: string | null
-          issued_at?: string
-          expires_at: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          issue_period?: string
-          slot_number?: number
-          status?: string
-          challenge_item_id?: string | null
-          issued_at?: string
-          expires_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "entitlement_credits_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "entitlement_credits_challenge_item_id_fkey"
-            columns: ["challenge_item_id"]
-            isOneToOne: false
-            referencedRelation: "challenge_items"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      credit_rollover_exceptions: {
-        Row: {
-          id: string
-          user_id: string
-          chicago_month: string
-          reason: string
-          linked_uncompleted_count: number
-          future_t2_count: number
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          chicago_month: string
-          reason: string
-          linked_uncompleted_count: number
-          future_t2_count: number
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          chicago_month?: string
-          reason?: string
-          linked_uncompleted_count?: number
-          future_t2_count?: number
-          created_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "credit_rollover_exceptions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      credit_swap_allowances: {
-        Row: {
-          user_id: string
-          swap_month: string
-          source_item_id: string
-          consumed_at: string
-        }
-        Insert: {
-          user_id: string
-          swap_month: string
-          source_item_id: string
-          consumed_at?: string
-        }
-        Update: {
-          user_id?: string
-          swap_month?: string
-          source_item_id?: string
-          consumed_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "credit_swap_allowances_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "credit_swap_allowances_source_item_id_fkey"
-            columns: ["source_item_id"]
-            isOneToOne: false
-            referencedRelation: "challenge_items"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      // Hand-edited for E07-D1. npm run types:db was not run against hosted.
       visit_problem_cases: {
         Row: {
           category: string
@@ -2451,9 +2642,30 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "visit_problem_cases_challenge_item_id_fkey"
+            columns: ["challenge_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_cases_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: false
+            referencedRelation: "redemptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_cases_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
       visit_problem_opportunities: {
         Row: {
           actor_user_id: string
@@ -2497,9 +2709,58 @@ export type Database = {
           used_redemption_id?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "visit_problem_opportunities_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_opportunities_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "visit_problem_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_opportunities_challenge_item_id_fkey"
+            columns: ["challenge_item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_opportunities_makeup_challenge_item_id_fkey"
+            columns: ["makeup_challenge_item_id"]
+            isOneToOne: true
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_opportunities_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: false
+            referencedRelation: "redemptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_opportunities_used_redemption_id_fkey"
+            columns: ["used_redemption_id"]
+            isOneToOne: true
+            referencedRelation: "redemptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_opportunities_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
-      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
       visit_problem_savings_adjustments: {
         Row: {
           actor_user_id: string
@@ -2540,7 +2801,43 @@ export type Database = {
           settlement_kind?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "visit_problem_savings_adjustments_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_savings_adjustments_case_id_fkey"
+            columns: ["case_id"]
+            isOneToOne: true
+            referencedRelation: "visit_problem_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_savings_adjustments_quote_id_fkey"
+            columns: ["quote_id"]
+            isOneToOne: false
+            referencedRelation: "boost_quotes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_savings_adjustments_redemption_id_fkey"
+            columns: ["redemption_id"]
+            isOneToOne: true
+            referencedRelation: "redemptions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visit_problem_savings_adjustments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       webhook_outbox: {
         Row: {
@@ -2713,83 +3010,6 @@ export type Database = {
       }
     }
     Functions: {
-      acquire_cron_lease: {
-        Args: {
-          p_allow_new_attempt: boolean
-          p_checkpoint?: Json | null
-          p_job_name: string
-          p_lease_seconds: number
-          p_resume_expired: boolean
-          p_run_key: string
-          p_token: string
-        }
-        Returns: Json
-      }
-      cron_run_item_counts: {
-        Args: { p_run_id: number }
-        Returns: Json
-      }
-      finalize_cron_lease: {
-        Args: {
-          p_error?: string | null
-          p_job_name: string
-          p_result?: Json | null
-          p_run_id: number
-          p_status: string
-          p_token: string
-        }
-        Returns: Json
-      }
-      record_cron_run_item: {
-        Args: {
-          p_detail?: Json | null
-          p_error?: string | null
-          p_item_key: string
-          p_job_name: string
-          p_run_id: number
-          p_status: string
-          p_token: string
-        }
-        Returns: boolean
-      }
-      release_cron_lease: {
-        Args: { p_job_name: string; p_run_id: number; p_token: string }
-        Returns: boolean
-      }
-      activate_restaurant: {
-        Args: { p_actor_user_id: string; p_restaurant_id: string }
-        Returns: Json
-      }
-      expire_version_bound_assignment: {
-        Args: { p_item_id: string }
-        Returns: string
-      }
-      verify_redemption_and_settle: {
-        Args: { p_restaurant_id: string; p_token_hash: string }
-        Returns: Database["public"]["Tables"]["redemptions"]["Row"][]
-      }
-      publish_offer_version: {
-        Args: { p_actor_user_id: string; p_draft_id: string }
-        Returns: Json
-      }
-      retire_restaurant: {
-        Args: { p_actor_user_id: string; p_restaurant_id: string }
-        Returns: Json
-      }
-      withdraw_offer_version: {
-        Args: { p_actor_user_id: string; p_version_id: string }
-        Returns: Json
-      }
-      renew_cron_lease: {
-        Args: {
-          p_checkpoint?: Json | null
-          p_job_name: string
-          p_lease_seconds: number
-          p_run_id: number
-          p_token: string
-        }
-        Returns: boolean
-      }
       _postgis_deprecate: {
         Args: { newname: string; oldname: string; version: string }
         Returns: undefined
@@ -2879,6 +3099,26 @@ export type Database = {
         Returns: unknown
       }
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      acquire_cron_lease: {
+        Args: {
+          p_allow_new_attempt: boolean
+          p_checkpoint: Json
+          p_job_name: string
+          p_lease_seconds: number
+          p_resume_expired: boolean
+          p_run_key: string
+          p_token: string
+        }
+        Returns: Json
+      }
+      activate_restaurant: {
+        Args: { p_actor_user_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      activity_operator_text: {
+        Args: { p_kind: string; p_text: string }
+        Returns: string
+      }
       addauth: { Args: { "": string }; Returns: boolean }
       addgeometrycolumn:
         | {
@@ -3185,6 +3425,104 @@ export type Database = {
           user_id: string
         }[]
       }
+      apply_activity_field_fact: {
+        Args: {
+          p_activity_id: string
+          p_evidence_excerpt: string
+          p_field: string
+          p_source_id: string
+          p_value: Json
+        }
+        Returns: string
+      }
+      apply_briefing_field_fact: {
+        Args: {
+          p_evidence_excerpt: string
+          p_field: string
+          p_restaurant_id: string
+          p_source_id: string
+          p_value: Json
+        }
+        Returns: string
+      }
+      apply_recipe_description_fact: {
+        Args: {
+          p_evidence_excerpt: string
+          p_recipe_id: string
+          p_retrieved_at?: string
+          p_source_id: string
+          p_supersede_fact_id?: string
+          p_value: Json
+        }
+        Returns: string
+      }
+      apply_resend_webhook_suppression: {
+        Args: {
+          p_address: string
+          p_delivery_id: string
+          p_email_id: string
+          p_event_type: string
+          p_reason: string
+        }
+        Returns: string
+      }
+      assign_carried_credit: {
+        Args: {
+          p_credit_id: string
+          p_market_id: string
+          p_restaurant_id: string
+          p_user_id: string
+        }
+        Returns: {
+          cycle_id: string
+          outcome: string
+        }[]
+      }
+      briefing_field_name: { Args: { p_field: string }; Returns: string }
+      briefing_operator_text: { Args: { p_text: string }; Returns: string }
+      chicago_month_start: { Args: { p_at: string }; Returns: string }
+      claim_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_token: string; p_user_id: string }
+        Returns: {
+          claim_expires_at: string
+          claim_token: string
+          claimed_at: string
+          created_at: string
+          cycle_month: string
+          email_payload: Json
+          idempotency_key: string
+          idempotency_key_used_at: string
+          last_error: string
+          previous_status: string
+          recipient_email: string
+          reconciliation_reason: string
+          resend_message_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }[]
+      }
+      claim_reveal_pick_reminder: {
+        Args: { p_period_key: string; p_token: string; p_user_id: string }
+        Returns: {
+          claim_expires_at: string
+          claim_token: string
+          claimed_at: string
+          created_at: string
+          email_payload: Json
+          idempotency_key: string
+          idempotency_key_used_at: string
+          last_error: string
+          period_key: string
+          previous_status: string
+          recipient_email: string
+          reconciliation_reason: string
+          resend_message_id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }[]
+      }
       claim_stripe_event: {
         Args: { p_event_id: string; p_token: string }
         Returns: boolean
@@ -3244,83 +3582,6 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      claim_reveal_pick_reminder: {
-        Args: { p_period_key: string; p_token: string; p_user_id: string }
-        Returns: {
-          claim_expires_at: string | null
-          claim_token: string | null
-          claimed_at: string | null
-          created_at: string
-          email_payload: Json | null
-          idempotency_key: string | null
-          idempotency_key_used_at: string | null
-          last_error: string | null
-          period_key: string
-          previous_status: string
-          recipient_email: string | null
-          reconciliation_reason: string | null
-          resend_message_id: string | null
-          status: string
-          updated_at: string
-          user_id: string
-        }[]
-      }
-      complete_reveal_pick_reminder: {
-        Args: { p_message_id: string; p_period_key: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      ensure_reveal_pick_reminder: {
-        Args: { p_period_key: string; p_user_id: string }
-        Returns: undefined
-      }
-      fail_reveal_pick_reminder: {
-        Args: { p_error: string; p_period_key: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      reconcile_reveal_pick_reminder: {
-        Args: { p_period_key: string; p_reason: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      release_reveal_pick_reminder: {
-        Args: { p_error: string; p_period_key: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      skip_reveal_pick_reminder: {
-        Args: { p_period_key: string; p_status: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      store_reveal_pick_reminder_payload: {
-        Args: {
-          p_idempotency_key: string
-          p_payload: Json
-          p_period_key: string
-          p_recipient: string
-          p_token: string
-          p_user_id: string
-        }
-        Returns: boolean
-      }
-      claim_email_reminder_delivery: {
-        Args: { p_cycle_month: string; p_token: string; p_user_id: string }
-        Returns: {
-          claim_expires_at: string | null
-          claim_token: string | null
-          claimed_at: string | null
-          created_at: string
-          cycle_month: string
-          email_payload: Json | null
-          idempotency_key: string | null
-          idempotency_key_used_at: string | null
-          last_error: string | null
-          previous_status: string
-          recipient_email: string | null
-          reconciliation_reason: string | null
-          resend_message_id: string | null
-          status: string
-          updated_at: string
-          user_id: string
-        }[]
-      }
       complete_email_reminder_delivery: {
         Args: {
           p_cycle_month: string
@@ -3330,83 +3591,14 @@ export type Database = {
         }
         Returns: boolean
       }
-      complete_webhook_outbox_email: {
-        Args: { p_effect_key: string; p_message_id: string; p_token: string }
-        Returns: boolean
-      }
-      ensure_email_reminder_delivery: {
-        Args: { p_cycle_month: string; p_user_id: string }
-        Returns: undefined
-      }
-      fail_email_reminder_delivery: {
-        Args: { p_cycle_month: string; p_error: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      mark_webhook_outbox_definite_failure: {
-        Args: { p_effect_key: string; p_token: string }
-        Returns: boolean
-      }
-      reconcile_email_reminder_delivery: {
-        Args: { p_cycle_month: string; p_reason: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      reconcile_webhook_outbox: {
-        Args: { p_effect_key: string; p_reason: string; p_token: string }
-        Returns: boolean
-      }
-      record_hard_email_suppression: {
-        Args: { p_address: string; p_email_id: string; p_reason: string }
-        Returns: boolean
-      }
-      record_legal_attestation: {
+      complete_reveal_pick_reminder: {
         Args: {
-          p_age_21: boolean
-          p_agree_to_terms: boolean
-          p_presented_version: string
-        }
-        Returns: undefined
-      }
-      release_email_reminder_delivery: {
-        Args: { p_cycle_month: string; p_error: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      skip_email_reminder_delivery: {
-        Args: { p_cycle_month: string; p_status: string; p_token: string; p_user_id: string }
-        Returns: boolean
-      }
-      store_email_reminder_payload: {
-        Args: {
-          p_cycle_month: string
-          p_idempotency_key: string
-          p_payload: Json
-          p_recipient: string
+          p_message_id: string
+          p_period_key: string
           p_token: string
           p_user_id: string
         }
         Returns: boolean
-      }
-      store_webhook_outbox_email: {
-        Args: {
-          p_effect_key: string
-          p_email_payload: Json
-          p_recipient: string
-          p_token: string
-        }
-        Returns: boolean
-      }
-      suppress_webhook_outbox: {
-        Args: { p_effect_key: string; p_token: string }
-        Returns: boolean
-      }
-      apply_resend_webhook_suppression: {
-        Args: {
-          p_address: string
-          p_delivery_id: string
-          p_email_id: string
-          p_event_type: string
-          p_reason: string
-        }
-        Returns: string
       }
       complete_stripe_event: {
         Args: { p_event_id: string; p_token: string }
@@ -3416,7 +3608,30 @@ export type Database = {
         Args: { p_effect_key: string; p_token: string }
         Returns: boolean
       }
+      complete_webhook_outbox_email: {
+        Args: { p_effect_key: string; p_message_id: string; p_token: string }
+        Returns: boolean
+      }
+      correct_visit_problem_savings: {
+        Args: {
+          p_actor_user_id: string
+          p_case_id: string
+          p_corrected_cents: number
+          p_reason: string
+        }
+        Returns: Json
+      }
+      credit_floor_cents: { Args: never; Returns: number }
+      cron_run_item_counts: { Args: { p_run_id: number }; Returns: Json }
       current_user_is_admin: { Args: never; Returns: boolean }
+      decide_activity_summary_fact: {
+        Args: { p_decision: string; p_fact_id: string }
+        Returns: string
+      }
+      decide_briefing_fact: {
+        Args: { p_decision: string; p_fact_id: string }
+        Returns: string
+      }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:
         | {
@@ -3458,7 +3673,39 @@ export type Database = {
         }
         Returns: boolean
       }
+      ensure_email_reminder_delivery: {
+        Args: { p_cycle_month: string; p_user_id: string }
+        Returns: undefined
+      }
+      ensure_reveal_pick_reminder: {
+        Args: { p_period_key: string; p_user_id: string }
+        Returns: undefined
+      }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      expire_dated_activities: { Args: { p_today: string }; Returns: number }
+      expire_due_pending_credits: { Args: never; Returns: number }
+      expire_version_bound_assignment: {
+        Args: { p_item_id: string }
+        Returns: string
+      }
+      fail_email_reminder_delivery: {
+        Args: {
+          p_cycle_month: string
+          p_error: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      fail_reveal_pick_reminder: {
+        Args: {
+          p_error: string
+          p_period_key: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       fail_stripe_event: {
         Args: { p_error: string; p_event_id: string; p_token: string }
         Returns: boolean
@@ -3467,17 +3714,16 @@ export type Database = {
         Args: { p_effect_key: string; p_error: string; p_token: string }
         Returns: boolean
       }
-      assign_carried_credit: {
+      finalize_cron_lease: {
         Args: {
-          p_credit_id: string
-          p_market_id: string
-          p_restaurant_id: string
-          p_user_id: string
+          p_error: string
+          p_job_name: string
+          p_result: Json
+          p_run_id: number
+          p_status: string
+          p_token: string
         }
-        Returns: {
-          cycle_id: string
-          outcome: string
-        }[]
+        Returns: Json
       }
       generate_challenge_cycle: {
         Args: {
@@ -3488,57 +3734,6 @@ export type Database = {
         }
         Returns: {
           cycle_id: string
-          outcome: string
-        }[]
-      }
-      reveal_monthly_challenge: {
-        Args: {
-          p_brief: Json
-          p_cycle_month: string
-          p_eligibility_facts: Json
-          p_item_reasons: Json
-          p_market_id: string
-          p_restaurant_ids: string[]
-          p_selection_source: string
-          p_source_version: string
-          p_user_id: string
-        }
-        Returns: {
-          brief: Json | null
-          cycle_id: string | null
-          item_reasons: Json | null
-          outcome: string
-          period_key: string | null
-          restaurant_ids: string[] | null
-          reveal_id: string | null
-          selection_source: string | null
-        }[]
-      }
-      issue_period_credits: {
-        Args: { p_issue_period: string; p_user_id: string }
-        Returns: string
-      }
-      link_pending_credits: {
-        Args: {
-          p_issue_period: string
-          p_market_id: string
-          p_restaurant_a: string
-          p_restaurant_b: string
-          p_user_id: string
-        }
-        Returns: {
-          cycle_id: string
-          outcome: string
-        }[]
-      }
-      expire_due_pending_credits: {
-        Args: never
-        Returns: number
-      }
-      rollover_credits: {
-        Args: { p_user_id: string }
-        Returns: {
-          exception_inserted: boolean
           outcome: string
         }[]
       }
@@ -3693,7 +3888,90 @@ export type Database = {
           redemption_id: string
         }[]
       }
+      issue_period_credits: {
+        Args: { p_issue_period: string; p_user_id: string }
+        Returns: string
+      }
+      link_pending_credits: {
+        Args: {
+          p_issue_period: string
+          p_market_id: string
+          p_restaurant_a: string
+          p_restaurant_b: string
+          p_user_id: string
+        }
+        Returns: {
+          cycle_id: string
+          outcome: string
+        }[]
+      }
       longtransactionsenabled: { Args: never; Returns: boolean }
+      mark_webhook_outbox_definite_failure: {
+        Args: { p_effect_key: string; p_token: string }
+        Returns: boolean
+      }
+      offer_lowest_tier_cents: { Args: { p_tiers: Json }; Returns: number }
+      offer_version_terms_ok: {
+        Args: {
+          p_boosts: Json
+          p_capacity_max_redemptions: number
+          p_capacity_timezone: string
+          p_capacity_window_kind: string
+          p_tiers: Json
+          p_timezone: string
+          p_valid_from: string
+          p_valid_until: string
+        }
+        Returns: string
+      }
+      open_boost_arrival_session: {
+        Args: {
+          p_arrival_at: string
+          p_base_discount_cents: number
+          p_below_minimum: boolean
+          p_boost_discount_cents: number
+          p_boost_id: string
+          p_challenge_item_id: string
+          p_created_by_token_hash: string
+          p_eligible_subtotal_cents: number
+          p_expires_at: string
+          p_idempotency_key: string
+          p_locked_boost_id: string
+          p_offer_version_id: string
+          p_reasons: Json
+          p_redemption_id: string
+          p_restaurant_id: string
+          p_tier_id: string
+          p_total_discount_cents: number
+        }
+        Returns: Json
+      }
+      open_member_boost_arrival_session: {
+        Args: {
+          p_arrival_at: string
+          p_base_discount_cents: number
+          p_below_minimum: boolean
+          p_boost_discount_cents: number
+          p_boost_id: string
+          p_challenge_item_id: string
+          p_created_by_user_id: string
+          p_eligible_subtotal_cents: number
+          p_expires_at: string
+          p_idempotency_key: string
+          p_locked_boost_id: string
+          p_offer_version_id: string
+          p_reasons: Json
+          p_redemption_id: string
+          p_restaurant_id: string
+          p_tier_id: string
+          p_total_discount_cents: number
+        }
+        Returns: Json
+      }
+      open_visit_problem_makeup_item: {
+        Args: { p_opportunity_id: string; p_user_id: string }
+        Returns: Json
+      }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
@@ -3734,7 +4012,247 @@ export type Database = {
       }
       postgis_version: { Args: never; Returns: string }
       postgis_wagyu_version: { Args: never; Returns: string }
+      publish_activity_hours_note: {
+        Args: {
+          p_activity_id: string
+          p_evidence_excerpt: string
+          p_source_id: string
+          p_text: string
+        }
+        Returns: string
+      }
+      publish_activity_summary: {
+        Args: {
+          p_activity_id: string
+          p_evidence_excerpt: string
+          p_source_id: string
+          p_text: string
+        }
+        Returns: string
+      }
+      publish_briefing_fact: {
+        Args: {
+          p_evidence_excerpt: string
+          p_field: string
+          p_keep_active: boolean
+          p_restaurant_id: string
+          p_source_id: string
+          p_text: string
+        }
+        Returns: string
+      }
+      publish_offer_version: {
+        Args: { p_actor_user_id: string; p_draft_id: string }
+        Returns: Json
+      }
       purge_stripe_event_payloads: { Args: never; Returns: number }
+      recipe_dietary_tags_ok: { Args: { p_tags: string[] }; Returns: boolean }
+      recipe_ingredients_ok: { Args: { p_ingredients: Json }; Returns: boolean }
+      recipe_steps_ok: { Args: { p_steps: Json }; Returns: boolean }
+      recipe_substitutions_ok: {
+        Args: { p_substitutions: Json }
+        Returns: boolean
+      }
+      reconcile_email_reminder_delivery: {
+        Args: {
+          p_cycle_month: string
+          p_reason: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      reconcile_reveal_pick_reminder: {
+        Args: {
+          p_period_key: string
+          p_reason: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      reconcile_webhook_outbox: {
+        Args: { p_effect_key: string; p_reason: string; p_token: string }
+        Returns: boolean
+      }
+      record_boost_settlement: {
+        Args: {
+          p_base_discount_cents: number
+          p_below_minimum: boolean
+          p_boost_discount_cents: number
+          p_boost_id: string
+          p_eligible_subtotal_cents: number
+          p_locked_boost_id: string
+          p_quote_expires_at: string
+          p_quote_id: string
+          p_quote_version: number
+          p_redemption_id: string
+          p_sealed_discount_amount_cents: number
+          p_sealed_min_spend_cents: number
+          p_settled_at: string
+          p_settlement_kind: string
+          p_tier_id: string
+          p_total_discount_cents: number
+        }
+        Returns: Json
+      }
+      record_cron_run_item: {
+        Args: {
+          p_detail: Json
+          p_error: string
+          p_item_key: string
+          p_job_name: string
+          p_run_id: number
+          p_status: string
+          p_token: string
+        }
+        Returns: boolean
+      }
+      record_hard_email_suppression: {
+        Args: { p_address: string; p_email_id: string; p_reason: string }
+        Returns: boolean
+      }
+      record_legal_attestation: {
+        Args: {
+          p_age_21: boolean
+          p_agree_to_terms: boolean
+          p_presented_version: string
+        }
+        Returns: undefined
+      }
+      redemption_is_verified: {
+        Args: { p_redemption_id: string }
+        Returns: boolean
+      }
+      release_cron_lease: {
+        Args: { p_job_name: string; p_run_id: number; p_token: string }
+        Returns: boolean
+      }
+      release_email_reminder_delivery: {
+        Args: {
+          p_cycle_month: string
+          p_error: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      release_reveal_pick_reminder: {
+        Args: {
+          p_error: string
+          p_period_key: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      renew_cron_lease: {
+        Args: {
+          p_checkpoint: Json
+          p_job_name: string
+          p_lease_seconds: number
+          p_run_id: number
+          p_token: string
+        }
+        Returns: boolean
+      }
+      reserve_version_buckets: {
+        Args: {
+          p_assigned: string
+          p_deadline: string
+          p_item_id: string
+          p_restaurant_id: string
+          p_version_id: string
+        }
+        Returns: undefined
+      }
+      resolve_saved_recipe_description: {
+        Args: { p_recipe_id: string; p_user_id: string }
+        Returns: string
+      }
+      restaurant_base_cents: {
+        Args: { p_restaurant_id: string }
+        Returns: number
+      }
+      restore_visit_problem_opportunity: {
+        Args: { p_actor_user_id: string; p_case_id: string; p_reason: string }
+        Returns: Json
+      }
+      retire_restaurant: {
+        Args: { p_actor_user_id: string; p_restaurant_id: string }
+        Returns: Json
+      }
+      reveal_monthly_challenge: {
+        Args: {
+          p_brief: Json
+          p_cycle_month: string
+          p_eligibility_facts: Json
+          p_item_reasons: Json
+          p_market_id: string
+          p_restaurant_ids: string[]
+          p_selection_source: string
+          p_source_version: string
+          p_user_id: string
+        }
+        Returns: {
+          brief: Json
+          cycle_id: string
+          item_reasons: Json
+          outcome: string
+          period_key: string
+          restaurant_ids: string[]
+          reveal_id: string
+          selection_source: string
+        }[]
+      }
+      review_visit_problem_case: {
+        Args: {
+          p_actor_user_id: string
+          p_case_id: string
+          p_member_response: string
+          p_reason: string
+          p_status: string
+        }
+        Returns: Json
+      }
+      rollback_activity_field_fact: {
+        Args: { p_fact_id: string }
+        Returns: string
+      }
+      rollback_briefing_field_fact: {
+        Args: { p_fact_id: string }
+        Returns: string
+      }
+      rollback_content_fact: { Args: { p_fact_id: string }; Returns: string }
+      rollback_recipe_to_previous: {
+        Args: { p_recipe_id: string }
+        Returns: number
+      }
+      rollover_credits: {
+        Args: { p_user_id: string }
+        Returns: {
+          exception_inserted: boolean
+          outcome: string
+        }[]
+      }
+      skip_email_reminder_delivery: {
+        Args: {
+          p_cycle_month: string
+          p_status: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      skip_reveal_pick_reminder: {
+        Args: {
+          p_period_key: string
+          p_status: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       st_3dclosestpoint: {
         Args: { geom1: unknown; geom2: unknown }
         Returns: unknown
@@ -4316,18 +4834,58 @@ export type Database = {
         Args: { geom: unknown; move: number; wrap: number }
         Returns: unknown
       }
-      swap_linked_credit_item: {
+      store_email_reminder_payload: {
         Args: {
-          p_item_id: string
-          p_replacement_restaurant_id: string | null
+          p_cycle_month: string
+          p_idempotency_key: string
+          p_payload: Json
+          p_recipient: string
+          p_token: string
           p_user_id: string
         }
-        Returns: {
-          outcome: string
-          replacement_item_id: string
-          restaurant_id: string
-          source_item_id: string
-        }[]
+        Returns: boolean
+      }
+      store_reveal_pick_reminder_payload: {
+        Args: {
+          p_idempotency_key: string
+          p_payload: Json
+          p_period_key: string
+          p_recipient: string
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      store_webhook_outbox_email: {
+        Args: {
+          p_effect_key: string
+          p_email_payload: Json
+          p_recipient: string
+          p_token: string
+        }
+        Returns: boolean
+      }
+      supersede_boost_arrival_quote: {
+        Args: {
+          p_base_discount_cents: number
+          p_below_minimum: boolean
+          p_boost_discount_cents: number
+          p_boost_id: string
+          p_eligible_subtotal_cents: number
+          p_expires_at: string
+          p_quote_version: number
+          p_reasons: Json
+          p_restaurant_id: string
+          p_session_id: string
+          p_superseded_at: string
+          p_tier_id: string
+          p_total_discount_cents: number
+        }
+        Returns: Json
+      }
+      suppress_webhook_outbox: {
+        Args: { p_effect_key: string; p_token: string }
+        Returns: boolean
       }
       swap_challenge_item: {
         Args: {
@@ -4342,111 +4900,18 @@ export type Database = {
           source_item_id: string
         }[]
       }
-      apply_activity_field_fact: {
+      swap_linked_credit_item: {
         Args: {
-          p_activity_id: string
-          p_evidence_excerpt: string
-          p_field: string
-          p_source_id: string
-          p_value: Json
+          p_item_id: string
+          p_replacement_restaurant_id: string
+          p_user_id: string
         }
-        Returns: string
-      }
-      // Hand-edited for 20261105204844 (filename of 20261105201621) and 20261105212138 (filename of 20261105213000). npm run types:db was not run.
-      // 20261105214940 (filename of 20261105223000) keeps the same apply signatures and stores change_summary inside source_facts.value. types:db was not run.
-      activity_operator_text: {
-        Args: { p_kind: string; p_text: string }
-        Returns: string
-      }
-      decide_activity_summary_fact: {
-        Args: { p_decision: string; p_fact_id: string }
-        Returns: string
-      }
-      publish_activity_hours_note: {
-        Args: {
-          p_activity_id: string
-          p_evidence_excerpt: string
-          p_source_id: string
-          p_text: string
-        }
-        Returns: string
-      }
-      publish_activity_summary: {
-        Args: {
-          p_activity_id: string
-          p_evidence_excerpt: string
-          p_source_id: string
-          p_text: string
-        }
-        Returns: string
-      }
-      apply_briefing_field_fact: {
-        Args: {
-          p_evidence_excerpt: string
-          p_field: string
-          p_restaurant_id: string
-          p_source_id: string
-          p_value: Json
-        }
-        Returns: string
-      }
-      briefing_field_name: {
-        Args: { p_field: string }
-        Returns: string
-      }
-      briefing_operator_text: {
-        Args: { p_text: string }
-        Returns: string
-      }
-      decide_briefing_fact: {
-        Args: { p_decision: string; p_fact_id: string }
-        Returns: string
-      }
-      publish_briefing_fact: {
-        Args: {
-          p_evidence_excerpt: string
-          p_field: string
-          p_keep_active: boolean
-          p_restaurant_id: string
-          p_source_id: string
-          p_text: string
-        }
-        Returns: string
-      }
-      rollback_briefing_field_fact: {
-        Args: { p_fact_id: string }
-        Returns: string
-      }
-      expire_dated_activities: {
-        Args: { p_today: string }
-        Returns: number
-      }
-      rollback_activity_field_fact: {
-        Args: { p_fact_id: string }
-        Returns: string
-      }
-      apply_recipe_description_fact: {
-        Args: {
-          p_evidence_excerpt: string
-          p_recipe_id: string
-          p_retrieved_at?: string
-          p_source_id: string
-          p_supersede_fact_id?: string
-          p_value: Json
-        }
-        Returns: string
-      }
-      resolve_saved_recipe_description: {
-        Args: { p_recipe_id: string; p_user_id: string }
-        Returns: string
-      }
-      rollback_content_fact: {
-        Args: { p_fact_id: string }
-        Returns: string
-      }
-      rollback_recipe_to_previous: {
-        Args: { p_recipe_id: string }
-        Returns: number
+        Returns: {
+          outcome: string
+          replacement_item_id: string
+          restaurant_id: string
+          source_item_id: string
+        }[]
       }
       unlockrows: { Args: { "": string }; Returns: number }
       updategeometrysrid: {
@@ -4459,134 +4924,11 @@ export type Database = {
         }
         Returns: string
       }
-      // Hand-edited for E07-A3. npm run types:db was not run against hosted.
-      open_member_boost_arrival_session: {
-        Args: {
-          p_arrival_at: string
-          p_base_discount_cents: number
-          p_below_minimum: boolean
-          p_boost_discount_cents: number
-          p_boost_id: string | null
-          p_challenge_item_id: string
-          p_created_by_user_id: string
-          p_eligible_subtotal_cents: number
-          p_expires_at: string
-          p_idempotency_key: string
-          p_locked_boost_id: string | null
-          p_offer_version_id: string
-          p_reasons: Json
-          p_redemption_id: string | null
-          p_restaurant_id: string
-          p_tier_id: string | null
-          p_total_discount_cents: number
-        }
-        Returns: Json
-      }
-      // Hand-edited for E07-D1. npm run types:db was not run against hosted.
-      review_visit_problem_case: {
-        Args: {
-          p_actor_user_id: string
-          p_case_id: string
-          p_member_response: string | null
-          p_reason: string
-          p_status: string
-        }
-        Returns: Json
-      }
-      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
-      correct_visit_problem_savings: {
-        Args: {
-          p_actor_user_id: string
-          p_case_id: string
-          p_corrected_cents: number
-          p_reason: string
-        }
-        Returns: Json
-      }
-      restore_visit_problem_opportunity: {
-        Args: {
-          p_actor_user_id: string
-          p_case_id: string
-          p_reason: string
-        }
-        Returns: Json
-      }
-      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
-      open_visit_problem_makeup_item: {
-        Args: {
-          p_opportunity_id: string
-          p_user_id: string
-        }
-        Returns: Json
-      }
       use_visit_problem_opportunity: {
         Args: {
           p_opportunity_id: string
           p_redemption_id: string
           p_user_id: string
-        }
-        Returns: Json
-      }
-      // Hand-edited for E07-C2. npm run types:db was not run against hosted.
-      record_boost_settlement: {
-        Args: {
-          p_base_discount_cents: number | null
-          p_below_minimum: boolean | null
-          p_boost_discount_cents: number | null
-          p_boost_id: string | null
-          p_eligible_subtotal_cents: number | null
-          p_locked_boost_id: string | null
-          p_quote_expires_at: string | null
-          p_quote_id: string | null
-          p_quote_version: number | null
-          p_redemption_id: string
-          p_sealed_discount_amount_cents: number | null
-          p_sealed_min_spend_cents: number | null
-          p_settled_at: string
-          p_settlement_kind: string
-          p_tier_id: string | null
-          p_total_discount_cents: number | null
-        }
-        Returns: Json
-      }
-      // Hand-edited for E07-A2. npm run types:db was not run against hosted.
-      open_boost_arrival_session: {
-        Args: {
-          p_arrival_at: string
-          p_base_discount_cents: number
-          p_below_minimum: boolean
-          p_boost_discount_cents: number
-          p_boost_id: string | null
-          p_challenge_item_id: string
-          p_created_by_token_hash: string
-          p_eligible_subtotal_cents: number
-          p_expires_at: string
-          p_idempotency_key: string
-          p_locked_boost_id: string | null
-          p_offer_version_id: string
-          p_reasons: Json
-          p_redemption_id: string | null
-          p_restaurant_id: string
-          p_tier_id: string | null
-          p_total_discount_cents: number
-        }
-        Returns: Json
-      }
-      supersede_boost_arrival_quote: {
-        Args: {
-          p_base_discount_cents: number
-          p_below_minimum: boolean
-          p_boost_discount_cents: number
-          p_boost_id: string | null
-          p_eligible_subtotal_cents: number
-          p_expires_at: string
-          p_quote_version: number
-          p_reasons: Json
-          p_restaurant_id: string
-          p_session_id: string
-          p_superseded_at: string
-          p_tier_id: string | null
-          p_total_discount_cents: number
         }
         Returns: Json
       }
@@ -4627,7 +4969,52 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      verify_redemption_and_settle: {
+        Args: { p_restaurant_id: string; p_token_hash: string }
+        Returns: {
+          base_discount_cents: number | null
+          below_minimum: boolean | null
+          boost_discount_cents: number | null
+          boost_id: string | null
+          challenge_item_id: string | null
+          code_iv: string | null
+          created_at: string | null
+          eligible_subtotal_cents: number | null
+          encrypted_code: string | null
+          expires_at: string
+          id: string
+          locked_boost_id: string | null
+          quote_expires_at: string | null
+          quote_id: string | null
+          quote_version: number | null
+          restaurant_id: string | null
+          sealed_discount_amount_cents: number | null
+          sealed_min_spend_cents: number | null
+          settled_at: string | null
+          settlement_kind: string | null
+          status: string | null
+          tier_id: string | null
+          token_hash: string | null
+          total_discount_cents: number | null
+          user_id: string | null
+          verified_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "redemptions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      version_selection_ok: {
+        Args: { p_at: string; p_version_id: string }
+        Returns: boolean
+      }
       webhook_error_text: { Args: { p_error: string }; Returns: string }
+      withdraw_offer_version: {
+        Args: { p_actor_user_id: string; p_version_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never

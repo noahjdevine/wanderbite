@@ -182,7 +182,8 @@ export async function runLeasedCron(params: {
         p_item_key: itemKey,
         p_status: status,
         p_detail: detail ?? null,
-        p_error: error ?? null,
+        // Generated Args type text as string. A null error is still sent.
+        p_error: (error ?? null) as string,
       });
       if (rpcError) throw new Error(rpcError.message);
       return Boolean(data);
