@@ -406,6 +406,56 @@ export async function restoreVisitProblemOpportunity(input: {
   return parseRestoreCorrectionRpc(data);
 }
 
+export type OwnedMakeupRedemption = {
+  id: string;
+  status: 'issued' | 'verified' | 'expired';
+  expiresAt: string;
+};
+
+/**
+ * The signed-in member's redemption on one make-up item, if a row exists.
+ * Flag off returns unavailable and does not query.
+ */
+export async function readOwnedMakeupRedemption(input: {
+  userId: string;
+  challengeItemId: string;
+}): Promise<
+  | { ok: true; redemption: OwnedMakeupRedemption | null }
+  | { ok: false; code: 'unavailable' }
+> {
+  if (!visitProblemsEnabled()) return { ok: false, code: 'unavailable' };
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from('redemptions')
+    .select('id, user_id, challenge_item_id, status, expires_at')
+    .eq('challenge_item_id', input.challengeItemId)
+    .eq('user_id', input.userId)
+    .maybeSingle();
+  if (error) {
+    console.error('[visit-problem] makeup redemption:', error.message);
+    return { ok: false, code: 'unavailable' };
+  }
+  if (
+    !data?.id
+    || data.user_id !== input.userId
+    || data.challenge_item_id !== input.challengeItemId
+  ) {
+    return { ok: true, redemption: null };
+  }
+  if (data.status !== 'issued' && data.status !== 'verified' && data.status !== 'expired') {
+    return { ok: true, redemption: null };
+  }
+  if (!data.expires_at) return { ok: true, redemption: null };
+  return {
+    ok: true,
+    redemption: {
+      id: data.id,
+      status: data.status,
+      expiresAt: data.expires_at,
+    },
+  };
+}
+
 export type MakeupOpenRpc =
   | { ok: true; challengeItemId: string }
   | { ok: false; code: 'not_found' | 'forbidden' | 'already_used' | 'not_bookable' | 'unavailable'; detail: string | null };

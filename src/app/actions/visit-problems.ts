@@ -16,6 +16,8 @@ import {
   createSupabaseVisitProblemStore,
   markMakeupVisitUsed,
   openMakeupVisitItem,
+  readOwnedMakeupRedemption,
+  type OwnedMakeupRedemption,
 } from '@/lib/boost/visit-problem-store';
 import { redeemChallengeItem } from '@/app/actions/redeem-challenge';
 import { parseUuid } from '@/lib/uuid';
@@ -88,6 +90,8 @@ export type StartMakeupVisitResult =
       message: string;
     };
 
+const MAKEUP_START_RETRY = "We couldn't start that visit. Please try again.";
+
 function makeupMessage(detail: string | null): string {
   if (detail === 'restaurant') return MAKEUP_RESTAURANT_CLOSED;
   if (detail === 'window') return MAKEUP_WINDOW_CLOSED;
@@ -95,9 +99,24 @@ function makeupMessage(detail: string | null): string {
 }
 
 /**
+ * Issued and verified rows can be linked as stored, including a code whose
+ * expires_at has passed. use_visit_problem_opportunity accepts those statuses
+ * and refuses expired, which still has to be rotated in place by redeem.
+ */
+function linkableMakeupCode(
+  redemption: OwnedMakeupRedemption | null,
+): { redemptionId: string; expiresAt: string } | null {
+  if (!redemption) return null;
+  if (redemption.status !== 'issued' && redemption.status !== 'verified') return null;
+  return { redemptionId: redemption.id, expiresAt: redemption.expiresAt };
+}
+
+/**
  * Start the make-up visit through the existing code path.
  * Unset E07_VISIT_PROBLEMS_ENABLED returns disabled before any read.
  * The original deadline is copied, not extended. A second use is refused.
+ * A code already on this make-up item is linked and the spot is marked used.
+ * That retry does not issue a second code.
  */
 export async function startMakeupVisit(opportunityId: string): Promise<StartMakeupVisitResult> {
   if (!visitProblemsEnabled()) {
@@ -123,32 +142,43 @@ export async function startMakeupVisit(opportunityId: string): Promise<StartMake
     if (opened.code === 'not_found') {
       return { ok: false, code: 'not_found', message: 'That visit could not be found.' };
     }
-    return { ok: false, code: 'unavailable', message: "We couldn't start that visit. Please try again." };
+    return { ok: false, code: 'unavailable', message: MAKEUP_START_RETRY };
   }
 
-  const redeemed = await redeemChallengeItem(opened.challengeItemId);
-  if (!redeemed.ok) {
-    return { ok: false, code: 'unavailable', message: redeemed.error };
+  const found = await readOwnedMakeupRedemption({
+    userId: auth.userId,
+    challengeItemId: opened.challengeItemId,
+  });
+  if (!found.ok) {
+    return { ok: false, code: 'unavailable', message: MAKEUP_START_RETRY };
+  }
+
+  const linked = linkableMakeupCode(found.redemption);
+  let redemptionId: string;
+  let expiresAt: string;
+  if (linked) {
+    redemptionId = linked.redemptionId;
+    expiresAt = linked.expiresAt;
+  } else {
+    const redeemed = await redeemChallengeItem(opened.challengeItemId);
+    if (!redeemed.ok) {
+      return { ok: false, code: 'unavailable', message: redeemed.error };
+    }
+    redemptionId = redeemed.data.redemptionId;
+    expiresAt = redeemed.data.expiresAt;
   }
 
   const used = await markMakeupVisitUsed({
     opportunityId: id,
     userId: auth.userId,
-    redemptionId: redeemed.data.redemptionId,
+    redemptionId,
   });
-  if (!used.ok && used.code !== 'already_used') {
-    if (used.code !== 'unavailable') {
-      return { ok: false, code: 'unavailable', message: "We couldn't start that visit. Please try again." };
-    }
-    return { ok: false, code: 'unavailable', message: "We couldn't start that visit. Please try again." };
-  }
   if (!used.ok) {
-    return { ok: false, code: 'already_used', message: 'This extra visit is already used.' };
+    if (used.code === 'already_used') {
+      return { ok: false, code: 'already_used', message: 'This extra visit is already used.' };
+    }
+    return { ok: false, code: 'unavailable', message: MAKEUP_START_RETRY };
   }
 
-  return {
-    ok: true,
-    redemptionId: redeemed.data.redemptionId,
-    expiresAt: redeemed.data.expiresAt,
-  };
+  return { ok: true, redemptionId, expiresAt };
 }

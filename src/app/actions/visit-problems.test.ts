@@ -9,6 +9,7 @@ const correctVisitProblemSavings = vi.fn();
 const restoreVisitProblemOpportunity = vi.fn();
 const openMakeupVisitItem = vi.fn();
 const markMakeupVisitUsed = vi.fn();
+const readOwnedMakeupRedemption = vi.fn();
 const redeemChallengeItem = vi.fn();
 
 vi.mock('@/lib/auth/require-user', () => ({
@@ -22,6 +23,7 @@ vi.mock('@/lib/boost/visit-problem-store', () => ({
   restoreVisitProblemOpportunity: (...args: unknown[]) => restoreVisitProblemOpportunity(...args),
   openMakeupVisitItem: (...args: unknown[]) => openMakeupVisitItem(...args),
   markMakeupVisitUsed: (...args: unknown[]) => markMakeupVisitUsed(...args),
+  readOwnedMakeupRedemption: (...args: unknown[]) => readOwnedMakeupRedemption(...args),
   parseVisitProblemCaseRow: (value: {
     id: string;
     user_id: string;
@@ -62,6 +64,9 @@ import {
 
 const ITEM = '44444444-4444-4444-8444-444444444444';
 const CASE = '55555555-5555-4555-8555-555555555555';
+const REDEMPTION = '66666666-6666-4666-8666-666666666666';
+/** 1:30am America/Chicago on the 2026 fall-back morning. Kept as an absolute instant. */
+const STORED_EXPIRES_AT = '2026-11-01T07:30:00.000Z';
 
 function caseQuery(row: Record<string, unknown> | null) {
   const query = {
@@ -104,6 +109,7 @@ describe('visit problem actions', () => {
     expect(restoreVisitProblemOpportunity).not.toHaveBeenCalled();
     expect(openMakeupVisitItem).not.toHaveBeenCalled();
     expect(markMakeupVisitUsed).not.toHaveBeenCalled();
+    expect(readOwnedMakeupRedemption).not.toHaveBeenCalled();
     expect(redeemChallengeItem).not.toHaveBeenCalled();
   });
 
@@ -113,9 +119,16 @@ describe('visit problem actions', () => {
       code: 'disabled',
       message: 'This visit is not available right now.',
     });
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'TRUE';
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: false,
+      code: 'disabled',
+      message: 'This visit is not available right now.',
+    });
     expect(requireUser).not.toHaveBeenCalled();
     expect(openMakeupVisitItem).not.toHaveBeenCalled();
     expect(markMakeupVisitUsed).not.toHaveBeenCalled();
+    expect(readOwnedMakeupRedemption).not.toHaveBeenCalled();
     expect(redeemChallengeItem).not.toHaveBeenCalled();
   });
 
@@ -123,27 +136,200 @@ describe('visit problem actions', () => {
     process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
     requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
     openMakeupVisitItem.mockResolvedValue({ ok: true, challengeItemId: ITEM });
+    readOwnedMakeupRedemption.mockResolvedValue({ ok: true, redemption: null });
     redeemChallengeItem.mockResolvedValue({
       ok: true,
       data: {
         token: 'WB-TEST',
         redeemedAt: '2026-11-09T18:00:00.000Z',
-        redemptionId: '66666666-6666-4666-8666-666666666666',
+        redemptionId: REDEMPTION,
         expiresAt: '2026-11-09T18:15:00.000Z',
       },
     });
     markMakeupVisitUsed.mockResolvedValue({ ok: true, alreadyApplied: false });
     await expect(startMakeupVisit(CASE)).resolves.toEqual({
       ok: true,
-      redemptionId: '66666666-6666-4666-8666-666666666666',
+      redemptionId: REDEMPTION,
       expiresAt: '2026-11-09T18:15:00.000Z',
     });
+    expect(redeemChallengeItem).toHaveBeenCalledTimes(1);
     expect(redeemChallengeItem).toHaveBeenCalledWith(ITEM);
     expect(markMakeupVisitUsed).toHaveBeenCalledWith({
       opportunityId: CASE,
       userId: 'member-1',
-      redemptionId: '66666666-6666-4666-8666-666666666666',
+      redemptionId: REDEMPTION,
     });
+  });
+
+  it('links an already issued code when marking the spot used failed', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    openMakeupVisitItem.mockResolvedValue({ ok: true, challengeItemId: ITEM });
+    readOwnedMakeupRedemption
+      .mockResolvedValueOnce({ ok: true, redemption: null })
+      .mockResolvedValueOnce({
+        ok: true,
+        redemption: {
+          id: REDEMPTION,
+          status: 'issued',
+          expiresAt: STORED_EXPIRES_AT,
+        },
+      });
+    redeemChallengeItem.mockResolvedValue({
+      ok: true,
+      data: {
+        token: 'WB-TEST',
+        redeemedAt: '2026-11-09T18:00:00.000Z',
+        redemptionId: REDEMPTION,
+        expiresAt: STORED_EXPIRES_AT,
+      },
+    });
+    markMakeupVisitUsed
+      .mockResolvedValueOnce({ ok: false, code: 'unavailable' })
+      .mockResolvedValueOnce({ ok: true, alreadyApplied: false });
+
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: false,
+      code: 'unavailable',
+      message: "We couldn't start that visit. Please try again.",
+    });
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: true,
+      redemptionId: REDEMPTION,
+      expiresAt: STORED_EXPIRES_AT,
+    });
+    expect(redeemChallengeItem).toHaveBeenCalledTimes(1);
+    expect(markMakeupVisitUsed).toHaveBeenNthCalledWith(1, {
+      opportunityId: CASE,
+      userId: 'member-1',
+      redemptionId: REDEMPTION,
+    });
+    expect(markMakeupVisitUsed).toHaveBeenNthCalledWith(2, {
+      opportunityId: CASE,
+      userId: 'member-1',
+      redemptionId: REDEMPTION,
+    });
+  });
+
+  it('links an issued code after its expiry without issuing another code', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    openMakeupVisitItem.mockResolvedValue({ ok: true, challengeItemId: ITEM });
+    readOwnedMakeupRedemption.mockResolvedValue({
+      ok: true,
+      redemption: {
+        id: REDEMPTION,
+        status: 'issued',
+        expiresAt: STORED_EXPIRES_AT,
+      },
+    });
+    markMakeupVisitUsed.mockResolvedValue({ ok: true, alreadyApplied: false });
+
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: true,
+      redemptionId: REDEMPTION,
+      expiresAt: STORED_EXPIRES_AT,
+    });
+    expect(redeemChallengeItem).not.toHaveBeenCalled();
+    expect(markMakeupVisitUsed).toHaveBeenCalledWith({
+      opportunityId: CASE,
+      userId: 'member-1',
+      redemptionId: REDEMPTION,
+    });
+  });
+
+  it('links a verified make-up code without issuing another one', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    openMakeupVisitItem.mockResolvedValue({ ok: true, challengeItemId: ITEM });
+    readOwnedMakeupRedemption.mockResolvedValue({
+      ok: true,
+      redemption: {
+        id: REDEMPTION,
+        status: 'verified',
+        expiresAt: STORED_EXPIRES_AT,
+      },
+    });
+    markMakeupVisitUsed.mockResolvedValue({ ok: true, alreadyApplied: false });
+
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: true,
+      redemptionId: REDEMPTION,
+      expiresAt: STORED_EXPIRES_AT,
+    });
+    expect(redeemChallengeItem).not.toHaveBeenCalled();
+    expect(markMakeupVisitUsed).toHaveBeenCalledWith({
+      opportunityId: CASE,
+      userId: 'member-1',
+      redemptionId: REDEMPTION,
+    });
+  });
+
+  it('rotates an expired make-up row in place and then marks that same redemption used', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    openMakeupVisitItem.mockResolvedValue({ ok: true, challengeItemId: ITEM });
+    readOwnedMakeupRedemption.mockResolvedValue({
+      ok: true,
+      redemption: {
+        id: REDEMPTION,
+        status: 'expired',
+        expiresAt: STORED_EXPIRES_AT,
+      },
+    });
+    redeemChallengeItem.mockResolvedValue({
+      ok: true,
+      data: {
+        token: 'WB-NEXT',
+        redeemedAt: '2026-11-09T18:00:00.000Z',
+        redemptionId: REDEMPTION,
+        expiresAt: '2026-11-10T18:15:00.000Z',
+      },
+    });
+    markMakeupVisitUsed.mockResolvedValue({ ok: true, alreadyApplied: false });
+
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: true,
+      redemptionId: REDEMPTION,
+      expiresAt: '2026-11-10T18:15:00.000Z',
+    });
+    expect(redeemChallengeItem).toHaveBeenCalledTimes(1);
+    expect(redeemChallengeItem).toHaveBeenCalledWith(ITEM);
+    expect(markMakeupVisitUsed).toHaveBeenCalledWith({
+      opportunityId: CASE,
+      userId: 'member-1',
+      redemptionId: REDEMPTION,
+    });
+  });
+
+  it('does not issue a code when the make-up spot is already used', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    openMakeupVisitItem.mockResolvedValue({ ok: false, code: 'already_used', detail: null });
+
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: false,
+      code: 'already_used',
+      message: 'This extra visit is already used.',
+    });
+    expect(readOwnedMakeupRedemption).not.toHaveBeenCalled();
+    expect(redeemChallengeItem).not.toHaveBeenCalled();
+    expect(markMakeupVisitUsed).not.toHaveBeenCalled();
+  });
+
+  it("does not issue a code for another member's make-up spot", async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    openMakeupVisitItem.mockResolvedValue({ ok: false, code: 'forbidden', detail: null });
+
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: false,
+      code: 'forbidden',
+      message: 'That visit is not yours.',
+    });
+    expect(readOwnedMakeupRedemption).not.toHaveBeenCalled();
+    expect(redeemChallengeItem).not.toHaveBeenCalled();
+    expect(markMakeupVisitUsed).not.toHaveBeenCalled();
   });
 
   it('does not read a case for a signed-out member when the flag is on', async () => {

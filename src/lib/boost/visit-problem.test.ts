@@ -457,9 +457,14 @@ describe('visit problem boundaries', () => {
   it('checks the flag before auth and does not correct a visit', () => {
     const submit = action.slice(action.indexOf('export async function submitVisitProblem'));
     const read = action.slice(action.indexOf('export async function getOwnVisitProblem'));
+    const start = action.slice(action.indexOf('export async function startMakeupVisit'));
     const review = admin.slice(admin.indexOf('export async function reviewVisitProblem'));
     expect(submit.indexOf('visitProblemsEnabled')).toBeLessThan(submit.indexOf('requireUser'));
     expect(read.indexOf('visitProblemsEnabled')).toBeLessThan(read.indexOf('requireUser'));
+    expect(start.indexOf('visitProblemsEnabled')).toBeLessThan(start.indexOf('requireUser'));
+    expect(start.indexOf('requireUser')).toBeLessThan(start.indexOf('openMakeupVisitItem'));
+    expect(start.indexOf('openMakeupVisitItem')).toBeLessThan(start.indexOf('readOwnedMakeupRedemption'));
+    expect(start.indexOf('readOwnedMakeupRedemption')).toBeLessThan(start.indexOf('redeemChallengeItem'));
     expect(review.indexOf('visitProblemsEnabled')).toBeLessThan(review.indexOf('assertAdmin'));
     expect(review.indexOf('assertAdmin')).toBeLessThan(review.indexOf("from('visit_problem_cases')"));
     for (const source of [action, admin, store, migration]) {
