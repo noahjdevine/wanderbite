@@ -1,5 +1,5 @@
 -- E07-A3 member geolocation check-in.
--- NOT applied to hosted. Do not run supabase db push for this file.
+-- Applied to hosted as 20261108045959 on 2026-11-09. Do not run supabase db push for this file.
 -- E07_ARRIVAL_SESSIONS_ENABLED stays unset.
 -- Partner open_boost_arrival_session is unchanged and still requires a token hash.
 -- created_by_user_id uses on delete restrict: boost_quotes and bill_scan_proposals

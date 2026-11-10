@@ -1,5 +1,5 @@
 -- E07-D1 member visit-problem cases.
--- NOT applied to hosted. Do not run supabase db push for this file in this PR.
+-- Applied to hosted as 20261109021548 on 2026-11-09. Do not run supabase db push for this file in this PR.
 -- Records a case and an admin review only. It does not change visits, quotes,
 -- savings, credits, badges, or subscriptions.
 -- E07_VISIT_PROBLEMS_ENABLED stays unset. E08_JOURNAL_REFLECTIONS_ENABLED is untouched.

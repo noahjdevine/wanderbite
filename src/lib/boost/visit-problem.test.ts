@@ -450,7 +450,7 @@ describe('visit problem boundaries', () => {
   const admin = readFileSync(path.join(root, 'src/app/(site)/admin/visit-problem-actions.ts'), 'utf8');
   const store = readFileSync(path.join(root, 'src/lib/boost/visit-problem-store.ts'), 'utf8');
   const migration = readFileSync(
-    path.join(root, 'supabase/migrations/20261109012530_e07_d1_visit_problem_cases.sql'),
+    path.join(root, 'supabase/migrations/20261109021548_e07_d1_visit_problem_cases.sql'),
     'utf8',
   );
 
@@ -478,7 +478,7 @@ describe('visit problem boundaries', () => {
 
   it('keeps corrections admin-only and does not rewrite the original visit', () => {
     const correction = readFileSync(
-      path.join(root, 'supabase/migrations/20261109210040_e07_d2_visit_problem_corrections.sql'),
+      path.join(root, 'supabase/migrations/20261110004140_e07_d2_visit_problem_corrections.sql'),
       'utf8',
     );
     const challenges = readFileSync(path.join(root, 'src/app/(site)/challenges/page.tsx'), 'utf8');
