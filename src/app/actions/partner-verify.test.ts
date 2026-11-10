@@ -14,6 +14,7 @@ const requirePartnerSession = vi.fn();
 const enforcePartnerVerifyLimit = vi.fn();
 const rpc = vi.fn();
 const reportVerifyIntegrityError = vi.fn();
+const captureException = vi.fn();
 const from = vi.fn();
 
 vi.mock('@/lib/require-partner-session', () => ({
@@ -32,6 +33,10 @@ vi.mock('@/lib/partner-verify-limit', async () => {
 
 vi.mock('@/lib/report-verify-integrity-error', () => ({
   reportVerifyIntegrityError: (...args: unknown[]) => reportVerifyIntegrityError(...args),
+}));
+
+vi.mock('@sentry/nextjs', () => ({
+  captureException: (...args: unknown[]) => captureException(...args),
 }));
 
 vi.mock('next/headers', () => ({
@@ -75,8 +80,10 @@ describe('verifyRedemptionTokenForPartner', () => {
     enforcePartnerVerifyLimit.mockReset();
     rpc.mockReset();
     reportVerifyIntegrityError.mockReset();
+    captureException.mockReset();
     from.mockReset();
     delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
+    delete process.env.E09_PROGRESSION_LEDGER_ENABLED;
     requirePartnerSession.mockResolvedValue({
       ok: true,
       restaurantId: ACTIVE_ID,
@@ -601,6 +608,251 @@ describe('verifyRedemptionTokenForPartner', () => {
     });
     expect(installed.events).toEqual(['badges', 'record']);
   });
+
+  it('does not call the ledger when the flag is unset or any value other than true', async () => {
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    installClaimed();
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    for (const value of ['', 'TRUE', 'True', '1']) {
+      rpc.mockClear();
+      process.env.E09_PROGRESSION_LEDGER_ENABLED = value;
+      installClaimed();
+      await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+      expect(ledgerCalls()).toEqual([]);
+    }
+  });
+
+  it('records one inserted visit after badges and leaves the verify response unchanged', async () => {
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    installClaimed();
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      rpc.mockClear();
+      captureException.mockClear();
+      process.env.E09_PROGRESSION_LEDGER_ENABLED = 'true';
+      const installed = installClaimed({ ledger: 'recorded' });
+      await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+      expect(ledgerCalls()).toEqual([
+        ['record_verified_visit_progress', { p_redemption_id: 'redemption-1' }],
+      ]);
+      expect(installed.order.indexOf('badges')).toBeGreaterThanOrEqual(0);
+      expect(installed.order.indexOf('badges')).toBeLessThan(installed.order.indexOf('ledger'));
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(captureException).not.toHaveBeenCalled();
+      expect(Object.keys(baseline).sort()).toEqual([
+        'confirmedBaseDiscountCents',
+        'confirmedBoostDiscountCents',
+        'confirmedTotalDiscountCents',
+        'hideDiscountAmount',
+        'needsSubtotal',
+        'newBadgesEarned',
+        'redemptionDetails',
+        'sealedDiscountCents',
+        'sealedMinSpendCents',
+        'success',
+      ]);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('treats an empty ledger payload as a replay and does nothing else', async () => {
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    installClaimed();
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      rpc.mockClear();
+      process.env.E09_PROGRESSION_LEDGER_ENABLED = 'true';
+      installClaimed({ ledger: 'replay' });
+      await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+      expect(ledgerCalls()).toHaveLength(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(captureException).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('keeps the verify response when the ledger errors, throws, returns null, or is malformed', async () => {
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    installClaimed();
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      process.env.E09_PROGRESSION_LEDGER_ENABLED = 'true';
+      for (const mode of ['error', 'throw', 'null', 'malformed'] as const) {
+        rpc.mockClear();
+        captureException.mockClear();
+        errorSpy.mockClear();
+        installClaimed({ ledger: mode });
+        await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+        expect(ledgerCalls()).toHaveLength(1);
+        expect(errorSpy.mock.calls).toEqual([['progression ledger record failed']]);
+        expect(captureException).toHaveBeenCalledTimes(1);
+        const reported = captureException.mock.calls[0]?.[0];
+        expect(reported).toBeInstanceOf(Error);
+        expect((reported as Error).message).toBe('progression ledger record failed');
+        const logged = JSON.stringify(errorSpy.mock.calls) + (reported as Error).message;
+        expect(logged).not.toContain(USER_ID);
+        expect(logged).not.toContain('WB-G6OK1');
+        expect(logged).not.toContain('a@b.c');
+        expect(logged).not.toContain('redemption-1');
+      }
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('does not record progress when verify fails or claims no row', async () => {
+    process.env.E09_PROGRESSION_LEDGER_ENABLED = 'true';
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+
+    requirePartnerSession.mockResolvedValue({ ok: false });
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    requirePartnerSession.mockResolvedValue({
+      ok: true,
+      restaurantId: ACTIVE_ID,
+      restaurantName: 'Active Grill',
+      tokenHash: 'session-hash',
+    });
+    enforcePartnerVerifyLimit.mockResolvedValue('throttled');
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    enforcePartnerVerifyLimit.mockResolvedValue('unavailable');
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    enforcePartnerVerifyLimit.mockResolvedValue('allow');
+    await verifyRedemptionTokenForPartner('   ');
+    expect(ledgerCalls()).toEqual([]);
+
+    rpc.mockResolvedValue({
+      data: null,
+      error: { message: 'duplicate issued redemptions for token_hash', code: '23514' },
+    });
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    rpc.mockResolvedValue({ data: null, error: { message: 'connection reset' } });
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    rpc.mockResolvedValue({
+      data: [
+        issuedRow({ id: 'r1', user_id: USER_ID, status: 'verified' }),
+        issuedRow({ id: 'r2', user_id: USER_ID, status: 'verified' }),
+      ],
+      error: null,
+    });
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    installClaimed({ userId: null });
+    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+      success: false,
+      message: 'Verification failed. Please try again later.',
+    });
+    expect(ledgerCalls()).toEqual([]);
+
+    installClaimed({ id: '' });
+    const missingId = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(missingId.success).toBe(true);
+    expect(ledgerCalls()).toEqual([]);
+
+    rpc.mockResolvedValue({ data: [], error: null });
+    from.mockImplementation((table: string) => {
+      if (table !== 'redemptions') return { select: () => ({}) };
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+            limit: async () => ({
+              data: [
+                issuedRow({
+                  status: 'verified',
+                  verified_at: '2026-01-01T12:00:00.000Z',
+                }),
+              ],
+              error: null,
+            }),
+          }),
+        }),
+      };
+    });
+    const alreadyUsed = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(alreadyUsed.success).toBe(false);
+    expect(ledgerCalls()).toEqual([]);
+
+    from.mockImplementation((table: string) => {
+      if (table !== 'redemptions') return { select: () => ({}) };
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+            limit: async () => ({
+              data: [issuedRow({ restaurant_id: OTHER_ID })],
+              error: null,
+            }),
+          }),
+        }),
+      };
+    });
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    from.mockImplementation((table: string) => {
+      if (table !== 'redemptions') return { select: () => ({}) };
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+            limit: async () => ({
+              data: [issuedRow({ status: 'expired' })],
+              error: null,
+            }),
+          }),
+        }),
+      };
+    });
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+
+    from.mockImplementation((table: string) => {
+      if (table !== 'redemptions') return { select: () => ({}) };
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+            limit: async () => ({ data: [], error: null }),
+          }),
+        }),
+      };
+    });
+    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    expect(ledgerCalls()).toEqual([]);
+  });
+
+  it('settles Boost before recording the visit and keeps that response', async () => {
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    installVisit({});
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    rpc.mockClear();
+    vi.stubEnv('E09_PROGRESSION_LEDGER_ENABLED', 'true');
+    const installed = installVisit({ ledger: 'recorded' });
+    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+    expect(installed.events).toEqual(['badges', 'record', 'ledger']);
+    expect(ledgerCalls()).toEqual([
+      ['record_verified_visit_progress', { p_redemption_id: 'redemption-1' }],
+    ]);
+  });
 });
 
 function quoteRow(overrides: Record<string, unknown> = {}) {
@@ -667,6 +919,94 @@ function chain(table: string, result: QueryResult, filters: Array<{ table: strin
   return builder;
 }
 
+type LedgerMode = 'recorded' | 'replay' | 'null' | 'malformed' | 'error' | 'throw';
+
+function ledgerCalls(): unknown[][] {
+  return rpc.mock.calls.filter((call) => call[0] === 'record_verified_visit_progress');
+}
+
+function ledgerResponse(mode: LedgerMode = 'recorded') {
+  if (mode === 'throw') return Promise.reject(new Error(`timeout ${USER_ID} WB-G6OK1 a@b.c`));
+  if (mode === 'error') {
+    return Promise.resolve({
+      data: null,
+      error: { message: `missing function ${USER_ID} WB-G6OK1 a@b.c redemption-1` },
+    });
+  }
+  if (mode === 'null') return Promise.resolve({ data: null, error: null });
+  if (mode === 'malformed') return Promise.resolve({ data: { events: [] }, error: null });
+  if (mode === 'replay') {
+    return Promise.resolve({ data: { events: [], milestones: [], entries: [] }, error: null });
+  }
+  return Promise.resolve({
+    data: {
+      events: [{ id: 'event-1' }],
+      milestones: [{ id: 'milestone-1' }],
+      entries: [{ id: 'entry-1' }],
+    },
+    error: null,
+  });
+}
+
+function installClaimed(options: { ledger?: LedgerMode; id?: string; userId?: string | null } = {}) {
+  const order: string[] = [];
+  const row = issuedRow({
+    status: 'verified',
+    verified_at: VERIFIED_AT,
+    id: options.id === undefined ? 'redemption-1' : options.id,
+    user_id: options.userId === undefined ? USER_ID : options.userId,
+  });
+  rpc.mockImplementation((fn: string) => {
+    if (fn === 'record_verified_visit_progress') {
+      order.push('ledger');
+      return ledgerResponse(options.ledger);
+    }
+    order.push(fn);
+    return Promise.resolve({ data: [row], error: null });
+  });
+  from.mockImplementation((table: string) => {
+    if (table === 'user_profiles') {
+      return {
+        select: () => ({
+          eq: () => ({ maybeSingle: async () => ({ data: { email: 'a@b.c' }, error: null }) }),
+        }),
+      };
+    }
+    if (table === 'restaurants') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: { name: 'Active Grill' }, error: null }),
+          }),
+        }),
+      };
+    }
+    if (table === 'redemptions') {
+      return {
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({ data: null, error: null }),
+            eq: () => ({ data: null, error: null, count: 1 }),
+          }),
+        }),
+      };
+    }
+    if (table === 'user_badges') {
+      return {
+        select: () => ({
+          eq: () => ({ in: async () => ({ data: [], error: null }) }),
+        }),
+        upsert: async () => {
+          order.push('badges');
+          return { error: null };
+        },
+      };
+    }
+    return { select: () => ({}) };
+  });
+  return { order };
+}
+
 function installVisit(options: {
   throwOnArrival?: boolean;
   session?: Record<string, unknown> | null;
@@ -674,6 +1014,7 @@ function installVisit(options: {
   settlementRow?: Record<string, unknown> | null;
   recordError?: boolean;
   deadline?: string;
+  ledger?: LedgerMode;
 }) {
   const filters: Array<{ table: string; column: string; value: unknown }> = [];
   const events: string[] = [];
@@ -686,6 +1027,10 @@ function installVisit(options: {
     redemption_deadline: deadline,
   };
   rpc.mockImplementation((fn: string, args: Record<string, unknown>) => {
+    if (fn === 'record_verified_visit_progress') {
+      events.push('ledger');
+      return ledgerResponse(options.ledger);
+    }
     if (fn === 'record_boost_settlement') {
       events.push('record');
       if (options.recordError) return Promise.resolve({ data: null, error: { message: 'missing function' } });
