@@ -1,6 +1,6 @@
 # E09 continuing progression
 
-A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. A2 is applied to hosted as `20261110182527`. A4 is applied to hosted as `20261110185755`. The hosted backfill ran on 2026-11-10 with `p_entries_from = '2027-01-01 00:00:00-06'` (1 event, 0 milestones, 0 entries; a rerun returned zeros). `E09_PROGRESSION_LEDGER_ENABLED` stays unset. A5 adds a read-only member progression read model. Nothing in the app calls it. No UI change. No new migration. Journey still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
+A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. A2 is applied to hosted as `20261110182527`. A4 is applied to hosted as `20261110185755`. The hosted backfill ran on 2026-11-10 with `p_entries_from = '2027-01-01 00:00:00-06'` (1 event, 0 milestones, 0 entries; a rerun returned zeros). `E09_PROGRESSION_LEDGER_ENABLED` stays unset. A5 adds a read-only member progression read model. E09-B2 reads it on Progress only when `E09_MEMBER_PROGRESSION_UI_ENABLED` is exactly `true`. That flag ships unset, so Progress looks the same until then. No new migration. Journey's main level card still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
 
 ## Schedule v1
 
@@ -111,7 +111,7 @@ Revert the PR to roll the helpers back. Nothing in the app calls them yet.
 
 `summarizeMemberProgression` in `src/lib/progression/read-model.ts` turns one member's ledger rows into a summary. It does not read the database and it does not write. `loadMemberProgression` in `src/lib/progression/member-progression.ts` is the server-only loader. It takes the request-scoped Supabase server client from `src/lib/supabase/server`. It calls `auth.getUser()` and selects that member's rows from `progression_events`, `progression_milestones`, and `progression_drawing_entries`, with `user_id` set to the session user. RLS still applies. It does not import the service-role client. The three tables are not in `database.types.ts`. The loader uses a local row shape. `npm run types:db` is not part of this change.
 
-Nothing in the app calls the loader. There is no UI. `E09_PROGRESSION_LEDGER_ENABLED` stays unset. This slice adds no migration. No session returns `signed_out` and does not query. A failed read returns `unavailable`. More than 100,000 rows in one of the three tables also returns `unavailable`, so a partial page is not reported as the member's total.
+E09-B2 is the only caller. It renders on Progress when `E09_MEMBER_PROGRESSION_UI_ENABLED` is exactly `true`, and it does not call the loader otherwise. `E09_PROGRESSION_LEDGER_ENABLED` stays unset. This slice adds no migration. No session returns `signed_out` and does not query. A failed read returns `unavailable`. More than 100,000 rows in one of the three tables also returns `unavailable`, so a partial page is not reported as the member's total.
 
 XP is the count of events whose `schedule_version` is `v1` and whose `source_kind` is `verified_visit`, times 100. The visit count is that same count. Level, name, next level, and progress come from `levelForXp(xp, PROGRESSION_SCHEDULE_V1)`. Under v1, 3600 XP is level 5, The Local Legend II, and the next level is 6, The Local Legend III, at 4500 XP. Stored milestones are listed in level order. The name comes from the schedule. `reachedAt` and `quarterKey` are the stored values. They are not recomputed, including a milestone reached at 2026-12-31 23:30 America/Chicago and stored as `2026-Q4`. `hasEntry` is true only when a `level_milestone` drawing entry points at that milestone. Drawing entries are counted by their stored `quarter_key`.
 
@@ -122,3 +122,21 @@ A member with no rows gets xp 0, level 0, next level The Explorer at 300 XP, and
 `supabase/tests/e09-a2-progression-ledger.sql` already checks that member A cannot read member B's events, milestones, or entries, and that `anon` cannot read any of the three tables. This slice does not add another RLS test.
 
 Revert this PR to roll it back. No schema, no data, and no caller. This does not claim E09, E07, or E02 acceptance.
+
+## Member panel (E09-B2)
+
+`memberProgressionUiEnabled()` in `src/lib/progression/flag.ts` is true only when `E09_MEMBER_PROGRESSION_UI_ENABLED` is exactly `true`. Unset, empty, and every other value stay off. Leave the flag unset. This change does not set it in Vercel or anywhere else. `E09_PROGRESSION_LEDGER_ENABLED` stays unset and is a different flag.
+
+`JourneyContent` renders the panel on the Progress view (`/journey`, view `journey`) only when the UI flag is on. The check happens before any ledger read. It then calls `loadMemberProgression` with `createClient` from `src/lib/supabase/server`. The flag off does not call the loader. `signed_out` renders nothing extra. `unavailable`, or a thrown read, shows "Couldn't load your levels right now" and the rest of Progress still renders. The thrown error is not logged.
+
+The panel shows the summary as stored. Level, name, XP, next level, and progress come from that summary. Under v1, 3600 XP is The Local Legend II, and the next level is The Local Legend III at 4500 XP. Milestones stay in the summary's level order. The reached date is the America/Chicago calendar date of the stored `reachedAt`. The quarter label comes from the stored `quarterKey`. It is not computed again from the timestamp. `2026-Q4` is shown as Oct–Dec 2026. A milestone at `2027-01-01T05:30:00Z` stored as `2026-Q4` shows Dec 31, 2026 and Oct–Dec 2026.
+
+`hasEntry` shows "Drawing entry". A milestone without an entry, reached before 2027-01-01 00:00 America/Chicago, shows "No drawing entry (before entries began)". That instant is `2027-01-01T06:00:00.000Z`, the same instant as `chicagoDateMidnight('2027-01-01')`. A later milestone without an entry has no marker. Entry counts use each row's stored `quarter_key`. The note is "Drawing entries count from Jan 1, 2027." The panel does not name a prize, a prize value, a live drawing, or a drawing date. Reviews, QR issuance, recipes, and activity checkmarks are not described as earning entries.
+
+No ledger rows show level 0, next level The Explorer at 300 XP, and "You have not reached a level yet." That is not an error.
+
+`consistent: false` still shows the stored milestones. The panel does not show `consistent` or `ignored`. It does not log a member id, email, or token.
+
+The main Journey level card and `levelFromXp` are unchanged. Continuing levels appear only in this panel.
+
+Rollback is unsetting `E09_MEMBER_PROGRESSION_UI_ENABLED`, or reverting this PR. No schema and no data. This does not claim E09, E07, or E02 acceptance.

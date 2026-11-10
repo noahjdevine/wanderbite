@@ -269,13 +269,17 @@ describe('member progression loader source', () => {
     expect(source).toMatch(/loadMemberProgression/);
   });
 
-  it('has no caller in the app', () => {
+  it('is called only from the flag-gated Progress panel', () => {
     const allowed = new Set([
       'src/lib/progression/member-progression.ts',
       'src/lib/progression/member-progression.test.ts',
       'src/lib/progression/read-model.ts',
       'src/lib/progression/read-model.test.ts',
       'src/lib/progression/read-model.tz-probe.ts',
+      'src/components/journey/journey-content.tsx',
+      'src/components/journey/journey-content.test.tsx',
+      'src/components/journey/progression-panel.test.tsx',
+      'src/components/journey/progression-panel.tz-probe.tsx',
     ]);
     const hits: string[] = [];
     const walk = (dir: string) => {

@@ -1,9 +1,17 @@
+import type { ReactNode } from 'react';
 import { redirect } from 'next/navigation';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { memberGenerateBlocked } from '@/lib/challenges/load-monthly-reveal';
 import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { RecipeCards } from '@/components/recipes/recipe-cards';
+import {
+  MemberProgressionPanel,
+  MemberProgressionUnavailable,
+} from '@/components/journey/progression-panel';
 import { ProgressUnavailable, ProgressView } from '@/components/journey/progress-view';
+import { memberProgressionUiEnabled } from '@/lib/progression/flag';
+import { loadMemberProgression } from '@/lib/progression/member-progression';
+import { createClient } from '@/lib/supabase/server';
 import { getMemberProgress } from '@/lib/progress/get-member-progress';
 import { loadProgressActivity } from '@/lib/progress/load-progress-activity';
 import {
@@ -54,6 +62,26 @@ type ProfileRow = {
   address_zip: string | null;
 };
 
+/**
+ * The flag is checked before any ledger read. A signed-out session adds
+ * nothing. A failed read shows a short message and is not logged, because
+ * the error can carry a member id or a token.
+ */
+async function loadMemberProgressionPanel(): Promise<ReactNode> {
+  if (!memberProgressionUiEnabled()) return null;
+  try {
+    const supabase = await createClient();
+    const loaded = await loadMemberProgression(supabase);
+    if (!loaded.ok) {
+      return loaded.error === 'signed_out' ? null : <MemberProgressionUnavailable />;
+    }
+    return <MemberProgressionPanel summary={loaded.summary} />;
+  } catch {
+    // Leave the error out of the log. It can carry a member id or a token.
+    return <MemberProgressionUnavailable />;
+  }
+}
+
 export async function JourneyContent({ userId }: JourneyContentProps) {
   const admin = getSupabaseAdmin();
   const { data: profile } = await admin
@@ -74,15 +102,17 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
   const launchEligible = launchAreaState(resolveProfileAddress(typed)) === 'eligible';
   const creditsWorkflow = typed.workflow_version === 'credits';
 
-  const [progress, savedRecipes, activity, generateBlocked, pendingCredits] = await Promise.all([
-    getMemberProgress(userId, now),
-    loadSavedRecipes(),
-    loadProgressActivity(userId, now),
-    memberGenerateBlocked(),
-    creditsWorkflow
-      ? loadPendingCredits(admin, userId, now)
-      : Promise.resolve({ ok: true as const, count: 0 }),
-  ]);
+  const [progress, savedRecipes, activity, generateBlocked, pendingCredits, progression] =
+    await Promise.all([
+      getMemberProgress(userId, now),
+      loadSavedRecipes(),
+      loadProgressActivity(userId, now),
+      memberGenerateBlocked(),
+      creditsWorkflow
+        ? loadPendingCredits(admin, userId, now)
+        : Promise.resolve({ ok: true as const, count: 0 }),
+      loadMemberProgressionPanel(),
+    ]);
 
   const savedRecipesCard = savedRecipes.enabled ? (
     <section aria-labelledby="saved-recipes" className="flex flex-col gap-3">
@@ -141,5 +171,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
       : { ok: false },
   });
 
-  return <ProgressView model={model} savedRecipes={savedRecipesCard} />;
+  return (
+    <ProgressView model={model} savedRecipes={savedRecipesCard} progression={progression} />
+  );
 }
