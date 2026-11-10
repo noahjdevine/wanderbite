@@ -1,6 +1,6 @@
 # E09 continuing progression
 
-A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. The flag is unset everywhere. Nothing reads the ledger. No UI change. Journey still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
+A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. The flag is unset everywhere. The A2 and A4 migrations are not applied to hosted, and the script is not run against hosted. Nothing reads the ledger. No UI change. Journey still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
 
 ## Schedule v1
 
@@ -28,7 +28,7 @@ A make-up visit is a normal verified visit: if its timestamp is in the list, it 
 
 ## Ledger (E09-A2)
 
-Migration `20261110152224_e09_a2_progression_ledger.sql` is in the repo and is not applied to hosted. `record_verified_visit_progress(uuid)` is the only writer. `verify_redemption` and `verify_redemption_and_settle` are unchanged. `database.types.ts` is unchanged. `user_badges` is unchanged.
+Migration `20261110152224_e09_a2_progression_ledger.sql` is in the repo and is not applied to hosted. `record_verified_visit_progress(uuid)` records one verified visit. `backfill_verified_visit_progress` is the other writer (E09-A4). `verify_redemption` and `verify_redemption_and_settle` are unchanged. `database.types.ts` is unchanged. `user_badges` is unchanged.
 
 `progression_events` stores one XP row per source. `source_kind` is `verified_visit`. `source_id` is `redemptions.id` and is not a foreign key. `occurred_at` is that redemption's `verified_at`. `xp` is 100. `schedule_version` is `v1`. Unique on `(source_kind, source_id)`.
 
@@ -38,7 +38,7 @@ A milestone is inserted once. A later event, including one with an earlier `occu
 
 `progression_drawing_entries` stores one row per milestone. `milestone_id` is unique. `entry_source` is `level_milestone`. The check allows that one value; another source is a later migration, not a campaign foreign key. `quarter_key` is copied from the milestone.
 
-`record_verified_visit_progress` is `security definer` with `search_path` pinned to `pg_catalog, public`. Only `service_role` can execute it. It takes a per-member advisory lock, inserts the event with `on conflict do nothing`, then inserts any missing milestone and one drawing entry for each milestone that insert created.
+`record_verified_visit_progress` is `security definer` with `search_path` pinned to `pg_catalog, public`. Only `service_role` can execute it. It takes a per-member advisory lock, inserts the event with `on conflict do nothing`, then calls `progression_insert_missing_v1_milestones` and inserts one drawing entry for each milestone that call created. That helper is the only copy of schedule v1.
 
 An unknown id, a status other than `verified`, a null `verified_at`, or a null `user_id` returns null and writes nothing. It does not raise. A verified row with no verified time has no event time to store, so it is treated the same as not verified. A second call for a verified visit returns jsonb keys `events`, `milestones`, and `entries` as empty arrays and does not change counts. Those keys hold only the rows that call inserted.
 
@@ -62,9 +62,38 @@ The only production writer of `redemptions.status = 'verified'` is `verify_redem
 
 Unsetting `E09_PROGRESSION_LEDGER_ENABLED` stops every call. Revert this caller to remove the code. Rows already written stay unread. The A2 migration is still not applied to hosted.
 
+## Backfill and recovery (E09-A4)
+
+Migration `20261110183232_e09_a4_progression_backfill.sql` is in the repo and is not applied to hosted. It does not edit `20261110152224`. `backfill_verified_visit_progress(p_entries_from timestamptz, p_user_id uuid default null, p_dry_run boolean default true)` is `security definer` with `search_path` pinned to `pg_catalog, public`. Only `service_role` can execute it. `anon` and `authenticated` cannot. It does not change policies or grants on the three ledger tables.
+
+`p_entries_from` is required. Null raises `p_entries_from is required` and writes nothing. There is no default in the function or in the script. Noah's chosen drawing-entry start is 2027-01-01, America/Chicago midnight. Pass that date when that is the decision. The code does not assume it.
+
+The function takes the same per-member advisory lock as `record_verified_visit_progress` (`wanderbite.progression.v1` plus the member id). For each member, or for `p_user_id` when it is set, it inserts one event for every redemption with status `verified`, a non-null `verified_at`, and a non-null `user_id`. `on conflict do nothing` keeps a second run from writing that event again. Issued rows, expired rows, verified rows with a null `verified_at`, and rows with a null `user_id` are skipped. It then calls `progression_insert_missing_v1_milestones`. That helper is the only schedule: 300, 1000, 1500, and 2500 XP, then +1000 XP per level. A milestone already stored is not updated, so an earlier missed visit does not move `reached_at`, `quarter_key`, or the drawing entry.
+
+A drawing entry is inserted only for a milestone this call created whose `reached_at` is on or after `p_entries_from`. A milestone at that exact instant gets an entry. An earlier milestone is stored and counted in `milestones_without_entry`. The return value is counts only: `members`, `events`, `milestones`, `entries`, `milestones_without_entry`. `members` counts members who received a new event or a new milestone. A second call with the same input returns zeros.
+
+`p_dry_run` defaults to true. A dry run uses the same inserts to compute the counts, then undoes them. Passing false writes. Null is treated as a dry run.
+
+Running it again later is the recovery sweep for a verified visit whose inline `record_verified_visit_progress` call failed. That sweep adds the missing event. A milestone created by the sweep gets one entry when its `reached_at` is on or after the same start instant.
+
+Backfill must run before `E09_PROGRESSION_LEDGER_ENABLED` is turned on. If the flag is on first, a member's first ledger event can be a recent visit, and the milestone stays stamped on that visit. This change does not set the flag. The A3 caller is unchanged.
+
+`npm run progression:backfill` parses `--entries-from YYYY-MM-DD` with `chicagoDateMidnight`, which uses `chicagoMidnight`. The script prints counts only. It does not print emails, member ids, or tokens. It refuses a hosted URL. There is no override. `--user-id` limits the run to one member. Omit `--apply` and it is a dry run.
+
+Ops order, local or a later hosted window that is not this change:
+
+1. Do not `supabase db push` this migration or `20261110152224` from this change. `20261110152224` is applied to hosted separately.
+2. Apply both migrations on the database you are backfilling. The script does not apply them.
+3. Dry run. Noah's start date, when that is the one you mean: `npm run progression:backfill -- --entries-from 2027-01-01`
+4. Write: `npm run progression:backfill -- --entries-from 2027-01-01 --apply`
+5. Leave `E09_PROGRESSION_LEDGER_ENABLED` unset.
+6. A later run with the same `--entries-from` is the recovery sweep. Nothing missing returns zeros.
+
+Before any hosted apply, rollback is reverting this PR. After a hosted apply, roll forward by dropping `backfill_verified_visit_progress(timestamptz, uuid, boolean)`. Leave `progression_insert_missing_v1_milestones(uuid)` and the replaced `record_verified_visit_progress`. Recording still calls the helper. Rows already written stay in the A2 tables. Nothing reads them. Delete by member if a row has to go. This does not claim E09, E07, or E02 acceptance.
+
 ## Not in this slice
 
-No backfill, and no drawing campaign. Historic levels, and whether those levels get drawing entries, are not decided here. No change to `user_badges`, Journey, or `levelFromXp`. Revert the A1 helpers by reverting that change. Journey does not read these helpers.
+No drawing campaign tables. A level reached before the operator-supplied start date gets no drawing entry. No change to `user_badges`, Journey, or `levelFromXp`. No change to the A3 caller. Revert the A1 helpers by reverting that change. Journey does not read these helpers.
 
 ## Campaigns (E09-B1)
 
