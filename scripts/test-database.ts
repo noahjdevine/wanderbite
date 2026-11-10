@@ -178,6 +178,8 @@ async function main() {
   process.stdout.write('PASS: E09-A2 progression ledger idempotency, quarter boundary, and member read.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-a4-progression-backfill.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E09-A4 backfill counts, cutoff, dry run, recovery, and frozen milestones.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b3-drawing-campaigns.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E09-B3 drawing campaigns, budget, sample and live rules, and service_role grants.\n');
   await runE09A4BackfillConcurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E09-A4 backfill and record share the member lock.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-bill-receipts.sql'), 'utf8')) + '\n');

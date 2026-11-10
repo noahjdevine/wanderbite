@@ -1,6 +1,6 @@
 # E09 continuing progression
 
-A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. A2 is applied to hosted as `20261110182527`. A4 is applied to hosted as `20261110185755`. The hosted backfill ran on 2026-11-10 with `p_entries_from = '2027-01-01 00:00:00-06'` (1 event, 0 milestones, 0 entries; a rerun returned zeros). `E09_PROGRESSION_LEDGER_ENABLED` stays unset. A5 adds a read-only member progression read model. E09-B2 reads it on Progress only when `E09_MEMBER_PROGRESSION_UI_ENABLED` is exactly `true`. That flag ships unset, so Progress looks the same until then. No new migration. Journey's main level card still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
+A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. A2 is applied to hosted as `20261110182527`. A4 is applied to hosted as `20261110185755`. The hosted backfill ran on 2026-11-10 with `p_entries_from = '2027-01-01 00:00:00-06'` (1 event, 0 milestones, 0 entries; a rerun returned zeros). `E09_PROGRESSION_LEDGER_ENABLED` stays unset. A5 adds a read-only member progression read model. E09-B2 reads it on Progress only when `E09_MEMBER_PROGRESSION_UI_ENABLED` is exactly `true`. That flag ships unset, so Progress looks the same until then. The panel adds no migration. B3 stores sample and live drawing campaigns. That migration is not applied to hosted, and nothing in the app reads those tables. Journey's main level card still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
 
 ## Schedule v1
 
@@ -93,7 +93,7 @@ A4 is applied to hosted as `20261110185755`. Roll forward by dropping `backfill_
 
 ## Not in this slice
 
-No drawing campaign tables. A level reached before the operator-supplied start date gets no drawing entry. No change to `user_badges`, Journey, or `levelFromXp`. No change to the A3 caller. Revert the A1 helpers by reverting that change. Journey does not read these helpers.
+Drawing campaign tables are E09-B3. Nothing in this slice reads them. A level reached before the operator-supplied start date gets no drawing entry. No change to `user_badges`, Journey, or `levelFromXp`. No change to the A3 caller. Revert the A1 helpers by reverting that change. Journey does not read these helpers.
 
 ## Campaigns (E09-B1)
 
@@ -140,3 +140,21 @@ No ledger rows show level 0, next level The Explorer at 300 XP, and "You have no
 The main Journey level card and `levelFromXp` are unchanged. Continuing levels appear only in this panel.
 
 Rollback is unsetting `E09_MEMBER_PROGRESSION_UI_ENABLED`, or reverting this PR. No schema and no data. This does not claim E09, E07, or E02 acceptance.
+
+## Campaign storage (E09-B3)
+
+Migration `20261110214500_e09_b3_drawing_campaigns.sql` is not applied to hosted. Do not run `supabase db push` for this file. `drawing_campaigns` and `drawing_campaign_prizes` store one quarterly drawing configuration. `save_drawing_campaign(jsonb)` writes the campaign and its prizes in one transaction. Deferred constraint triggers call `drawing_campaign_reject` before commit, so a direct SQL write is held to the same rules as `validateCampaignDraft`. Nothing in the app calls the store. `database.types.ts` is unchanged. `E09_PROGRESSION_LEDGER_ENABLED` and `E09_MEMBER_PROGRESSION_UI_ENABLED` stay unset. This does not claim E09, E07, or E02 acceptance.
+
+Committed cents are the sum of each prize's quantity times `unit_value_cents`, plus `fulfillment_allowance_cents`. Amounts are integer cents. The sum may equal `total_budget_cents`. Anything larger is `over_budget`, and the transaction writes nothing. Lowering the budget or raising a prize quantity past that sum is rejected, and the stored row stays as it was.
+
+Sample mode requires every prize to have `is_sample` true and a label containing `Sample prize`. Live mode requires a non-empty `rules_version` and rejects an `is_sample` prize. The only entry source is `level_milestone`. `public_review`, `qr_issued`, and `recipe` are rejected. A public-review source is never eligible.
+
+`starts_at` and `ends_at` are the America/Chicago quarter of `quarter_key`, start inclusive and end exclusive, the same instants as `campaignWindow`. `2027-Q1` starts at 2027-01-01 06:00:00Z and ends at 2027-04-01 05:00:00Z. `2026-Q4` starts at 2026-10-01 05:00:00Z and ends at 2027-01-01 06:00:00Z, including the November DST change. A window that does not match the quarter key is `invalid_quarter_key`.
+
+Status is `draft`, `active`, or `closed`. A new row from the store is `draft`. At most one row per `quarter_key` has a status other than `closed`. A closed row does not block another quarter row. Storing a live campaign does not show it to members and does not select winners. Drawing entries are not linked to a campaign here.
+
+Row level security is enabled. There are no policies for `anon` or `authenticated`. `service_role` can select, insert, update, and delete. `save_drawing_campaign` is granted to `service_role` only.
+
+`createCampaign`, `updateCampaign`, and `getCampaign` live in `src/lib/drawings/campaign-store.ts`. Create runs `validateCampaignDraft`. Update runs `checkCampaignEdit`. Both call the database only after those checks pass. The store uses the service-role client. The read model, the member panel, the ledger flag, and the A3 caller are unchanged.
+
+Revert the PR to roll this back. Locally, a later forward migration can drop the two tables, the triggers, and `save_drawing_campaign`. Nothing is on hosted, and nothing reads the tables.
