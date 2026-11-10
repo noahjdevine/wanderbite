@@ -209,6 +209,8 @@ The snapshot schema is `wanderbite.e02.supply_snapshot.v2`. `test_offer_version_
 
 **E07-D2.** Audited savings correction and one usable make-up visit for an open visit-problem case. The spot uses the existing code path and becomes `used` when that code is issued. The repo file is `20261110004140_e07_d2_visit_problem_corrections.sql` (previous repo filename `20261109210040_e07_d2_visit_problem_corrections.sql`). Hosted version is `20261110004140`. That rename does not apply anything to hosted. Opening or resolving a case still grants nothing. Master E02 is open. This line does not claim E07 acceptance.
 
+The D2 FK covering indexes migration `20261110025319_e07_d2_fk_covering_indexes.sql` is in the repo and is not applied to hosted. Master E02 is open. This line does not claim E07 acceptance.
+
 A retry of make-up "I'm here — get my code" links an already issued redemption and marks the spot used, instead of issuing a second code. Master E02 is open. This line does not claim E07 acceptance.
 
 /challenges reads corrected savings and counts make-up codes; idempotent/refused corrections are tested. Master E02 is open. This line does not claim E07 acceptance.

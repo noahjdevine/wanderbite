@@ -2,7 +2,8 @@
 -- E07-D2: category gating, one savings fix, one make-up opportunity,
 -- idempotent repeats, no fix after resolved, non-admin refusal,
 -- a redemption that is not the case's visit,
--- and the original visit, settlement, quote, and capacity stay put.
+-- the original visit, settlement, quote, and capacity stay put,
+-- and each previously unindexed D2 foreign key has a covering index.
 begin;
 set local statement_timeout = '15s';
 
@@ -82,6 +83,7 @@ declare
   code_expires timestamptz;
   visit_deadline timestamptz;
   makeup_audits integer;
+  missing text;
 begin
   if not (select relrowsecurity from pg_class where oid = 'public.visit_problem_savings_adjustments'::regclass)
      or not (select relrowsecurity from pg_class where oid = 'public.visit_problem_opportunities'::regclass) then
@@ -140,6 +142,43 @@ begin
      or (select p.prosecdef from pg_proc p where p.oid = savings_fn::regprocedure) is not true
      or (select p.prosecdef from pg_proc p where p.oid = restore_fn::regprocedure) is not true then
     raise exception 'FAIL: correction function shape';
+  end if;
+
+  select string_agg(
+    expected.table_name || '.' || expected.column_name,
+    ', ' order by expected.table_name, expected.column_name
+  )
+  into missing
+  from (
+    values
+      ('visit_problem_savings_adjustments', 'actor_user_id', 'visit_problem_savings_adjustments_actor_user_id_idx', false),
+      ('visit_problem_savings_adjustments', 'quote_id', 'visit_problem_savings_adjustments_quote_id_idx', true),
+      ('visit_problem_opportunities', 'actor_user_id', 'visit_problem_opportunities_actor_user_id_idx', false),
+      ('visit_problem_opportunities', 'challenge_item_id', 'visit_problem_opportunities_challenge_item_id_idx', false),
+      ('visit_problem_opportunities', 'redemption_id', 'visit_problem_opportunities_redemption_id_idx', true)
+  ) as expected(table_name, column_name, index_name, partial)
+  where not exists (
+    select 1
+    from pg_index i
+    join pg_class c on c.oid = i.indrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    join pg_class ic on ic.oid = i.indexrelid
+    join pg_attribute a
+      on a.attrelid = c.oid
+     and a.attnum = (string_to_array(i.indkey::text, ' '))[1]::smallint
+    where n.nspname = 'public'
+      and c.relname = expected.table_name
+      and ic.relname = expected.index_name
+      and a.attname = expected.column_name
+      and i.indisvalid
+      and i.indisready
+      and (
+        (expected.partial and pg_get_indexdef(i.indexrelid) ilike '%' || expected.column_name || ' is not null%')
+        or (not expected.partial and pg_get_indexdef(i.indexrelid) not ilike '% where %')
+      )
+  );
+  if missing is not null then
+    raise exception 'FAIL: D2 foreign key covering index missing for %', missing;
   end if;
 
   insert into auth.users (id) values (member), (stranger), (admin_id), (partner_id);
@@ -601,5 +640,25 @@ begin
   end;
 end;
 $$;
+
+-- Second apply, after the contract has already found the migration's indexes.
+-- The indexes already exist, so IF NOT EXISTS must not error.
+reset role;
+create index if not exists visit_problem_savings_adjustments_actor_user_id_idx
+  on public.visit_problem_savings_adjustments (actor_user_id);
+
+create index if not exists visit_problem_savings_adjustments_quote_id_idx
+  on public.visit_problem_savings_adjustments (quote_id)
+  where quote_id is not null;
+
+create index if not exists visit_problem_opportunities_actor_user_id_idx
+  on public.visit_problem_opportunities (actor_user_id);
+
+create index if not exists visit_problem_opportunities_challenge_item_id_idx
+  on public.visit_problem_opportunities (challenge_item_id);
+
+create index if not exists visit_problem_opportunities_redemption_id_idx
+  on public.visit_problem_opportunities (redemption_id)
+  where redemption_id is not null;
 
 rollback;
