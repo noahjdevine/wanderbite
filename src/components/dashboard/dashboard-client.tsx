@@ -387,6 +387,9 @@ export function DashboardClient({
               currentChallenge ? swapCountUsed : null,
               creditsSwapRemaining,
             ),
+            makeupIssuedCodes: visitProblems
+              ? makeupSpots.filter((spot) => spot.codeIssued).length
+              : 0,
           })}
           headingRef={pairHeadingRef}
           revealFocus={revealDetails}

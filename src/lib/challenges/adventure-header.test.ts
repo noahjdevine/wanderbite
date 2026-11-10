@@ -58,4 +58,38 @@ describe('adventure header', () => {
       'swaps',
     ]);
   });
+
+  it('counts an issued make-up code without changing the pair or a real zero', () => {
+    const pair = [{ visitStatus: 'verified' as const }, { visitStatus: 'note_added' as const }];
+    expect(
+      adventureStatTiles({ activeItems: pair, swapsRemaining: 1 }).find((tile) => tile.id === 'codes'),
+    ).toMatchObject({ value: '0', label: 'codes issued' });
+    expect(
+      adventureStatTiles({ activeItems: pair, swapsRemaining: 1, makeupIssuedCodes: 0 }).find(
+        (tile) => tile.id === 'codes',
+      ),
+    ).toMatchObject({ value: '0', label: 'codes issued' });
+
+    const withMakeup = adventureStatTiles({
+      activeItems: pair,
+      swapsRemaining: 1,
+      makeupIssuedCodes: 1,
+    });
+    expect(withMakeup.find((tile) => tile.id === 'codes')).toMatchObject({
+      value: '1',
+      label: 'code issued',
+    });
+    expect(withMakeup.find((tile) => tile.id === 'verified')).toMatchObject({
+      value: '2',
+      suffix: '/2',
+    });
+
+    expect(
+      adventureStatTiles({
+        activeItems: [{ visitStatus: 'code_issued' }],
+        swapsRemaining: null,
+        makeupIssuedCodes: 1,
+      }).find((tile) => tile.id === 'codes'),
+    ).toMatchObject({ value: '2', label: 'codes issued' });
+  });
 });

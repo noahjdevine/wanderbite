@@ -211,6 +211,8 @@ The snapshot schema is `wanderbite.e02.supply_snapshot.v2`. `test_offer_version_
 
 A retry of make-up "I'm here — get my code" links an already issued redemption and marks the spot used, instead of issuing a second code. Master E02 is open. This line does not claim E07 acceptance.
 
+/challenges reads corrected savings and counts make-up codes; idempotent/refused corrections are tested. Master E02 is open. This line does not claim E07 acceptance.
+
 **Redesign track.** Phase 1.1 (one source of truth for member progress) is done. Journey, Passport, and Challenges read streak, visit counts, and badges from `getMemberProgress()` in `src/lib/progress/get-member-progress.ts`. Streak months use `chicagoMonthStart` (America/Chicago). The read does not write `user_badges`.
 
 Follow-ups that are not nulls in the success payload: `neighborhoods` is the count of distinct `restaurants.neighborhood` values on verified visits (the column exists, so the field is a number, including 0). `xp` and `level` use the existing rule of 100 XP per verified visit and the 300 / 1000 / 1500 / 2500 tiers. `savings.amount` is dollars from the sealed lowest tier, with the existing 1000-cent fallback when a visit has no sealed tier, and `isEstimate` is true. `nextLevel` is null only at the max level. `earnedAt` is null when that catalog badge is locked.

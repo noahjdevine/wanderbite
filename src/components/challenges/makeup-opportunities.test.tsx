@@ -24,6 +24,7 @@ function spot(overrides: Partial<MemberMakeupSpot> = {}): MemberMakeupSpot {
     status: 'available',
     bookable: true,
     unavailableMessage: null,
+    codeIssued: false,
     ...overrides,
   };
 }

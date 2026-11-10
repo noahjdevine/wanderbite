@@ -8,10 +8,12 @@ import {
   decideRestoreCorrection,
   decideSavingsCorrection,
   decideVisitProblemReview,
+  makeupCodeIssued,
   parseRestoreCorrectionRpc,
   parseReviewRpc,
   parseSavingsCorrectionRpc,
   readOwnedVisitProblem,
+  savingsCorrectionCentsByRedemption,
   submitOwnedVisitProblem,
   toMemberVisitProblem,
   visitProblemInsertCode,
@@ -443,6 +445,95 @@ describe('visit problem corrections', () => {
       code: 'already_applied',
     });
   });
+
+  it('keeps the first whole-cent correction for a redemption', () => {
+    const cents = savingsCorrectionCentsByRedemption([
+      { redemption_id: 'red-1', corrected_cents: 1500 },
+      { redemption_id: 'red-1', corrected_cents: 900 },
+      { redemption_id: 'red-2', corrected_cents: 10.5 },
+      { redemption_id: 'red-3', corrected_cents: -1 },
+      { redemption_id: '', corrected_cents: 1000 },
+      { redemption_id: 'red-4', corrected_cents: 0 },
+    ]);
+    expect(cents.get('red-1')).toBe(1500);
+    expect(cents.has('red-2')).toBe(false);
+    expect(cents.has('red-3')).toBe(false);
+    expect(cents.get('red-4')).toBe(0);
+    expect(savingsCorrectionCentsByRedemption(null).size).toBe(0);
+  });
+});
+
+describe('make-up issued codes', () => {
+  const openWindow = '2026-12-01T06:00:00.000Z';
+  const now = new Date('2026-11-09T18:00:00.000Z');
+  const issued = {
+    status: 'issued',
+    verifiedAt: null,
+    expiresAt: '2026-11-09T18:15:00.000Z',
+  };
+  const item = { status: 'redeemed', redemptionDeadline: openWindow };
+
+  it('counts an issued code and ignores a verified, expired, or unused spot', () => {
+    expect(makeupCodeIssued({ status: 'used', redemption: issued, item, now })).toBe(true);
+    expect(
+      makeupCodeIssued({
+        status: 'available',
+        redemption: issued,
+        item,
+        now,
+      }),
+    ).toBe(false);
+    expect(
+      makeupCodeIssued({
+        status: 'used',
+        redemption: { ...issued, status: 'verified', verifiedAt: '2026-11-09T18:05:00.000Z' },
+        item,
+        now,
+      }),
+    ).toBe(false);
+    expect(
+      makeupCodeIssued({
+        status: 'used',
+        redemption: { ...issued, expiresAt: '2026-11-09T17:00:00.000Z' },
+        item,
+        now,
+      }),
+    ).toBe(false);
+    expect(
+      makeupCodeIssued({
+        status: 'used',
+        redemption: issued,
+        item: { status: 'redeemed', redemptionDeadline: '2026-11-09T17:00:00.000Z' },
+        now,
+      }),
+    ).toBe(false);
+    expect(makeupCodeIssued({ status: 'used', redemption: null, item, now })).toBe(false);
+  });
+
+  it('uses absolute instants around the Chicago month boundary', () => {
+    const chicagoMidnight = new Date('2026-11-01T05:00:00.000Z');
+    const stillIssued = {
+      status: 'issued',
+      verifiedAt: null,
+      expiresAt: '2026-11-01T05:15:00.000Z',
+    };
+    expect(
+      makeupCodeIssued({
+        status: 'used',
+        redemption: stillIssued,
+        item: { status: 'redeemed', redemptionDeadline: '2026-11-01T06:00:00.000Z' },
+        now: chicagoMidnight,
+      }),
+    ).toBe(true);
+    expect(
+      makeupCodeIssued({
+        status: 'used',
+        redemption: { ...stillIssued, expiresAt: '2026-11-01T04:59:00.000Z' },
+        item: { status: 'redeemed', redemptionDeadline: '2026-11-01T06:00:00.000Z' },
+        now: chicagoMidnight,
+      }),
+    ).toBe(false);
+  });
 });
 
 describe('visit problem boundaries', () => {
@@ -482,6 +573,13 @@ describe('visit problem boundaries', () => {
       'utf8',
     );
     const challenges = readFileSync(path.join(root, 'src/app/(site)/challenges/page.tsx'), 'utf8');
+    const generate = readFileSync(path.join(root, 'src/lib/challenges/generate.ts'), 'utf8');
+    const savingsLoad = generate.slice(generate.indexOf('const [noteResult, storedSavings, corrections]'));
+    expect(savingsLoad.indexOf('visitProblemsEnabled()')).toBeGreaterThan(-1);
+    expect(savingsLoad.indexOf('visitProblemsEnabled()')).toBeLessThan(
+      savingsLoad.indexOf('loadMemberSavingsCorrections'),
+    );
+    expect(generate).not.toMatch(/visit_problem_savings_adjustments|visit_problem_opportunities/);
     expect(correction).toMatch(/visit_problem\.correct_savings/);
     expect(correction).toMatch(/visit_problem\.restore_opportunity/);
     expect(correction).not.toMatch(/update\s+public\.redemptions/i);

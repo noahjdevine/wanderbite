@@ -8,6 +8,8 @@ type ChallengeTicketProps = {
   /** Omitted on the directory, which does not show an offer. */
   offerAmount?: string;
   offerRequirement?: string;
+  /** Short note under the offer, such as a savings correction. */
+  offerNote?: string;
   /** Omitted on the directory, which does not show a visit track. */
   status?: StatusTrackStatus;
   actionHref?: string;
@@ -32,6 +34,7 @@ export function ChallengeTicket({
   area,
   offerAmount,
   offerRequirement,
+  offerNote,
   status,
   actionHref,
   actionLabel,
@@ -107,6 +110,7 @@ export function ChallengeTicket({
             {offerRequirement ? <span className="text-[13px] text-wb-muted"> {offerRequirement}</span> : null}
           </div>
         ) : null}
+        {offerNote ? <p className="m-0 text-center text-xs text-wb-muted">{offerNote}</p> : null}
         {status ? <StatusTrack status={status} /> : null}
         {action ??
           (actionHref && actionLabel ? (

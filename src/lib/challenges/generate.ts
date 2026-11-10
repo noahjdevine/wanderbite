@@ -28,6 +28,9 @@ import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
 import { loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
+import { visitProblemsEnabled } from '@/lib/boost/flag';
+import { challengeVisitSavings } from '@/lib/boost/savings-copy';
+import { loadMemberSavingsCorrections } from '@/lib/boost/visit-problem-store';
 import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
 import {
   deriveDistanceMatch,
@@ -118,9 +121,14 @@ export type GeneratedChallengeItem = {
   /**
    * Whole cents from a stored settlement. Set only when that snapshot parses.
    * Absent when the arrival flag is off, or the visit has no usable snapshot.
-   * Not a recomputed quote.
+   * A savings correction replaces this figure. Not a recomputed quote.
    */
   storedSavingsCents?: number | null;
+  /**
+   * True when storedSavingsCents is the admin correction for this visit.
+   * Absent when the visit-problem flag is off or this visit has no correction.
+   */
+  savingsCorrected?: boolean;
   /** Aggregate Bite Note ratings for this restaurant (from all users). */
   socialProof?: { avgRating: number | null; totalRatings: number };
 };
@@ -187,10 +195,7 @@ export async function getCurrentChallengeForUser(
     }
   }
   if (!cycle) return null;
-  const items = await loadChallengeItemsWithRestaurants(
-    supabase,
-    cycle.id
-  );
+  const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id, userId);
   const distanceMatch = await distanceMatchForUser(supabase, userId, items);
   return { cycle: cycle as ChallengeCycleRow, items, distanceMatch };
 }
@@ -415,7 +420,7 @@ export async function loadMonthlyChallengePool(
       }
       if (existingCycle) {
         const cycle = existingCycle as ChallengeCycleRow;
-        const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
+        const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id, userId);
         if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
           return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
         }
@@ -791,7 +796,7 @@ export async function generateMonthlyChallengeForUser(
     }
 
     const cycle = persistedCycle as ChallengeCycleRow;
-    const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id);
+    const items = await loadChallengeItemsWithRestaurants(supabase, cycle.id, userId);
     if (!isCompleteCurrentLayout(items.map((item) => item.challengeItem))) {
       return fail('incomplete_cycle', INCOMPLETE_CYCLE_ERROR);
     }
@@ -807,7 +812,8 @@ export async function generateMonthlyChallengeForUser(
 
 async function loadChallengeItemsWithRestaurants(
   supabase: ReturnType<typeof getSupabaseAdmin>,
-  cycleId: string
+  cycleId: string,
+  userId: string,
 ): Promise<GeneratedChallengeItem[]> {
   const { data: items } = await supabase
     .from('challenge_items')
@@ -891,13 +897,17 @@ async function loadChallengeItemsWithRestaurants(
           .select('redemption_id, note')
           .in('redemption_id', redemptionIds)
       : Promise.resolve({ data: [] as { redemption_id: string; note: string | null }[] });
-  const [noteResult, storedSavings] = await Promise.all([
+  const [noteResult, storedSavings, corrections] = await Promise.all([
     noteQuery,
     // The admin client's generics are too deep to check against this read port.
     loadStoredChallengeSavings(
       supabase as unknown as Parameters<typeof loadStoredChallengeSavings>[0],
       redemptionIds,
     ),
+    // Same corrected cents Progress counts. Flag off does not query that table.
+    visitProblemsEnabled() && redemptionIds.length > 0
+      ? loadMemberSavingsCorrections(userId, redemptionIds, 'challenges')
+      : Promise.resolve(null),
   ]);
   for (const row of noteResult.data ?? []) {
     const note = row as { redemption_id: string; note: string | null };
@@ -913,7 +923,10 @@ async function loadChallengeItemsWithRestaurants(
     const stats = ratingsMap.get(item.restaurant_id);
     const redemption = redemptionByItemId.get(item.id) ?? null;
     const note = redemption ? noteByRedemptionId.get(redemption.id) ?? null : null;
-    const storedSavingsCents = redemption ? storedSavings.get(redemption.id) : undefined;
+    const shownSavings = challengeVisitSavings({
+      storedCents: redemption ? storedSavings.get(redemption.id) : undefined,
+      correctedCents: corrections && redemption ? corrections.get(redemption.id) : undefined,
+    });
     return {
       challengeItem: item,
       restaurant: {
@@ -942,7 +955,8 @@ async function loadChallengeItemsWithRestaurants(
           : { available: true, discount_amount_cents: 1000, min_spend_cents: 4000 },
       redemptionToken: null,
       redemptionId: item.status === 'redeemed' ? redemption?.id ?? null : null,
-      ...(storedSavingsCents != null ? { storedSavingsCents } : {}),
+      ...(shownSavings.cents != null ? { storedSavingsCents: shownSavings.cents } : {}),
+      ...(shownSavings.corrected ? { savingsCorrected: true } : {}),
       visitStatus: deriveVisitStatus({
         item: {
           status: item.status,

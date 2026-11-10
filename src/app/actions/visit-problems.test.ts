@@ -55,6 +55,7 @@ vi.mock('@/app/actions/redeem-challenge', () => ({
   redeemChallengeItem: (...args: unknown[]) => redeemChallengeItem(...args),
 }));
 
+import { revalidatePath } from 'next/cache';
 import { getOwnVisitProblem, startMakeupVisit, submitVisitProblem } from '@/app/actions/visit-problems';
 import {
   correctVisitSavings,
@@ -543,5 +544,75 @@ describe('visit problem actions', () => {
       actorUserId: 'admin-1',
       reason: 'Grant one visit.',
     });
+  });
+
+  it('returns the existing savings fix on an idempotent replay', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    assertAdmin.mockResolvedValue({ ok: true, userId: 'admin-1', email: 'admin@example.com' });
+    getSupabaseAdmin.mockReturnValue({
+      from: () =>
+        caseQuery({
+          id: CASE,
+          user_id: 'member-1',
+          challenge_item_id: ITEM,
+          redemption_id: REDEMPTION,
+          category: 'wrong_discount',
+          explanation: 'The discount was short.',
+          status: 'submitted',
+          member_response: null,
+          resolved_at: null,
+          created_at: '2026-11-09T01:00:00.000Z',
+          updated_at: '2026-11-09T01:00:00.000Z',
+        }),
+    });
+    correctVisitProblemSavings.mockResolvedValue({
+      ok: true,
+      alreadyApplied: true,
+      correctedCents: 1500,
+      redemptionId: REDEMPTION,
+    });
+    await expect(
+      correctVisitSavings({ caseId: CASE, correctedCents: '1500', reason: 'Same amount again.' }),
+    ).resolves.toEqual({ ok: true });
+    expect(correctVisitProblemSavings).toHaveBeenCalledTimes(1);
+    expect(correctVisitProblemSavings).toHaveBeenCalledWith({
+      caseId: CASE,
+      actorUserId: 'admin-1',
+      correctedCents: 1500,
+      reason: 'Same amount again.',
+    });
+    expect(restoreVisitProblemOpportunity).not.toHaveBeenCalled();
+    expect(revalidatePath).toHaveBeenCalledWith('/challenges');
+  });
+
+  it('refuses a second savings amount and a redemption that is not the case visit', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    assertAdmin.mockResolvedValue({ ok: true, userId: 'admin-1', email: 'admin@example.com' });
+    getSupabaseAdmin.mockReturnValue({
+      from: () =>
+        caseQuery({
+          id: CASE,
+          user_id: 'member-1',
+          challenge_item_id: ITEM,
+          redemption_id: REDEMPTION,
+          category: 'wrong_discount',
+          explanation: 'The discount was short.',
+          status: 'under_review',
+          member_response: null,
+          resolved_at: null,
+          created_at: '2026-11-09T01:00:00.000Z',
+          updated_at: '2026-11-09T01:00:00.000Z',
+        }),
+    });
+    correctVisitProblemSavings.mockResolvedValueOnce({ ok: false, code: 'already_applied' });
+    await expect(
+      correctVisitSavings({ caseId: CASE, correctedCents: '900', reason: 'A different amount.' }),
+    ).resolves.toEqual({ ok: false, code: 'already_applied' });
+    correctVisitProblemSavings.mockResolvedValueOnce({ ok: false, code: 'no_redemption' });
+    await expect(
+      correctVisitSavings({ caseId: CASE, correctedCents: '1500', reason: 'Not this visit.' }),
+    ).resolves.toEqual({ ok: false, code: 'no_redemption' });
+    expect(correctVisitProblemSavings).toHaveBeenCalledTimes(2);
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 });

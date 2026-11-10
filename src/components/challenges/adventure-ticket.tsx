@@ -151,6 +151,7 @@ export function AdventureTicket({
     offer: item.offer,
     visitStatus: item.visitStatus,
     storedSavingsCents: item.storedSavingsCents,
+    savingsCorrected: item.savingsCorrected === true,
   });
   const status = trackStatus(item);
   const badge = photoBadge(item.visitStatus);
@@ -255,6 +256,7 @@ export function AdventureTicket({
       area={ticketArea(item)}
       offerAmount={offer.amount}
       offerRequirement={offer.requirement}
+      offerNote={offer.note}
       status={status}
       action={action}
       photo={

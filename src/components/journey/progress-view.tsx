@@ -7,6 +7,7 @@ import { NextMoveCard } from '@/components/wb/next-move-card';
 import { OpenStat } from '@/components/wb/open-stat';
 import { pluralNoun } from '@/lib/format/text';
 import { visitElementId } from '@/lib/notes/note-rules';
+import { SAVINGS_CORRECTION_NOTE } from '@/lib/progress/savings-cents';
 import { formatEarnedOn, PROGRESS_UNAVAILABLE_MESSAGE } from '@/lib/progress/rules';
 import {
   formatSavingsDollars,
@@ -133,7 +134,7 @@ export function ProgressView({ model, savedRecipes }: ProgressViewProps) {
               value={formatSavingsDollars(model.savingsAmount)}
               label="saved so far"
               estimated={model.savingsIsEstimate}
-              note={model.savingsCorrected ? 'Corrected after review' : undefined}
+              note={model.savingsCorrected ? SAVINGS_CORRECTION_NOTE : undefined}
             />
           </section>
 

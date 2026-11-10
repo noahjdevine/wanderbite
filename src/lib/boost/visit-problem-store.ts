@@ -10,12 +10,14 @@ import type {
   VisitProblemCaseRow,
 } from '@/lib/boost/visit-problem';
 import {
+  makeupCodeIssued,
   makeupSpotAvailability,
   parseRestoreCorrectionRpc,
   parseReviewRpc,
   parseSavingsCorrectionRpc,
   parseVisitProblemCategory,
   parseVisitProblemStatus,
+  savingsCorrectionCentsByRedemption,
   visitProblemInsertCode,
   VISIT_PROBLEM_CATEGORY_LABELS,
   VISIT_PROBLEM_STATUS_LABELS,
@@ -259,6 +261,39 @@ export async function loadVisitProblemQueue(): Promise<
 }
 
 /**
+ * Corrected cents for the member's visits. Flag off returns an empty map and
+ * does not query. A missing table or any other read error returns null so
+ * the caller keeps today's uncorrected amount.
+ * Progress and Challenges both read this table. The redemption row stays as stored.
+ */
+export async function loadMemberSavingsCorrections(
+  userId: string,
+  redemptionIds: readonly string[],
+  logScope = 'visit-problem',
+): Promise<Map<string, number> | null> {
+  if (!visitProblemsEnabled() || redemptionIds.length === 0) return new Map();
+  try {
+    const admin = getSupabaseAdmin();
+    const { data, error } = await admin
+      .from('visit_problem_savings_adjustments')
+      .select('redemption_id, corrected_cents')
+      .eq('user_id', userId)
+      .in('redemption_id', [...redemptionIds]);
+    if (error) {
+      console.error(`[${logScope}] savings correction read:`, error.message);
+      return null;
+    }
+    return savingsCorrectionCentsByRedemption(data ?? []);
+  } catch (error) {
+    console.error(
+      `[${logScope}] savings correction read:`,
+      error instanceof Error ? error.message : 'unknown',
+    );
+    return null;
+  }
+}
+
+/**
  * Make-up spots for the signed-in member. Flag off returns nothing and does
  * not query. A missing table or a failed read returns an empty list so
  * Challenges still loads.
@@ -272,7 +307,7 @@ export async function loadMemberMakeupSpots(
     const admin = getSupabaseAdmin();
     const { data, error } = await admin
       .from('visit_problem_opportunities')
-      .select('id, challenge_item_id, status')
+      .select('id, challenge_item_id, status, makeup_challenge_item_id, used_redemption_id')
       .eq('user_id', userId);
     if (error) {
       console.error('[visit-problem] makeup read:', error.message);
@@ -299,23 +334,57 @@ export async function loadMemberMakeupSpots(
         (items ?? []).map((item) => item.offer_version_id).filter((id): id is string => Boolean(id)),
       ),
     ];
-    const [{ data: restaurants, error: restaurantError }, { data: versions, error: versionError }] =
-      await Promise.all([
-        restaurantIds.length
-          ? admin.from('restaurants').select('id, name, status').in('id', restaurantIds)
-          : Promise.resolve({ data: [], error: null }),
-        versionIds.length
-          ? admin
-              .from('offer_versions')
-              .select('id, valid_from, valid_until, withdrawn_from_selection_at')
-              .in('id', versionIds)
-          : Promise.resolve({ data: [], error: null }),
-      ]);
+    const makeupItemIds = [
+      ...new Set(
+        rows.flatMap((row) => (row.makeup_challenge_item_id ? [row.makeup_challenge_item_id] : [])),
+      ),
+    ];
+    const usedRedemptionIds = [
+      ...new Set(rows.flatMap((row) => (row.used_redemption_id ? [row.used_redemption_id] : []))),
+    ];
+    const [
+      { data: restaurants, error: restaurantError },
+      { data: versions, error: versionError },
+      { data: makeupItems, error: makeupItemError },
+      { data: usedRedemptions, error: redemptionError },
+    ] = await Promise.all([
+      restaurantIds.length
+        ? admin.from('restaurants').select('id, name, status').in('id', restaurantIds)
+        : Promise.resolve({ data: [], error: null }),
+      versionIds.length
+        ? admin
+            .from('offer_versions')
+            .select('id, valid_from, valid_until, withdrawn_from_selection_at')
+            .in('id', versionIds)
+        : Promise.resolve({ data: [], error: null }),
+      makeupItemIds.length
+        ? admin
+            .from('challenge_items')
+            .select('id, status, redemption_deadline')
+            .in('id', makeupItemIds)
+        : Promise.resolve({ data: [], error: null }),
+      usedRedemptionIds.length
+        ? admin
+            .from('redemptions')
+            .select('id, status, verified_at, expires_at')
+            .eq('user_id', userId)
+            .in('id', usedRedemptionIds)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
     if (restaurantError || versionError) {
       console.error('[visit-problem] makeup read:', restaurantError?.message ?? versionError?.message);
       return [];
     }
+    const issuedKnown = !makeupItemError && !redemptionError;
+    if (!issuedKnown) {
+      console.error(
+        '[visit-problem] makeup read:',
+        makeupItemError?.message ?? redemptionError?.message,
+      );
+    }
     const itemById = new Map((items ?? []).map((item) => [item.id, item]));
+    const makeupItemById = new Map((makeupItems ?? []).map((item) => [item.id, item]));
+    const redemptionById = new Map((usedRedemptions ?? []).map((row) => [row.id, row]));
     return rows.map((row) => {
       const item = itemById.get(row.challenge_item_id);
       const restaurant = restaurants?.find((entry) => entry.id === item?.restaurant_id);
@@ -335,12 +404,37 @@ export async function loadMemberMakeupSpots(
         redemptionDeadline: item?.redemption_deadline ?? null,
         now,
       });
+      const usedRedemption = row.used_redemption_id
+        ? redemptionById.get(row.used_redemption_id)
+        : undefined;
+      const makeupItem = row.makeup_challenge_item_id
+        ? makeupItemById.get(row.makeup_challenge_item_id)
+        : undefined;
       return {
         id: row.id,
         restaurantName: restaurant?.name?.trim() || 'your restaurant',
         status,
         bookable: availability.bookable,
         unavailableMessage: availability.unavailableMessage,
+        codeIssued:
+          issuedKnown &&
+          makeupCodeIssued({
+            status,
+            redemption: usedRedemption
+              ? {
+                  status: usedRedemption.status,
+                  verifiedAt: usedRedemption.verified_at,
+                  expiresAt: usedRedemption.expires_at,
+                }
+              : null,
+            item: makeupItem
+              ? {
+                  status: makeupItem.status,
+                  redemptionDeadline: makeupItem.redemption_deadline,
+                }
+              : null,
+            now,
+          }),
       };
     });
   } catch (error) {

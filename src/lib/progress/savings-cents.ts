@@ -1,5 +1,8 @@
 import { ESTIMATED_SAVINGS_FALLBACK_CENTS } from '@/lib/progress/rules';
 
+/** Member-facing note when the shown savings figure is an admin correction. */
+export const SAVINGS_CORRECTION_NOTE = 'Corrected after review';
+
 /**
  * Dollars Progress shows for verified visits.
  *
