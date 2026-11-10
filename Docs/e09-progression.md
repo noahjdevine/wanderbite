@@ -28,4 +28,16 @@ A make-up visit is a normal verified visit: if its timestamp is in the list, it 
 
 ## Not in this slice
 
-No ledger table, no backfill, no drawing campaign, and no change to `user_badges` or the badge-award path. Revert this PR to roll it back. Nothing else calls these functions.
+No ledger table, no backfill, and no change to `user_badges` or the badge-award path. Campaign budget checks are E09-B1 below and still have no table. Revert this PR to roll it back. Nothing else calls these functions.
+
+## Campaigns (E09-B1)
+
+Pure helpers in `src/lib/drawings/campaign.ts`. No migration, no UI, no flag, and no database read or write. Nothing in the app calls them yet. This does not claim E09, E07, or E02 acceptance.
+
+`validateCampaignDraft` and `checkCampaignEdit` add each prize's quantity times `unitValueCents` to `fulfillmentAllowanceCents`. That sum is `committedCents`. Amounts are integer cents. The sum may equal `totalBudgetCents`. Anything larger is `over_budget`. A valid current campaign does not allow the next draft to exceed its authorized total. Lowering `totalBudgetCents` below the cents still committed is rejected.
+
+Sample mode requires every prize to have `isSample: true` and a label containing `Sample prize`. `displayPrizeLabel` starts sample labels with that marker. Live mode rejects an `isSample` prize. The only entry source is `level_milestone`. Reviews, QR issuance, and recipes are rejected. A public-review source is never eligible.
+
+`campaignWindow` uses `chicagoQuarterKey` for the America/Chicago quarter, start inclusive and end exclusive. `2026-Q4` starts at 2026-10-01 00:00 America/Chicago and ends at 2027-01-01 00:00 America/Chicago, including the November DST change. These helpers do not set official rules or real prize values. Noah funds the drawings. No restaurant sponsorship is recorded here.
+
+Revert the PR to roll the helpers back. Nothing in the app calls them yet.
