@@ -1,4 +1,5 @@
 import type { Json } from '@/types/database.types';
+import { deriveVisitStatus } from '@/lib/visits/visit-status';
 
 /**
  * Member visit-problem rules. No database and no feature-flag read.
@@ -168,7 +169,65 @@ export type MemberMakeupSpot = {
   /** False when the restaurant or offer cannot take the visit, or the spot is used. */
   bookable: boolean;
   unavailableMessage: string | null;
+  /**
+   * True when this spot's code is issued and the visit window is still open.
+   * A verified visit, an expired code, and an available spot stay false.
+   */
+  codeIssued: boolean;
 };
+
+/**
+ * Whether a make-up spot currently counts as an issued code.
+ * Uses the same visit status Progress uses for pending codes.
+ * Instants are absolute, so the process time zone does not change the result.
+ */
+export function makeupCodeIssued(input: {
+  status: 'available' | 'used';
+  redemption: { status: string | null; verifiedAt: string | null; expiresAt: string | null } | null;
+  item: { status: string | null; redemptionDeadline: string | null } | null;
+  now: Date;
+}): boolean {
+  if (input.status !== 'used' || !input.redemption?.status) return false;
+  return (
+    deriveVisitStatus({
+      item: input.item
+        ? {
+            status: input.item.status ?? 'assigned',
+            redemptionDeadline: input.item.redemptionDeadline,
+          }
+        : null,
+      redemption: {
+        status: input.redemption.status,
+        verifiedAt: input.redemption.verifiedAt,
+        expiresAt: input.redemption.expiresAt,
+      },
+      note: null,
+      now: input.now,
+    }) === 'code_issued'
+  );
+}
+
+/**
+ * First whole non-negative correction per redemption.
+ * A later row for the same redemption is ignored. Invalid cents are skipped.
+ */
+export function savingsCorrectionCentsByRedemption(
+  rows: readonly { redemption_id: string; corrected_cents: unknown }[] | null,
+): Map<string, number> {
+  const byId = new Map<string, number>();
+  for (const row of rows ?? []) {
+    if (!row.redemption_id || byId.has(row.redemption_id)) continue;
+    if (
+      typeof row.corrected_cents !== 'number' ||
+      !Number.isInteger(row.corrected_cents) ||
+      row.corrected_cents < 0
+    ) {
+      continue;
+    }
+    byId.set(row.redemption_id, row.corrected_cents);
+  }
+  return byId;
+}
 
 export const MAKEUP_RESTAURANT_CLOSED = 'This restaurant is not taking visits right now.';
 export const MAKEUP_OFFER_CLOSED = 'This offer is no longer available.';

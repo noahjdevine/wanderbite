@@ -77,6 +77,11 @@ export function swapsRemainingForHeader(
 export function adventureStatTiles(input: {
   activeItems: { visitStatus?: VisitStatus | null }[] | null;
   swapsRemaining: number | null;
+  /**
+   * Issued make-up codes that are not items on the current pair.
+   * Omitted or zero keeps today's pair count.
+   */
+  makeupIssuedCodes?: number;
 }): AdventureStatTile[] {
   const tiles: AdventureStatTile[] = [];
   const items = input.activeItems;
@@ -84,7 +89,10 @@ export function adventureStatTiles(input: {
     const verified = items.filter(
       (item) => item.visitStatus === 'verified' || item.visitStatus === 'note_added',
     ).length;
-    const codes = items.filter((item) => item.visitStatus === 'code_issued').length;
+    const extraIssued = input.makeupIssuedCodes ?? 0;
+    const codes =
+      items.filter((item) => item.visitStatus === 'code_issued').length +
+      (extraIssued > 0 ? extraIssued : 0);
     tiles.push({
       id: 'verified',
       value: String(verified),

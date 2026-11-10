@@ -1,4 +1,5 @@
 import { formatCents } from '@/lib/offers/sealed-base';
+import { SAVINGS_CORRECTION_NOTE } from '@/lib/progress/savings-cents';
 import { visitStatusCountsAsVisit, type VisitStatus } from '@/lib/visits/visit-status';
 
 /**
@@ -80,8 +81,25 @@ function wholeSavingsCents(value: number | null | undefined): number | null {
 }
 
 /**
+ * Cents the Challenges card shows for one visit.
+ * A whole non-negative correction replaces the stored snapshot.
+ * No correction keeps that snapshot. Neither one invents the 1000-cent fallback.
+ */
+export function challengeVisitSavings(input: {
+  storedCents?: number | null;
+  correctedCents?: number | null;
+}): { cents: number | null; corrected: boolean } {
+  const corrected = wholeSavingsCents(input.correctedCents);
+  if (corrected != null) return { cents: corrected, corrected: true };
+  const stored = wholeSavingsCents(input.storedCents);
+  if (stored != null) return { cents: stored, corrected: false };
+  return { cents: null, corrected: false };
+}
+
+/**
  * Challenges ticket offer line.
  * A verified visit with a stored whole-cent settlement shows that saved amount.
+ * A savings correction uses the same cents and the Progress fix note.
  * The sealed offer stays a separate "Offer" line. Anything else keeps today's offer.
  * This does not recompute a quote and does not invent the 1000-cent fallback.
  */
@@ -89,14 +107,18 @@ export function challengeTicketOffer(input: {
   offer: ChallengeOffer;
   visitStatus?: VisitStatus | null;
   storedSavingsCents?: number | null;
-}): { amount: string; requirement: string } {
+  savingsCorrected?: boolean;
+}): { amount: string; requirement: string; note?: string } {
   const stored = wholeSavingsCents(input.storedSavingsCents);
   const counted = input.visitStatus != null && visitStatusCountsAsVisit(input.visitStatus);
   if (counted && stored != null) {
     const requirement = input.offer.available
       ? `Offer ${formatCents(input.offer.discount_amount_cents)} off ${formatCents(input.offer.min_spend_cents)}+`
       : '';
-    return { amount: `Saved ${formatCents(stored)}`, requirement };
+    const amount = `Saved ${formatCents(stored)}`;
+    return input.savingsCorrected
+      ? { amount, requirement, note: SAVINGS_CORRECTION_NOTE }
+      : { amount, requirement };
   }
   if (!input.offer.available) return { amount: 'Offer unavailable', requirement: '' };
   return {

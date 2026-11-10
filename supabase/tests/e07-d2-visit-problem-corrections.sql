@@ -1,6 +1,7 @@
 -- Run only through the guarded local harness. All fixture rows are rolled back.
 -- E07-D2: category gating, one savings fix, one make-up opportunity,
 -- idempotent repeats, no fix after resolved, non-admin refusal,
+-- a redemption that is not the case's visit,
 -- and the original visit, settlement, quote, and capacity stay put.
 begin;
 set local statement_timeout = '15s';
@@ -503,6 +504,38 @@ begin
   where action = 'visit_problem.make_up_used';
   if makeup_audits <> 2 then
     raise exception 'FAIL: makeup audit count %', makeup_audits;
+  end if;
+
+  -- The case guard refuses this row. Disable only that guard so the savings
+  -- function still has to refuse a redemption that belongs to another visit.
+  reset role;
+  alter table public.visit_problem_cases disable trigger visit_problem_cases_guard;
+  insert into public.challenge_items (
+    id, cycle_id, restaurant_id, slot_number, status
+  ) values (
+    'e07d2000-0000-4000-8000-000000000047', cycle_nov, grill, 1, 'swapped_out'
+  );
+  insert into public.visit_problem_cases (
+    id, user_id, challenge_item_id, redemption_id, category, explanation
+  ) values (
+    'e07d2000-0000-4000-8000-000000000087',
+    member,
+    'e07d2000-0000-4000-8000-000000000047',
+    redemption_discount,
+    'wrong_discount',
+    'This redemption belongs to another visit.'
+  );
+  alter table public.visit_problem_cases enable trigger visit_problem_cases_guard;
+  set local role service_role;
+  result := public.correct_visit_problem_savings(
+    'e07d2000-0000-4000-8000-000000000087', admin_id, 1500, 'Not this visit.'
+  );
+  if result ->> 'error' is distinct from 'no_redemption'
+     or (select count(*) from public.visit_problem_savings_adjustments) <> 2
+     or (select count(*) from public.admin_audit_log where action = 'visit_problem.correct_savings') <> 2
+     or (select total_discount_cents from public.redemptions where id = redemption_discount) is distinct from stored_total
+     or (select challenge_item_id from public.redemptions where id = redemption_discount) is distinct from item_discount then
+    raise exception 'FAIL: savings for another visit was %', result;
   end if;
 
   select count(*) into savings_count from public.visit_problem_savings_adjustments;

@@ -50,6 +50,7 @@ function item(
   visitStatus: VisitStatus,
   cents: { discount: number; min: number } = { discount: 1000, min: 4000 },
   storedSavingsCents?: number | null,
+  savingsCorrected = false,
 ): GeneratedChallenge['items'][number] {
   return {
     challengeItem: {
@@ -77,6 +78,7 @@ function item(
     visitStatus,
     redemptionId: status === 'redeemed' ? `red-${id}` : null,
     ...(storedSavingsCents != null ? { storedSavingsCents } : {}),
+    ...(savingsCorrected ? { savingsCorrected: true } : {}),
   };
 }
 
@@ -187,6 +189,7 @@ describe('golden challenges', () => {
     expect(settledText).toContain('Verified');
     expect(settledText).toContain('Saved $15');
     expect(settledText).toContain('Offer $10 off $40+');
+    expect(settledText).not.toContain('Corrected after review');
     expect(settledText).not.toContain('when you spend $40+');
 
     const fallback = await render(
@@ -216,6 +219,73 @@ describe('golden challenges', () => {
     );
     expect(open.textContent ?? '').toContain('$10 off when you spend $40+');
     expect(open.textContent ?? '').not.toContain('Saved $15');
+    expect(open.textContent ?? '').not.toContain('Corrected after review');
+  });
+
+  it('shows a corrected savings amount and counts an issued make-up code', async () => {
+    const corrected = await render(
+      <DashboardClient
+        appearance="golden"
+        visitProblems
+        makeupSpots={[
+          {
+            id: 'spot-1',
+            restaurantName: 'QA Kitchen',
+            status: 'used',
+            bookable: false,
+            unavailableMessage: null,
+            codeIssued: true,
+          },
+        ]}
+        launchEligible
+        currentChallenge={challenge([
+          item('done-1', 'QA Kitchen', 'redeemed', 'verified', { discount: 1000, min: 4000 }, 1500, true),
+          item('done-2', 'Other Grill', 'redeemed', 'note_added'),
+        ])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const text = corrected.textContent ?? '';
+    expect(text).toContain('Saved $15');
+    expect(text).toContain('Corrected after review');
+    expect(text).toContain('Offer $10 off $40+');
+    const codeLabel = Array.from(corrected.querySelectorAll('span')).find(
+      (node) => node.textContent === 'code issued',
+    );
+    expect(codeLabel?.parentElement?.textContent).toBe('1code issued');
+
+    const unchanged = await render(
+      <DashboardClient
+        appearance="golden"
+        visitProblems={false}
+        makeupSpots={[
+          {
+            id: 'spot-1',
+            restaurantName: 'QA Kitchen',
+            status: 'used',
+            bookable: false,
+            unavailableMessage: null,
+            codeIssued: true,
+          },
+        ]}
+        launchEligible
+        currentChallenge={challenge([
+          item('done-3', 'QA Kitchen', 'redeemed', 'verified', { discount: 1000, min: 4000 }, 1000),
+          item('done-4', 'Other Grill', 'redeemed', 'note_added'),
+        ])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const plain = unchanged.textContent ?? '';
+    expect(plain).toContain('Saved $10');
+    expect(plain).not.toContain('Corrected after review');
+    expect(plain).not.toContain('Make-up challenge');
+    const zeroLabel = Array.from(unchanged.querySelectorAll('span')).find(
+      (node) => node.textContent === 'codes issued',
+    );
+    expect(zeroLabel?.parentElement?.textContent).toBe('0codes issued');
   });
 
   it('maps code_expired to the code step and a closed visit to the ended adventure', async () => {
