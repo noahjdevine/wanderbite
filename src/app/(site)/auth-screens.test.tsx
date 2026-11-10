@@ -3,8 +3,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PASSWORD_RESET_VALIDATION_MESSAGE } from '@/lib/password-reset';
 import { SIGNUP_EARLY_ACCESS_MESSAGE } from '@/lib/checkout-copy';
 
+const navigationSearch = vi.hoisted(() => ({ value: '' }));
+
 vi.mock('next/navigation', () => ({
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigationSearch.value),
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
   redirect: vi.fn(),
 }));
@@ -27,6 +29,7 @@ import { ResetPasswordInvalid } from './reset-password/reset-password-invalid';
 
 afterEach(() => {
   cleanup();
+  navigationSearch.value = '';
 });
 
 function headingText(): string {
@@ -144,6 +147,32 @@ describe('forgot-password page', () => {
       );
     });
     expect(screen.getByLabelText('Email').getAttribute('aria-describedby')).toBe('forgot-password-error');
+    expect(
+      screen.queryByText(
+        'That reset link expired or was opened in a different browser. Request a new one and open it in this same browser.',
+      ),
+    ).toBeNull();
+  });
+
+  it('shows the expired reset-link alert and keeps the request form', () => {
+    navigationSearch.value = 'error=expired';
+    render(<ForgotPasswordPage />);
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).toBe(
+      'That reset link expired or was opened in a different browser. Request a new one and open it in this same browser.',
+    );
+    expect(alert.className).toContain('wb-auth-alert');
+    expect(alert.className).toContain('wb-auth-alert-error');
+    expect(screen.getByLabelText('Email')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Send Reset Link' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Back to sign in' }).getAttribute('href')).toBe('/signin');
+  });
+
+  it('ignores other error query values', () => {
+    navigationSearch.value = 'error=session';
+    render(<ForgotPasswordPage />);
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send Reset Link' })).toBeTruthy();
   });
 });
 

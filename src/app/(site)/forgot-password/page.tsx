@@ -1,12 +1,16 @@
 'use client';
 
-import { useActionState } from 'react';
+import { Suspense, useActionState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AuthScreen } from '@/components/auth/auth-screen';
 import { sendPasswordResetFromForm } from '@/app/actions/credential-password';
 
-export default function ForgotPasswordPage() {
+const EXPIRED_RESET_LINK_MESSAGE =
+  'That reset link expired or was opened in a different browser. Request a new one and open it in this same browser.';
+
+function ForgotPasswordRequest({ linkExpired }: { linkExpired: boolean }) {
   const [state, formAction, isLoading] = useActionState(sendPasswordResetFromForm, null);
   const sent = state?.ok === true;
   const error = state && !state.ok ? state.error : null;
@@ -31,6 +35,11 @@ export default function ForgotPasswordPage() {
         </div>
       ) : (
         <form action={formAction} className="wb-auth-form">
+          {linkExpired ? (
+            <Alert className="wb-auth-alert wb-auth-alert-error">
+              <AlertDescription>{EXPIRED_RESET_LINK_MESSAGE}</AlertDescription>
+            </Alert>
+          ) : null}
           <div className="wb-auth-field">
             <label htmlFor="email" className="wb-auth-label">
               Email
@@ -64,5 +73,18 @@ export default function ForgotPasswordPage() {
         </form>
       )}
     </AuthScreen>
+  );
+}
+
+function ForgotPasswordFromQuery() {
+  const linkExpired = useSearchParams().get('error') === 'expired';
+  return <ForgotPasswordRequest linkExpired={linkExpired} />;
+}
+
+export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<ForgotPasswordRequest linkExpired={false} />}>
+      <ForgotPasswordFromQuery />
+    </Suspense>
   );
 }
