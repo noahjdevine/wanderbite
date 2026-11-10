@@ -24,6 +24,7 @@ import { runG13A1Concurrency } from './g13-a1-concurrency';
 import { runG13A2Concurrency } from './g13-a2-concurrency';
 import { runE04RevealConcurrency } from './e04-reveal-concurrency';
 import { runE06B2ActivityMaintenanceDb } from './e06-b2-activity-maintenance-db';
+import { runE09A4BackfillConcurrency } from './e09-a4-backfill-concurrency';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = localDockerHost(process.env.G1_DOCKER_HOST ??
@@ -175,6 +176,10 @@ async function main() {
   process.stdout.write('PASS: E07-D2 savings correction, one make-up opportunity, and the original visit stays put.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-a2-progression-ledger.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E09-A2 progression ledger idempotency, quarter boundary, and member read.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-a4-progression-backfill.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E09-A4 backfill counts, cutoff, dry run, recovery, and frozen milestones.\n');
+  await runE09A4BackfillConcurrency({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: E09-A4 backfill and record share the member lock.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-bill-receipts.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E07-B2 private bill-receipts bucket, proposal grants, and open-session scope.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e08-journal-reflections.sql'), 'utf8')) + '\n');

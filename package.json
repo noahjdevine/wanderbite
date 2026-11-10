@@ -22,7 +22,8 @@
     "test:crypto": "tsx scripts/redemption-crypto-selftest.ts",
     "seed": "tsx scripts/seed.ts",
     "types:db": "supabase gen types typescript --project-id yiajoycgiyxjvznndjge --schema public > src/types/database.types.ts",
-    "backfill:pin-hash": "tsx scripts/backfill-pin-hash.ts"
+    "backfill:pin-hash": "tsx scripts/backfill-pin-hash.ts",
+    "progression:backfill": "tsx scripts/progression-backfill.ts"
   },
   "dependencies": {
     "@react-email/components": "^1.0.12",
