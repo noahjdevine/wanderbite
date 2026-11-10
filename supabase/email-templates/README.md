@@ -31,8 +31,21 @@ Verified against [Auth email templates](https://supabase.com/docs/guides/auth/au
 | `{{ .Email }}` | ✓ | ✓ | ✓ | ✓ (original / current address) |
 | `{{ .NewEmail }}` | — | — | — | ✓ (new address) |
 | `{{ .Token }}` | ✓ | ✓ | ✓ | ✓ |
+| `{{ .TokenHash }}` | ✓ | ✓ | ✓ | ✓ |
 
 If Supabase changes variable names in a future release, re-check the official docs above.
+
+### Reset password link
+
+`{{ .ConfirmationURL }}` is a PKCE link. The code verifier stays in the browser that requested the reset, so opening that link in a different browser fails in `/auth/recovery` (`bad_code_verifier`). Requesting another reset also invalidates the previous one-time token.
+
+The **Reset password** template should use this URL for the button and the plaintext fallback. `src/app/auth/recovery/route.ts` already verifies `token_hash` with `type=recovery`:
+
+```
+{{ .SiteURL }}/auth/recovery?token_hash={{ .TokenHash }}&type=recovery
+```
+
+`reset-password.html` in this folder is the reference copy of that link. Supabase does not read this folder. Paste the file into **Authentication → Email Templates → Reset password** yourself. Do not treat a commit here as a hosted template change.
 
 ## Custom “From” address (recommended, not blocking)
 
@@ -44,7 +57,7 @@ Good providers: **Resend**, **Postmark**, **SendGrid**. Configure **SPF/DKIM** f
 
 - `confirm-signup.html` — Welcome / confirm email (adventurous voice).
 - `magic-link.html` — Passwordless sign-in; mentions ~**1 hour** link expiry (typical Supabase magic-link behavior—confirm **JWT expiry** / OTP settings in your project if you need exact copy).
-- `reset-password.html` — Calm reset flow; **stronger** “didn’t request” block for phishing clarity.
+- `reset-password.html` — Calm reset flow; **stronger** “didn’t request” block for phishing clarity. The reset link is `{{ .SiteURL }}/auth/recovery?token_hash={{ .TokenHash }}&type=recovery`, not `{{ .ConfirmationURL }}`, so it works when the email is opened in a different browser.
 - `change-email.html` — Confirms **{{ .NewEmail }}**; footer links to **`{{ .SiteURL }}/contact`** for suspicious activity. Ensure `/contact` exists on your deployed Site URL (Wanderbite uses a contact page).
 
 ## Logo in emails
