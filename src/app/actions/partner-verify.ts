@@ -3,6 +3,7 @@
 import { format } from 'date-fns';
 import type { Json } from '@/types/database.types';
 import { headers } from 'next/headers';
+import * as Sentry from '@sentry/nextjs';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
 import { PARTNER_SESSION_EXPIRED_MESSAGE } from '@/lib/partner-session';
@@ -15,6 +16,11 @@ import {
 import { createSupabaseArrivalStore } from '@/lib/boost/arrival-store';
 import { persistVerifiedBoostConfirmation } from '@/lib/boost/confirm-visit';
 import { arrivalSessionsEnabled } from '@/lib/boost/flag';
+import { progressionLedgerEnabled } from '@/lib/progression/flag';
+import {
+  recordVerifiedVisitProgress,
+  type ProgressionLedgerClient,
+} from '@/lib/progression/record-visit';
 import { createSupabaseSettlementStore } from '@/lib/boost/settlement-store';
 import { verifyBoostFields } from '@/lib/boost/savings-copy';
 import { lowestSealedBase, type SealedBase } from '@/lib/offers/sealed-base';
@@ -31,6 +37,18 @@ const BADGE_ID_TO_NAME: Record<string, string> = {
 const VERIFY_FAILED_MESSAGE = 'Verification failed. Please try again later.';
 const DUPLICATE_ISSUED_REDEMPTIONS_ERROR =
   'duplicate issued redemptions for token_hash';
+const PROGRESSION_LEDGER_FAILURE_LOG = 'progression ledger record failed';
+
+function reportProgressionLedgerFailure(): void {
+  try {
+    console.error(PROGRESSION_LEDGER_FAILURE_LOG);
+    Sentry.captureException(new Error(PROGRESSION_LEDGER_FAILURE_LOG), {
+      tags: { feature: 'e09-progression-ledger' },
+    });
+  } catch {
+    // Reporting must not change the verify result.
+  }
+}
 
 export type VerifyRedemptionResult =
   | {
@@ -289,6 +307,20 @@ export async function verifyRedemptionTokenForPartner(
         confirmedBaseDiscountCents = fields.confirmedBaseDiscountCents;
         confirmedBoostDiscountCents = fields.confirmedBoostDiscountCents;
         needsSubtotal = fields.needsSubtotal;
+      }
+    }
+
+    if (progressionLedgerEnabled() && redemption.id) {
+      try {
+        const progress = await recordVerifiedVisitProgress(
+          supabase as unknown as ProgressionLedgerClient,
+          redemption.id,
+        );
+        if (progress.status === 'error' || progress.status === 'skipped') {
+          reportProgressionLedgerFailure();
+        }
+      } catch {
+        reportProgressionLedgerFailure();
       }
     }
 
