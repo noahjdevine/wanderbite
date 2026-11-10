@@ -20,9 +20,11 @@ import type { VisitStatus } from '@/lib/visits/visit-status';
 type ProgressViewProps = {
   model: ProgressReadyModel;
   savedRecipes?: ReactNode;
+  /** Continuing levels. Omitted unless the member progression flag is on. */
+  progression?: ReactNode;
 };
 
-export function ProgressView({ model, savedRecipes }: ProgressViewProps) {
+export function ProgressView({ model, savedRecipes, progression }: ProgressViewProps) {
   const toGo =
     model.level.nextLevel != null ? model.level.nextLevel.xp - model.xp : null;
   const ringLabel =
@@ -196,6 +198,8 @@ export function ProgressView({ model, savedRecipes }: ProgressViewProps) {
             )}
             <LevelRoad xp={model.xp} />
           </section>
+
+          {progression}
 
           <section aria-labelledby="progress-recent" className="flex flex-col gap-4">
             <h2 id="progress-recent" className="wb-display m-0 text-[30px] text-wb-ink">

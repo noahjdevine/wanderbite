@@ -12,7 +12,8 @@ import {
  * client (`createClient` from `src/lib/supabase/server`). RLS still limits
  * the read to that member. This module does not import the service-role
  * client, does not write, and does not read `E09_PROGRESSION_LEDGER_ENABLED`.
- * Nothing in the app calls it yet.
+ * JourneyContent calls it when `E09_MEMBER_PROGRESSION_UI_ENABLED` is exactly `true`.
+ * This module does not read that flag.
  *
  * The three ledger tables are not in database.types.ts. The query below uses
  * a local reader shape. Do not run `npm run types:db` for this.
