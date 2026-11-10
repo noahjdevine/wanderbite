@@ -1,6 +1,6 @@
 # E09 continuing progression
 
-A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. The flag is unset everywhere. The A2 and A4 migrations are not applied to hosted, and the script is not run against hosted. Nothing reads the ledger. No UI change. Journey still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
+A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. A2 is applied to hosted as `20261110182527`. A4 is applied to hosted as `20261110185755`. The hosted backfill ran on 2026-11-10 with `p_entries_from = '2027-01-01 00:00:00-06'` (1 event, 0 milestones, 0 entries; a rerun returned zeros). `E09_PROGRESSION_LEDGER_ENABLED` stays unset. Nothing reads the ledger. No UI change. Journey still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
 
 ## Schedule v1
 
@@ -28,7 +28,7 @@ A make-up visit is a normal verified visit: if its timestamp is in the list, it 
 
 ## Ledger (E09-A2)
 
-Migration `20261110152224_e09_a2_progression_ledger.sql` is in the repo and is not applied to hosted. `record_verified_visit_progress(uuid)` records one verified visit. `backfill_verified_visit_progress` is the other writer (E09-A4). `verify_redemption` and `verify_redemption_and_settle` are unchanged. `database.types.ts` is unchanged. `user_badges` is unchanged.
+Migration `20261110182527_e09_a2_progression_ledger.sql` is applied to hosted as `schema_migrations` version `20261110182527` (applied 2026-11-10). The previous repo filename was `20261110152224_e09_a2_progression_ledger.sql`. This rename applies nothing to hosted. `record_verified_visit_progress(uuid)` records one verified visit. `backfill_verified_visit_progress` is the other writer (E09-A4). `verify_redemption` and `verify_redemption_and_settle` are unchanged. `database.types.ts` is unchanged. `user_badges` is unchanged.
 
 `progression_events` stores one XP row per source. `source_kind` is `verified_visit`. `source_id` is `redemptions.id` and is not a foreign key. `occurred_at` is that redemption's `verified_at`. `xp` is 100. `schedule_version` is `v1`. Unique on `(source_kind, source_id)`.
 
@@ -46,7 +46,7 @@ A make-up visit is a normal verified redemption once `status` is `verified` and 
 
 Row level security is enabled and not forced, so the function owner can write. A member can select only their own rows. `anon` has no privileges. `authenticated` cannot insert, update, delete, or execute the function.
 
-Before a hosted apply, rollback is reverting this migration. After a hosted apply, roll forward by dropping the three tables and the function. Nothing reads them.
+A2 is applied to hosted as `20261110182527`. Roll forward by dropping the three tables and the function. Nothing reads them.
 
 ## Caller (E09-A3)
 
@@ -60,13 +60,13 @@ On `skipped` or `error`, partner verify logs `progression ledger record failed` 
 
 The only production writer of `redemptions.status = 'verified'` is `verify_redemption`. `verify_redemption_and_settle` calls that function and does not set the status itself. The only application caller of either RPC is partner verify. E07-D2 opens a make-up challenge item and later links an issued or already verified code. It does not verify a redemption. A savings correction does not change `status` or `verified_at`. A make-up code is recorded only when a partner verifies it through this same path while the flag is on. Admin tools, the expire cron, and supply simulations do not call the ledger.
 
-Unsetting `E09_PROGRESSION_LEDGER_ENABLED` stops every call. Revert this caller to remove the code. Rows already written stay unread. The A2 migration is still not applied to hosted.
+Unsetting `E09_PROGRESSION_LEDGER_ENABLED` stops every call. Revert this caller to remove the code. Rows already written stay unread. A2 is applied to hosted as `20261110182527`. `E09_PROGRESSION_LEDGER_ENABLED` stays unset.
 
 ## Backfill and recovery (E09-A4)
 
-Migration `20261110183232_e09_a4_progression_backfill.sql` is in the repo and is not applied to hosted. It does not edit `20261110152224`. `backfill_verified_visit_progress(p_entries_from timestamptz, p_user_id uuid default null, p_dry_run boolean default true)` is `security definer` with `search_path` pinned to `pg_catalog, public`. Only `service_role` can execute it. `anon` and `authenticated` cannot. It does not change policies or grants on the three ledger tables.
+Migration `20261110185755_e09_a4_progression_backfill.sql` is applied to hosted as `schema_migrations` version `20261110185755`. The previous repo filename was `20261110183232_e09_a4_progression_backfill.sql`. This rename applies nothing to hosted. It does not edit `20261110182527_e09_a2_progression_ledger.sql`. `backfill_verified_visit_progress(p_entries_from timestamptz, p_user_id uuid default null, p_dry_run boolean default true)` is `security definer` with `search_path` pinned to `pg_catalog, public`. Only `service_role` can execute it. `anon` and `authenticated` cannot. It does not change policies or grants on the three ledger tables.
 
-`p_entries_from` is required. Null raises `p_entries_from is required` and writes nothing. There is no default in the function or in the script. Noah's chosen drawing-entry start is 2027-01-01, America/Chicago midnight. Pass that date when that is the decision. The code does not assume it.
+`p_entries_from` is required. Null raises `p_entries_from is required` and writes nothing. There is no default in the function or in the script. Noah's chosen drawing-entry start is America/Chicago midnight on 2027-01-01, `2027-01-01 00:00:00-06`. Pass that instant when that is the decision. The code does not assume it. The hosted backfill ran on 2026-11-10 as a direct SQL call with `p_entries_from = '2027-01-01 00:00:00-06'` (America/Chicago midnight): 1 event, 0 milestones, 0 entries. A rerun returned zeros. `E09_PROGRESSION_LEDGER_ENABLED` stays unset.
 
 The function takes the same per-member advisory lock as `record_verified_visit_progress` (`wanderbite.progression.v1` plus the member id). For each member, or for `p_user_id` when it is set, it inserts one event for every redemption with status `verified`, a non-null `verified_at`, and a non-null `user_id`. `on conflict do nothing` keeps a second run from writing that event again. Issued rows, expired rows, verified rows with a null `verified_at`, and rows with a null `user_id` are skipped. It then calls `progression_insert_missing_v1_milestones`. That helper is the only schedule: 300, 1000, 1500, and 2500 XP, then +1000 XP per level. A milestone already stored is not updated, so an earlier missed visit does not move `reached_at`, `quarter_key`, or the drawing entry.
 
@@ -80,16 +80,16 @@ Backfill must run before `E09_PROGRESSION_LEDGER_ENABLED` is turned on. If the f
 
 `npm run progression:backfill` parses `--entries-from YYYY-MM-DD` with `chicagoDateMidnight`, which uses `chicagoMidnight`. The script prints counts only. It does not print emails, member ids, or tokens. It refuses a hosted URL. There is no override. `--user-id` limits the run to one member. Omit `--apply` and it is a dry run.
 
-Ops order, local or a later hosted window that is not this change:
+Local ops order follows. The hosted backfill already ran on 2026-11-10. This rename does not run it again.
 
-1. Do not `supabase db push` this migration or `20261110152224` from this change. `20261110152224` is applied to hosted separately.
-2. Apply both migrations on the database you are backfilling. The script does not apply them.
+1. Do not `supabase db push` A2 or A4 from this change. A2 is on hosted as `20261110182527`. A4 is on hosted as `20261110185755`. These renames apply nothing to hosted.
+2. On a local database, apply both migrations before the script. The script does not apply them.
 3. Dry run. Noah's start date, when that is the one you mean: `npm run progression:backfill -- --entries-from 2027-01-01`
 4. Write: `npm run progression:backfill -- --entries-from 2027-01-01 --apply`
 5. Leave `E09_PROGRESSION_LEDGER_ENABLED` unset.
 6. A later run with the same `--entries-from` is the recovery sweep. Nothing missing returns zeros.
 
-Before any hosted apply, rollback is reverting this PR. After a hosted apply, roll forward by dropping `backfill_verified_visit_progress(timestamptz, uuid, boolean)`. Leave `progression_insert_missing_v1_milestones(uuid)` and the replaced `record_verified_visit_progress`. Recording still calls the helper. Rows already written stay in the A2 tables. Nothing reads them. Delete by member if a row has to go. This does not claim E09, E07, or E02 acceptance.
+A4 is applied to hosted as `20261110185755`. Roll forward by dropping `backfill_verified_visit_progress(timestamptz, uuid, boolean)`. Leave `progression_insert_missing_v1_milestones(uuid)` and the replaced `record_verified_visit_progress`. Recording still calls the helper. Rows already written stay in the A2 tables. Nothing reads them. Delete by member if a row has to go. This does not claim E09, E07, or E02 acceptance.
 
 ## Not in this slice
 

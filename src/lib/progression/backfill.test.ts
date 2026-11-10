@@ -127,7 +127,7 @@ describe('progression backfill output', () => {
       'src/lib/progression/entries-from.ts',
       'src/lib/progression/backfill.ts',
       'scripts/progression-backfill.ts',
-      'supabase/migrations/20261110183232_e09_a4_progression_backfill.sql',
+      'supabase/migrations/20261110185755_e09_a4_progression_backfill.sql',
     ];
     for (const file of files) {
       expect(readFileSync(path.join(process.cwd(), file), 'utf8'), file).not.toContain('2027-01-01');
