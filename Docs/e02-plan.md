@@ -207,7 +207,7 @@ The snapshot schema is `wanderbite.e02.supply_snapshot.v2`. `test_offer_version_
 
 **E07-D1 is on hosted as version `20261109021548`.** The repo file remains `20261109012530_e07_d1_visit_problem_cases.sql`. `E07_VISIT_PROBLEMS_ENABLED` is true on Preview only and off in production.
 
-**E07-D2.** Audited savings correction and one make-up challenge for an open visit-problem case. Migration `20261109210040_e07_d2_visit_problem_corrections.sql` is not applied to hosted. Opening or resolving a case still grants nothing. Master E02 is open. This line does not claim E07 acceptance.
+**E07-D2.** Audited savings correction and one usable make-up visit for an open visit-problem case. The spot uses the existing code path and becomes `used` when that code is issued. Apply only `20261109210040_e07_d2_visit_problem_corrections.sql` on hosted, not `supabase db push`. Opening or resolving a case still grants nothing. Master E02 is open. This line does not claim E07 acceptance.
 
 **Redesign track.** Phase 1.1 (one source of truth for member progress) is done. Journey, Passport, and Challenges read streak, visit counts, and badges from `getMemberProgress()` in `src/lib/progress/get-member-progress.ts`. Streak months use `chicagoMonthStart` (America/Chicago). The read does not write `user_badges`.
 

@@ -490,7 +490,7 @@ describe('visit problem boundaries', () => {
     );
     expect(challenges).toMatch(/visitProblemsEnabled\(\)\s*\?\s*await loadMemberMakeupSpots/);
     expect(partnerSource(path.join(root, 'src/app/partner'))).not.toMatch(
-      /correct_visit_problem_savings|restore_visit_problem_opportunity|visit_problem_savings_adjustments|visit_problem_opportunities/,
+      /correct_visit_problem_savings|restore_visit_problem_opportunity|open_visit_problem_makeup_item|use_visit_problem_opportunity|visit_problem_savings_adjustments|visit_problem_opportunities/,
     );
   });
 });

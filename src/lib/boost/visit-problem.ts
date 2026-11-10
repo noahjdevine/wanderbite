@@ -164,7 +164,63 @@ export type AdminVisitProblem = {
 export type MemberMakeupSpot = {
   id: string;
   restaurantName: string;
+  status: 'available' | 'used';
+  /** False when the restaurant or offer cannot take the visit, or the spot is used. */
+  bookable: boolean;
+  unavailableMessage: string | null;
 };
+
+export const MAKEUP_RESTAURANT_CLOSED = 'This restaurant is not taking visits right now.';
+export const MAKEUP_OFFER_CLOSED = 'This offer is no longer available.';
+export const MAKEUP_WINDOW_CLOSED = 'This visit window has closed.';
+
+export type MakeupOfferWindow = {
+  validFrom: string;
+  validUntil: string;
+  withdrawnAt: string | null;
+};
+
+/**
+ * Whether the member can start the make-up visit. A used spot is not bookable.
+ * A paused restaurant, a withdrawn or expired offer, or a closed visit window
+ * is a message instead of a code button.
+ */
+export function makeupSpotAvailability(input: {
+  status: 'available' | 'used';
+  restaurantStatus: string | null;
+  offerVersionId: string | null;
+  offer: MakeupOfferWindow | null;
+  redemptionDeadline: string | null;
+  now: Date;
+}): { bookable: boolean; unavailableMessage: string | null } {
+  if (input.status === 'used') return { bookable: false, unavailableMessage: null };
+  if (input.restaurantStatus !== 'active') {
+    return { bookable: false, unavailableMessage: MAKEUP_RESTAURANT_CLOSED };
+  }
+  if (input.offerVersionId) {
+    const offer = input.offer;
+    const from = offer ? new Date(offer.validFrom).getTime() : Number.NaN;
+    const until = offer ? new Date(offer.validUntil).getTime() : Number.NaN;
+    const now = input.now.getTime();
+    if (
+      !offer
+      || offer.withdrawnAt
+      || Number.isNaN(from)
+      || Number.isNaN(until)
+      || from > now
+      || until <= now
+    ) {
+      return { bookable: false, unavailableMessage: MAKEUP_OFFER_CLOSED };
+    }
+  }
+  if (input.redemptionDeadline) {
+    const deadline = new Date(input.redemptionDeadline).getTime();
+    if (Number.isNaN(deadline) || deadline <= input.now.getTime()) {
+      return { bookable: false, unavailableMessage: MAKEUP_WINDOW_CLOSED };
+    }
+  }
+  return { bookable: true, unavailableMessage: null };
+}
 
 export function currentMemberCase(rows: readonly VisitProblemCaseRow[]): VisitProblemCaseRow | null {
   const open = rows.find((row) => row.status === 'submitted' || row.status === 'under_review');

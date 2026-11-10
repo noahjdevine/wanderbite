@@ -73,6 +73,14 @@ declare
   opportunity_count integer;
   savings_audits integer;
   restore_audits integer;
+  refused_spot uuid;
+  checkin_spot uuid;
+  makeup_item uuid;
+  checkin_item uuid;
+  issued record;
+  code_expires timestamptz;
+  visit_deadline timestamptz;
+  makeup_audits integer;
 begin
   if not (select relrowsecurity from pg_class where oid = 'public.visit_problem_savings_adjustments'::regclass)
      or not (select relrowsecurity from pg_class where oid = 'public.visit_problem_opportunities'::regclass) then
@@ -365,6 +373,138 @@ begin
     raise exception 'FAIL: a fix changed the case status';
   end if;
 
+  select id into refused_spot
+  from public.visit_problem_opportunities
+  where case_id = case_refused;
+  select id into checkin_spot
+  from public.visit_problem_opportunities
+  where case_id = case_checkin;
+  visit_deadline := pg_catalog.now() + interval '10 days';
+  update public.challenge_items
+  set redemption_deadline = visit_deadline
+  where id = item_refused;
+  update public.restaurants set status = 'paused' where id = grill_b;
+  result := public.open_visit_problem_makeup_item(refused_spot, member);
+  if result ->> 'error' is distinct from 'not_bookable'
+     or result ->> 'detail' is distinct from 'restaurant' then
+    raise exception 'FAIL: paused restaurant was %', result;
+  end if;
+  update public.restaurants set status = 'active' where id = grill_b;
+  update public.challenge_items
+  set redemption_deadline = pg_catalog.now() - interval '1 hour'
+  where id = item_refused;
+  result := public.open_visit_problem_makeup_item(refused_spot, member);
+  if result ->> 'error' is distinct from 'not_bookable'
+     or result ->> 'detail' is distinct from 'window' then
+    raise exception 'FAIL: closed window was %', result;
+  end if;
+  update public.challenge_items
+  set redemption_deadline = visit_deadline
+  where id = item_refused;
+  result := public.open_visit_problem_makeup_item(refused_spot, member);
+  if result ->> 'ok' is distinct from 'true'
+     or result ->> 'already_prepared' is distinct from 'false' then
+    raise exception 'FAIL: makeup open was %', result;
+  end if;
+  makeup_item := (result ->> 'makeup_challenge_item_id')::uuid;
+  result := public.open_visit_problem_makeup_item(refused_spot, member);
+  if result ->> 'already_prepared' is distinct from 'true'
+     or (result ->> 'makeup_challenge_item_id')::uuid is distinct from makeup_item then
+    raise exception 'FAIL: makeup prepare replay was %', result;
+  end if;
+  if (select redemption_deadline from public.challenge_items where id = makeup_item) is distinct from visit_deadline
+     or (select restaurant_id from public.challenge_items where id = makeup_item) is distinct from grill_b
+     or (select offer_version_id from public.challenge_items where id = makeup_item) is not null
+     or (select credit_id from public.challenge_items where id = makeup_item) is not null
+     or (select status from public.challenge_items where id = makeup_item) is distinct from 'assigned'
+     or (select cycle_month from public.challenge_cycles c
+         join public.challenge_items i on i.cycle_id = c.id
+         where i.id = makeup_item) >= date '1900-01-01'
+     or exists (
+       select 1 from public.capacity_reservations where challenge_item_id = makeup_item
+     )
+     or exists (
+       select 1 from public.entitlement_credits where challenge_item_id = makeup_item
+     ) then
+    raise exception 'FAIL: makeup item was not a copy of the original visit';
+  end if;
+  result := public.use_visit_problem_opportunity(refused_spot, member, redemption_discount);
+  if result ->> 'error' is distinct from 'invalid_redemption'
+     or (select status from public.visit_problem_opportunities where id = refused_spot) is distinct from 'available' then
+    raise exception 'FAIL: original redemption used the spot %', result;
+  end if;
+  code_expires := pg_catalog.now() + interval '15 minutes';
+  reset role;
+  select * into issued from public.issue_challenge_redemption(
+    member, makeup_item, repeat('d2', 32), 'cipher', 'iviviviviviv', code_expires
+  );
+  set local role service_role;
+  if issued.outcome is distinct from 'created'
+     or (select expires_at from public.redemptions where id = issued.redemption_id) is distinct from code_expires
+     or (select status from public.challenge_items where id = makeup_item) is distinct from 'redeemed'
+     or (select redemption_deadline from public.challenge_items where id = item_refused) is distinct from visit_deadline then
+    raise exception 'FAIL: makeup code was %', issued.outcome;
+  end if;
+  result := public.use_visit_problem_opportunity(refused_spot, member, issued.redemption_id);
+  if result ->> 'ok' is distinct from 'true'
+     or result ->> 'already_applied' is distinct from 'false' then
+    raise exception 'FAIL: makeup use was %', result;
+  end if;
+  result := public.use_visit_problem_opportunity(refused_spot, member, issued.redemption_id);
+  if result ->> 'ok' is distinct from 'true'
+     or result ->> 'already_applied' is distinct from 'true'
+     or (select count(*) from public.admin_audit_log where action = 'visit_problem.make_up_used' and target_id = case_refused::text) <> 1 then
+    raise exception 'FAIL: makeup replay was %', result;
+  end if;
+  result := public.use_visit_problem_opportunity(refused_spot, member, redemption_other);
+  if result ->> 'error' is distinct from 'already_used'
+     or (select used_redemption_id from public.visit_problem_opportunities where id = refused_spot) is distinct from issued.redemption_id then
+    raise exception 'FAIL: double use was %', result;
+  end if;
+
+  update public.challenge_items
+  set redemption_deadline = pg_catalog.now() - interval '1 hour'
+  where id = item_checkin;
+  result := public.open_visit_problem_makeup_item(checkin_spot, member);
+  if result ->> 'error' is distinct from 'not_bookable'
+     or result ->> 'detail' is distinct from 'window' then
+    raise exception 'FAIL: check-in window was %', result;
+  end if;
+  update public.challenge_items
+  set redemption_deadline = visit_deadline
+  where id = item_checkin;
+  reviewed := public.review_visit_problem_case(
+    case_checkin, admin_id, 'resolved', 'The code path is closed.', 'Resolved before use.'
+  );
+  if reviewed ->> 'ok' is distinct from 'true' then
+    raise exception 'FAIL: check-in resolve was %', reviewed;
+  end if;
+  result := public.open_visit_problem_makeup_item(checkin_spot, member);
+  if result ->> 'ok' is distinct from 'true' then
+    raise exception 'FAIL: use after resolve open was %', result;
+  end if;
+  checkin_item := (result ->> 'makeup_challenge_item_id')::uuid;
+  reset role;
+  select * into issued from public.issue_challenge_redemption(
+    member, checkin_item, repeat('d3', 32), 'cipher', 'iviviviviviv', code_expires
+  );
+  set local role service_role;
+  if issued.outcome is distinct from 'created' then
+    raise exception 'FAIL: check-in code was %', issued.outcome;
+  end if;
+  result := public.use_visit_problem_opportunity(checkin_spot, member, issued.redemption_id);
+  if result ->> 'ok' is distinct from 'true'
+     or (select status from public.visit_problem_cases where id = case_checkin) is distinct from 'resolved'
+     or (select status from public.challenge_items where id = item_checkin) is distinct from 'assigned' then
+    raise exception 'FAIL: use after resolve was %', result;
+  end if;
+  select count(*) into makeup_audits
+  from public.admin_audit_log
+  where action = 'visit_problem.make_up_used';
+  if makeup_audits <> 2 then
+    raise exception 'FAIL: makeup audit count %', makeup_audits;
+  end if;
+
   select count(*) into savings_count from public.visit_problem_savings_adjustments;
   select count(*) into opportunity_count from public.visit_problem_opportunities;
   select count(*) into savings_audits from public.admin_audit_log where action = 'visit_problem.correct_savings';
@@ -379,7 +519,7 @@ begin
      or (select original_cents from public.visit_problem_savings_adjustments where case_id = case_other) is distinct from 1500
      or (select settlement_kind from public.visit_problem_savings_adjustments where case_id = case_other) is distinct from 'use_sealed_base'
      or (select challenge_item_id from public.visit_problem_opportunities where case_id = case_refused) is distinct from item_refused
-     or (select status from public.visit_problem_opportunities where case_id = case_refused) is distinct from 'available'
+     or (select status from public.visit_problem_opportunities where case_id = case_refused) is distinct from 'used'
      or (select redemption_id from public.visit_problem_opportunities where case_id = case_checkin) is not null then
     raise exception 'FAIL: correction snapshot';
   end if;
@@ -413,7 +553,7 @@ begin
      or capacity_after <> capacity_before
      or credits_after <> credits_before
      or badges_after <> badges_before
-     or redemptions_after <> redemptions_before then
+     or redemptions_after <> redemptions_before + 2 then
     raise exception 'FAIL: correction minted or removed a visit row';
   end if;
 

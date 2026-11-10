@@ -10,6 +10,7 @@ import type {
   VisitProblemCaseRow,
 } from '@/lib/boost/visit-problem';
 import {
+  makeupSpotAvailability,
   parseRestoreCorrectionRpc,
   parseReviewRpc,
   parseSavingsCorrectionRpc,
@@ -262,25 +263,29 @@ export async function loadVisitProblemQueue(): Promise<
  * not query. A missing table or a failed read returns an empty list so
  * Challenges still loads.
  */
-export async function loadMemberMakeupSpots(userId: string): Promise<MemberMakeupSpot[]> {
+export async function loadMemberMakeupSpots(
+  userId: string,
+  now = new Date(),
+): Promise<MemberMakeupSpot[]> {
   if (!visitProblemsEnabled()) return [];
   try {
     const admin = getSupabaseAdmin();
     const { data, error } = await admin
       .from('visit_problem_opportunities')
-      .select('id, challenge_item_id')
-      .eq('user_id', userId)
-      .eq('status', 'available');
+      .select('id, challenge_item_id, status')
+      .eq('user_id', userId);
     if (error) {
       console.error('[visit-problem] makeup read:', error.message);
       return [];
     }
-    const rows = (data ?? []).filter((row) => row.id && row.challenge_item_id);
+    const rows = (data ?? []).filter(
+      (row) => row.id && row.challenge_item_id && (row.status === 'available' || row.status === 'used'),
+    );
     if (rows.length === 0) return [];
     const itemIds = [...new Set(rows.map((row) => row.challenge_item_id))];
     const { data: items, error: itemError } = await admin
       .from('challenge_items')
-      .select('id, restaurant_id')
+      .select('id, restaurant_id, offer_version_id, redemption_deadline')
       .in('id', itemIds);
     if (itemError) {
       console.error('[visit-problem] makeup read:', itemError.message);
@@ -289,22 +294,55 @@ export async function loadMemberMakeupSpots(userId: string): Promise<MemberMakeu
     const restaurantIds = [
       ...new Set((items ?? []).map((item) => item.restaurant_id).filter((id): id is string => Boolean(id))),
     ];
-    const { data: restaurants, error: restaurantError } = restaurantIds.length
-      ? await admin.from('restaurants').select('id, name').in('id', restaurantIds)
-      : { data: [], error: null };
-    if (restaurantError) {
-      console.error('[visit-problem] makeup read:', restaurantError.message);
+    const versionIds = [
+      ...new Set(
+        (items ?? []).map((item) => item.offer_version_id).filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const [{ data: restaurants, error: restaurantError }, { data: versions, error: versionError }] =
+      await Promise.all([
+        restaurantIds.length
+          ? admin.from('restaurants').select('id, name, status').in('id', restaurantIds)
+          : Promise.resolve({ data: [], error: null }),
+        versionIds.length
+          ? admin
+              .from('offer_versions')
+              .select('id, valid_from, valid_until, withdrawn_from_selection_at')
+              .in('id', versionIds)
+          : Promise.resolve({ data: [], error: null }),
+      ]);
+    if (restaurantError || versionError) {
+      console.error('[visit-problem] makeup read:', restaurantError?.message ?? versionError?.message);
       return [];
     }
-    const nameByItem = new Map<string, string>();
-    for (const item of items ?? []) {
-      const name = restaurants?.find((restaurant) => restaurant.id === item.restaurant_id)?.name?.trim();
-      nameByItem.set(item.id, name || 'your visit');
-    }
-    return rows.map((row) => ({
-      id: row.id,
-      restaurantName: nameByItem.get(row.challenge_item_id) ?? 'your visit',
-    }));
+    const itemById = new Map((items ?? []).map((item) => [item.id, item]));
+    return rows.map((row) => {
+      const item = itemById.get(row.challenge_item_id);
+      const restaurant = restaurants?.find((entry) => entry.id === item?.restaurant_id);
+      const version = versions?.find((entry) => entry.id === item?.offer_version_id);
+      const status = row.status === 'used' ? 'used' : 'available';
+      const availability = makeupSpotAvailability({
+        status,
+        restaurantStatus: restaurant?.status ?? null,
+        offerVersionId: item?.offer_version_id ?? null,
+        offer: version
+          ? {
+              validFrom: version.valid_from,
+              validUntil: version.valid_until,
+              withdrawnAt: version.withdrawn_from_selection_at,
+            }
+          : null,
+        redemptionDeadline: item?.redemption_deadline ?? null,
+        now,
+      });
+      return {
+        id: row.id,
+        restaurantName: restaurant?.name?.trim() || 'your restaurant',
+        status,
+        bookable: availability.bookable,
+        unavailableMessage: availability.unavailableMessage,
+      };
+    });
   } catch (error) {
     console.error(
       '[visit-problem] makeup read:',
@@ -366,4 +404,74 @@ export async function restoreVisitProblemOpportunity(input: {
   });
   if (error) return { ok: false, code: 'unavailable' };
   return parseRestoreCorrectionRpc(data);
+}
+
+export type MakeupOpenRpc =
+  | { ok: true; challengeItemId: string }
+  | { ok: false; code: 'not_found' | 'forbidden' | 'already_used' | 'not_bookable' | 'unavailable'; detail: string | null };
+
+export async function openMakeupVisitItem(input: {
+  opportunityId: string;
+  userId: string;
+}): Promise<MakeupOpenRpc> {
+  if (!visitProblemsEnabled()) return { ok: false, code: 'unavailable', detail: null };
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc('open_visit_problem_makeup_item', {
+    p_opportunity_id: input.opportunityId,
+    p_user_id: input.userId,
+  });
+  if (error || !data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, code: 'unavailable', detail: null };
+  }
+  if (data.ok === true && typeof data.makeup_challenge_item_id === 'string') {
+    return { ok: true, challengeItemId: data.makeup_challenge_item_id };
+  }
+  const code = typeof data.error === 'string' ? data.error : 'unavailable';
+  const detail = typeof data.detail === 'string' ? data.detail : null;
+  if (
+    code === 'not_found'
+    || code === 'forbidden'
+    || code === 'already_used'
+    || code === 'not_bookable'
+    || code === 'unavailable'
+  ) {
+    return { ok: false, code, detail };
+  }
+  return { ok: false, code: 'unavailable', detail: null };
+}
+
+export type MakeupUseRpc =
+  | { ok: true; alreadyApplied: boolean }
+  | { ok: false; code: 'not_found' | 'forbidden' | 'already_used' | 'invalid_redemption' | 'not_ready' | 'unavailable' };
+
+export async function markMakeupVisitUsed(input: {
+  opportunityId: string;
+  userId: string;
+  redemptionId: string;
+}): Promise<MakeupUseRpc> {
+  if (!visitProblemsEnabled()) return { ok: false, code: 'unavailable' };
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin.rpc('use_visit_problem_opportunity', {
+    p_opportunity_id: input.opportunityId,
+    p_user_id: input.userId,
+    p_redemption_id: input.redemptionId,
+  });
+  if (error || !data || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, code: 'unavailable' };
+  }
+  if (data.ok === true && typeof data.already_applied === 'boolean') {
+    if ('reason' in data) return { ok: false, code: 'unavailable' };
+    return { ok: true, alreadyApplied: data.already_applied };
+  }
+  const code = typeof data.error === 'string' ? data.error : '';
+  if (
+    code === 'not_found'
+    || code === 'forbidden'
+    || code === 'already_used'
+    || code === 'invalid_redemption'
+    || code === 'not_ready'
+  ) {
+    return { ok: false, code };
+  }
+  return { ok: false, code: 'unavailable' };
 }

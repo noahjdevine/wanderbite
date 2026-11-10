@@ -7,6 +7,9 @@ const getSupabaseAdmin = vi.fn();
 const reviewVisitProblemCase = vi.fn();
 const correctVisitProblemSavings = vi.fn();
 const restoreVisitProblemOpportunity = vi.fn();
+const openMakeupVisitItem = vi.fn();
+const markMakeupVisitUsed = vi.fn();
+const redeemChallengeItem = vi.fn();
 
 vi.mock('@/lib/auth/require-user', () => ({
   requireUser: (...args: unknown[]) => requireUser(...args),
@@ -17,6 +20,8 @@ vi.mock('@/lib/boost/visit-problem-store', () => ({
   reviewVisitProblemCase: (...args: unknown[]) => reviewVisitProblemCase(...args),
   correctVisitProblemSavings: (...args: unknown[]) => correctVisitProblemSavings(...args),
   restoreVisitProblemOpportunity: (...args: unknown[]) => restoreVisitProblemOpportunity(...args),
+  openMakeupVisitItem: (...args: unknown[]) => openMakeupVisitItem(...args),
+  markMakeupVisitUsed: (...args: unknown[]) => markMakeupVisitUsed(...args),
   parseVisitProblemCaseRow: (value: {
     id: string;
     user_id: string;
@@ -44,7 +49,11 @@ vi.mock('next/cache', () => ({
   revalidatePath: vi.fn(),
 }));
 
-import { getOwnVisitProblem, submitVisitProblem } from '@/app/actions/visit-problems';
+vi.mock('@/app/actions/redeem-challenge', () => ({
+  redeemChallengeItem: (...args: unknown[]) => redeemChallengeItem(...args),
+}));
+
+import { getOwnVisitProblem, startMakeupVisit, submitVisitProblem } from '@/app/actions/visit-problems';
 import {
   correctVisitSavings,
   restoreVisitOpportunity,
@@ -93,6 +102,48 @@ describe('visit problem actions', () => {
     expect(reviewVisitProblemCase).not.toHaveBeenCalled();
     expect(correctVisitProblemSavings).not.toHaveBeenCalled();
     expect(restoreVisitProblemOpportunity).not.toHaveBeenCalled();
+    expect(openMakeupVisitItem).not.toHaveBeenCalled();
+    expect(markMakeupVisitUsed).not.toHaveBeenCalled();
+    expect(redeemChallengeItem).not.toHaveBeenCalled();
+  });
+
+  it('does not start a make-up visit when the flag is off', async () => {
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: false,
+      code: 'disabled',
+      message: 'This visit is not available right now.',
+    });
+    expect(requireUser).not.toHaveBeenCalled();
+    expect(openMakeupVisitItem).not.toHaveBeenCalled();
+    expect(markMakeupVisitUsed).not.toHaveBeenCalled();
+    expect(redeemChallengeItem).not.toHaveBeenCalled();
+  });
+
+  it('starts a make-up visit through the existing code path and then marks it used', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    openMakeupVisitItem.mockResolvedValue({ ok: true, challengeItemId: ITEM });
+    redeemChallengeItem.mockResolvedValue({
+      ok: true,
+      data: {
+        token: 'WB-TEST',
+        redeemedAt: '2026-11-09T18:00:00.000Z',
+        redemptionId: '66666666-6666-4666-8666-666666666666',
+        expiresAt: '2026-11-09T18:15:00.000Z',
+      },
+    });
+    markMakeupVisitUsed.mockResolvedValue({ ok: true, alreadyApplied: false });
+    await expect(startMakeupVisit(CASE)).resolves.toEqual({
+      ok: true,
+      redemptionId: '66666666-6666-4666-8666-666666666666',
+      expiresAt: '2026-11-09T18:15:00.000Z',
+    });
+    expect(redeemChallengeItem).toHaveBeenCalledWith(ITEM);
+    expect(markMakeupVisitUsed).toHaveBeenCalledWith({
+      opportunityId: CASE,
+      userId: 'member-1',
+      redemptionId: '66666666-6666-4666-8666-666666666666',
+    });
   });
 
   it('does not read a case for a signed-out member when the flag is on', async () => {

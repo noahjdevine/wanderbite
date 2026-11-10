@@ -2461,9 +2461,12 @@ export type Database = {
           challenge_item_id: string
           created_at: string
           id: string
+          makeup_challenge_item_id: string | null
           reason: string
           redemption_id: string | null
           status: string
+          used_at: string | null
+          used_redemption_id: string | null
           user_id: string
         }
         Insert: {
@@ -2472,9 +2475,12 @@ export type Database = {
           challenge_item_id: string
           created_at?: string
           id?: string
+          makeup_challenge_item_id?: string | null
           reason: string
           redemption_id?: string | null
           status?: string
+          used_at?: string | null
+          used_redemption_id?: string | null
           user_id: string
         }
         Update: {
@@ -2483,9 +2489,12 @@ export type Database = {
           challenge_item_id?: string
           created_at?: string
           id?: string
+          makeup_challenge_item_id?: string | null
           reason?: string
           redemption_id?: string | null
           status?: string
+          used_at?: string | null
+          used_redemption_id?: string | null
           user_id?: string
         }
         Relationships: []
@@ -4499,6 +4508,22 @@ export type Database = {
           p_actor_user_id: string
           p_case_id: string
           p_reason: string
+        }
+        Returns: Json
+      }
+      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
+      open_visit_problem_makeup_item: {
+        Args: {
+          p_opportunity_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      use_visit_problem_opportunity: {
+        Args: {
+          p_opportunity_id: string
+          p_redemption_id: string
+          p_user_id: string
         }
         Returns: Json
       }
