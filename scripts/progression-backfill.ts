@@ -22,7 +22,7 @@ The date is America/Chicago midnight.
 
 The script prints counts only. It does not print emails, member ids, or tokens.
 It refuses a hosted Supabase URL. It does not apply migrations.
-Apply supabase/migrations/20261110183232_e09_a4_progression_backfill.sql on the
+Apply supabase/migrations/20261110185755_e09_a4_progression_backfill.sql on the
 local database first. This script does not apply it.
 E09_PROGRESSION_LEDGER_ENABLED stays unset. This script does not set it.
 `;
