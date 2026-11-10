@@ -139,7 +139,7 @@ function statusForRow(
 type Admin = ReturnType<typeof getSupabaseAdmin>;
 
 /**
- * Settlement columns exist only after 20261108010000, which is not on hosted.
+ * Settlement columns exist only after 20261108050005.
  * Call this only when the arrival flag is exactly true. A missing column or
  * any other read error returns null so Progress keeps today's sealed math.
  * This uses the same admin client as the rest of the loader.
@@ -174,7 +174,7 @@ async function loadStoredSavingsCents(
 }
 
 /**
- * Admin savings corrections exist only after 20261109210040. Call this only
+ * Admin savings corrections exist only after 20261110004140. Call this only
  * when E07_VISIT_PROBLEMS_ENABLED is exactly true. A missing table or any
  * other read error returns null so Progress keeps the uncorrected total.
  */

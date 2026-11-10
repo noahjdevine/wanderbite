@@ -1,5 +1,5 @@
 -- E07-D2 audited corrections for an open visit-problem case.
--- NOT applied to hosted. Do not run supabase db push for this file in this PR.
+-- Applied to hosted as 20261110004140 on 2026-11-09. Do not run supabase db push for this file in this PR.
 -- Reads settlement columns from E07-C2. It does not update redemptions, quotes,
 -- arrival sessions, capacity, credits, badges, or subscriptions.
 -- It does not mint a boost session or move a quote expires_at.

@@ -1,5 +1,5 @@
 -- E07-C2: store one Boost confirmation snapshot on a verified redemption.
--- NOT applied to hosted. Do not run supabase db push for this file.
+-- Applied to hosted as 20261108050005 on 2026-11-09. Do not run supabase db push for this file.
 -- E07_ARRIVAL_SESSIONS_ENABLED and E07_BILL_SCAN_AZURE_ENABLED stay unset.
 -- Does not replace verify_redemption or verify_redemption_and_settle.
 -- Those functions set status and verified_at only. New columns are nullable,
