@@ -1,6 +1,6 @@
 # E09 continuing progression
 
-A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. A2 is applied to hosted as `20261110182527`. A4 is applied to hosted as `20261110185755`. The hosted backfill ran on 2026-11-10 with `p_entries_from = '2027-01-01 00:00:00-06'` (1 event, 0 milestones, 0 entries; a rerun returned zeros). `E09_PROGRESSION_LEDGER_ENABLED` stays unset. Nothing reads the ledger. No UI change. Journey still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
+A1 is pure helpers in `src/lib/progression/`. A2 adds the ledger migration and `record_verified_visit_progress`. A3 calls that function after a successful partner verify when `E09_PROGRESSION_LEDGER_ENABLED` is exactly `true`. A4 adds `backfill_verified_visit_progress` and a dry-run-first script. A2 is applied to hosted as `20261110182527`. A4 is applied to hosted as `20261110185755`. The hosted backfill ran on 2026-11-10 with `p_entries_from = '2027-01-01 00:00:00-06'` (1 event, 0 milestones, 0 entries; a rerun returned zeros). `E09_PROGRESSION_LEDGER_ENABLED` stays unset. A5 adds a read-only member progression read model. Nothing in the app calls it. No UI change. No new migration. Journey still uses `levelFromXp` in `src/lib/progress/rules.ts`, which stops at The Local Legend. This does not claim E09, E07, or E02 acceptance.
 
 ## Schedule v1
 
@@ -46,7 +46,7 @@ A make-up visit is a normal verified redemption once `status` is `verified` and 
 
 Row level security is enabled and not forced, so the function owner can write. A member can select only their own rows. `anon` has no privileges. `authenticated` cannot insert, update, delete, or execute the function.
 
-A2 is applied to hosted as `20261110182527`. Roll forward by dropping the three tables and the function. Nothing reads them.
+A2 is applied to hosted as `20261110182527`. Roll forward by dropping the three tables and the function. A5 reads a member's own rows and does not write.
 
 ## Caller (E09-A3)
 
@@ -60,7 +60,7 @@ On `skipped` or `error`, partner verify logs `progression ledger record failed` 
 
 The only production writer of `redemptions.status = 'verified'` is `verify_redemption`. `verify_redemption_and_settle` calls that function and does not set the status itself. The only application caller of either RPC is partner verify. E07-D2 opens a make-up challenge item and later links an issued or already verified code. It does not verify a redemption. A savings correction does not change `status` or `verified_at`. A make-up code is recorded only when a partner verifies it through this same path while the flag is on. Admin tools, the expire cron, and supply simulations do not call the ledger.
 
-Unsetting `E09_PROGRESSION_LEDGER_ENABLED` stops every call. Revert this caller to remove the code. Rows already written stay unread. A2 is applied to hosted as `20261110182527`. `E09_PROGRESSION_LEDGER_ENABLED` stays unset.
+Unsetting `E09_PROGRESSION_LEDGER_ENABLED` stops every call. Revert this caller to remove the code. Rows already written stay in the tables. A5 can read them. A2 is applied to hosted as `20261110182527`. `E09_PROGRESSION_LEDGER_ENABLED` stays unset.
 
 ## Backfill and recovery (E09-A4)
 
@@ -89,7 +89,7 @@ Local ops order follows. The hosted backfill already ran on 2026-11-10. This ren
 5. Leave `E09_PROGRESSION_LEDGER_ENABLED` unset.
 6. A later run with the same `--entries-from` is the recovery sweep. Nothing missing returns zeros.
 
-A4 is applied to hosted as `20261110185755`. Roll forward by dropping `backfill_verified_visit_progress(timestamptz, uuid, boolean)`. Leave `progression_insert_missing_v1_milestones(uuid)` and the replaced `record_verified_visit_progress`. Recording still calls the helper. Rows already written stay in the A2 tables. Nothing reads them. Delete by member if a row has to go. This does not claim E09, E07, or E02 acceptance.
+A4 is applied to hosted as `20261110185755`. Roll forward by dropping `backfill_verified_visit_progress(timestamptz, uuid, boolean)`. Leave `progression_insert_missing_v1_milestones(uuid)` and the replaced `record_verified_visit_progress`. Recording still calls the helper. Rows already written stay in the A2 tables. A5 reads them and does not write. Delete by member if a row has to go. This does not claim E09, E07, or E02 acceptance.
 
 ## Not in this slice
 
@@ -106,3 +106,19 @@ Sample mode requires every prize to have `isSample: true` and a label containing
 `campaignWindow` uses `chicagoQuarterKey` for the America/Chicago quarter, start inclusive and end exclusive. `2026-Q4` starts at 2026-10-01 00:00 America/Chicago and ends at 2027-01-01 00:00 America/Chicago, including the November DST change. These helpers do not set official rules or real prize values. Noah funds the drawings. No restaurant sponsorship is recorded here.
 
 Revert the PR to roll the helpers back. Nothing in the app calls them yet.
+
+## Read model (E09-A5)
+
+`summarizeMemberProgression` in `src/lib/progression/read-model.ts` turns one member's ledger rows into a summary. It does not read the database and it does not write. `loadMemberProgression` in `src/lib/progression/member-progression.ts` is the server-only loader. It takes the request-scoped Supabase server client from `src/lib/supabase/server`. It calls `auth.getUser()` and selects that member's rows from `progression_events`, `progression_milestones`, and `progression_drawing_entries`, with `user_id` set to the session user. RLS still applies. It does not import the service-role client. The three tables are not in `database.types.ts`. The loader uses a local row shape. `npm run types:db` is not part of this change.
+
+Nothing in the app calls the loader. There is no UI. `E09_PROGRESSION_LEDGER_ENABLED` stays unset. This slice adds no migration. No session returns `signed_out` and does not query. A failed read returns `unavailable`. More than 100,000 rows in one of the three tables also returns `unavailable`, so a partial page is not reported as the member's total.
+
+XP is the count of events whose `schedule_version` is `v1` and whose `source_kind` is `verified_visit`, times 100. The visit count is that same count. Level, name, next level, and progress come from `levelForXp(xp, PROGRESSION_SCHEDULE_V1)`. Under v1, 3600 XP is level 5, The Local Legend II, and the next level is 6, The Local Legend III, at 4500 XP. Stored milestones are listed in level order. The name comes from the schedule. `reachedAt` and `quarterKey` are the stored values. They are not recomputed, including a milestone reached at 2026-12-31 23:30 America/Chicago and stored as `2026-Q4`. `hasEntry` is true only when a `level_milestone` drawing entry points at that milestone. Drawing entries are counted by their stored `quarter_key`.
+
+A member with no rows gets xp 0, level 0, next level The Explorer at 300 XP, and empty milestones and entries. That does not throw.
+
+`consistent` is false when the v1 milestone keys stored for the member differ from the keys `levelForXp` expects for that XP. A missing milestone is the usual case. The summary still lists the stored milestones and writes nothing. An unknown milestone key, or a `schedule_version` other than `v1`, is left out of the totals and counted on `ignored` (`events`, `milestones`, and `entries`). A duplicate milestone key is counted there too.
+
+`supabase/tests/e09-a2-progression-ledger.sql` already checks that member A cannot read member B's events, milestones, or entries, and that `anon` cannot read any of the three tables. This slice does not add another RLS test.
+
+Revert this PR to roll it back. No schema, no data, and no caller. This does not claim E09, E07, or E02 acceptance.
