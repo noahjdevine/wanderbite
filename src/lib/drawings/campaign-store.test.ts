@@ -4,10 +4,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SAMPLE_PRIZE_MARKER, type CampaignDraft } from '@/lib/drawings/campaign';
 import {
+  activateCampaign,
+  closeCampaign,
   createCampaign,
   getCampaign,
   updateCampaign,
   type CampaignStoreClient,
+  type CampaignTransitionArgs,
   type CampaignWritePayload,
   type StoredCampaign,
 } from '@/lib/drawings/campaign-store';
@@ -89,13 +92,29 @@ function client(options: {
   throwOnRpc?: boolean;
 } = {}) {
   const calls: CampaignWritePayload[] = [];
+  const transitions: CampaignTransitionArgs[] = [];
   const reads: string[] = [];
   const row = options.row === undefined ? storedRow() : options.row;
   const prizes =
     options.prizes ??
     (row && Array.isArray(row.prizes) ? (row.prizes as Record<string, unknown>[]) : []);
   const store: CampaignStoreClient = {
-    async rpc(_fn, args) {
+    async rpc(fn, args) {
+      if (fn === 'transition_drawing_campaign') {
+        if (!('p_campaign_id' in args)) return { data: null, error: { message: 'bad rpc args' } };
+        transitions.push(args);
+        if (options.throwOnRpc) throw new Error('down');
+        if (options.rpcError) return { data: null, error: options.rpcError };
+        return {
+          data: storedRow({
+            ...(row ?? {}),
+            id: args.p_campaign_id,
+            status: args.p_to_status,
+          }),
+          error: null,
+        };
+      }
+      if (!('p_payload' in args)) return { data: null, error: { message: 'bad rpc args' } };
       calls.push(args.p_payload);
       if (options.throwOnRpc) throw new Error('down');
       if (options.rpcError) return { data: null, error: options.rpcError };
@@ -144,7 +163,7 @@ function client(options: {
       };
     },
   };
-  return { store, calls, reads };
+  return { store, calls, reads, transitions };
 }
 
 describe('createCampaign', () => {
@@ -373,13 +392,169 @@ describe('campaign store source', () => {
         const rel = path.relative(ROOT, full).replaceAll('\\', '/');
         if (allowed.has(rel)) continue;
         const text = readFileSync(full, 'utf8');
-        if (text.includes('drawings/campaign-store') || text.includes('save_drawing_campaign')) {
+        if (
+          text.includes('drawings/campaign-store') ||
+          text.includes('save_drawing_campaign') ||
+          text.includes('transition_drawing_campaign')
+        ) {
           hits.push(rel);
         }
       }
     };
     walk(path.join(ROOT, 'src'));
     expect(hits).toEqual([]);
+  });
+});
+
+const Q4_END = '2027-01-01T06:00:00.000Z';
+const Q1_END = '2027-04-01T05:00:00.000Z';
+
+describe('activateCampaign and closeCampaign', () => {
+  it('activates a 2027-Q1 sample draft one millisecond before ends_at', async () => {
+    const { store, transitions, calls } = client();
+    const now = '2027-04-01T04:59:59.999Z';
+    const result = await activateCampaign(CAMPAIGN_ID, store, now);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.campaign.status).toBe('active');
+    expect(transitions).toEqual([{ p_campaign_id: CAMPAIGN_ID, p_to_status: 'active' }]);
+    expect(calls).toEqual([]);
+  });
+
+  it('rejects the same draft at ends_at and one millisecond after, for both quarter ends', async () => {
+    const cases = [
+      { endsAt: Q4_END, quarterKey: '2026-Q4', at: Q4_END, after: '2027-01-01T06:00:00.001Z' },
+      { endsAt: Q1_END, quarterKey: '2027-Q1', at: Q1_END, after: '2027-04-01T05:00:00.001Z' },
+    ];
+    for (const boundary of cases) {
+      const before = new Date(Date.parse(boundary.at) - 1).toISOString();
+      const open = client({
+        row: storedRow({
+          quarter_key: boundary.quarterKey,
+          ends_at: boundary.endsAt,
+        }),
+      });
+      const opened = await activateCampaign(CAMPAIGN_ID, open.store, before);
+      expect(opened.ok).toBe(true);
+      expect(open.transitions).toHaveLength(1);
+
+      for (const now of [boundary.at, boundary.after]) {
+        const closed = client({
+          row: storedRow({
+            quarter_key: boundary.quarterKey,
+            ends_at: boundary.endsAt,
+          }),
+        });
+        const result = await activateCampaign(CAMPAIGN_ID, closed.store, now);
+        expect(result).toEqual({ ok: false, error: 'campaign_window_ended' });
+        expect(closed.transitions).toEqual([]);
+      }
+    }
+  });
+
+  it('blocks live activation and still allows a later draft edit', async () => {
+    const live = client({ row: storedRow({ mode: 'live', quarter_key: '2027-Q2' }) });
+    const blocked = await activateCampaign(CAMPAIGN_ID, live.store, '2027-01-01T00:00:00.000Z');
+    expect(blocked).toEqual({ ok: false, error: 'live_activation_blocked' });
+    expect(live.transitions).toEqual([]);
+
+    const { store, calls } = client({ row: storedRow({ mode: 'live', quarter_key: '2027-Q2' }) });
+    const edited = await updateCampaign(
+      CAMPAIGN_ID,
+      {
+        quarterKey: '2027-Q2',
+        mode: 'live',
+        rulesVersion: 'rules-2027-04',
+        totalBudgetCents: 12_000,
+        fulfillmentAllowanceCents: 2_000,
+        prizes: [{ label: 'Gift card', quantity: 2, unitValueCents: 5_000, isSample: false }],
+        eligibleEntrySources: ['level_milestone'],
+      },
+      store,
+    );
+    expect(edited.ok).toBe(true);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('rejects activation with no prizes or an over-budget commitment before the database', async () => {
+    const empty = client({ row: storedRow({ prizes: [] }), prizes: [] });
+    await expect(activateCampaign(CAMPAIGN_ID, empty.store, '2027-01-01T00:00:00.000Z')).resolves.toEqual({
+      ok: false,
+      error: 'no_prizes',
+    });
+    expect(empty.transitions).toEqual([]);
+
+    const over = client({
+      row: storedRow({ total_budget_cents: 11_999 }),
+    });
+    await expect(activateCampaign(CAMPAIGN_ID, over.store, '2027-01-01T00:00:00.000Z')).resolves.toEqual({
+      ok: false,
+      error: 'over_budget',
+    });
+    expect(over.transitions).toEqual([]);
+  });
+
+  it('closes an active campaign and rejects a later activation', async () => {
+    const active = client({ row: storedRow({ status: 'active' }) });
+    const closed = await closeCampaign(CAMPAIGN_ID, active.store, '2027-02-01T00:00:00.000Z');
+    expect(closed.ok).toBe(true);
+    expect(active.transitions).toEqual([{ p_campaign_id: CAMPAIGN_ID, p_to_status: 'closed' }]);
+
+    const done = client({ row: storedRow({ status: 'closed' }) });
+    await expect(activateCampaign(CAMPAIGN_ID, done.store, '2027-02-01T00:00:00.000Z')).resolves.toEqual({
+      ok: false,
+      error: 'invalid_transition',
+    });
+    await expect(closeCampaign(CAMPAIGN_ID, done.store, '2027-02-01T00:00:00.000Z')).resolves.toEqual({
+      ok: false,
+      error: 'invalid_transition',
+    });
+    expect(done.transitions).toEqual([]);
+  });
+
+  it('closes a draft directly', async () => {
+    const { store, transitions } = client();
+    const result = await closeCampaign(CAMPAIGN_ID, store, '2027-02-01T00:00:00.000Z');
+    expect(result.ok).toBe(true);
+    expect(transitions).toEqual([{ p_campaign_id: CAMPAIGN_ID, p_to_status: 'closed' }]);
+  });
+
+  it('returns the database transition code when the row still looks activatable', async () => {
+    const blocked = client({ rpcError: { message: 'live_activation_blocked', code: 'P0001' } });
+    await expect(activateCampaign(CAMPAIGN_ID, blocked.store, '2027-01-01T00:00:00.000Z')).resolves.toEqual({
+      ok: false,
+      error: 'live_activation_blocked',
+    });
+
+    const raced = client({
+      rpcError: {
+        message: 'quarter_campaign_open: drawing_campaigns_one_open_quarter_idx',
+        code: '23505',
+      },
+    });
+    await expect(activateCampaign(CAMPAIGN_ID, raced.store, '2027-01-01T00:00:00.000Z')).resolves.toEqual({
+      ok: false,
+      error: 'quarter_campaign_open',
+    });
+  });
+});
+
+describe('updateCampaign lifecycle lock', () => {
+  it('returns campaign_locked for an active or closed row and does not write', async () => {
+    for (const status of ['active', 'closed'] as const) {
+      const { store, calls, transitions } = client({ row: storedRow({ status }) });
+      const result = await updateCampaign(CAMPAIGN_ID, sampleDraft({ rulesVersion: 'v1' }), store);
+      expect(result).toEqual({ ok: false, error: 'campaign_locked' });
+      expect(calls).toEqual([]);
+      expect(transitions).toEqual([]);
+    }
+  });
+
+  it('maps a database campaign_locked on a draft that was activated underneath the read', async () => {
+    const { store, calls } = client({ rpcError: { message: 'campaign_locked', code: 'P0001' } });
+    const result = await updateCampaign(CAMPAIGN_ID, sampleDraft({ rulesVersion: 'v1' }), store);
+    expect(result).toEqual({ ok: false, error: 'campaign_locked' });
+    expect(calls).toHaveLength(1);
   });
 });
 
@@ -397,6 +572,8 @@ describe('campaign store windows under TZ=UTC and TZ=America/Chicago', () => {
       return JSON.parse(result.stdout) as {
         windows: Record<string, { startsAt: string; endsAt: string }>;
         overBudgetCalls: number;
+        transitions: Record<string, string>;
+        storeTransitions: Record<string, { error: string; rpc: boolean }>;
       };
     };
     const utc = run('UTC');
@@ -411,5 +588,21 @@ describe('campaign store windows under TZ=UTC and TZ=America/Chicago', () => {
       endsAt: '2027-04-01T05:00:00.000Z',
     });
     expect(utc.overBudgetCalls).toBe(0);
+    expect(utc.transitions).toEqual({
+      '2026-Q4:before': 'ok',
+      '2026-Q4:at': 'campaign_window_ended',
+      '2026-Q4:after': 'campaign_window_ended',
+      '2026-Q4:live': 'live_activation_blocked',
+      '2027-Q1:before': 'ok',
+      '2027-Q1:at': 'campaign_window_ended',
+      '2027-Q1:after': 'campaign_window_ended',
+      '2027-Q1:live': 'live_activation_blocked',
+    });
+    expect(utc.storeTransitions['2026-Q4:before']).toEqual({ error: 'unavailable', rpc: true });
+    expect(utc.storeTransitions['2026-Q4:at']).toEqual({ error: 'campaign_window_ended', rpc: false });
+    expect(utc.storeTransitions['2026-Q4:after']).toEqual({ error: 'campaign_window_ended', rpc: false });
+    expect(utc.storeTransitions['2027-Q1:before']).toEqual({ error: 'unavailable', rpc: true });
+    expect(utc.storeTransitions['2027-Q1:at']).toEqual({ error: 'campaign_window_ended', rpc: false });
+    expect(utc.storeTransitions['2027-Q1:live']).toEqual({ error: 'live_activation_blocked', rpc: false });
   }, 20000);
 });

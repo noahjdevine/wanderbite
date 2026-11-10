@@ -25,6 +25,7 @@ import { runG13A2Concurrency } from './g13-a2-concurrency';
 import { runE04RevealConcurrency } from './e04-reveal-concurrency';
 import { runE06B2ActivityMaintenanceDb } from './e06-b2-activity-maintenance-db';
 import { runE09A4BackfillConcurrency } from './e09-a4-backfill-concurrency';
+import { runE09B4CampaignConcurrency } from './e09-b4-campaign-concurrency';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const host = localDockerHost(process.env.G1_DOCKER_HOST ??
@@ -180,6 +181,10 @@ async function main() {
   process.stdout.write('PASS: E09-A4 backfill counts, cutoff, dry run, recovery, and frozen milestones.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b3-drawing-campaigns.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E09-B3 drawing campaigns, budget, sample and live rules, and service_role grants.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b4-drawing-campaign-lifecycle.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E09-B4 campaign lifecycle, sample-only activation, and the edit lock.\n');
+  await runE09B4CampaignConcurrency({ docker, host, containerId: id, sql });
+  process.stdout.write('PASS: E09-B4 one open campaign per quarter and direct activation does not commit.\n');
   await runE09A4BackfillConcurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E09-A4 backfill and record share the member lock.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e07-bill-receipts.sql'), 'utf8')) + '\n');
