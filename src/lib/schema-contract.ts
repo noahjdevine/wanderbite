@@ -362,8 +362,8 @@ export const SCHEMA_CONTRACT = {
     'content_hash',
     'error_code',
   ],
-  // status also allows reviewed (20261105204844). subject_type also allows briefing (20261105212138). No new column. types:db was not run.
-  // 20261105214940 (filename of 20261105223000) stores change_summary inside value. Same function signatures. types:db was not run.
+  // status also allows reviewed (20261105204844). subject_type also allows briefing (20261105212138). No new column.
+  // 20261105214940 stores change_summary inside value. Same function signatures.
   source_facts: [
     'id',
     'source_id',
@@ -430,7 +430,7 @@ export const SCHEMA_CONTRACT = {
     'encrypted_code',
     'code_iv',
     'expires_at',
-    // E07-C2. record_boost_settlement is the only writer. Hand-edited. npm run types:db was not run.
+    // E07-C2. record_boost_settlement is the only writer.
     'settlement_kind',
     'settled_at',
     'quote_id',

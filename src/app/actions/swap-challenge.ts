@@ -258,7 +258,8 @@ async function finishCreditSwap(
   const { data: rpcData, error: rpcError } = await supabase.rpc('swap_linked_credit_item', {
     p_user_id: userId,
     p_item_id: challengeItemId,
-    p_replacement_restaurant_id: replacementRestaurantId,
+    // Generated Args type uuid as string. Null is still sent for a retry with no replacement.
+    p_replacement_restaurant_id: replacementRestaurantId as string,
   });
   if (rpcError) return { ok: false, error: `Swap failed: ${rpcError.message}` };
   const swapped = firstRpcRow(rpcData);

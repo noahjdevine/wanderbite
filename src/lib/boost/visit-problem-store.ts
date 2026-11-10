@@ -365,7 +365,8 @@ export async function reviewVisitProblemCase(input: {
     p_case_id: input.caseId,
     p_actor_user_id: input.actorUserId,
     p_status: input.status,
-    p_member_response: input.memberResponse,
+    // Generated Args type text as string. A null member response is still sent.
+    p_member_response: input.memberResponse as string,
     p_reason: input.reason,
   });
   if (error) return { ok: false, code: 'unavailable' };
