@@ -26,6 +26,7 @@ type QueryResult = { data: unknown; error: { message: string } | null };
 const mutations: string[] = [];
 const selects: { table: string; columns: string }[] = [];
 const ORIGINAL_ARRIVAL_FLAG = process.env.E07_ARRIVAL_SESSIONS_ENABLED;
+const ORIGINAL_VISIT_FLAG = process.env.E07_VISIT_PROBLEMS_ENABLED;
 
 function chain(table: string, resolveResult: (columns: string) => QueryResult) {
   let columns = '';
@@ -53,7 +54,7 @@ function chain(table: string, resolveResult: (columns: string) => QueryResult) {
 
 function mockTables(
   tables: Record<string, QueryResult>,
-  options?: { settlement?: QueryResult },
+  options?: { settlement?: QueryResult; corrections?: QueryResult },
 ) {
   mutations.length = 0;
   selects.length = 0;
@@ -62,6 +63,9 @@ function mockTables(
       chain(table, (columns) => {
         if (table === 'redemptions' && columns.includes('settlement_kind')) {
           return options?.settlement ?? { data: [], error: null };
+        }
+        if (table === 'visit_problem_savings_adjustments') {
+          return options?.corrections ?? tables[table] ?? { data: [], error: null };
         }
         return tables[table] ?? { data: [], error: null };
       }),
@@ -73,6 +77,10 @@ function settlementSelected(): boolean {
   return selects.some(
     (entry) => entry.table === 'redemptions' && entry.columns.includes('settlement_kind'),
   );
+}
+
+function correctionsSelected(): boolean {
+  return selects.some((entry) => entry.table === 'visit_problem_savings_adjustments');
 }
 
 const CATALOG = [
@@ -181,11 +189,14 @@ describe('getMemberProgress', () => {
     mutations.length = 0;
     selects.length = 0;
     delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
+    delete process.env.E07_VISIT_PROBLEMS_ENABLED;
   });
 
   afterAll(() => {
     if (ORIGINAL_ARRIVAL_FLAG === undefined) delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
     else process.env.E07_ARRIVAL_SESSIONS_ENABLED = ORIGINAL_ARRIVAL_FLAG;
+    if (ORIGINAL_VISIT_FLAG === undefined) delete process.env.E07_VISIT_PROBLEMS_ENABLED;
+    else process.env.E07_VISIT_PROBLEMS_ENABLED = ORIGINAL_VISIT_FLAG;
   });
 
   it('counts a Chicago Sept–Oct streak on Nov 3 and the same longest streak', async () => {
@@ -516,6 +527,7 @@ describe('getMemberProgress', () => {
         savings: { amount: 15, isEstimate: true },
       });
       expect(settlementSelected()).toBe(false);
+      expect(correctionsSelected()).toBe(false);
     }
   });
 
@@ -692,6 +704,107 @@ describe('getMemberProgress', () => {
       savings: { amount: 0, isEstimate: true },
     });
     expect(settlementSelected()).toBe(false);
+    expect(correctionsSelected()).toBe(false);
+  });
+
+  it('does not read savings corrections unless the visit-problem flag is exactly true', async () => {
+    const row = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    const tables = tablesFor({
+      redemptions: [row],
+      restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+      items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+      versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+    });
+    for (const flag of [undefined, '', 'TRUE', '1'] as const) {
+      if (flag === undefined) delete process.env.E07_VISIT_PROBLEMS_ENABLED;
+      else process.env.E07_VISIT_PROBLEMS_ENABLED = flag;
+      mockTables(tables);
+      const progress = await getMemberProgress('user-1', NOV_3);
+      expect(progress).toMatchObject({
+        savings: { amount: 15, isEstimate: true, corrected: false },
+      });
+      expect(correctionsSelected()).toBe(false);
+      expect(mutations).toEqual([]);
+    }
+  });
+
+  it('shows the corrected cents and marks the savings corrected', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    const row = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    mockTables(
+      tablesFor({
+        redemptions: [row],
+        restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+        items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      { corrections: { data: [{ redemption_id: row.id, corrected_cents: 2500 }], error: null } },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 1,
+      xp: 100,
+      savings: { amount: 25, isEstimate: false, corrected: true },
+    });
+    expect(correctionsSelected()).toBe(true);
+    expect(settlementSelected()).toBe(false);
+    expect(mutations).toEqual([]);
+  });
+
+  it('prefers the correction over a stored settlement and leaves an uncorrected visit estimated', async () => {
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    const corrected = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    const plain = verified('2026-09-02T15:00:00.000Z', 'rest-b', 'item-2');
+    mockTables(
+      tablesFor({
+        redemptions: [corrected, plain],
+        restaurants: [
+          { id: 'rest-a', neighborhood: 'Adriatica' },
+          { id: 'rest-b', neighborhood: 'Craig Ranch' },
+        ],
+        items: [
+          { id: 'item-1', offer_version_id: 'ver-1' },
+          { id: 'item-2', offer_version_id: 'ver-2' },
+        ],
+        versions: [
+          { id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] },
+          { id: 'ver-2', tiers: [{ threshold_cents: 4000, discount_cents: 1200 }] },
+        ],
+      }),
+      {
+        settlement: {
+          data: [consumeQuoteRow(corrected.id, 1850), sealedStoredRow(plain.id, 1200)],
+          error: null,
+        },
+        corrections: { data: [{ redemption_id: corrected.id, corrected_cents: 2500 }], error: null },
+      },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 2,
+      savings: { amount: 37, isEstimate: false, corrected: true },
+    });
+  });
+
+  it('keeps the uncorrected total when the correction read fails', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    const row = verified('2026-10-02T15:00:00.000Z', 'rest-a', 'item-1');
+    mockTables(
+      tablesFor({
+        redemptions: [row],
+        restaurants: [{ id: 'rest-a', neighborhood: 'Adriatica' }],
+        items: [{ id: 'item-1', offer_version_id: 'ver-1' }],
+        versions: [{ id: 'ver-1', tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }],
+      }),
+      { corrections: { data: null, error: { message: 'relation does not exist' } } },
+    );
+    const progress = await getMemberProgress('user-1', NOV_3);
+    expect(progress).toMatchObject({
+      verifiedVisits: 1,
+      savings: { amount: 15, isEstimate: true, corrected: false },
+    });
+    expect(correctionsSelected()).toBe(true);
   });
 });
 

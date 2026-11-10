@@ -161,6 +161,7 @@ export type ProgressReadyModel = {
   neighborhoods: number | null;
   savingsAmount: number | null;
   savingsIsEstimate: boolean;
+  savingsCorrected: boolean;
   currentMonthlyStreak: number;
   longestStreak: number;
   streakMonths: StreakMonth[];
@@ -586,6 +587,7 @@ export function buildProgressModel(input: {
     neighborhoods: input.progress.neighborhoods,
     savingsAmount: input.progress.savings.amount,
     savingsIsEstimate: input.progress.savings.isEstimate,
+    savingsCorrected: input.progress.savings.corrected === true,
     currentMonthlyStreak: input.progress.currentMonthlyStreak,
     longestStreak: input.progress.longestStreak,
     streakMonths: buildStreakMonths({ now: input.now, verifiedAt }),

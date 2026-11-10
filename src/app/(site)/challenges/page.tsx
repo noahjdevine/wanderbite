@@ -21,6 +21,7 @@ import { loadActivitySuggestions } from '@/lib/activities/load';
 import { loadRestaurantBriefings } from '@/lib/briefings/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
 import { arrivalSessionsEnabled, visitProblemsEnabled } from '@/lib/boost/flag';
+import { loadMemberMakeupSpots } from '@/lib/boost/visit-problem-store';
 
 export const dynamic = 'force-dynamic';
 
@@ -188,6 +189,10 @@ export default async function ChallengesPage() {
     }),
   });
 
+  const makeupSpots = visitProblemsEnabled()
+    ? await loadMemberMakeupSpots(typedProfile.id)
+    : [];
+
   return (
     <main className="min-h-screen bg-wb-cream">
       <Suspense fallback={null}>
@@ -197,6 +202,7 @@ export default async function ChallengesPage() {
         appearance="golden"
         boostCheckIn={arrivalSessionsEnabled()}
         visitProblems={visitProblemsEnabled()}
+        makeupSpots={makeupSpots}
         showIncompleteProfile={!gate.profileComplete}
         launchEligible={area === 'eligible'}
         currentChallenge={currentChallenge}

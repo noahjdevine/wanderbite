@@ -34,7 +34,7 @@ export default async function VisitProblemsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-primary">Visit problems</h1>
             <p className="text-sm text-muted-foreground">
-              Review a member&apos;s report and write a response. Saving does not change the visit, savings, credits, or subscription.
+              A review does not by itself change the visit. While a case is open, correct savings or grant one make-up challenge. Neither changes the original visit, quote, credit, or subscription.
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>
@@ -42,7 +42,7 @@ export default async function VisitProblemsPage() {
           </Button>
         </div>
         {queue.ok ? (
-          <VisitProblemQueue cases={queue.cases} />
+          <VisitProblemQueue cases={queue.cases} correctionsUnavailable={queue.correctionsUnavailable} />
         ) : (
           <p className="text-sm text-destructive">The review queue is unavailable.</p>
         )}

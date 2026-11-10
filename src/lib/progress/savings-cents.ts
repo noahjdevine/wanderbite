@@ -12,12 +12,18 @@ import { ESTIMATED_SAVINGS_FALLBACK_CENTS } from '@/lib/progress/rules';
  * `isEstimate` is false only when that read succeeded and every counted visit
  * had stored cents. No visits, any read-time visit, the 1000-cent fallback,
  * or the flag-off path stays estimated. Older visits are not backfilled.
+ *
+ * `correctedCents` is an admin savings adjustment. When it is a whole
+ * non-negative amount it replaces both the stored snapshot and the read-time
+ * figure for that visit, and that visit counts as known.
  */
 export type VisitSavingsInput = {
   /** Today's read-time sealed lowest tier, when the item has one. */
   sealedCents?: number | null;
   /** Parsed stored cents. Null when this visit has no usable snapshot. */
   storedCents?: number | null;
+  /** Admin-corrected cents for this visit. Wins over the stored snapshot. */
+  correctedCents?: number | null;
 };
 
 export type VisitSavingsTotal = {
@@ -60,22 +66,23 @@ export function savingsCentsForVisits(
   visits: readonly VisitSavingsInput[],
   options: { useStoredSettlements: boolean },
 ): VisitSavingsTotal {
-  if (!options.useStoredSettlements) {
-    let cents = 0;
-    for (const visit of visits) cents += readTimeCents(visit.sealedCents);
-    return { cents, amount: cents / 100, isEstimate: true };
-  }
-
   let cents = 0;
-  let everyStored = visits.length > 0;
+  let everyKnown = visits.length > 0;
   for (const visit of visits) {
-    const stored = wholeCents(visit.storedCents);
-    if (stored != null) {
-      cents += stored;
+    const corrected = wholeCents(visit.correctedCents);
+    if (corrected != null) {
+      cents += corrected;
       continue;
     }
-    everyStored = false;
+    if (options.useStoredSettlements) {
+      const stored = wholeCents(visit.storedCents);
+      if (stored != null) {
+        cents += stored;
+        continue;
+      }
+    }
+    everyKnown = false;
     cents += readTimeCents(visit.sealedCents);
   }
-  return { cents, amount: cents / 100, isEstimate: !everyStored };
+  return { cents, amount: cents / 100, isEstimate: !everyKnown };
 }

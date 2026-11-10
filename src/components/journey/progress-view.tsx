@@ -133,6 +133,7 @@ export function ProgressView({ model, savedRecipes }: ProgressViewProps) {
               value={formatSavingsDollars(model.savingsAmount)}
               label="saved so far"
               estimated={model.savingsIsEstimate}
+              note={model.savingsCorrected ? 'Corrected after review' : undefined}
             />
           </section>
 

@@ -24,6 +24,8 @@ import { distanceMatchCopy } from '@/lib/launch-market';
 import { RestaurantCard } from '@/components/dashboard/restaurant-card';
 import { StreakPanel } from '@/components/dashboard/streak-panel';
 import { AdventureTicket } from '@/components/challenges/adventure-ticket';
+import { MakeupOpportunities } from '@/components/challenges/makeup-opportunities';
+import type { MemberMakeupSpot } from '@/lib/boost/visit-problem';
 import { ChallengesGolden } from '@/components/challenges/challenges-golden';
 import {
   adventureMonthName,
@@ -100,6 +102,8 @@ type DashboardClientProps = {
   boostCheckIn?: boolean;
   /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
   visitProblems?: boolean;
+  /** Make-up spots from a reviewed visit. Empty unless that flag is on. */
+  makeupSpots?: readonly MemberMakeupSpot[];
   /** Golden sheet only. The classic page renders this notice itself. */
   showIncompleteProfile?: boolean;
 };
@@ -126,6 +130,7 @@ export function DashboardClient({
   showIncompleteProfile = false,
   boostCheckIn = false,
   visitProblems = false,
+  makeupSpots = [],
 }: DashboardClientProps) {
   const router = useRouter();
   const [headerNow] = useState(() => new Date());
@@ -388,7 +393,12 @@ export function DashboardClient({
           showIncompleteProfile={showIncompleteProfile}
           launchEligible={launchEligible}
           retryMessage={monthlyReveal.mode === 'retry' ? REVEAL_TRY_AGAIN : null}
-          primary={selection}
+          primary={
+            <>
+              {visitProblems ? <MakeupOpportunities spots={makeupSpots} /> : null}
+              {selection}
+            </>
+          }
           streak={streakPanel}
           carried={carried}
         />
@@ -409,6 +419,7 @@ export function DashboardClient({
         </p>
       ) : null}
 
+      {visitProblems ? <MakeupOpportunities spots={makeupSpots} /> : null}
       {selection}
       {carried}
     </div>

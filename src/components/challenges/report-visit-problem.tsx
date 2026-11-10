@@ -56,6 +56,10 @@ export function ReportVisitProblem({ challengeItemId, redemptionId = null }: Rep
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (explanation.trim().length < 1) {
+      setError('Tell us what happened');
+      return;
+    }
     setSaving(true);
     setError(null);
     const result = await submitVisitProblem({
@@ -103,7 +107,7 @@ export function ReportVisitProblem({ challengeItemId, redemptionId = null }: Rep
       ) : null}
       {!loading && !openCase ? (
         open ? (
-          <form className="space-y-2" onSubmit={(event) => void onSubmit(event)}>
+          <form className="space-y-2" noValidate onSubmit={(event) => void onSubmit(event)}>
             <p className="m-0 text-xs text-wb-muted">
               This sends the problem to Wanderbite for review. It does not change this visit, your savings, or your credits.
             </p>
@@ -129,7 +133,10 @@ export function ReportVisitProblem({ challengeItemId, redemptionId = null }: Rep
               id={`visit-problem-explanation-${challengeItemId}`}
               className="min-h-24 w-full rounded-xl border border-[#e3d9c6] bg-white px-3 py-2 text-sm text-wb-ink"
               maxLength={VISIT_PROBLEM_TEXT_MAX}
-              required
+              aria-invalid={error === 'Tell us what happened' ? true : undefined}
+              aria-describedby={
+                error === 'Tell us what happened' ? `visit-problem-error-${challengeItemId}` : undefined
+              }
               value={explanation}
               onChange={(event) => setExplanation(event.target.value)}
             />
@@ -161,7 +168,7 @@ export function ReportVisitProblem({ challengeItemId, redemptionId = null }: Rep
         )
       ) : null}
       {error ? (
-        <p className="m-0 text-sm text-destructive" role="alert">
+        <p className="m-0 text-sm text-destructive" id={`visit-problem-error-${challengeItemId}`} role="alert">
           {error}
         </p>
       ) : null}

@@ -2453,6 +2453,95 @@ export type Database = {
         }
         Relationships: []
       }
+      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
+      visit_problem_opportunities: {
+        Row: {
+          actor_user_id: string
+          case_id: string
+          challenge_item_id: string
+          created_at: string
+          id: string
+          makeup_challenge_item_id: string | null
+          reason: string
+          redemption_id: string | null
+          status: string
+          used_at: string | null
+          used_redemption_id: string | null
+          user_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          case_id: string
+          challenge_item_id: string
+          created_at?: string
+          id?: string
+          makeup_challenge_item_id?: string | null
+          reason: string
+          redemption_id?: string | null
+          status?: string
+          used_at?: string | null
+          used_redemption_id?: string | null
+          user_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          case_id?: string
+          challenge_item_id?: string
+          created_at?: string
+          id?: string
+          makeup_challenge_item_id?: string | null
+          reason?: string
+          redemption_id?: string | null
+          status?: string
+          used_at?: string | null
+          used_redemption_id?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
+      visit_problem_savings_adjustments: {
+        Row: {
+          actor_user_id: string
+          case_id: string
+          corrected_cents: number
+          created_at: string
+          id: string
+          original_cents: number | null
+          quote_id: string | null
+          reason: string
+          redemption_id: string
+          settlement_kind: string | null
+          user_id: string
+        }
+        Insert: {
+          actor_user_id: string
+          case_id: string
+          corrected_cents: number
+          created_at?: string
+          id?: string
+          original_cents?: number | null
+          quote_id?: string | null
+          reason: string
+          redemption_id: string
+          settlement_kind?: string | null
+          user_id: string
+        }
+        Update: {
+          actor_user_id?: string
+          case_id?: string
+          corrected_cents?: number
+          created_at?: string
+          id?: string
+          original_cents?: number | null
+          quote_id?: string | null
+          reason?: string
+          redemption_id?: string
+          settlement_kind?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       webhook_outbox: {
         Row: {
           attempts: number
@@ -4401,6 +4490,40 @@ export type Database = {
           p_member_response: string | null
           p_reason: string
           p_status: string
+        }
+        Returns: Json
+      }
+      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
+      correct_visit_problem_savings: {
+        Args: {
+          p_actor_user_id: string
+          p_case_id: string
+          p_corrected_cents: number
+          p_reason: string
+        }
+        Returns: Json
+      }
+      restore_visit_problem_opportunity: {
+        Args: {
+          p_actor_user_id: string
+          p_case_id: string
+          p_reason: string
+        }
+        Returns: Json
+      }
+      // Hand-edited for E07-D2. npm run types:db was not run against hosted.
+      open_visit_problem_makeup_item: {
+        Args: {
+          p_opportunity_id: string
+          p_user_id: string
+        }
+        Returns: Json
+      }
+      use_visit_problem_opportunity: {
+        Args: {
+          p_opportunity_id: string
+          p_redemption_id: string
+          p_user_id: string
         }
         Returns: Json
       }

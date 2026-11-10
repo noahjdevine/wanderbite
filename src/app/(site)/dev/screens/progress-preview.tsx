@@ -93,7 +93,7 @@ const progress: Exclude<MemberProgress, { error: 'progress_unavailable' }> = {
       icon: '🚲',
     },
   ],
-  savings: { amount: 20, isEstimate: true },
+  savings: { amount: 20, isEstimate: true, corrected: false },
 };
 
 export function ProgressPreview() {
