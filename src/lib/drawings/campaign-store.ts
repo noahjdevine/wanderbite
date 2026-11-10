@@ -3,22 +3,30 @@ import 'server-only';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
   CAMPAIGN_ERROR_CODES,
+  CAMPAIGN_TRANSITION_ERROR_CODES,
   campaignWindow,
   checkCampaignEdit,
+  checkCampaignTransition,
   validateCampaignDraft,
   type CampaignDraft,
   type CampaignErrorCode,
   type CampaignMode,
   type CampaignPrize,
+  type CampaignStatus,
+  type CampaignTransitionError,
+  type CampaignTransitionState,
 } from '@/lib/drawings/campaign';
 
 /**
- * Server-only writer for drawing campaigns. It runs the B1 checks first,
- * then save_drawing_campaign. Nothing in the app calls it. The tables are
- * not in database.types.ts; row shapes below are local.
+ * Server-only writer for drawing campaigns. Create and update run the B1
+ * checks first, then save_drawing_campaign. Activate and close run
+ * checkCampaignTransition, then transition_drawing_campaign. An active or
+ * closed row is campaign_locked here and in the database. Nothing in the
+ * app calls this module. The tables are not in database.types.ts; row
+ * shapes below are local.
  */
 
-export type CampaignStatus = 'draft' | 'active' | 'closed';
+export type { CampaignStatus };
 
 export type StoredCampaignPrize = {
   id: string;
@@ -67,10 +75,17 @@ export type CampaignWritePayload = {
   }[];
 };
 
+export type CampaignStoreError =
+  | 'not_found'
+  | 'unavailable'
+  | 'quarter_campaign_open'
+  | 'campaign_locked'
+  | CampaignTransitionError;
+
 export type CampaignStoreResult =
   | { ok: true; campaign: StoredCampaign }
   | { ok: false; errors: CampaignErrorCode[] }
-  | { ok: false; error: 'not_found' | 'unavailable' | 'quarter_campaign_open' };
+  | { ok: false; error: CampaignStoreError };
 
 export type CampaignReadResult =
   | { ok: true; campaign: StoredCampaign }
@@ -95,10 +110,15 @@ type CampaignQuery = {
   };
 };
 
+export type CampaignTransitionArgs = {
+  p_campaign_id: string;
+  p_to_status: 'active' | 'closed';
+};
+
 export type CampaignStoreClient = {
   rpc: (
-    fn: 'save_drawing_campaign',
-    args: { p_payload: CampaignWritePayload },
+    fn: 'save_drawing_campaign' | 'transition_drawing_campaign',
+    args: { p_payload: CampaignWritePayload } | CampaignTransitionArgs,
   ) => PromiseLike<{ data: unknown; error: DbError | null }>;
   from: (table: 'drawing_campaigns' | 'drawing_campaign_prizes') => CampaignQuery;
 };
@@ -275,12 +295,26 @@ function payloadFor(draft: CampaignDraft, id?: string): CampaignWritePayload | n
   };
 }
 
+const STORE_ERROR_CODES = [
+  'quarter_campaign_open',
+  'campaign_locked',
+  ...CAMPAIGN_TRANSITION_ERROR_CODES,
+] as const;
+
+function messageHasCode(message: string, code: string): boolean {
+  return message === code || new RegExp(`\\b${code}\\b`).test(message);
+}
+
 function failureFromDb(error: DbError): CampaignStoreResult {
   const message = error.message ?? '';
-  if (error.code === '23505' || message.includes('drawing_campaigns_one_open_quarter_idx')) {
+  if (
+    error.code === '23505' ||
+    message.includes('drawing_campaigns_one_open_quarter_idx') ||
+    messageHasCode(message, 'quarter_campaign_open')
+  ) {
     return { ok: false, error: 'quarter_campaign_open' };
   }
-  if (error.code === 'P0002' || message === 'not_found') {
+  if (error.code === 'P0002' || messageHasCode(message, 'not_found')) {
     return { ok: false, error: 'not_found' };
   }
   const found = new Set<CampaignErrorCode>();
@@ -297,7 +331,52 @@ function failureFromDb(error: DbError): CampaignStoreResult {
   if (found.size > 0) {
     return { ok: false, errors: CAMPAIGN_ERROR_CODES.filter((code) => found.has(code)) };
   }
+  for (const code of STORE_ERROR_CODES) {
+    if (messageHasCode(message, code)) return { ok: false, error: code };
+  }
   return { ok: false, error: 'unavailable' };
+}
+
+function transitionState(campaign: StoredCampaign): CampaignTransitionState {
+  return {
+    status: campaign.status,
+    mode: campaign.mode,
+    endsAt: campaign.endsAt,
+    prizeCount: campaign.prizes.length,
+    totalBudgetCents: campaign.totalBudgetCents,
+    committedCents: campaign.committedCents,
+  };
+}
+
+async function transitionCampaign(
+  client: CampaignStoreClient,
+  id: string,
+  toStatus: 'active' | 'closed',
+  now: string,
+): Promise<CampaignStoreResult> {
+  const current = await getCampaign(id, client);
+  if (!current.ok) return current;
+  const transition = checkCampaignTransition(transitionState(current.campaign), toStatus, now);
+  if (!transition.ok) return { ok: false, error: transition.error };
+  let result: { data: unknown; error: DbError | null };
+  try {
+    result = await client.rpc('transition_drawing_campaign', {
+      p_campaign_id: id,
+      p_to_status: toStatus,
+    });
+  } catch {
+    return { ok: false, error: 'unavailable' };
+  }
+  if (result.error) {
+    const failed = failureFromDb(result.error);
+    if (!failed.ok && 'errors' in failed && failed.errors.length === 1 && failed.errors[0] === 'over_budget') {
+      return { ok: false, error: 'over_budget' };
+    }
+    return failed;
+  }
+  const campaign = readCampaign(result.data);
+  if (!campaign) return { ok: false, error: 'unavailable' };
+  return { ok: true, campaign };
 }
 
 async function writeCampaign(
@@ -369,9 +448,37 @@ export async function updateCampaign(
 ): Promise<CampaignStoreResult> {
   const current = await getCampaign(id, client);
   if (!current.ok) return current;
+  if (current.campaign.status === 'active' || current.campaign.status === 'closed') {
+    return { ok: false, error: 'campaign_locked' };
+  }
   const edited = checkCampaignEdit(draftFromStored(current.campaign), next);
   if (!edited.ok) return edited;
   const payload = payloadFor(next, id);
   if (!payload) return { ok: false, errors: ['invalid_quarter_key'] };
   return writeCampaign(client, payload);
+}
+
+/**
+ * Activates a sample draft before its quarter ends. The pure check runs
+ * first and uses `now` (default: the current instant). The database
+ * repeats that gate inside transition_drawing_campaign.
+ */
+export async function activateCampaign(
+  id: string,
+  client: CampaignStoreClient = campaignStoreClient(),
+  now: string = new Date().toISOString(),
+): Promise<CampaignStoreResult> {
+  return transitionCampaign(client, id, 'active', now);
+}
+
+/**
+ * Closes a draft or an active campaign. A closed campaign returns
+ * invalid_transition and does not call the database.
+ */
+export async function closeCampaign(
+  id: string,
+  client: CampaignStoreClient = campaignStoreClient(),
+  now: string = new Date().toISOString(),
+): Promise<CampaignStoreResult> {
+  return transitionCampaign(client, id, 'closed', now);
 }

@@ -7,6 +7,11 @@
  * reject sample prizes. The only entry source in this slice is
  * `level_milestone`. Public-review sources are never eligible.
  *
+ * `checkCampaignTransition` is the same lifecycle gate the database
+ * applies before a campaign leaves draft. Activation in this slice
+ * allows sample mode only. The caller supplies `now`; this file does
+ * not read the clock.
+ *
  * No database, network, or environment access. Official rules text
  * and real prize amounts are not decided here. Quarter bounds use
  * `chicagoQuarterKey` (America/Chicago), not a second calendar and
@@ -72,6 +77,34 @@ export type CampaignWindow = {
   /** Exclusive America/Chicago quarter end, as an ISO instant. */
   endsAt: string;
 };
+
+/** Lifecycle codes shared with the database transition. over_budget is shared with draft checks. */
+export const CAMPAIGN_TRANSITION_ERROR_CODES = [
+  'invalid_transition',
+  'live_activation_blocked',
+  'over_budget',
+  'campaign_window_ended',
+  'no_prizes',
+] as const;
+
+export type CampaignTransitionError = (typeof CAMPAIGN_TRANSITION_ERROR_CODES)[number];
+
+export type CampaignStatus = 'draft' | 'active' | 'closed';
+
+/** Fields the lifecycle gate needs. Amounts are the stored cents, not a fresh draft. */
+export type CampaignTransitionState = {
+  status: CampaignStatus;
+  mode: CampaignMode;
+  /** Exclusive quarter end, as an ISO instant. Activation requires now < endsAt. */
+  endsAt: string;
+  prizeCount: number;
+  totalBudgetCents: number;
+  committedCents: number;
+};
+
+export type CampaignTransitionResult =
+  | { ok: true }
+  | { ok: false; error: CampaignTransitionError };
 
 const QUARTER_KEY = /^(\d{4})-Q([1-4])$/;
 
@@ -174,6 +207,34 @@ export function checkCampaignEdit(current: CampaignDraft, next: CampaignDraft): 
 }
 
 /**
+ * Allowed moves are draft → active, active → closed, and draft → closed.
+ * Activation requires sample mode, `now` strictly before `endsAt`,
+ * at least one prize, and committed cents at or under the total.
+ * `now` equal to `endsAt` is campaign_window_ended. This does not throw.
+ */
+export function checkCampaignTransition(
+  current: CampaignTransitionState,
+  toStatus: string,
+  now: string,
+): CampaignTransitionResult {
+  const row = asRecord(current);
+  const status = row?.status;
+  const allowed =
+    (status === 'draft' && toStatus === 'active') ||
+    (status === 'active' && toStatus === 'closed') ||
+    (status === 'draft' && toStatus === 'closed');
+  if (!allowed) return { ok: false, error: 'invalid_transition' };
+  if (toStatus !== 'active') return { ok: true };
+  if (row?.mode !== 'sample') return { ok: false, error: 'live_activation_blocked' };
+  if (windowEnded(row.endsAt, now)) return { ok: false, error: 'campaign_window_ended' };
+  if (!hasPrizeCount(row.prizeCount)) return { ok: false, error: 'no_prizes' };
+  if (!budgetFits(row.committedCents, row.totalBudgetCents)) {
+    return { ok: false, error: 'over_budget' };
+  }
+  return { ok: true };
+}
+
+/**
  * Sample mode always starts the visible label with `SAMPLE_PRIZE_MARKER`.
  * A label that already starts with the marker is not prefixed a second time.
  * Live mode returns the trimmed label unchanged.
@@ -220,6 +281,34 @@ function withOverBudget(result: CampaignValidation): CampaignValidation {
   if (result.ok) return { ok: false, errors: ['over_budget'] };
   if (result.errors.includes('over_budget')) return result;
   return { ok: false, errors: [...result.errors, 'over_budget'] };
+}
+
+function windowEnded(endsAt: unknown, now: unknown): boolean {
+  const endMs = instantMs(endsAt);
+  const nowMs = instantMs(now);
+  if (endMs === null || nowMs === null) return true;
+  return nowMs >= endMs;
+}
+
+function instantMs(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const ms = Date.parse(value);
+  if (!Number.isFinite(ms)) return null;
+  return ms;
+}
+
+function hasPrizeCount(value: unknown): boolean {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1;
+}
+
+function budgetFits(committed: unknown, total: unknown): boolean {
+  return (
+    typeof committed === 'number' &&
+    typeof total === 'number' &&
+    Number.isSafeInteger(committed) &&
+    Number.isSafeInteger(total) &&
+    committed <= total
+  );
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

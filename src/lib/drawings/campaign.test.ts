@@ -6,10 +6,12 @@ import {
   SAMPLE_PRIZE_MARKER,
   campaignWindow,
   checkCampaignEdit,
+  checkCampaignTransition,
   displayPrizeLabel,
   validateCampaignDraft,
   type CampaignDraft,
   type CampaignPrize,
+  type CampaignTransitionState,
 } from '@/lib/drawings/campaign';
 
 /** 2 × $50 plus $20 fulfillment against a $120 authorized total. */
@@ -353,6 +355,97 @@ describe('campaignWindow', () => {
     expect(() => campaignWindow('2026-Q5')).not.toThrow();
     expect(campaignWindow('2026-Q5')).toBeNull();
     expect(campaignWindow('')).toBeNull();
+  });
+});
+
+function transitionState(overrides: Partial<CampaignTransitionState> = {}): CampaignTransitionState {
+  return {
+    status: 'draft',
+    mode: 'sample',
+    endsAt: '2027-04-01T05:00:00.000Z',
+    prizeCount: 1,
+    totalBudgetCents: 12_000,
+    committedCents: 12_000,
+    ...overrides,
+  };
+}
+
+describe('checkCampaignTransition', () => {
+  it('allows a sample draft just before the quarter ends and rejects the end instant', () => {
+    const boundaries = [
+      {
+        endsAt: '2027-01-01T06:00:00.000Z',
+        before: '2027-01-01T05:59:59.999Z',
+        after: '2027-01-01T06:00:00.001Z',
+      },
+      {
+        endsAt: '2027-04-01T05:00:00.000Z',
+        before: '2027-04-01T04:59:59.999Z',
+        after: '2027-04-01T05:00:00.001Z',
+      },
+    ];
+    for (const boundary of boundaries) {
+      const state = transitionState({ endsAt: boundary.endsAt });
+      expect(checkCampaignTransition(state, 'active', boundary.before)).toEqual({ ok: true });
+      expect(checkCampaignTransition(state, 'active', boundary.endsAt)).toEqual({
+        ok: false,
+        error: 'campaign_window_ended',
+      });
+      expect(checkCampaignTransition(state, 'active', boundary.after)).toEqual({
+        ok: false,
+        error: 'campaign_window_ended',
+      });
+    }
+  });
+
+  it('allows draft → closed and active → closed, and rejects every other move', () => {
+    expect(checkCampaignTransition(transitionState(), 'closed', '2027-02-01T00:00:00.000Z')).toEqual({
+      ok: true,
+    });
+    expect(
+      checkCampaignTransition(transitionState({ status: 'active' }), 'closed', '2027-06-01T00:00:00.000Z'),
+    ).toEqual({ ok: true });
+    const rejected: Array<[CampaignTransitionState['status'], string]> = [
+      ['draft', 'draft'],
+      ['draft', 'paused'],
+      ['active', 'draft'],
+      ['active', 'active'],
+      ['closed', 'active'],
+      ['closed', 'draft'],
+      ['closed', 'closed'],
+    ];
+    for (const [status, toStatus] of rejected) {
+      expect(checkCampaignTransition(transitionState({ status }), toStatus, '2027-02-01T00:00:00.000Z')).toEqual({
+        ok: false,
+        error: 'invalid_transition',
+      });
+    }
+  });
+
+  it('uses the same activation order as the database', () => {
+    const now = '2027-02-01T00:00:00.000Z';
+    const ended = '2027-04-01T05:00:00.000Z';
+    expect(checkCampaignTransition(transitionState({ mode: 'live', endsAt: ended }), 'active', ended)).toEqual({
+      ok: false,
+      error: 'live_activation_blocked',
+    });
+    expect(
+      checkCampaignTransition(transitionState({ endsAt: ended, prizeCount: 0 }), 'active', ended),
+    ).toEqual({ ok: false, error: 'campaign_window_ended' });
+    expect(
+      checkCampaignTransition(
+        transitionState({ prizeCount: 0, committedCents: 13_000 }),
+        'active',
+        now,
+      ),
+    ).toEqual({ ok: false, error: 'no_prizes' });
+    expect(checkCampaignTransition(transitionState({ committedCents: 12_001 }), 'active', now)).toEqual({
+      ok: false,
+      error: 'over_budget',
+    });
+    expect(checkCampaignTransition(transitionState({ committedCents: 12_000 }), 'active', now)).toEqual({
+      ok: true,
+    });
   });
 });
 

@@ -158,3 +158,19 @@ Row level security is enabled. There are no policies for `anon` or `authenticate
 `createCampaign`, `updateCampaign`, and `getCampaign` live in `src/lib/drawings/campaign-store.ts`. Create runs `validateCampaignDraft`. Update runs `checkCampaignEdit`. Both call the database only after those checks pass. The store uses the service-role client. The read model, the member panel, the ledger flag, and the A3 caller are unchanged.
 
 Revert the PR to roll this back. Locally, a later forward migration can drop the two tables, the triggers, and `save_drawing_campaign`. Nothing is on hosted, and nothing reads the tables.
+
+## Campaign lifecycle (E09-B4)
+
+Migration `20261110220339_e09_b4_drawing_campaign_lifecycle.sql` is not applied to hosted. Do not run `supabase db push` for this file. It does not edit `20261110214500_e09_b3_drawing_campaigns.sql`. `transition_drawing_campaign(uuid, text)` is the service-role writer for status. It locks the campaign row and allows only draft → active, active → closed, and draft → closed. A direct draft → closed update may commit. A direct draft → active, active → closed, active → draft, or closed → anything is rejected with `invalid_transition` when the deferred constraint `drawing_campaigns_transition` runs, which is at commit. The RPC sets that constraint immediate before it returns, so a bad transition fails inside the call. `database.types.ts` is unchanged. Nothing in the app calls this. `E09_PROGRESSION_LEDGER_ENABLED` and `E09_MEMBER_PROGRESSION_UI_ENABLED` stay unset. This does not claim E09, E07, or E02 acceptance.
+
+Activation requires mode `sample`, `now()` strictly before `ends_at`, at least one prize, and committed cents at or under `total_budget_cents`. The budget check calls `drawing_campaign_reject`. `now()` equal to `ends_at` is `campaign_window_ended`. Zero prizes is `no_prizes`. A live draft is `live_activation_blocked`. That draft can still be edited and saved. A later migration can allow live activation. Official rules text is still not stored here.
+
+`activated_at` is set when a draft becomes active and stays set after close. `closed_at` is set when the RPC closes a campaign. A direct draft → closed update does not stamp `closed_at`. Both columns are nullable `timestamptz`.
+
+Once the stored status is active or closed, `save_drawing_campaign` and direct SQL reject changes to `quarter_key`, `mode`, `rules_version`, `total_budget_cents`, `fulfillment_allowance_cents`, `eligible_entry_sources`, `starts_at`, `ends_at`, and any prize insert, update, or delete. The code is `campaign_locked`. The stored campaign and prizes stay as they were. Deleting the campaign row is rejected the same way. A missing id is `not_found`.
+
+The partial unique index `drawing_campaigns_one_open_quarter_idx` still allows one non-closed row per `quarter_key`. A second open row is `quarter_campaign_open` (SQLSTATE 23505, and the message names that index). `anon` and `authenticated` cannot execute the transition or write either table. `service_role` can.
+
+`checkCampaignTransition` in `src/lib/drawings/campaign.ts` returns those same codes. `activateCampaign` and `closeCampaign` in `src/lib/drawings/campaign-store.ts` run it before the RPC. `updateCampaign` returns `campaign_locked` for an active or closed row and does not call the database. Draft budget, sample, live, and window checks are unchanged.
+
+Revert this PR to roll it back. Locally, a later forward migration drops `transition_drawing_campaign`, the lock trigger, and the transition constraint, and restores B3's `save_drawing_campaign`. Nothing is on hosted, and nothing in the app reads the tables.
