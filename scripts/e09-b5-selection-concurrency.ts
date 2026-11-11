@@ -31,7 +31,15 @@ class PsqlSession {
     const started = Date.now();
     while (Date.now() - started < timeoutMs) {
       const slice = this.buffer.slice(before);
-      if (slice.includes(SENTINEL)) return slice.replace(SENTINEL, '').trim();
+      if (slice.includes(SENTINEL)) {
+        // stdout (the sentinel) and stderr (ERROR) are separate pipes.
+        // CI can deliver the sentinel first. Wait until the buffer is
+        // quiet so an error written just after the sentinel is included.
+        const marked = this.buffer.length;
+        await delay(50);
+        if (this.buffer.length !== marked) continue;
+        return this.buffer.slice(before).replace(SENTINEL, '').trim();
+      }
       await delay(25);
     }
     throw new Error(`E09-B5 psql wait timed out: ${this.buffer.slice(-800)}`);
@@ -113,11 +121,45 @@ export async function runE09B5SelectionConcurrency(opts: {
       select (public.select_drawing_winners('${campaignId}'::uuid, 'session-a')->'selection'->>'id');
     `);
     assert.match(held, /[0-9a-f-]{36}/, held);
+    // The result is a query row, not psql's stderr. A raised error and the
+    // following \\echo can arrive on different pipes, and CI has returned
+    // the sentinel before ERROR: already_selected was appended.
     const pending = b.send(`
       begin;
-      select public.select_drawing_winners('${campaignId}'::uuid, 'session-b');
+      create temp table b5_loser (msg text) on commit drop;
+      do $body$
+      declare
+        msg text;
+      begin
+        begin
+          perform public.select_drawing_winners('${campaignId}'::uuid, 'session-b');
+          msg := 'ok';
+        exception
+          when others then
+            msg := sqlstate || ' ' || sqlerrm;
+        end;
+        insert into b5_loser (msg) values (msg);
+      end;
+      $body$;
+      select msg from b5_loser;
+      commit;
     `, 20000);
-    await delay(200);
+    let waiting = false;
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const blocked = sql(`
+        select count(*)::text
+        from pg_stat_activity
+        where pid <> pg_backend_pid()
+          and wait_event_type = 'Lock'
+          and query ilike '%select_drawing_winners%';
+      `).trim();
+      if (blocked !== '0' && blocked !== '') {
+        waiting = true;
+        break;
+      }
+      await delay(50);
+    }
+    assert.equal(waiting, true, 'loser did not wait on the campaign lock');
     const committed = await a.send('commit;');
     assert.equal(committed, '', committed);
     const loser = await pending;
