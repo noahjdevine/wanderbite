@@ -460,6 +460,7 @@ describe('selection module boundaries', () => {
       path.join(ROOT, 'src/lib/drawings/selection-store.test.ts'),
       path.join(ROOT, 'src/lib/drawings/selection-store.tz-probe.ts'),
     ]);
+    const readers = new Set([path.join(ROOT, 'src/lib/drawings/admin-read-model.ts')]);
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -470,6 +471,11 @@ describe('selection module boundaries', () => {
         }
         if (!/\.(ts|tsx)$/.test(name) || skip.has(full)) continue;
         const text = readFileSync(full, 'utf8');
+        if (readers.has(full)) {
+          expect(text).not.toMatch(/runSimulatedSelection\(/);
+          expect(text).toMatch(/getSelection\(/);
+          continue;
+        }
         if (
           text.includes("from '@/lib/drawings/selection-store'") ||
           text.includes("from './selection-store'") ||

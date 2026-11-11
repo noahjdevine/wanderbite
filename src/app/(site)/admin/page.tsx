@@ -8,6 +8,7 @@ import { safeManualImagePath } from '@/lib/restaurant-image';
 import { AdminClient } from './admin-client';
 import { AdminMfaGate } from './admin-mfa-gate';
 import { visitProblemsEnabled } from '@/lib/boost/flag';
+import { drawingsAdminEnabled } from '@/lib/drawings/flag';
 
 export const dynamic = 'force-dynamic';
 
@@ -183,6 +184,11 @@ export default async function AdminPage() {
             {visitProblemsEnabled() ? (
               <Button variant="outline" size="sm" asChild>
                 <Link href="/admin/visit-problems">Visit problems</Link>
+              </Button>
+            ) : null}
+            {drawingsAdminEnabled() ? (
+              <Button variant="outline" size="sm" asChild>
+                <Link href="/admin/drawings">Drawings</Link>
               </Button>
             ) : null}
             <Button variant="outline" size="sm" asChild>
