@@ -16,8 +16,9 @@ import {
  * createFulfillments and transitionFulfillment run the pure checks,
  * then the matching RPC. listFulfillments reads one campaign in pages
  * of 1000 and orders the loaded rows by created_at instant, then id.
- * Nothing in the app calls this module. The tables are not in
- * database.types.ts. No member is notified.
+ * The admin drawings page calls listFulfillments. It does not create
+ * or move a fulfillment. The tables are not in database.types.ts.
+ * No member is notified.
  */
 
 /** PostgREST returns at most this many rows unless the read is paged. */

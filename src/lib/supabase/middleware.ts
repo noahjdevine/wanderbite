@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { drawingsAdminEnabled } from '@/lib/drawings/flag';
 import { sanitizeBrowserPath } from '@/lib/sensitive-url';
 
 const PROTECTED_ROUTES = [
@@ -19,6 +20,15 @@ const PROTECTED_ROUTES = [
 ] as const;
 
 export async function updateSession(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
+  // Flag off: do not refresh a session and do not query. The page 404s.
+  if (
+    (pathname === '/admin/drawings' || pathname.startsWith('/admin/drawings/')) &&
+    !drawingsAdminEnabled()
+  ) {
+    return NextResponse.next({ request });
+  }
+
   const response = NextResponse.next({ request });
 
   const supabase = createServerClient(
@@ -42,7 +52,6 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
-  const pathname = request.nextUrl.pathname;
   const code = request.nextUrl.searchParams.get('code');
   const authType = request.nextUrl.searchParams.get('type');
 

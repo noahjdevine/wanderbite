@@ -416,6 +416,7 @@ describe('fulfillment module boundaries', () => {
       path.join(ROOT, 'src/lib/drawings/fulfillment-store.tz-probe.ts'),
       path.join(ROOT, 'src/lib/drawings/fulfillment.test.ts'),
     ]);
+    const readers = new Set([path.join(ROOT, 'src/lib/drawings/admin-read-model.ts')]);
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -426,6 +427,12 @@ describe('fulfillment module boundaries', () => {
         }
         if (!/\.(ts|tsx)$/.test(name) || skip.has(full)) continue;
         const text = readFileSync(full, 'utf8');
+        if (readers.has(full)) {
+          expect(text).not.toMatch(/createFulfillments\(/);
+          expect(text).not.toMatch(/transitionFulfillment\(/);
+          expect(text).toMatch(/listFulfillments\(/);
+          continue;
+        }
         if (
           text.includes("from '@/lib/drawings/fulfillment'") ||
           text.includes("from '@/lib/drawings/fulfillment-store'") ||
