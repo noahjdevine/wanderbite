@@ -297,6 +297,29 @@ begin
     raise exception 'FAIL: winner assignment %', winner_entries;
   end if;
 
+  if (select eligible_entry_ids from public.drawing_selections where campaign_id = main_id)
+       is distinct from array[
+         'a1000000-0000-4000-8000-000000000002',
+         'a1000000-0000-4000-8000-000000000003',
+         'a1000000-0000-4000-8000-000000000004',
+         'a1000000-0000-4000-8000-000000000001',
+         'a1000000-0000-4000-8000-000000000005'
+       ]::uuid[]
+     or (select eligible_user_ids from public.drawing_selections where campaign_id = main_id)
+       is distinct from array[
+         'b1000000-0000-4000-8000-000000000002',
+         'b1000000-0000-4000-8000-000000000003',
+         'b1000000-0000-4000-8000-000000000004',
+         'b1000000-0000-4000-8000-000000000001',
+         'b1000000-0000-4000-8000-000000000005'
+       ]::uuid[]
+     or (select cardinality(eligible_entry_ids) from public.drawing_selections where campaign_id = main_id) <> 5
+     or (select cardinality(eligible_user_ids) from public.drawing_selections where campaign_id = main_id) <> 5 then
+    raise exception 'FAIL: eligible pool %', (
+      select eligible_entry_ids from public.drawing_selections where campaign_id = main_id
+    );
+  end if;
+
   if exists (
     select 1 from public.drawing_selection_winners
     where entry_id in (

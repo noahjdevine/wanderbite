@@ -31,6 +31,13 @@ create table public.drawing_selections (
   seed text not null,
   eligible_entry_count integer not null,
   eligible_member_count integer not null,
+  -- Eligible entry ids in sha256-rank order (seed || id, then id). This is
+  -- the pool the draw used. A later change to progression_drawing_entries
+  -- does not rewrite it.
+  eligible_entry_ids uuid[] not null,
+  -- Member of each eligible_entry_ids element, same order and length.
+  -- Entry ids alone cannot replay one prize per member.
+  eligible_user_ids uuid[] not null,
   prize_unit_count integer not null,
   unfilled_unit_count integer not null,
   simulated boolean not null default true,
@@ -46,6 +53,10 @@ create table public.drawing_selections (
     check (eligible_entry_count >= 0),
   constraint drawing_selections_eligible_member_count_check
     check (eligible_member_count >= 0 and eligible_member_count <= eligible_entry_count),
+  constraint drawing_selections_eligible_entry_ids_check
+    check (cardinality(eligible_entry_ids) = eligible_entry_count),
+  constraint drawing_selections_eligible_user_ids_check
+    check (cardinality(eligible_user_ids) = eligible_entry_count),
   constraint drawing_selections_prize_unit_count_check
     check (prize_unit_count >= 0),
   constraint drawing_selections_unfilled_unit_count_check
@@ -61,6 +72,12 @@ comment on table public.drawing_selections is
 
 comment on column public.drawing_selections.seed is
   'Lowercase hex of 32 random bytes, or the same shape passed to select_drawing_winners for a test. Rank is sha256 of the UTF-8 bytes of seed || entry_id::text, then entry id.';
+
+comment on column public.drawing_selections.eligible_entry_ids is
+  'Eligible progression_drawing_entries.id values in sha256-rank order. Together with the seed and eligible_user_ids, this is enough to reproduce the winners without reading the ledger again.';
+
+comment on column public.drawing_selections.eligible_user_ids is
+  'user_id of each eligible_entry_ids element, in that same order. Required to replay the one-prize-per-member skip.';
 
 comment on column public.drawing_selections.run_by is
   'Caller-supplied operator label. Trimmed. Not a foreign key to auth.users.';
@@ -310,6 +327,8 @@ begin
       seed,
       eligible_entry_count,
       eligible_member_count,
+      eligible_entry_ids,
+      eligible_user_ids,
       prize_unit_count,
       unfilled_unit_count,
       simulated,
@@ -320,6 +339,8 @@ begin
       v_seed,
       v_entry_count,
       v_member_count,
+      v_entry_ids,
+      v_user_ids,
       v_unit_count,
       v_unit_count - v_assigned,
       true,
@@ -377,7 +398,7 @@ revoke all on function public.select_drawing_winners(uuid, text, text)
 grant execute on function public.select_drawing_winners(uuid, text, text) to service_role;
 
 comment on function public.select_drawing_winners(uuid, text, text) is
-  'Draws one closed sample campaign once from that quarter''s drawing entries. Records the seed and one simulated winner per filled prize unit, one prize per member. service_role only. Does not notify members, does not write progression rows, and does not run for live campaigns. A null p_seed generates 32 random bytes. A supplied 64-char lowercase hex seed is for tests.';
+  'Draws one closed sample campaign once from that quarter''s drawing entries. Records the seed, eligible_entry_ids in sha256-rank order, eligible_user_ids in that same order, and one simulated winner per filled prize unit, one prize per member. service_role only. Does not notify members, does not write progression rows, and does not run for live campaigns. A null p_seed generates 32 random bytes. A supplied 64-char lowercase hex seed is for tests.';
 
 alter table public.drawing_selections enable row level security;
 alter table public.drawing_selection_winners enable row level security;

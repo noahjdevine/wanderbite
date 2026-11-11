@@ -2,8 +2,15 @@ import { spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { DRAWING_SELECTION_ALGORITHM, selectWinners } from '@/lib/drawings/selection';
 import {
+  DRAWING_SELECTION_ALGORITHM,
+  compareRanked,
+  entryRankHex,
+  selectWinners,
+} from '@/lib/drawings/selection';
+import {
+  ENTRY_PAGE_SIZE,
+  MILESTONE_IN_CHUNK,
   getSelection,
   runSimulatedSelection,
   verifySelection,
@@ -40,6 +47,8 @@ function selectionRow(overrides: Record<string, unknown> = {}) {
     seed: SEED,
     eligible_entry_count: 1,
     eligible_member_count: 1,
+    eligible_entry_ids: [ENTRY_ID],
+    eligible_user_ids: [USER_ID],
     prize_unit_count: 1,
     unfilled_unit_count: 0,
     simulated: true,
@@ -75,6 +84,8 @@ function client(options: {
   rpcError?: { message: string; code?: string } | null;
   throwOnRpc?: boolean;
   throwOnRead?: boolean;
+  onRange?: (from: number, to: number) => void;
+  onIn?: (values: readonly string[]) => void;
 } = {}) {
   const calls: { p_campaign_id: string; p_run_by: string }[] = [];
   const store = {
@@ -116,19 +127,33 @@ function client(options: {
       if (options.throwOnRead) {
         throw new Error('down');
       }
-      const page = { data: rows, error: null };
-      const builder = {
-        then(onFulfilled: (value: typeof page) => unknown, onRejected?: (reason: unknown) => unknown) {
-          return Promise.resolve(page).then(onFulfilled, onRejected);
+      const pageOf = (data: typeof rows) => ({ data, error: null });
+      const ordered = () => ({
+        then(onFulfilled: (value: { data: typeof rows; error: null }) => unknown, onRejected?: (reason: unknown) => unknown) {
+          return Promise.resolve(pageOf(rows)).then(onFulfilled, onRejected);
         },
-        maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
-        order: async () => page,
-      };
+        range: async (from: number, to: number) => {
+          options.onRange?.(from, to);
+          return pageOf(rows.slice(from, to + 1));
+        },
+      });
       return {
         select() {
           return {
-            eq: () => builder,
-            in: async () => page,
+            eq: () => ({
+              maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+              order: () => ordered(),
+            }),
+            in: async (_column: string, values: readonly string[]) => {
+              options.onIn?.(values);
+              const wanted = new Set(values);
+              return pageOf(
+                rows.filter((row) => {
+                  const id = row.id;
+                  return typeof id === 'string' && wanted.has(id);
+                }),
+              );
+            },
           };
         },
       };
@@ -283,11 +308,12 @@ describe('getSelection and verifySelection', () => {
     expect(await verifySelection(CAMPAIGN_ID, store)).toEqual({
       ok: true,
       match: true,
+      drift: false,
       selectionId: SELECTION_ID,
     });
   });
 
-  it('reports a mismatch when a later eligible entry changes the count', async () => {
+  it('keeps match when a later entry changes the current pool and sets drift', async () => {
     const { store } = client({
       selection: selectionRow(),
       entries: [
@@ -314,7 +340,80 @@ describe('getSelection and verifySelection', () => {
     const result = await verifySelection(CAMPAIGN_ID, store);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result).toMatchObject({ match: false, reason: 'eligible_entry_count', selectionId: SELECTION_ID });
+    expect(result).toEqual({
+      ok: true,
+      match: true,
+      drift: true,
+      selectionId: SELECTION_ID,
+    });
+  });
+
+  it('pages more than 1000 entries and chunks milestone reads', async () => {
+    const count = ENTRY_PAGE_SIZE + 1;
+    const people = Array.from({ length: count }, (_, index) => ({
+      id: `a1000000-0000-4000-8000-${(index + 1).toString(16).padStart(12, '0')}`,
+      userId: `b1000000-0000-4000-8000-${(index + 1).toString(16).padStart(12, '0')}`,
+    }));
+    const prizes = [{ id: PRIZE_ID, position: 0, quantity: 1 }];
+    const draw = selectWinners({
+      seed: SEED,
+      entries: people,
+      prizes,
+      algorithmVersion: DRAWING_SELECTION_ALGORITHM,
+    });
+    expect(draw.ok).toBe(true);
+    if (!draw.ok) return;
+    const ordered = [...people].sort((left, right) =>
+      compareRanked(
+        { rankKey: entryRankHex(SEED, left.id), id: left.id },
+        { rankKey: entryRankHex(SEED, right.id), id: right.id },
+      ),
+    );
+    const ranges: [number, number][] = [];
+    const chunks: number[] = [];
+    const { store } = client({
+      onRange: (from, to) => ranges.push([from, to]),
+      onIn: (values) => chunks.push(values.length),
+      selection: selectionRow({
+        eligible_entry_count: count,
+        eligible_member_count: count,
+        eligible_entry_ids: ordered.map((person) => person.id),
+        eligible_user_ids: ordered.map((person) => person.userId),
+        prize_unit_count: 1,
+        unfilled_unit_count: 0,
+      }),
+      winners: [
+        winnerRow({
+          entry_id: draw.winners[0].entryId,
+          user_id: draw.winners[0].userId,
+          rank: draw.winners[0].rank,
+        }),
+      ],
+      entries: people.map((person) => ({
+        id: person.id,
+        user_id: person.userId,
+        quarter_key: '2027-Q1',
+        entry_source: 'level_milestone',
+        milestone_id: `milestone-${person.id}`,
+      })),
+      milestones: people.map((person) => ({
+        id: `milestone-${person.id}`,
+        reached_at: '2027-02-01T06:00:00.000Z',
+      })),
+    });
+    expect(await verifySelection(CAMPAIGN_ID, store)).toEqual({
+      ok: true,
+      match: true,
+      drift: false,
+      selectionId: SELECTION_ID,
+    });
+    expect(ranges).toEqual([
+      [0, ENTRY_PAGE_SIZE - 1],
+      [ENTRY_PAGE_SIZE, ENTRY_PAGE_SIZE * 2 - 1],
+    ]);
+    expect(chunks.length).toBe(Math.ceil(count / MILESTONE_IN_CHUNK));
+    expect(chunks.every((size) => size <= MILESTONE_IN_CHUNK)).toBe(true);
+    expect(chunks.reduce((sum, size) => sum + size, 0)).toBe(count);
   });
 
   it('returns not_found when no draw is stored', async () => {
@@ -338,7 +437,7 @@ describe('selection store boundaries under TZ=UTC and TZ=America/Chicago', () =>
       return JSON.parse(result.stdout) as {
         eligible: string[];
         winner: string;
-        verified: { ok: boolean; match: boolean };
+        verified: { ok: boolean; match: boolean; drift: boolean };
       };
     };
     const utc = run('UTC');
@@ -346,7 +445,7 @@ describe('selection store boundaries under TZ=UTC and TZ=America/Chicago', () =>
     expect(chicago).toEqual(utc);
     expect(utc.eligible).toEqual(['just-before', 'q1-start']);
     expect(['just-before', 'q1-start']).toContain(utc.winner);
-    expect(utc.verified).toEqual({ ok: true, match: true, selectionId: 'selection-1' });
+    expect(utc.verified).toEqual({ ok: true, match: true, drift: false, selectionId: 'selection-1' });
   }, 20000);
 });
 

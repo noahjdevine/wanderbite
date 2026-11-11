@@ -5,6 +5,8 @@ import {
   DRAWING_SELECTION_ALGORITHM,
   SELECTION_ERROR_CODES,
   checkSelectionAllowed,
+  compareRanked,
+  entryRankHex,
   explainSelectionMatch,
   filterEligibleEntries,
   isBlankRunBy,
@@ -18,11 +20,17 @@ import {
 /**
  * Server-only reader and caller for simulated winner selection.
  * runSimulatedSelection checks the campaign, then calls
- * select_drawing_winners. verifySelection recomputes with selectWinners
- * from the stored seed and the entries that are eligible now. Nothing in
- * the app calls this module. The tables are not in database.types.ts.
- * No member is notified.
+ * select_drawing_winners. verifySelection replays the stored seed and
+ * the stored entry pool, then reports whether the entries eligible now
+ * still match that pool. Nothing in the app calls this module. The
+ * tables are not in database.types.ts. No member is notified.
  */
+
+/** PostgREST returns at most this many rows unless the read is paged. */
+export const ENTRY_PAGE_SIZE = 1000;
+
+/** Milestone id lists stay short enough for one request URL. */
+export const MILESTONE_IN_CHUNK = 200;
 
 export type StoredSelectionWinner = SelectedWinner & {
   id: string;
@@ -38,6 +46,10 @@ export type StoredSelection = {
   seed: string;
   eligibleEntryCount: number;
   eligibleMemberCount: number;
+  /** Eligible entry ids in sha256-rank order. Column eligible_entry_ids. */
+  eligibleEntryIds: string[];
+  /** user_id of each eligibleEntryIds element, same order. Column eligible_user_ids. */
+  eligibleUserIds: string[];
   prizeUnitCount: number;
   unfilledUnitCount: number;
   simulated: true;
@@ -57,17 +69,21 @@ export type ReadSelectionResult =
   | { ok: false; error: 'not_found' | 'unavailable' };
 
 export type VerifySelectionResult =
-  | { ok: true; match: true; selectionId: string }
-  | { ok: true; match: false; selectionId: string; reason: string }
+  | { ok: true; match: true; drift: boolean; selectionId: string }
+  | { ok: true; match: false; drift: boolean; selectionId: string; reason: string }
   | { ok: false; error: 'not_found' | 'unavailable' };
 
 type DbError = { message?: string; code?: string };
 
 type RowPage = { data: unknown; error: DbError | null };
 
-type EqBuilder = PromiseLike<RowPage> & {
+type OrderedPage = PromiseLike<RowPage> & {
+  range: (from: number, to: number) => PromiseLike<RowPage>;
+};
+
+type EqBuilder = {
   maybeSingle: () => PromiseLike<RowPage>;
-  order: (column: string) => PromiseLike<RowPage>;
+  order: (column: string) => OrderedPage;
 };
 
 export type SelectionQuery = {
@@ -99,7 +115,7 @@ const CAMPAIGN_COLUMNS =
 const PRIZE_COLUMNS = 'id, campaign_id, position, quantity';
 
 const SELECTION_COLUMNS =
-  'id, campaign_id, algorithm_version, seed, eligible_entry_count, eligible_member_count, prize_unit_count, unfilled_unit_count, simulated, run_by, created_at';
+  'id, campaign_id, algorithm_version, seed, eligible_entry_count, eligible_member_count, eligible_entry_ids, eligible_user_ids, prize_unit_count, unfilled_unit_count, simulated, run_by, created_at';
 
 const WINNER_COLUMNS =
   'id, selection_id, campaign_id, prize_id, unit_index, entry_id, user_id, rank, created_at';
@@ -128,6 +144,17 @@ function readWhole(value: unknown): number | null {
     if (Number.isSafeInteger(parsed)) return parsed;
   }
   return null;
+}
+
+function readUuidList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const ids: string[] = [];
+  for (const item of value) {
+    const id = readText(item);
+    if (!id) return null;
+    ids.push(id);
+  }
+  return ids;
 }
 
 function messageHasCode(message: string, code: string): boolean {
@@ -229,6 +256,8 @@ function readSelection(value: unknown, winnersValue: unknown): StoredSelection |
   const createdAt = readText(row.created_at);
   const eligibleEntryCount = readWhole(row.eligible_entry_count);
   const eligibleMemberCount = readWhole(row.eligible_member_count);
+  const eligibleEntryIds = readUuidList(row.eligible_entry_ids);
+  const eligibleUserIds = readUuidList(row.eligible_user_ids);
   const prizeUnitCount = readWhole(row.prize_unit_count);
   const unfilledUnitCount = readWhole(row.unfilled_unit_count);
   if (
@@ -240,6 +269,8 @@ function readSelection(value: unknown, winnersValue: unknown): StoredSelection |
     !createdAt ||
     eligibleEntryCount === null ||
     eligibleMemberCount === null ||
+    !eligibleEntryIds ||
+    !eligibleUserIds ||
     prizeUnitCount === null ||
     unfilledUnitCount === null ||
     row.simulated !== true
@@ -260,6 +291,8 @@ function readSelection(value: unknown, winnersValue: unknown): StoredSelection |
     seed,
     eligibleEntryCount,
     eligibleMemberCount,
+    eligibleEntryIds,
+    eligibleUserIds,
     prizeUnitCount,
     unfilledUnitCount,
     simulated: true,
@@ -339,14 +372,56 @@ async function loadPrizes(
   return prizes;
 }
 
+async function loadEntryPages(
+  client: SelectionStoreClient,
+  quarterKey: string,
+): Promise<unknown[] | 'unavailable'> {
+  const rows: unknown[] = [];
+  let from = 0;
+  for (;;) {
+    const page = await many(
+      client
+        .from('progression_drawing_entries')
+        .select(ENTRY_COLUMNS)
+        .eq('quarter_key', quarterKey)
+        .order('id')
+        .range(from, from + ENTRY_PAGE_SIZE - 1),
+    );
+    if (page === 'unavailable') return 'unavailable';
+    rows.push(...page);
+    if (page.length < ENTRY_PAGE_SIZE) return rows;
+    from += ENTRY_PAGE_SIZE;
+  }
+}
+
+async function loadMilestones(
+  client: SelectionStoreClient,
+  milestoneIds: readonly string[],
+): Promise<Map<string, string> | 'unavailable'> {
+  const reached = new Map<string, string>();
+  for (let index = 0; index < milestoneIds.length; index += MILESTONE_IN_CHUNK) {
+    const chunk = milestoneIds.slice(index, index + MILESTONE_IN_CHUNK);
+    const milestoneRows = await many(
+      client.from('progression_milestones').select(MILESTONE_COLUMNS).in('id', chunk),
+    );
+    if (milestoneRows === 'unavailable') return 'unavailable';
+    for (const value of milestoneRows) {
+      const row = asRecord(value);
+      const id = row ? readText(row.id) : null;
+      const at = row ? readText(row.reached_at) : null;
+      if (!id || !at) return 'unavailable';
+      reached.set(id, at);
+    }
+  }
+  return reached;
+}
+
 async function loadEligible(
   client: SelectionStoreClient,
   campaign: CampaignGateRow,
 ): Promise<EligibleEntry[] | 'unavailable'> {
   if (campaign.closedAt === null) return [];
-  const entryRows = await many(
-    client.from('progression_drawing_entries').select(ENTRY_COLUMNS).eq('quarter_key', campaign.quarterKey),
-  );
+  const entryRows = await loadEntryPages(client, campaign.quarterKey);
   if (entryRows === 'unavailable') return 'unavailable';
   const milestoneIds: string[] = [];
   const parsed: {
@@ -368,20 +443,8 @@ async function loadEligible(
     parsed.push({ id, userId, quarterKey, entrySource, milestoneId });
     milestoneIds.push(milestoneId);
   }
-  const reached = new Map<string, string>();
-  if (milestoneIds.length > 0) {
-    const milestoneRows = await many(
-      client.from('progression_milestones').select(MILESTONE_COLUMNS).in('id', milestoneIds),
-    );
-    if (milestoneRows === 'unavailable') return 'unavailable';
-    for (const value of milestoneRows) {
-      const row = asRecord(value);
-      const id = row ? readText(row.id) : null;
-      const at = row ? readText(row.reached_at) : null;
-      if (!id || !at) return 'unavailable';
-      reached.set(id, at);
-    }
-  }
+  const reached = await loadMilestones(client, milestoneIds);
+  if (reached === 'unavailable') return 'unavailable';
   const entries: EligibleEntry[] = [];
   for (const entry of parsed) {
     const reachedAt = reached.get(entry.milestoneId);
@@ -469,11 +532,48 @@ export async function runSimulatedSelection(
   return { ok: true, selection };
 }
 
+function replayStoredPool(
+  selection: StoredSelection,
+  prizes: SelectionPrize[],
+): { match: true } | { match: false; reason: string } {
+  if (
+    selection.eligibleEntryIds.length !== selection.eligibleEntryCount ||
+    selection.eligibleUserIds.length !== selection.eligibleEntryIds.length
+  ) {
+    return { match: false, reason: 'eligible_pool' };
+  }
+  const recomputed = selectWinners({
+    seed: selection.seed,
+    entries: selection.eligibleEntryIds.map((id, index) => ({
+      id,
+      userId: selection.eligibleUserIds[index],
+    })),
+    prizes,
+    algorithmVersion: selection.algorithmVersion || DRAWING_SELECTION_ALGORITHM,
+  });
+  if (!recomputed.ok) return { match: false, reason: recomputed.error };
+  return explainSelectionMatch(selection, recomputed);
+}
+
+function poolDrifted(selection: StoredSelection, current: readonly EligibleEntry[]): boolean {
+  const ordered = [...current].sort((left, right) =>
+    compareRanked(
+      { rankKey: entryRankHex(selection.seed, left.id), id: left.id },
+      { rankKey: entryRankHex(selection.seed, right.id), id: right.id },
+    ),
+  );
+  if (ordered.length !== selection.eligibleEntryIds.length) return true;
+  return ordered.some(
+    (entry, index) =>
+      entry.id !== selection.eligibleEntryIds[index] || entry.userId !== selection.eligibleUserIds[index],
+  );
+}
+
 /**
- * Recomputes the draw from the stored seed and the entries that are
- * eligible now. match is false when those entries, the prizes, or the
- * winner assignment differ from the stored row. The stored rows are not
- * changed. A draw that is not there is not_found.
+ * match is whether the stored seed and the stored entry pool reproduce the
+ * stored winners. drift is whether the entries eligible now differ from
+ * that pool. Drift does not change match. The stored rows are not changed.
+ * A draw that is not there is not_found.
  */
 export async function verifySelection(
   campaignId: string,
@@ -483,25 +583,26 @@ export async function verifySelection(
   if (!stored.ok) return stored;
   const campaign = await loadCampaign(client, campaignId);
   if (campaign === 'unavailable') return { ok: false, error: 'unavailable' };
-  if (campaign === 'not_found' || campaign.closedAt === null) {
-    return { ok: true, match: false, selectionId: stored.selection.id, reason: 'campaign' };
-  }
-  const prizes = await loadPrizes(client, campaignId);
+  const prizes = campaign === 'not_found' ? null : await loadPrizes(client, campaignId);
   if (prizes === 'unavailable') return { ok: false, error: 'unavailable' };
-  const entries = await loadEligible(client, campaign);
-  if (entries === 'unavailable') return { ok: false, error: 'unavailable' };
-  const recomputed = selectWinners({
-    seed: stored.selection.seed,
-    entries: entries.map((entry) => ({ id: entry.id, userId: entry.userId })),
-    prizes,
-    algorithmVersion: stored.selection.algorithmVersion || DRAWING_SELECTION_ALGORITHM,
-  });
-  if (!recomputed.ok) {
-    return { ok: true, match: false, selectionId: stored.selection.id, reason: recomputed.error };
+  const replay =
+    campaign === 'not_found' || prizes === null
+      ? { match: false as const, reason: 'campaign' }
+      : replayStoredPool(stored.selection, prizes);
+  let drift = true;
+  if (campaign !== 'not_found' && campaign.closedAt !== null) {
+    const current = await loadEligible(client, campaign);
+    if (current === 'unavailable') return { ok: false, error: 'unavailable' };
+    drift = poolDrifted(stored.selection, current);
   }
-  const compared = explainSelectionMatch(stored.selection, recomputed);
-  if (!compared.match) {
-    return { ok: true, match: false, selectionId: stored.selection.id, reason: compared.reason };
+  if (!replay.match) {
+    return {
+      ok: true,
+      match: false,
+      drift,
+      selectionId: stored.selection.id,
+      reason: replay.reason,
+    };
   }
-  return { ok: true, match: true, selectionId: stored.selection.id };
+  return { ok: true, match: true, drift, selectionId: stored.selection.id };
 }

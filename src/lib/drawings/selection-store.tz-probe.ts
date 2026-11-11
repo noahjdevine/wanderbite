@@ -1,6 +1,8 @@
 import { Module } from 'node:module';
 import {
   DRAWING_SELECTION_ALGORITHM,
+  compareRanked,
+  entryRankHex,
   filterEligibleEntries,
   selectWinners,
   type EligibleEntry,
@@ -38,6 +40,12 @@ async function main() {
     eligibleEntrySources: ['level_milestone'],
     closedAt: CLOSED,
   });
+  const orderedEligible = [...eligible].sort((left, right) =>
+    compareRanked(
+      { rankKey: entryRankHex(SEED, left.id), id: left.id },
+      { rankKey: entryRankHex(SEED, right.id), id: right.id },
+    ),
+  );
   const draw = selectWinners({
     seed: SEED,
     entries: eligible.map((entry) => ({ id: entry.id, userId: entry.userId })),
@@ -57,8 +65,10 @@ async function main() {
                 campaign_id: 'campaign-1',
                 algorithm_version: DRAWING_SELECTION_ALGORITHM,
                 seed: SEED,
-                eligible_entry_count: eligible.length,
-                eligible_member_count: eligible.length,
+                eligible_entry_count: orderedEligible.length,
+                eligible_member_count: orderedEligible.length,
+                eligible_entry_ids: orderedEligible.map((entry) => entry.id),
+                eligible_user_ids: orderedEligible.map((entry) => entry.userId),
                 prize_unit_count: 1,
                 unfilled_unit_count: 0,
                 simulated: true,
@@ -106,20 +116,28 @@ async function main() {
                       id: `milestone-${entry.id}`,
                       reached_at: entry.reachedAt,
                     }));
-      const page = { data: rows, error: null };
-      const builder = {
-        then(onFulfilled: (value: typeof page) => unknown, onRejected?: (reason: unknown) => unknown) {
-          return Promise.resolve(page).then(onFulfilled, onRejected);
-        },
-        maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
-        order: async () => page,
-        in: async () => page,
-      };
+      const pageOf = (data: typeof rows) => ({ data, error: null });
       return {
         select() {
           return {
-            eq: () => builder,
-            in: async () => page,
+            eq: () => ({
+              maybeSingle: async () => ({ data: rows[0] ?? null, error: null }),
+              order: () => ({
+                then(
+                  onFulfilled: (value: { data: typeof rows; error: null }) => unknown,
+                  onRejected?: (reason: unknown) => unknown,
+                ) {
+                  return Promise.resolve(pageOf(rows)).then(onFulfilled, onRejected);
+                },
+                range: async (from: number, to: number) => pageOf(rows.slice(from, to + 1)),
+              }),
+            }),
+            in: async (_column: string, values: readonly string[]) => {
+              const wanted = new Set(values);
+              return pageOf(
+                rows.filter((row) => typeof row.id === 'string' && wanted.has(row.id)),
+              );
+            },
           };
         },
       };
