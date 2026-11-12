@@ -497,33 +497,129 @@ describe('loadDrawingsAdminView', () => {
   });
 });
 
+function budgetClient(
+  profile:
+    | { data: unknown; error: { code?: string; message: string } | null }
+    | 'throw',
+  winner: { data: unknown; error: { code?: string; message: string } | null } = {
+    data: [{ id: WINNER_1, user_id: USER_1 }],
+    error: null,
+  },
+) {
+  return fakeClient((call) => {
+    if (call.table === 'drawing_fulfillments') {
+      return {
+        data: [{ id: 'f1', campaign_id: CAMPAIGN_ID, status: 'ready', winner_id: WINNER_1 }],
+        error: null,
+      };
+    }
+    if (call.table === 'drawing_selection_winners') return winner;
+    if (call.table === 'user_profiles') {
+      if (profile === 'throw') throw new Error('profile down');
+      return profile;
+    }
+    if (call.table === 'drawing_campaigns') {
+      return { data: [{ id: CAMPAIGN_ID, fulfillment_allowance_cents: 3_000 }], error: null };
+    }
+    if (call.table === 'drawing_campaign_prizes') return { data: prizeRows, error: null };
+    throw new Error(`unexpected ${call.table}`);
+  });
+}
+
 describe('loadFulfillmentBudget', () => {
   it('returns the same recorded-cost total the admin note uses, plus the allowance', async () => {
     const loadFulfillments = vi.fn(async () => ({
       ok: true as const,
       fulfillments: sampleSource().fulfillments,
     }));
-    const { client, calls } = fakeClient((call) => {
-      if (call.table === 'drawing_fulfillments') {
-        return { data: [{ id: 'f1', campaign_id: CAMPAIGN_ID, status: 'ready' }], error: null };
-      }
-      if (call.table === 'drawing_campaigns') {
-        return { data: [{ id: CAMPAIGN_ID, fulfillment_allowance_cents: 3_000 }], error: null };
-      }
-      if (call.table === 'drawing_campaign_prizes') return { data: prizeRows, error: null };
-      throw new Error(`unexpected ${call.table}`);
-    });
+    const { client, calls } = budgetClient({ data: [{ id: USER_1 }], error: null });
     await expect(loadFulfillmentBudget('f1', { client, loadFulfillments })).resolves.toEqual({
       ok: true,
       status: 'ready',
       recordedCostCents: 2_500,
       allowanceCents: 3_000,
+      memberDeleted: false,
     });
     expect(loadFulfillments).toHaveBeenCalledWith(CAMPAIGN_ID);
+    expect(calls.find((call) => call.table === 'drawing_fulfillments')?.select).toBe(
+      'id, campaign_id, status, winner_id',
+    );
     expect(calls.find((call) => call.table === 'drawing_fulfillments')?.eq).toEqual({ column: 'id', value: 'f1' });
+    expect(calls.find((call) => call.table === 'drawing_selection_winners')?.select).toBe('id, user_id');
+    expect(calls.find((call) => call.table === 'drawing_selection_winners')?.eq).toEqual({
+      column: 'id',
+      value: WINNER_1,
+    });
+    expect(calls.find((call) => call.table === 'user_profiles')?.select).toBe('id');
+    expect(calls.find((call) => call.table === 'user_profiles')?.eq).toEqual({ column: 'id', value: USER_1 });
     expect(calls.find((call) => call.table === 'drawing_campaigns')?.select).toBe('id, fulfillment_allowance_cents');
     expect(JSON.stringify(calls)).not.toContain(MEMBER_EMAIL);
-    expect(JSON.stringify(calls)).not.toContain(USER_1);
+    expect(JSON.stringify(calls)).not.toContain('email');
+  });
+
+  it('reports a deleted member when user_profiles has no row for the winner', async () => {
+    const loadFulfillments = vi.fn(async () => ({
+      ok: true as const,
+      fulfillments: sampleSource().fulfillments,
+    }));
+    const { client, calls } = budgetClient({ data: [], error: null });
+    await expect(loadFulfillmentBudget('f1', { client, loadFulfillments })).resolves.toEqual({
+      ok: true,
+      status: 'ready',
+      recordedCostCents: 2_500,
+      allowanceCents: 3_000,
+      memberDeleted: true,
+    });
+    expect(calls.find((call) => call.table === 'user_profiles')?.select).toBe('id');
+    expect(JSON.stringify(calls)).not.toContain(MEMBER_EMAIL);
+  });
+
+  it('returns unavailable when the profile read fails and does not read the allowance', async () => {
+    const loadFulfillments = vi.fn();
+    const errors = [
+      { code: '42501', message: 'permission denied for table user_profiles' },
+      { message: 'profile down' },
+    ];
+    for (const error of errors) {
+      loadFulfillments.mockClear();
+      const { client, calls } = budgetClient({ data: null, error });
+      await expect(loadFulfillmentBudget('f1', { client, loadFulfillments })).resolves.toEqual({
+        ok: false,
+        error: 'unavailable',
+      });
+      expect(loadFulfillments).not.toHaveBeenCalled();
+      expect(calls.map((call) => call.table)).toEqual([
+        'drawing_fulfillments',
+        'drawing_selection_winners',
+        'user_profiles',
+      ]);
+    }
+
+    const thrown = budgetClient('throw');
+    await expect(loadFulfillmentBudget('f1', { client: thrown.client, loadFulfillments })).resolves.toEqual({
+      ok: false,
+      error: 'unavailable',
+    });
+    expect(loadFulfillments).not.toHaveBeenCalled();
+    expect(thrown.calls.map((call) => call.table)).not.toContain('drawing_campaigns');
+  });
+
+  it('returns unavailable when the winner row or the profile id cannot be read', async () => {
+    const loadFulfillments = vi.fn();
+    const missingWinner = budgetClient({ data: [{ id: USER_1 }], error: null }, { data: [], error: null });
+    await expect(loadFulfillmentBudget('f1', { client: missingWinner.client, loadFulfillments })).resolves.toEqual({
+      ok: false,
+      error: 'unavailable',
+    });
+    expect(missingWinner.calls.map((call) => call.table)).toEqual(['drawing_fulfillments', 'drawing_selection_winners']);
+
+    const blankProfile = budgetClient({ data: [{ email: MEMBER_EMAIL }], error: null });
+    await expect(loadFulfillmentBudget('f1', { client: blankProfile.client, loadFulfillments })).resolves.toEqual({
+      ok: false,
+      error: 'unavailable',
+    });
+    expect(loadFulfillments).not.toHaveBeenCalled();
+    expect(JSON.stringify(blankProfile.calls)).not.toContain(MEMBER_EMAIL);
   });
 
   it('returns not_found for a missing row and does not read the campaign', async () => {

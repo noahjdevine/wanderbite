@@ -192,8 +192,12 @@ export type TransitionDrawingFulfillmentInput = {
 };
 
 /**
- * Moves one sample fulfillment. A cost is sent only for fulfilled, and only
- * after a bad edge, a bad dollar amount, a long note, and an unconfirmed
+ * Moves one sample fulfillment. A deleted member (no user_profiles row
+ * for the winner) can only be forfeited. ready and fulfilled return
+ * invalid_transition before a cost is parsed, before the allowance
+ * check, and before transitionFulfillment. A failed profile read is
+ * unavailable. A cost is sent only for fulfilled, and only after a bad
+ * edge, a bad dollar amount, a long note, and an unconfirmed
  * over-allowance warning have all been rejected. The allowance is
  * fulfillment_allowance_cents. Equal to the allowance is not a warning.
  * No member is contacted, and a forfeit does not pick a new winner.
@@ -220,6 +224,9 @@ export async function transitionDrawingFulfillmentAction(
     return failFulfillment('unavailable');
   }
   if (!budget.ok) return failFulfillment(budget.error);
+  if (budget.memberDeleted && (toStatus === 'ready' || toStatus === 'fulfilled')) {
+    return failFulfillment('invalid_transition');
+  }
   const allowed =
     (budget.status === 'pending' && (toStatus === 'ready' || toStatus === 'forfeited')) ||
     (budget.status === 'ready' && (toStatus === 'fulfilled' || toStatus === 'forfeited'));

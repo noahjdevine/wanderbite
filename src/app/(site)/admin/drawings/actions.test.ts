@@ -470,6 +470,11 @@ describe('drawing admin actions', () => {
     expect(fulfillment.indexOf('fulfillmentAuth()')).toBeLessThan(fulfillment.indexOf('createFulfillments('));
     expect(fulfillment.indexOf('fulfillmentAuth()')).toBeLessThan(fulfillment.indexOf('loadFulfillmentBudget('));
     expect(fulfillment.indexOf('loadFulfillmentBudget(')).toBeLessThan(fulfillment.indexOf('transitionFulfillment('));
+    const deletedGate = "budget.memberDeleted && (toStatus === 'ready' || toStatus === 'fulfilled')";
+    expect(fulfillment.indexOf(deletedGate)).toBeGreaterThan(fulfillment.indexOf('loadFulfillmentBudget('));
+    expect(fulfillment.indexOf(deletedGate)).toBeLessThan(fulfillment.indexOf('parseFulfillmentDollars('));
+    expect(fulfillment.indexOf(deletedGate)).toBeLessThan(fulfillment.indexOf('projectedOverAllowance('));
+    expect(fulfillment.indexOf(deletedGate)).toBeLessThan(fulfillment.indexOf('transitionFulfillment('));
   });
 });
 
@@ -636,6 +641,7 @@ describe('drawing fulfillment actions', () => {
       status: 'pending',
       recordedCostCents: 0,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'ready' } });
     const ready = await transitionDrawingFulfillmentAction({
@@ -669,6 +675,7 @@ describe('drawing fulfillment actions', () => {
       status: 'pending',
       recordedCostCents: 0,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     const jumped = await transitionDrawingFulfillmentAction({
       fulfillmentId: FULFILLMENT_ID,
@@ -698,6 +705,7 @@ describe('drawing fulfillment actions', () => {
       status: 'ready',
       recordedCostCents: 0,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     const missing = await transitionDrawingFulfillmentAction({
       fulfillmentId: FULFILLMENT_ID,
@@ -737,6 +745,7 @@ describe('drawing fulfillment actions', () => {
       status: 'ready',
       recordedCostCents: 500,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'fulfilled' } });
     const equal = await transitionDrawingFulfillmentAction({
@@ -756,6 +765,7 @@ describe('drawing fulfillment actions', () => {
       status: 'ready',
       recordedCostCents: 0,
       allowanceCents: 0,
+      memberDeleted: false,
     });
     const zero = await transitionDrawingFulfillmentAction({
       fulfillmentId: FULFILLMENT_ID,
@@ -776,6 +786,7 @@ describe('drawing fulfillment actions', () => {
       status: 'ready',
       recordedCostCents: 500,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'fulfilled' } });
     const warned = await transitionDrawingFulfillmentAction({
@@ -816,6 +827,7 @@ describe('drawing fulfillment actions', () => {
       status: 'pending',
       recordedCostCents: 0,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     const result = await transitionDrawingFulfillmentAction({
       fulfillmentId: FULFILLMENT_ID,
@@ -839,6 +851,7 @@ describe('drawing fulfillment actions', () => {
       status: 'pending',
       recordedCostCents: 0,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     for (const code of [...FULFILLMENT_ERROR_CODES, 'unavailable'] as const) {
       stores.revalidatePath.mockClear();
@@ -871,6 +884,7 @@ describe('drawing fulfillment actions', () => {
       status: 'pending',
       recordedCostCents: 0,
       allowanceCents: 1_000,
+      memberDeleted: false,
     });
     const thrown = await transitionDrawingFulfillmentAction({
       fulfillmentId: FULFILLMENT_ID,
@@ -878,5 +892,106 @@ describe('drawing fulfillment actions', () => {
     });
     expect(thrown).toMatchObject({ ok: false, error: 'unavailable' });
     expect(JSON.stringify(thrown)).not.toContain('down');
+  });
+
+  it('rejects ready and fulfilled for a deleted member before cost, allowance, or the store', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'pending',
+      recordedCostCents: 0,
+      allowanceCents: 1_000,
+      memberDeleted: true,
+    });
+    const ready = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'ready',
+      actualCostDollars: 'nope',
+      note: 'n'.repeat(501),
+    });
+    expect(ready).toEqual({
+      ok: false,
+      error: 'invalid_transition',
+      message: drawingFulfillmentActionMessage('invalid_transition'),
+    });
+
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      recordedCostCents: 500,
+      allowanceCents: 1_000,
+      memberDeleted: true,
+    });
+    const fulfilled = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: '5.01',
+    });
+    expect(fulfilled).toEqual({
+      ok: false,
+      error: 'invalid_transition',
+      message: drawingFulfillmentActionMessage('invalid_transition'),
+    });
+    expect(stores.transition).not.toHaveBeenCalled();
+    expect(stores.create).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('forfeits a deleted member from pending or ready and does not send a cost', async () => {
+    enableFulfillmentFlags();
+    stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'forfeited' } });
+    for (const status of ['pending', 'ready'] as const) {
+      stores.budget.mockResolvedValue({
+        ok: true,
+        status,
+        recordedCostCents: 0,
+        allowanceCents: 1_000,
+        memberDeleted: true,
+      });
+      const result = await transitionDrawingFulfillmentAction({
+        fulfillmentId: FULFILLMENT_ID,
+        toStatus: 'forfeited',
+        note: '  left  ',
+        actualCostDollars: '9.00',
+      });
+      expect(result, status).toEqual({ ok: true });
+    }
+    expect(stores.transition).toHaveBeenCalledTimes(2);
+    expect(stores.transition).toHaveBeenNthCalledWith(1, FULFILLMENT_ID, 'forfeited', 'admin:aaaaaaaa', {
+      note: '  left  ',
+    });
+    expect(stores.transition).toHaveBeenNthCalledWith(2, FULFILLMENT_ID, 'forfeited', 'admin:aaaaaaaa', {
+      note: '  left  ',
+    });
+    expect(stores.create).not.toHaveBeenCalled();
+  });
+
+  it('returns unavailable when the profile read fails and does not transition', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({ ok: false, error: 'unavailable' });
+    const failed = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: 'nope',
+    });
+    expect(failed).toEqual({
+      ok: false,
+      error: 'unavailable',
+      message: drawingFulfillmentActionMessage('unavailable'),
+    });
+
+    stores.budget.mockRejectedValue(new Error('profile down'));
+    const thrown = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'forfeited',
+    });
+    expect(thrown).toEqual({
+      ok: false,
+      error: 'unavailable',
+      message: drawingFulfillmentActionMessage('unavailable'),
+    });
+    expect(JSON.stringify(thrown)).not.toContain('profile down');
+    expect(stores.transition).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
   });
 });

@@ -164,6 +164,7 @@ export type DrawingsAdminTable =
   | 'drawing_campaigns'
   | 'drawing_campaign_prizes'
   | 'drawing_selections'
+  | 'drawing_selection_winners'
   | 'drawing_fulfillments'
   | 'drawing_fulfillment_events'
   | 'user_profiles';
@@ -716,10 +717,19 @@ export type FulfillmentBudgetResult =
       status: FulfillmentStatus;
       recordedCostCents: number;
       allowanceCents: number;
+      /**
+       * True when user_profiles has no row for drawing_selection_winners.user_id.
+       * The fulfillment stores winner_id, not the member id.
+       */
+      memberDeleted: boolean;
     }
   | { ok: false; error: 'not_found' | 'unavailable' };
 
-const FULFILLMENT_BUDGET_COLUMNS = 'id, campaign_id, status';
+const FULFILLMENT_BUDGET_COLUMNS = 'id, campaign_id, status, winner_id';
+
+const WINNER_USER_COLUMNS = 'id, user_id';
+
+const PROFILE_ID_COLUMNS = 'id';
 
 const ALLOWANCE_COLUMNS = 'id, fulfillment_allowance_cents';
 
@@ -740,14 +750,26 @@ async function readFirst(
   }
 }
 
-function readBudgetFulfillment(value: unknown): { id: string; campaignId: string; status: FulfillmentStatus } | null {
+function readBudgetFulfillment(
+  value: unknown,
+): { id: string; campaignId: string; status: FulfillmentStatus; winnerId: string } | null {
   const row = asRecord(value);
   if (!row) return null;
   const id = readText(row.id);
   const campaignId = readText(row.campaign_id);
   const status = readText(row.status);
-  if (!id || !campaignId || !status || !isFulfillmentStatus(status)) return null;
-  return { id, campaignId, status };
+  const winnerId = readText(row.winner_id);
+  if (!id || !campaignId || !winnerId || !status || !isFulfillmentStatus(status)) return null;
+  return { id, campaignId, status, winnerId };
+}
+
+function readWinnerUserId(value: unknown, winnerId: string): string | null {
+  const row = asRecord(value);
+  if (!row) return null;
+  const id = readText(row.id);
+  const userId = readText(row.user_id);
+  if (!id || id !== winnerId || !userId) return null;
+  return userId;
 }
 
 function readAllowance(value: unknown): number | null {
@@ -757,9 +779,12 @@ function readAllowance(value: unknown): number | null {
 }
 
 /**
- * Recorded cost and allowance for one fulfillment, using the same
- * summarizeFulfillment total as the admin note. A missing row is
- * not_found. This does not write.
+ * Recorded cost, allowance, and whether the winner's user_profiles row
+ * still exists. The fulfillment points at drawing_selection_winners.id
+ * through winner_id. That row's user_id is compared to user_profiles.id.
+ * A missing fulfillment is not_found. A missing winner, a profile read
+ * error, or a profile row that cannot be read is unavailable. An empty
+ * profile result is a deleted member. This does not write.
  */
 export async function loadFulfillmentBudget(
   fulfillmentId: string,
@@ -779,6 +804,21 @@ export async function loadFulfillmentBudget(
     const current = fulfillment.row === null ? null : readBudgetFulfillment(fulfillment.row);
     if (fulfillment.row === null) return { ok: false, error: 'not_found' };
     if (!current || current.id !== fulfillmentId) return { ok: false, error: 'unavailable' };
+
+    const winner = await readFirst(client, 'drawing_selection_winners', WINNER_USER_COLUMNS, 'id', current.winnerId);
+    if (!winner.ok || winner.row === null) return { ok: false, error: 'unavailable' };
+    const userId = readWinnerUserId(winner.row, current.winnerId);
+    if (!userId) return { ok: false, error: 'unavailable' };
+
+    const profile = await readFirst(client, 'user_profiles', PROFILE_ID_COLUMNS, 'id', userId);
+    if (!profile.ok) return { ok: false, error: 'unavailable' };
+    let memberDeleted = false;
+    if (profile.row !== null) {
+      const profileId = readProfileId(profile.row);
+      if (!profileId || profileId !== userId) return { ok: false, error: 'unavailable' };
+    } else {
+      memberDeleted = true;
+    }
 
     const campaign = await readFirst(
       client,
@@ -817,6 +857,7 @@ export async function loadFulfillmentBudget(
       status: current.status,
       recordedCostCents: summary.totalActualCostCents,
       allowanceCents,
+      memberDeleted,
     };
   } catch {
     return { ok: false, error: 'unavailable' };
