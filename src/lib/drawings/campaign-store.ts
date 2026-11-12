@@ -21,9 +21,10 @@ import {
  * Server-only writer for drawing campaigns. Create and update run the B1
  * checks first, then save_drawing_campaign. Activate and close run
  * checkCampaignTransition, then transition_drawing_campaign. An active or
- * closed row is campaign_locked here and in the database. Nothing in the
- * app calls this module. The tables are not in database.types.ts; row
- * shapes below are local.
+ * closed row is campaign_locked here and in the database. Admin drawing
+ * actions call activateCampaign and closeCampaign when their flag is on.
+ * Create and update have no app caller. The tables are not in
+ * database.types.ts; row shapes below are local.
  */
 
 export type { CampaignStatus };

@@ -1,13 +1,23 @@
 import {
   DRAWINGS_NOT_SET_UP,
   DRAWINGS_UNAVAILABLE,
+  type DrawingsAdminCampaign,
   type DrawingsAdminView,
 } from '@/lib/drawings/admin-read-model';
+import { drawingAdminActionOffers } from '@/lib/drawings/admin-actions';
+import { DrawingCampaignActions } from './drawing-campaign-actions';
 
 /**
- * Read-only drawing records. No form, no button, and no write.
+ * Drawing records. Action buttons render only when actionsEnabled is true.
+ * With that prop off, this is the read-only list.
  */
-export function DrawingsAdmin({ view }: { view: DrawingsAdminView }) {
+export function DrawingsAdmin({
+  view,
+  actionsEnabled = false,
+}: {
+  view: DrawingsAdminView;
+  actionsEnabled?: boolean;
+}) {
   if (!view.ok) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -122,8 +132,30 @@ export function DrawingsAdmin({ view }: { view: DrawingsAdminView }) {
               </ul>
             ) : null}
           </div>
+          {actionsEnabled ? <CampaignActionRow campaign={campaign} /> : null}
         </li>
       ))}
     </ul>
+  );
+}
+
+function CampaignActionRow({ campaign }: { campaign: DrawingsAdminCampaign }) {
+  const offer = drawingAdminActionOffers({
+    status: campaign.status,
+    mode: campaign.mode,
+    hasSelection: campaign.selection !== null,
+  });
+  if (offer.actions.length === 0 && offer.note === null) return null;
+  return (
+    <div className="space-y-2">
+      {offer.note ? (
+        <p className="text-sm" role="note">
+          {offer.note}
+        </p>
+      ) : null}
+      {offer.actions.length > 0 ? (
+        <DrawingCampaignActions campaignId={campaign.id} actions={offer.actions} />
+      ) : null}
+    </div>
   );
 }

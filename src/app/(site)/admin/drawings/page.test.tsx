@@ -161,6 +161,7 @@ describe('admin drawings guard', () => {
     harness.resolver = null;
     setAal('aal2', 'aal2');
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
+    delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
   });
 
   it('404s before any Supabase call unless the flag is exactly true', async () => {
@@ -227,9 +228,22 @@ describe('admin drawings guard', () => {
     expect(view).toEqual({ ok: false, reason: 'not_set_up' });
     render(page as ReactElement);
     expect(screen.getByText(DRAWINGS_NOT_SET_UP)).toBeTruthy();
+    expect(screen.getByText(/This page only reads/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to admin' })).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
     expect(drawingTables()).toEqual(['drawing_campaigns']);
+    expect(document.body.textContent ?? '').not.toMatch(/@/);
+
+    cleanup();
+    harness.calls = [];
+    process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED = 'true';
+    const withActions = await AdminDrawingsPage();
+    render(withActions as ReactElement);
+    expect(screen.getByText(DRAWINGS_NOT_SET_UP)).toBeTruthy();
+    expect(screen.queryByText(/This page only reads/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Activate' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Run simulated selection' })).toBeNull();
     expect(document.body.textContent ?? '').not.toMatch(/@/);
   });
 

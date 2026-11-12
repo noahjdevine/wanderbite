@@ -49,6 +49,8 @@ export type DrawingsAdminView =
 export type DrawingsAdminCampaign = {
   id: string;
   quarterKey: string;
+  mode: CampaignMode;
+  status: 'draft' | 'active' | 'closed';
   modeLabel: 'Sample' | 'Live';
   statusLabel: 'Draft' | 'Active' | 'Closed';
   activatedOn: string | null;
@@ -365,6 +367,8 @@ export function summarizeDrawingsAdmin(source: DrawingsAdminSource): DrawingsAdm
   return {
     id: source.campaign.id,
     quarterKey: source.campaign.quarterKey,
+    mode: source.campaign.mode,
+    status: source.campaign.status,
     modeLabel: modeLabel(source.campaign.mode),
     statusLabel: statusLabel(source.campaign.status),
     activatedOn: formatChicagoCalendarDate(source.campaign.activatedAt),

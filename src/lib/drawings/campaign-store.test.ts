@@ -373,11 +373,14 @@ describe('campaign store source', () => {
     expect(source).not.toMatch(/verify_redemption|record_verified_visit_progress|levelFromXp/);
   });
 
-  it('has no caller in the app', () => {
+  it('is called from the app only by the admin drawing actions', () => {
+    const appCaller = 'src/app/(site)/admin/drawings/actions.ts';
     const allowed = new Set([
       'src/lib/drawings/campaign-store.ts',
       'src/lib/drawings/campaign-store.test.ts',
       'src/lib/drawings/campaign-store.tz-probe.ts',
+      appCaller,
+      'src/app/(site)/admin/drawings/actions.test.ts',
     ]);
     const hits: string[] = [];
     const walk = (dir: string) => {
@@ -403,6 +406,10 @@ describe('campaign store source', () => {
     };
     walk(path.join(ROOT, 'src'));
     expect(hits).toEqual([]);
+    const caller = readFileSync(path.join(ROOT, appCaller), 'utf8');
+    expect(caller).toMatch(/activateCampaign\(/);
+    expect(caller).toMatch(/closeCampaign\(/);
+    expect(caller).not.toMatch(/createCampaign|updateCampaign|save_drawing_campaign/);
   });
 });
 

@@ -111,6 +111,8 @@ describe('DrawingsAdmin', () => {
     expect(component).not.toMatch(/use client/);
     expect(component).not.toMatch(/<form|<button|onSubmit|onClick/);
     expect(page).not.toMatch(/<form|onSubmit/);
+    expect(page).toMatch(/const actionsOn = drawingsAdminActionsEnabled\(\)/);
+    expect(page).toMatch(/actionsEnabled=\{actionsOn\}/);
     expect(page.indexOf('if (!drawingsAdminEnabled()) notFound();')).toBeGreaterThan(-1);
     expect(page.indexOf('drawingsAdminEnabled()')).toBeLessThan(page.indexOf('assertAdmin()'));
   });

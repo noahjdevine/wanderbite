@@ -4,7 +4,7 @@ import { AdminMfaGate } from '../admin-mfa-gate';
 import { DrawingsAdmin } from './drawings-admin';
 import { adminPageDecision, assertAdmin } from '@/lib/auth/assert-admin';
 import { loadDrawingsAdminView, type DrawingsAdminView } from '@/lib/drawings/admin-read-model';
-import { drawingsAdminEnabled } from '@/lib/drawings/flag';
+import { drawingsAdminActionsEnabled, drawingsAdminEnabled } from '@/lib/drawings/flag';
 import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +25,8 @@ export default async function AdminDrawingsPage() {
   }
   if (decision.kind === 'redirect') redirect(decision.href);
 
+  const actionsOn = drawingsAdminActionsEnabled();
+
   let view: DrawingsAdminView;
   try {
     view = await loadDrawingsAdminView();
@@ -39,15 +41,16 @@ export default async function AdminDrawingsPage() {
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-primary">Drawings</h1>
             <p className="text-sm text-muted-foreground">
-              Stored campaigns, simulated selections, and fulfillment records. This page only reads.
-              It does not change a campaign, run a selection, contact a member, or ship a prize.
+              {actionsOn
+                ? 'Activate a sample draft, close a campaign, or run one simulated selection. This page does not create or delete a campaign, change prizes or budget, move a fulfillment, or contact a member.'
+                : 'Stored campaigns, simulated selections, and fulfillment records. This page only reads. It does not change a campaign, run a selection, contact a member, or ship a prize.'}
             </p>
           </div>
           <Button variant="outline" size="sm" asChild>
             <Link href="/admin">Back to admin</Link>
           </Button>
         </div>
-        <DrawingsAdmin view={view} />
+        <DrawingsAdmin view={view} actionsEnabled={actionsOn} />
       </div>
     </main>
   );
