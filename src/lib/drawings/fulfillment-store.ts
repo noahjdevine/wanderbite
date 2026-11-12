@@ -16,8 +16,9 @@ import {
  * createFulfillments and transitionFulfillment run the pure checks,
  * then the matching RPC. listFulfillments reads one campaign in pages
  * of 1000 and orders the loaded rows by created_at instant, then id.
- * The admin drawings page calls listFulfillments. It does not create
- * or move a fulfillment. The tables are not in database.types.ts.
+ * The admin drawings read model calls listFulfillments. createFulfillments
+ * and transitionFulfillment are called from the admin fulfillment actions
+ * when that flag is on. The tables are not in database.types.ts.
  * No member is notified.
  */
 

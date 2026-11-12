@@ -34,6 +34,7 @@ function source(): DrawingsAdminSource {
       ],
     },
     selection: {
+      id: '51111111-1111-4111-8111-111111111111',
       seed: SEED,
       eligibleEntryCount: 4,
       unfilledUnitCount: 0,

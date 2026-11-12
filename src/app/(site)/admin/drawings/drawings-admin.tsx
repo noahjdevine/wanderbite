@@ -5,18 +5,23 @@ import {
   type DrawingsAdminView,
 } from '@/lib/drawings/admin-read-model';
 import { drawingAdminActionOffers } from '@/lib/drawings/admin-actions';
+import { drawingFulfillmentOffers } from '@/lib/drawings/fulfillment-admin-actions';
 import { DrawingCampaignActions } from './drawing-campaign-actions';
+import { DrawingFulfillmentCreate, DrawingWinnerFulfillmentActions } from './drawing-fulfillment-actions';
 
 /**
- * Drawing records. Action buttons render only when actionsEnabled is true.
- * With that prop off, this is the read-only list.
+ * Drawing records. Campaign buttons render only when actionsEnabled is true.
+ * Fulfillment buttons render only when fulfillmentActionsEnabled is true.
+ * With both props off, this is the read-only list.
  */
 export function DrawingsAdmin({
   view,
   actionsEnabled = false,
+  fulfillmentActionsEnabled = false,
 }: {
   view: DrawingsAdminView;
   actionsEnabled?: boolean;
+  fulfillmentActionsEnabled?: boolean;
 }) {
   if (!view.ok) {
     return (
@@ -105,20 +110,39 @@ export function DrawingsAdmin({
                   </tr>
                 </thead>
                 <tbody>
-                  {campaign.winners.map((winner, index) => (
-                    <tr key={`${campaign.id}:winner:${winner.rank}:${index}`} className="border-b last:border-b-0">
-                      <td className="py-2 pr-3">{winner.rank}</td>
-                      <td className="py-2 pr-3">{winner.prizeLabel}</td>
-                      <td className="py-2 pr-3">{winner.memberLabel}</td>
-                      <td className="py-2">{winner.fulfillmentLabel}</td>
-                    </tr>
-                  ))}
+                  {campaign.winners.map((winner, index) => {
+                    const offers =
+                      fulfillmentActionsEnabled && winner.fulfillmentId
+                        ? drawingFulfillmentOffers({
+                            hasSelection: true,
+                            hasFulfillments: true,
+                            status: winner.fulfillmentStatus,
+                            memberDeleted: winner.memberDeleted,
+                          }).actions
+                        : [];
+                    return (
+                      <tr key={`${campaign.id}:winner:${winner.rank}:${index}`} className="border-b last:border-b-0">
+                        <td className="py-2 pr-3">{winner.rank}</td>
+                        <td className="py-2 pr-3">{winner.prizeLabel}</td>
+                        <td className="py-2 pr-3">{winner.memberLabel}</td>
+                        <td className="py-2">
+                          <div className="space-y-2">
+                            <p>{winner.fulfillmentLabel}</p>
+                            {offers.length > 0 && winner.fulfillmentId ? (
+                              <DrawingWinnerFulfillmentActions fulfillmentId={winner.fulfillmentId} offers={offers} />
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           ) : null}
           <div className="space-y-1 text-sm">
             <h3 className="font-medium">Fulfillment</h3>
+            {fulfillmentActionsEnabled ? <FulfillmentCreateRow campaign={campaign} /> : null}
             <p>{campaign.countsLabel}</p>
             <p>{campaign.costLabel}</p>
             {campaign.note ? <p role="note">{campaign.note}</p> : null}
@@ -137,6 +161,17 @@ export function DrawingsAdmin({
       ))}
     </ul>
   );
+}
+
+function FulfillmentCreateRow({ campaign }: { campaign: DrawingsAdminCampaign }) {
+  const create = drawingFulfillmentOffers({
+    hasSelection: campaign.selectionId !== null,
+    hasFulfillments: campaign.winners.some((winner) => winner.fulfillmentId !== null),
+    status: null,
+    memberDeleted: false,
+  }).actions.find((action) => action.kind === 'create');
+  if (!create || campaign.selectionId === null) return null;
+  return <DrawingFulfillmentCreate selectionId={campaign.selectionId} offer={create} />;
 }
 
 function CampaignActionRow({ campaign }: { campaign: DrawingsAdminCampaign }) {
