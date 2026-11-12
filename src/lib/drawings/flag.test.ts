@@ -2,9 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DRAWINGS_ADMIN_ACTIONS_FLAG,
   DRAWINGS_ADMIN_FLAG,
+  DRAWINGS_CAMPAIGN_EDITOR_FLAG,
   DRAWINGS_FULFILLMENT_ACTIONS_FLAG,
   drawingsAdminActionsEnabled,
   drawingsAdminEnabled,
+  drawingsCampaignEditorEnabled,
   drawingsFulfillmentActionsEnabled,
 } from '@/lib/drawings/flag';
 
@@ -98,5 +100,41 @@ describe('drawingsFulfillmentActionsEnabled', () => {
     expect(drawingsFulfillmentActionsEnabled()).toBe(false);
     vi.stubEnv('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED', 'true');
     expect(drawingsFulfillmentActionsEnabled()).toBe(true);
+  });
+});
+
+describe('drawingsCampaignEditorEnabled', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is true only when all three flags are exactly true', () => {
+    expect(DRAWINGS_CAMPAIGN_EDITOR_FLAG).toBe('E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED');
+    const off = [undefined, '', 'TRUE', 'True', '1', ' true', 'true ', 'false'] as const;
+    for (const editorValue of off) {
+      expect(drawingsCampaignEditorEnabled(editorValue, 'true', 'true')).toBe(false);
+    }
+    for (const actionsValue of off) {
+      expect(drawingsCampaignEditorEnabled('true', actionsValue, 'true')).toBe(false);
+    }
+    for (const adminValue of off) {
+      expect(drawingsCampaignEditorEnabled('true', 'true', adminValue)).toBe(false);
+    }
+    expect(drawingsCampaignEditorEnabled('true', 'true', 'true')).toBe(true);
+  });
+
+  it('reads all three env vars when no argument is passed', () => {
+    vi.stubEnv('E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ENABLED', '');
+    expect(drawingsCampaignEditorEnabled()).toBe(false);
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'TRUE');
+    expect(drawingsCampaignEditorEnabled()).toBe(false);
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED', 'TRUE');
+    expect(drawingsCampaignEditorEnabled()).toBe(false);
+    vi.stubEnv('E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED', 'true');
+    expect(drawingsCampaignEditorEnabled()).toBe(true);
   });
 });

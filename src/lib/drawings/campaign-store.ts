@@ -23,8 +23,9 @@ import {
  * checkCampaignTransition, then transition_drawing_campaign. An active or
  * closed row is campaign_locked here and in the database. Admin drawing
  * actions call activateCampaign and closeCampaign when their flag is on.
- * Create and update have no app caller. The tables are not in
- * database.types.ts; row shapes below are local.
+ * The admin campaign editor calls createCampaign and updateCampaign when
+ * its flag is on. The tables are not in database.types.ts; row shapes
+ * below are local.
  */
 
 export type { CampaignStatus };

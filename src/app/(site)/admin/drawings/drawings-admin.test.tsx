@@ -80,6 +80,9 @@ describe('DrawingsAdmin', () => {
     const ranks = screen.getAllByRole('row').slice(1).map((row) => row.textContent);
     expect(ranks.map((text) => text?.trim().charAt(0))).toEqual(['1', '2', '3']);
     expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New sample campaign' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByText('Starts / ends')).toBeNull();
     expect(screen.queryByRole('note')).toBeNull();
     const body = document.body.textContent ?? '';
     expect(body).not.toContain(SEED);
@@ -134,5 +137,61 @@ describe('DrawingsAdmin', () => {
     expect(page).toMatch(/actionsEnabled=\{actionsOn\}/);
     expect(page.indexOf('if (!drawingsAdminEnabled()) notFound();')).toBeGreaterThan(-1);
     expect(page.indexOf('drawingsAdminEnabled()')).toBeLessThan(page.indexOf('assertAdmin()'));
+  });
+
+  it('shows create and edit only for sample drafts, and only when the editor prop is on', () => {
+    const draft = source();
+    draft.campaign.status = 'draft';
+    draft.campaign.activatedAt = null;
+    draft.campaign.closedAt = null;
+    draft.selection = null;
+    draft.fulfillments = [];
+    const view = summarizeDrawingsAdmin(draft);
+    expect(view).not.toBeNull();
+    if (!view) return;
+    const { rerender } = render(<DrawingsAdmin view={{ ok: true, campaigns: [view] }} />);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New sample campaign' })).toBeNull();
+    expect(screen.queryByText('Jan 1, 2027 – Mar 31, 2027')).toBeNull();
+
+    rerender(<DrawingsAdmin view={{ ok: true, campaigns: [view] }} editorEnabled quarterChoices={['2026-Q4', '2027-Q1']} />);
+    expect(screen.getByRole('button', { name: 'New sample campaign' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeTruthy();
+    expect(screen.getByText('Jan 1, 2027 – Mar 31, 2027')).toBeTruthy();
+
+    const active = summarizeDrawingsAdmin({
+      ...draft,
+      campaign: { ...draft.campaign, status: 'active', activatedAt: '2026-12-15T18:00:00.000Z' },
+    });
+    if (!active) throw new Error('active view');
+    rerender(<DrawingsAdmin view={{ ok: true, campaigns: [active] }} editorEnabled />);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'New sample campaign' })).toBeTruthy();
+
+    const closed = summarizeDrawingsAdmin(source());
+    if (!closed) throw new Error('closed view');
+    rerender(<DrawingsAdmin view={{ ok: true, campaigns: [closed] }} editorEnabled />);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+
+    const live = summarizeDrawingsAdmin({
+      ...draft,
+      campaign: { ...draft.campaign, mode: 'live', status: 'draft' },
+    });
+    if (!live) throw new Error('live view');
+    rerender(<DrawingsAdmin view={{ ok: true, campaigns: [live] }} editorEnabled />);
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+  });
+
+  it('keeps the not-set-up message free of editor buttons', () => {
+    render(<DrawingsAdmin view={{ ok: false, reason: 'not_set_up' }} editorEnabled actionsEnabled fulfillmentActionsEnabled />);
+    expect(screen.getByText(DRAWINGS_NOT_SET_UP)).toBeTruthy();
+    expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('offers a new campaign when the list is empty and the editor prop is on', () => {
+    render(<DrawingsAdmin view={{ ok: true, campaigns: [] }} editorEnabled quarterChoices={['2027-Q1']} />);
+    expect(screen.getByText('No drawing campaigns are stored.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New sample campaign' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
   });
 });

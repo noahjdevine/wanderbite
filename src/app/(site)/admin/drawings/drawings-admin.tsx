@@ -5,23 +5,30 @@ import {
   type DrawingsAdminView,
 } from '@/lib/drawings/admin-read-model';
 import { drawingAdminActionOffers } from '@/lib/drawings/admin-actions';
+import { campaignEditorSeed, campaignWindowLabel, quarterOptions } from '@/lib/drawings/campaign-editor';
 import { drawingFulfillmentOffers } from '@/lib/drawings/fulfillment-admin-actions';
 import { DrawingCampaignActions } from './drawing-campaign-actions';
+import { DrawingCampaignCreate, DrawingCampaignEdit } from './drawing-campaign-editor';
 import { DrawingFulfillmentCreate, DrawingWinnerFulfillmentActions } from './drawing-fulfillment-actions';
 
 /**
  * Drawing records. Campaign buttons render only when actionsEnabled is true.
  * Fulfillment buttons render only when fulfillmentActionsEnabled is true.
- * With both props off, this is the read-only list.
+ * Create and edit render only when editorEnabled is true.
+ * With those props off, this is the read-only list.
  */
 export function DrawingsAdmin({
   view,
   actionsEnabled = false,
   fulfillmentActionsEnabled = false,
+  editorEnabled = false,
+  quarterChoices,
 }: {
   view: DrawingsAdminView;
   actionsEnabled?: boolean;
   fulfillmentActionsEnabled?: boolean;
+  editorEnabled?: boolean;
+  quarterChoices?: readonly string[];
 }) {
   if (!view.ok) {
     return (
@@ -30,10 +37,11 @@ export function DrawingsAdmin({
       </p>
     );
   }
-  if (view.campaigns.length === 0) {
-    return <p className="text-sm text-muted-foreground">No drawing campaigns are stored.</p>;
-  }
-  return (
+  const quarters = editorEnabled ? (quarterChoices ?? quarterOptions(new Date())) : [];
+  const list =
+    view.campaigns.length === 0 ? (
+      <p className="text-sm text-muted-foreground">No drawing campaigns are stored.</p>
+    ) : (
     <ul className="space-y-6">
       {view.campaigns.map((campaign) => (
         <li key={campaign.id} className="space-y-4 rounded-xl border p-4">
@@ -43,6 +51,13 @@ export function DrawingsAdmin({
               {campaign.modeLabel} · {campaign.statusLabel}
             </p>
           </div>
+          {editorEnabled && campaign.status === 'draft' && campaign.mode === 'sample' ? (
+            <DrawingCampaignEdit
+              campaignId={campaign.id}
+              seed={campaignEditorSeed(campaign)}
+              quarters={quarters}
+            />
+          ) : null}
           <dl className="grid gap-2 text-sm sm:grid-cols-2">
             <div>
               <dt className="text-muted-foreground">Activated</dt>
@@ -56,6 +71,12 @@ export function DrawingsAdmin({
               <dt className="text-muted-foreground">Budget</dt>
               <dd>{campaign.budgetLabel}</dd>
             </div>
+            {editorEnabled ? (
+              <div className="sm:col-span-2">
+                <dt className="text-muted-foreground">Starts / ends</dt>
+                <dd>{campaignWindowLabel(campaign.quarterKey) ?? '—'}</dd>
+              </div>
+            ) : null}
           </dl>
           <div>
             <h3 className="text-sm font-medium">Prizes</h3>
@@ -160,6 +181,13 @@ export function DrawingsAdmin({
         </li>
       ))}
     </ul>
+    );
+  if (!editorEnabled) return list;
+  return (
+    <div className="space-y-6">
+      <DrawingCampaignCreate quarters={quarters} />
+      {list}
+    </div>
   );
 }
 

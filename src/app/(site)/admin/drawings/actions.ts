@@ -10,8 +10,20 @@ import {
   type DrawingStoreError,
 } from '@/lib/drawings/admin-actions';
 import { CAMPAIGN_ERROR_CODES } from '@/lib/drawings/campaign';
-import { activateCampaign, closeCampaign } from '@/lib/drawings/campaign-store';
-import { drawingsAdminActionsEnabled, drawingsFulfillmentActionsEnabled } from '@/lib/drawings/flag';
+import {
+  campaignEditorMessage,
+  isCampaignEditorStoreError,
+  isCampaignErrorCode,
+  parseCampaignEditorForm,
+  type CampaignEditorError,
+  type CampaignEditorFieldError,
+} from '@/lib/drawings/campaign-editor';
+import { activateCampaign, closeCampaign, createCampaign, getCampaign, updateCampaign } from '@/lib/drawings/campaign-store';
+import {
+  drawingsAdminActionsEnabled,
+  drawingsCampaignEditorEnabled,
+  drawingsFulfillmentActionsEnabled,
+} from '@/lib/drawings/flag';
 import { formatDrawingDollars, loadFulfillmentBudget } from '@/lib/drawings/admin-read-model';
 import {
   drawingFulfillmentActionMessage,
@@ -270,5 +282,102 @@ export async function transitionDrawingFulfillmentAction(
     return { ok: true };
   } catch {
     return failFulfillment('unavailable');
+  }
+}
+
+export type DrawingCampaignEditorResult =
+  | { ok: true }
+  | {
+      ok: false;
+      error: CampaignEditorError;
+      message: string;
+      fieldErrors?: CampaignEditorFieldError[];
+    };
+
+type EditorDenied = Exclude<DrawingCampaignEditorResult, { ok: true }>;
+
+function failEditor(error: CampaignEditorError): EditorDenied {
+  return { ok: false, error, message: campaignEditorMessage(error) };
+}
+
+/**
+ * All three flags, then the admin role, then MFA. A miss returns before
+ * the form is parsed and before any campaign store call.
+ */
+async function editorAuth(): Promise<{ ok: true } | EditorDenied> {
+  if (!drawingsCampaignEditorEnabled()) return failEditor('disabled');
+  const auth = await assertAdmin();
+  if (!auth.ok) {
+    if (auth.code === 'unauthenticated' || auth.code === 'not_admin') return failEditor('forbidden');
+    return failEditor(auth.code);
+  }
+  return { ok: true };
+}
+
+function fieldFailure(fieldErrors: CampaignEditorFieldError[]): EditorDenied {
+  return {
+    ok: false,
+    error: 'invalid_form',
+    message: fieldErrors[0]?.message ?? campaignEditorMessage('invalid_form'),
+    fieldErrors,
+  };
+}
+
+function editorStoreFailure(result: { error?: string; errors?: readonly string[] }): EditorDenied {
+  if (typeof result.error === 'string') {
+    return failEditor(isCampaignEditorStoreError(result.error) ? result.error : 'unavailable');
+  }
+  const known = Array.isArray(result.errors) ? result.errors.filter(isCampaignErrorCode) : [];
+  if (known.length === 0) return failEditor('unavailable');
+  const primary = known.includes('over_budget') ? 'over_budget' : known[0];
+  return failEditor(primary);
+}
+
+/**
+ * Saves one draft sample campaign. Mode, the rules-version token, and the
+ * entry source are fixed by the parser. The store derives starts_at and
+ * ends_at from the quarter. A rejected draft does not write.
+ */
+export async function createDrawingCampaignAction(formInput: unknown): Promise<DrawingCampaignEditorResult> {
+  const auth = await editorAuth();
+  if (!auth.ok) return auth;
+  const parsed = parseCampaignEditorForm(formInput);
+  if (!parsed.ok) return fieldFailure(parsed.fieldErrors);
+  try {
+    const result = await createCampaign(parsed.draft);
+    if (!result.ok) return editorStoreFailure(result);
+    revalidatePath('/admin/drawings');
+    return { ok: true };
+  } catch {
+    return failEditor('unavailable');
+  }
+}
+
+/**
+ * Replaces one sample draft. The stored row is read after the form parses.
+ * A missing id is not_found. A failed read is unavailable. A mode other
+ * than sample is invalid_mode and does not call updateCampaign. An active
+ * or closed sample campaign still returns campaign_locked from the store.
+ */
+export async function updateDrawingCampaignAction(
+  id: string,
+  formInput: unknown,
+): Promise<DrawingCampaignEditorResult> {
+  const auth = await editorAuth();
+  if (!auth.ok) return auth;
+  const campaignId = typeof id === 'string' ? parseUuid(id) : null;
+  if (!campaignId) return failEditor('not_found');
+  const parsed = parseCampaignEditorForm(formInput);
+  if (!parsed.ok) return fieldFailure(parsed.fieldErrors);
+  try {
+    const current = await getCampaign(campaignId);
+    if (!current.ok) return failEditor(current.error === 'not_found' ? 'not_found' : 'unavailable');
+    if (current.campaign.mode !== 'sample') return failEditor('invalid_mode');
+    const result = await updateCampaign(campaignId, parsed.draft);
+    if (!result.ok) return editorStoreFailure(result);
+    revalidatePath('/admin/drawings');
+    return { ok: true };
+  } catch {
+    return failEditor('unavailable');
   }
 }

@@ -64,8 +64,9 @@ export type DrawingsAdminCampaign = {
   activatedAtSet: boolean;
   /** True when the raw closed_at timestamp is set. Not derived from closedOn. */
   closedAtSet: boolean;
-  prizes: { label: string; quantity: number; unitValue: string }[];
+  prizes: { label: string; quantity: number; unitValue: string; unitValueCents: number }[];
   budgetLabel: string;
+  totalBudgetCents: number;
   /** Simulated selection id, when one is stored. Not a member id. */
   selectionId: string | null;
   selection: {
@@ -410,8 +411,10 @@ export function summarizeDrawingsAdmin(source: DrawingsAdminSource): DrawingsAdm
       label: displayPrizeLabel({ label: prize.label }, source.campaign.mode),
       quantity: prize.quantity,
       unitValue: formatDrawingDollars(prize.unitValueCents),
+      unitValueCents: prize.unitValueCents,
     })),
     budgetLabel: `Committed ${formatDrawingDollars(committed)} of ${formatDrawingDollars(source.campaign.totalBudgetCents)}`,
+    totalBudgetCents: source.campaign.totalBudgetCents,
     selectionId: source.selection && source.selection.id.length > 0 ? source.selection.id : null,
     selection: source.selection
       ? {

@@ -35,3 +35,18 @@ export function drawingsFulfillmentActionsEnabled(
 ): boolean {
   return fulfillmentValue === 'true' && drawingsAdminActionsEnabled(actionsValue, adminValue);
 }
+
+/** Exact string only, and only together with the read flag and the campaign-action flag. Ships unset. */
+export const DRAWINGS_CAMPAIGN_EDITOR_FLAG = 'E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED';
+
+/**
+ * Admin create and edit of draft sample campaigns.
+ * True only when this flag is exactly "true" and both drawing flags are also on.
+ */
+export function drawingsCampaignEditorEnabled(
+  editorValue: string | undefined = process.env.E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED,
+  actionsValue: string | undefined = process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED,
+  adminValue: string | undefined = process.env.E09_DRAWINGS_ADMIN_ENABLED,
+): boolean {
+  return editorValue === 'true' && drawingsAdminActionsEnabled(actionsValue, adminValue);
+}

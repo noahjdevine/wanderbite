@@ -106,6 +106,9 @@ describe('drawing campaign actions', () => {
   it('hides every action when the flag prop is off, including a live draft', () => {
     render(<DrawingsAdmin view={campaignView({ status: 'draft', mode: 'live', selection: false })} />);
     expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New sample campaign' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByText('Starts / ends')).toBeNull();
     expect(screen.queryByText(LIVE_CAMPAIGN_ACTIVATION_NOTE)).toBeNull();
     expect(screen.queryByText(DRAFT_CLOSE_CONFIRM_NOTE)).toBeNull();
     expect(screen.queryByRole('note')).toBeNull();
@@ -135,6 +138,8 @@ describe('drawing campaign actions', () => {
     render(<DrawingsAdmin view={campaignView({ status: 'draft', mode: 'sample', selection: false })} actionsEnabled />);
     expect(screen.getByRole('button', { name: 'Activate' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New sample campaign' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Yes, activate' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Run simulated selection' })).toBeNull();
 

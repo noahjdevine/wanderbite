@@ -96,6 +96,8 @@ describe('summarizeDrawingsAdmin', () => {
     ]);
     expect(view.prizes.every((prize) => prize.label.startsWith('Sample prize'))).toBe(true);
     expect(view.budgetLabel).toBe('Committed $130.00 of $200.00');
+    expect(view.totalBudgetCents).toBe(20_000);
+    expect(view.prizes.map((prize) => prize.unitValueCents)).toEqual([5_000, 2_500]);
     expect(view.closedOn).toBe('Dec 31, 2026');
     expect(view.activatedOn).toBe('Dec 15, 2026');
     expect(view.activatedAtSet).toBe(true);
