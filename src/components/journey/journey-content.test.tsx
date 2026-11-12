@@ -10,8 +10,9 @@ const state = vi.hoisted(() => ({
   fail: false,
 }));
 
-const { loadMemberProgression, createClient } = vi.hoisted(() => ({
+const { loadMemberProgression, loadMemberSampleDrawing, createClient } = vi.hoisted(() => ({
   loadMemberProgression: vi.fn(),
+  loadMemberSampleDrawing: vi.fn(),
   createClient: vi.fn(),
 }));
 
@@ -93,6 +94,10 @@ vi.mock('@/lib/progression/member-progression', () => ({
   loadMemberProgression: (...args: unknown[]) => loadMemberProgression(...args),
 }));
 
+vi.mock('@/lib/drawings/member-drawing-read-model', () => ({
+  loadMemberSampleDrawing: (...args: unknown[]) => loadMemberSampleDrawing(...args),
+}));
+
 import { JourneyContent } from '@/components/journey/journey-content';
 
 function events(count: number): Record<string, string>[] {
@@ -124,7 +129,10 @@ describe('JourneyContent member progression panel', () => {
     state.xp = 3600;
     state.fail = false;
     delete process.env.E09_MEMBER_PROGRESSION_UI_ENABLED;
+    delete process.env.E09_MEMBER_DRAWING_CARD_ENABLED;
     loadMemberProgression.mockReset();
+    loadMemberSampleDrawing.mockReset();
+    loadMemberSampleDrawing.mockResolvedValue({ kind: 'none' });
     createClient.mockReset();
     createClient.mockResolvedValue(serverClient);
     loadMemberProgression.mockResolvedValue({
@@ -136,6 +144,7 @@ describe('JourneyContent member progression panel', () => {
   afterEach(() => {
     cleanup();
     delete process.env.E09_MEMBER_PROGRESSION_UI_ENABLED;
+    delete process.env.E09_MEMBER_DRAWING_CARD_ENABLED;
   });
 
   it('leaves Progress unchanged and does not read the ledger when the flag is not exactly true', async () => {
@@ -152,6 +161,7 @@ describe('JourneyContent member progression panel', () => {
       expect(screen.queryByRole('heading', { name: 'Levels and drawing entries' })).toBeNull();
       expect(screen.queryByText('The Local Legend II')).toBeNull();
       expect(loadMemberProgression).not.toHaveBeenCalled();
+      expect(loadMemberSampleDrawing).not.toHaveBeenCalled();
       expect(createClient).not.toHaveBeenCalled();
       view.unmount();
     }
@@ -163,6 +173,7 @@ describe('JourneyContent member progression panel', () => {
     expect(screen.getByText(PROGRESS_UNAVAILABLE_MESSAGE)).toBeTruthy();
     expect(screen.queryByRole('heading', { name: 'Levels and drawing entries' })).toBeNull();
     expect(loadMemberProgression).not.toHaveBeenCalled();
+    expect(loadMemberSampleDrawing).not.toHaveBeenCalled();
   });
 
   it('shows the stored continuing level beside the unchanged main card', async () => {
@@ -214,6 +225,99 @@ describe('JourneyContent member progression panel', () => {
     const logged = errorSpy.mock.calls.flat().map((part) => String(part)).join('\n');
     expect(logged).not.toContain(secret);
     expect(logged).not.toContain('member-a@example.com');
+    expect(loadMemberSampleDrawing).not.toHaveBeenCalled();
     errorSpy.mockRestore();
+  });
+
+  it('does not read a drawing table unless both member flags are exactly true', async () => {
+    const cases = [
+      { progression: undefined, card: 'true' },
+      { progression: '', card: 'true' },
+      { progression: 'TRUE', card: 'true' },
+      { progression: 'true', card: undefined },
+      { progression: 'true', card: '' },
+      { progression: 'true', card: 'TRUE' },
+      { progression: 'true', card: '1' },
+      { progression: 'true', card: 'true ' },
+    ] as const;
+    for (const flags of cases) {
+      loadMemberProgression.mockClear();
+      loadMemberSampleDrawing.mockClear();
+      if (flags.progression === undefined) delete process.env.E09_MEMBER_PROGRESSION_UI_ENABLED;
+      else process.env.E09_MEMBER_PROGRESSION_UI_ENABLED = flags.progression;
+      if (flags.card === undefined) delete process.env.E09_MEMBER_DRAWING_CARD_ENABLED;
+      else process.env.E09_MEMBER_DRAWING_CARD_ENABLED = flags.card;
+
+      const view = render(await page());
+      expect(screen.queryByText(/Sample drawing/)).toBeNull();
+      expect(loadMemberSampleDrawing).not.toHaveBeenCalled();
+      if (flags.progression === 'true') {
+        expect(screen.getByRole('heading', { name: 'Levels and drawing entries' })).toBeTruthy();
+      }
+      view.unmount();
+    }
+  });
+
+  it('shows the sample campaign only when both flags are on', async () => {
+    process.env.E09_MEMBER_PROGRESSION_UI_ENABLED = 'true';
+    process.env.E09_MEMBER_DRAWING_CARD_ENABLED = 'true';
+    loadMemberSampleDrawing.mockResolvedValue({
+      kind: 'campaign',
+      quarterKey: '2027-Q1',
+      startsOn: 'Jan 1, 2027',
+      endsOn: 'Mar 31, 2027',
+      status: 'active',
+      prizes: [{ label: 'Sample prize: Dinner for two', quantity: 2, sampleValueCents: 4000 }],
+      entryCount: 3,
+      result: 'not_drawn',
+    });
+    render(await page());
+    expect(loadMemberSampleDrawing).toHaveBeenCalledTimes(1);
+    expect(loadMemberSampleDrawing).toHaveBeenCalledWith({
+      userId: 'user-1',
+      now: expect.any(Date),
+      entriesByQuarter: legend.entriesByQuarter,
+      session: serverClient,
+    });
+    expect(
+      screen.getByText('Sample drawing — for demonstration only, not a real promotion. No prizes will be sent.'),
+    ).toBeTruthy();
+    expect(screen.getByText('Sample prize: Dinner for two \u00d72 \u00b7 Sample value $40')).toBeTruthy();
+    expect(screen.getByText('3 entries this quarter')).toBeTruthy();
+    expect(screen.getByText("This simulated drawing hasn't been run.")).toBeTruthy();
+    expect(screen.getByText('Drawing entries count from Jan 1, 2027.')).toBeTruthy();
+  });
+
+  it('adds no card when the quarter has no sample campaign', async () => {
+    process.env.E09_MEMBER_PROGRESSION_UI_ENABLED = 'true';
+    process.env.E09_MEMBER_DRAWING_CARD_ENABLED = 'true';
+    render(await page());
+    expect(loadMemberSampleDrawing).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: 'Levels and drawing entries' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Sample drawing' })).toBeNull();
+  });
+
+  it('keeps the levels panel when the drawing read throws and does not log the error', async () => {
+    process.env.E09_MEMBER_PROGRESSION_UI_ENABLED = 'true';
+    process.env.E09_MEMBER_DRAWING_CARD_ENABLED = 'true';
+    const secret = 'member-a@example.com bearer-token-secret';
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    loadMemberSampleDrawing.mockRejectedValue(new Error(secret));
+    render(await page());
+    expect(screen.getByRole('heading', { name: 'Levels and drawing entries' })).toBeTruthy();
+    expect(screen.getByText('The Local Legend II')).toBeTruthy();
+    expect(screen.getByRole('status').textContent).toBe('Sample drawing unavailable');
+    expect(document.body.textContent).not.toContain(secret);
+    expect(errorSpy.mock.calls.flat().join('\n')).not.toContain(secret);
+    errorSpy.mockRestore();
+  });
+
+  it('does not read a drawing table when the session is signed out', async () => {
+    process.env.E09_MEMBER_PROGRESSION_UI_ENABLED = 'true';
+    process.env.E09_MEMBER_DRAWING_CARD_ENABLED = 'true';
+    loadMemberProgression.mockResolvedValue({ ok: false, error: 'signed_out' });
+    render(await page());
+    expect(loadMemberSampleDrawing).not.toHaveBeenCalled();
+    expect(screen.queryByText(/Sample drawing/)).toBeNull();
   });
 });

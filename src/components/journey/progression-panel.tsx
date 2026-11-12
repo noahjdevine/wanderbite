@@ -1,3 +1,5 @@
+import { SampleDrawingCard } from '@/components/journey/sample-drawing-card';
+import type { MemberSampleDrawing } from '@/lib/drawings/member-drawing-read-model';
 import { pluralize } from '@/lib/format/text';
 import {
   DRAWING_ENTRIES_HEADING,
@@ -18,6 +20,8 @@ import type { MemberProgressionSummary } from '@/lib/progression/read-model';
 
 type MemberProgressionPanelProps = {
   summary: MemberProgressionSummary;
+  /** Sample drawing for this quarter. Omitted when the card flag is off or there is no campaign. */
+  sampleDrawing?: MemberSampleDrawing | null;
 };
 
 /**
@@ -25,7 +29,7 @@ type MemberProgressionPanelProps = {
  * The summary is already stored. This does not recompute a quarter, and it
  * does not mention whether the ledger matched the schedule.
  */
-export function MemberProgressionPanel({ summary }: MemberProgressionPanelProps) {
+export function MemberProgressionPanel({ summary, sampleDrawing = null }: MemberProgressionPanelProps) {
   const percent = clampedProgressPercent(summary.progressPercent);
   const label = progressionProgressLabel(summary);
   const next = nextLevelLine(summary.nextLevel);
@@ -123,6 +127,8 @@ export function MemberProgressionPanel({ summary }: MemberProgressionPanelProps)
         )}
         <p className="m-0 text-xs leading-snug text-wb-muted">{DRAWING_ENTRIES_NOTE}</p>
       </div>
+
+      {sampleDrawing ? <SampleDrawingCard drawing={sampleDrawing} /> : null}
     </section>
   );
 }

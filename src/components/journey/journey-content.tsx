@@ -9,6 +9,11 @@ import {
   MemberProgressionUnavailable,
 } from '@/components/journey/progression-panel';
 import { ProgressUnavailable, ProgressView } from '@/components/journey/progress-view';
+import { memberDrawingCardEnabled } from '@/lib/drawings/flag';
+import {
+  loadMemberSampleDrawing,
+  type MemberSampleDrawing,
+} from '@/lib/drawings/member-drawing-read-model';
 import { memberProgressionUiEnabled } from '@/lib/progression/flag';
 import { loadMemberProgression } from '@/lib/progression/member-progression';
 import { createClient } from '@/lib/supabase/server';
@@ -63,11 +68,13 @@ type ProfileRow = {
 };
 
 /**
- * The flag is checked before any ledger read. A signed-out session adds
- * nothing. A failed read shows a short message and is not logged, because
- * the error can carry a member id or a token.
+ * The progression flag is checked before any ledger read. The drawing-card
+ * flag is checked before any drawing read. A signed-out session adds nothing.
+ * A failed ledger read shows a short message. A failed drawing read shows a
+ * quiet line and leaves the levels panel up. Neither error is logged, because
+ * it can carry a member id or a token.
  */
-async function loadMemberProgressionPanel(): Promise<ReactNode> {
+async function loadMemberProgressionPanel(userId: string, now: Date): Promise<ReactNode> {
   if (!memberProgressionUiEnabled()) return null;
   try {
     const supabase = await createClient();
@@ -75,7 +82,21 @@ async function loadMemberProgressionPanel(): Promise<ReactNode> {
     if (!loaded.ok) {
       return loaded.error === 'signed_out' ? null : <MemberProgressionUnavailable />;
     }
-    return <MemberProgressionPanel summary={loaded.summary} />;
+    let sampleDrawing: MemberSampleDrawing | null = null;
+    if (memberDrawingCardEnabled()) {
+      try {
+        const drawing = await loadMemberSampleDrawing({
+          userId,
+          now,
+          entriesByQuarter: loaded.summary.entriesByQuarter,
+          session: supabase,
+        });
+        sampleDrawing = drawing.kind === 'none' ? null : drawing;
+      } catch {
+        sampleDrawing = { kind: 'unavailable' };
+      }
+    }
+    return <MemberProgressionPanel summary={loaded.summary} sampleDrawing={sampleDrawing} />;
   } catch {
     // Leave the error out of the log. It can carry a member id or a token.
     return <MemberProgressionUnavailable />;
@@ -111,7 +132,7 @@ export async function JourneyContent({ userId }: JourneyContentProps) {
       creditsWorkflow
         ? loadPendingCredits(admin, userId, now)
         : Promise.resolve({ ok: true as const, count: 0 }),
-      loadMemberProgressionPanel(),
+      loadMemberProgressionPanel(userId, now),
     ]);
 
   const savedRecipesCard = savedRecipes.enabled ? (
