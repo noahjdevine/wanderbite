@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { DrawingsAdmin } from '@/app/(site)/admin/drawings/drawings-admin';
+import { CLOSED_WITHOUT_ACTIVATION_NOTE, DRAFT_CLOSE_CONFIRM_NOTE } from '@/lib/drawings/admin-actions';
 import {
   DELETED_MEMBER_LABEL,
   DRAWINGS_NOT_SET_UP,
@@ -97,6 +98,23 @@ describe('DrawingsAdmin', () => {
     expect(screen.getByRole('note').textContent).toBe(OVER_ALLOWANCE_NOTE);
     expect(screen.getByText('Recorded cost $25.00 · Allowance $20.00')).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('stays the read-only page for a campaign closed without activation', () => {
+    const sample = source();
+    sample.campaign.activatedAt = null;
+    sample.selection = null;
+    const view = summarizeDrawingsAdmin(sample);
+    expect(view).not.toBeNull();
+    if (!view) return;
+    expect(view.activatedAtSet).toBe(false);
+    expect(view.closedAtSet).toBe(true);
+    expect(view.closedOn).toBe('Dec 31, 2026');
+    render(<DrawingsAdmin view={{ ok: true, campaigns: [view] }} />);
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.queryByText(CLOSED_WITHOUT_ACTIVATION_NOTE)).toBeNull();
+    expect(screen.queryByText(DRAFT_CLOSE_CONFIRM_NOTE)).toBeNull();
+    expect(screen.queryByRole('note')).toBeNull();
   });
 
   it('shows the not-set-up message', () => {

@@ -2,11 +2,20 @@
  * Which admin drawing buttons a stored campaign may show, and the plain
  * messages for action errors. No database and no clock. The page renders
  * buttons only when the actions flag is on. A live draft can be closed.
- * It cannot be activated until official rules exist.
+ * It cannot be activated until official rules exist. A simulated selection
+ * is offered only after a sample campaign was activated and then closed.
  */
 
 export const LIVE_CAMPAIGN_ACTIVATION_NOTE =
   "Live campaigns can't go active until official rules exist.";
+
+export const DRAFT_CLOSE_CONFIRM_NOTE =
+  "Closing a draft can't be undone, and it will never run a simulated selection. A new draft for this quarter can still be saved later.";
+
+export const ACTIVE_CLOSE_CONFIRM_NOTE = "Closing can't be undone.";
+
+export const CLOSED_WITHOUT_ACTIVATION_NOTE =
+  "This campaign was closed without being activated, so it can't run a simulated selection.";
 
 export type DrawingAdminActionKind = 'activate' | 'close' | 'select';
 
@@ -14,6 +23,8 @@ export type DrawingAdminActionOffer = {
   kind: DrawingAdminActionKind;
   label: string;
   confirmLabel: string;
+  /** Shown beside the confirm and cancel buttons. Omitted when the second click needs no extra sentence. */
+  confirmNote?: string;
 };
 
 export type DrawingAdminActionOffers = {
@@ -27,10 +38,18 @@ const ACTIVATE: DrawingAdminActionOffer = {
   confirmLabel: 'Yes, activate',
 };
 
-const CLOSE: DrawingAdminActionOffer = {
+const CLOSE_DRAFT: DrawingAdminActionOffer = {
+  kind: 'close',
+  label: 'Close',
+  confirmLabel: 'Yes, close without activating',
+  confirmNote: DRAFT_CLOSE_CONFIRM_NOTE,
+};
+
+const CLOSE_ACTIVE: DrawingAdminActionOffer = {
   kind: 'close',
   label: 'Close',
   confirmLabel: 'Yes, close',
+  confirmNote: ACTIVE_CLOSE_CONFIRM_NOTE,
 };
 
 const SELECT: DrawingAdminActionOffer = {
@@ -45,25 +64,33 @@ const NONE: DrawingAdminActionOffers = { actions: [], note: null };
  * draft + sample: Activate and Close.
  * draft + live: Close, plus the official-rules note. No Activate.
  * active: Close.
- * closed + sample with no selection: Run simulated selection.
+ * closed + sample, no selection, both activated_at and closed_at set: Run simulated selection.
+ * closed + sample, no selection, either timestamp missing: no action, with a note.
  * Anything else: no action.
+ *
+ * Timestamp flags are presence of the raw values, not the formatted dates.
  */
 export function drawingAdminActionOffers(state: {
   status: string;
   mode: string;
   hasSelection: boolean;
+  activatedAtSet: boolean;
+  closedAtSet: boolean;
 }): DrawingAdminActionOffers {
   if (state.status === 'draft' && state.mode === 'sample') {
-    return { actions: [ACTIVATE, CLOSE], note: null };
+    return { actions: [ACTIVATE, CLOSE_DRAFT], note: null };
   }
   if (state.status === 'draft' && state.mode === 'live') {
-    return { actions: [CLOSE], note: LIVE_CAMPAIGN_ACTIVATION_NOTE };
+    return { actions: [CLOSE_DRAFT], note: LIVE_CAMPAIGN_ACTIVATION_NOTE };
   }
   if (state.status === 'active') {
-    return { actions: [CLOSE], note: null };
+    return { actions: [CLOSE_ACTIVE], note: null };
   }
   if (state.status === 'closed' && state.mode === 'sample' && !state.hasSelection) {
-    return { actions: [SELECT], note: null };
+    if (state.activatedAtSet && state.closedAtSet) {
+      return { actions: [SELECT], note: null };
+    }
+    return { actions: [], note: CLOSED_WITHOUT_ACTIVATION_NOTE };
   }
   return NONE;
 }
@@ -102,6 +129,7 @@ export const DRAWING_ADMIN_ACTION_ERRORS = [
   'campaign_window_ended',
   'no_prizes',
   'over_budget',
+  'campaign_invalid',
   'unavailable',
   'quarter_campaign_open',
   'campaign_locked',
@@ -154,6 +182,7 @@ const MESSAGES: Record<DrawingAdminActionError, string> = {
   campaign_window_ended: "This campaign's window has ended, so it can't be activated.",
   no_prizes: "This campaign has no prizes, so it can't be activated.",
   over_budget: 'The prizes and fulfillment allowance are over the campaign budget.',
+  campaign_invalid: "This campaign's setup doesn't pass its checks, so its status can't change.",
   unavailable: 'Drawing records are unavailable.',
   quarter_campaign_open: 'Another open campaign already uses this quarter.',
   campaign_locked: "This campaign is locked, so it can't be changed.",

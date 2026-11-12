@@ -55,6 +55,10 @@ export type DrawingsAdminCampaign = {
   statusLabel: 'Draft' | 'Active' | 'Closed';
   activatedOn: string | null;
   closedOn: string | null;
+  /** True when the raw activated_at timestamp is set. Not derived from activatedOn. */
+  activatedAtSet: boolean;
+  /** True when the raw closed_at timestamp is set. Not derived from closedOn. */
+  closedAtSet: boolean;
   prizes: { label: string; quantity: number; unitValue: string }[];
   budgetLabel: string;
   selection: {
@@ -373,6 +377,8 @@ export function summarizeDrawingsAdmin(source: DrawingsAdminSource): DrawingsAdm
     statusLabel: statusLabel(source.campaign.status),
     activatedOn: formatChicagoCalendarDate(source.campaign.activatedAt),
     closedOn: formatChicagoCalendarDate(source.campaign.closedAt),
+    activatedAtSet: source.campaign.activatedAt !== null,
+    closedAtSet: source.campaign.closedAt !== null,
     prizes: prizes.map((prize) => ({
       label: displayPrizeLabel({ label: prize.label }, source.campaign.mode),
       quantity: prize.quantity,

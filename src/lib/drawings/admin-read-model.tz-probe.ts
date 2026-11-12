@@ -77,6 +77,8 @@ async function main() {
     `${JSON.stringify({
       closedOn,
       viewClosedOn: view.closedOn,
+      activatedAtSet: view.activatedAtSet,
+      closedAtSet: view.closedAtSet,
       eventOn: view.events[0]?.on ?? null,
       costLabel: view.costLabel,
       note: view.note,

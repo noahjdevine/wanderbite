@@ -96,6 +96,8 @@ describe('summarizeDrawingsAdmin', () => {
     expect(view.budgetLabel).toBe('Committed $130.00 of $200.00');
     expect(view.closedOn).toBe('Dec 31, 2026');
     expect(view.activatedOn).toBe('Dec 15, 2026');
+    expect(view.activatedAtSet).toBe(true);
+    expect(view.closedAtSet).toBe(true);
     expect(view.selection).toMatchObject({
       seedPreview: 'abababab…',
       eligibleEntryCount: 4,
@@ -149,6 +151,31 @@ describe('summarizeDrawingsAdmin', () => {
     expect(view?.modeLabel).toBe('Live');
     expect(view?.prizes[0]?.label).toBe('Dinner');
     expect(JSON.stringify(view)).not.toMatch(/live promotion/i);
+  });
+
+  it('sets timestamp flags from the raw values, not the formatted Chicago dates', () => {
+    const closedFromDraft = sampleSource();
+    closedFromDraft.campaign.activatedAt = null;
+    const fromDraft = summarizeDrawingsAdmin(closedFromDraft);
+    expect(fromDraft?.activatedAtSet).toBe(false);
+    expect(fromDraft?.closedAtSet).toBe(true);
+    expect(fromDraft?.activatedOn).toBeNull();
+    expect(fromDraft?.closedOn).toBe('Dec 31, 2026');
+
+    const directClose = sampleSource();
+    directClose.campaign.closedAt = null;
+    const fromDirect = summarizeDrawingsAdmin(directClose);
+    expect(fromDirect?.activatedAtSet).toBe(true);
+    expect(fromDirect?.closedAtSet).toBe(false);
+    expect(fromDirect?.closedOn).toBeNull();
+
+    const unformatted = sampleSource();
+    unformatted.campaign.activatedAt = 'not-a-date';
+    const raw = summarizeDrawingsAdmin(unformatted);
+    expect(raw?.activatedOn).toBeNull();
+    expect(raw?.activatedAtSet).toBe(true);
+    expect(raw?.closedOn).toBe('Dec 31, 2026');
+    expect(raw?.closedAtSet).toBe(true);
   });
 
   it('formats Chicago calendar dates and dollars without using the process zone', () => {
@@ -463,6 +490,8 @@ describe('admin drawings summary under TZ=UTC and TZ=America/Chicago', () => {
       return JSON.parse(result.stdout) as {
         closedOn: string;
         viewClosedOn: string;
+        activatedAtSet: boolean;
+        closedAtSet: boolean;
         eventOn: string;
         costLabel: string;
         note: string;
@@ -476,6 +505,8 @@ describe('admin drawings summary under TZ=UTC and TZ=America/Chicago', () => {
     expect(chicago).toEqual(utc);
     expect(utc.closedOn).toBe('Dec 31, 2026');
     expect(utc.viewClosedOn).toBe('Dec 31, 2026');
+    expect(utc.activatedAtSet).toBe(true);
+    expect(utc.closedAtSet).toBe(true);
     expect(utc.eventOn).toBe('Dec 31, 2026');
     expect(utc.costLabel).toBe('Recorded cost $25.00 · Allowance $20.00');
     expect(utc.note).toBe(OVER_ALLOWANCE_NOTE);
