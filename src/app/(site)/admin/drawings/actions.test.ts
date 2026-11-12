@@ -8,14 +8,21 @@ import {
   type DrawingAdminActionError,
 } from '@/lib/drawings/admin-actions';
 import { CAMPAIGN_ERROR_CODES } from '@/lib/drawings/campaign';
+import {
+  CAMPAIGN_EDITOR_STORE_ERRORS,
+  campaignEditorMessage,
+  type CampaignEditorError,
+} from '@/lib/drawings/campaign-editor';
 import { FULFILLMENT_ERROR_CODES } from '@/lib/drawings/fulfillment';
 import { drawingFulfillmentActionMessage } from '@/lib/drawings/fulfillment-admin-actions';
 import {
   activateCampaignAction,
   closeCampaignAction,
+  createDrawingCampaignAction,
   createDrawingFulfillmentsAction,
   runSelectionAction,
   transitionDrawingFulfillmentAction,
+  updateDrawingCampaignAction,
 } from './actions';
 
 const ADMIN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -45,6 +52,8 @@ const stores = vi.hoisted(() => ({
   create: vi.fn(),
   transition: vi.fn(),
   budget: vi.fn(),
+  createCampaign: vi.fn(),
+  updateCampaign: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -100,6 +109,8 @@ vi.mock('@/lib/supabase-admin', () => ({
 vi.mock('@/lib/drawings/campaign-store', () => ({
   activateCampaign: (...args: unknown[]) => stores.activate(...args),
   closeCampaign: (...args: unknown[]) => stores.close(...args),
+  createCampaign: (...args: unknown[]) => stores.createCampaign(...args),
+  updateCampaign: (...args: unknown[]) => stores.updateCampaign(...args),
 }));
 
 vi.mock('@/lib/drawings/selection-store', () => ({
@@ -131,7 +142,8 @@ function setFlag(
   name:
     | 'E09_DRAWINGS_ADMIN_ENABLED'
     | 'E09_DRAWINGS_ADMIN_ACTIONS_ENABLED'
-    | 'E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED',
+    | 'E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED'
+    | 'E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED',
   value: string | undefined,
 ) {
   if (value === undefined) delete process.env[name];
@@ -174,6 +186,7 @@ describe('drawing admin actions', () => {
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
     delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
     delete process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED;
+    delete process.env.E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED;
   });
 
   it('returns disabled before auth or a store when either flag is not exactly true', async () => {
@@ -513,6 +526,7 @@ describe('drawing fulfillment actions', () => {
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
     delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
     delete process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED;
+    delete process.env.E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED;
   });
 
   it('returns disabled before auth, a budget read, or a store when any flag is not exactly true', async () => {
@@ -993,5 +1007,307 @@ describe('drawing fulfillment actions', () => {
     expect(JSON.stringify(thrown)).not.toContain('profile down');
     expect(stores.transition).not.toHaveBeenCalled();
     expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+});
+
+const EDITOR_ID = 'c2222222-2222-4222-8222-222222222222';
+
+function sampleForm(overrides?: {
+  quarterKey?: string;
+  totalBudgetDollars?: string;
+  fulfillmentAllowanceDollars?: string;
+  label?: string;
+  quantity?: string;
+  unitValueDollars?: string;
+  prizes?: { label: string; quantity: string; unitValueDollars: string }[];
+}) {
+  return {
+    quarterKey: overrides?.quarterKey ?? '2027-Q1',
+    totalBudgetDollars: overrides?.totalBudgetDollars ?? '100',
+    fulfillmentAllowanceDollars: overrides?.fulfillmentAllowanceDollars ?? '20',
+    prizes: overrides?.prizes ?? [
+      {
+        label: overrides?.label ?? 'Sample prize: Dinner for two',
+        quantity: overrides?.quantity ?? '2',
+        unitValueDollars: overrides?.unitValueDollars ?? '40',
+      },
+    ],
+  };
+}
+
+function enableEditorFlags() {
+  setFlag('E09_DRAWINGS_ADMIN_ENABLED', 'true');
+  setFlag('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
+  setFlag('E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED', 'true');
+}
+
+function editorStoresCalled(): number {
+  return stores.createCampaign.mock.calls.length + stores.updateCampaign.mock.calls.length;
+}
+
+describe('drawing campaign editor actions', () => {
+  beforeEach(() => {
+    harness.tables = [];
+    harness.sessionClients = 0;
+    harness.user = { ok: true, userId: ADMIN_ID, email: 'admin@example.com' };
+    harness.role = 'admin';
+    harness.roleError = false;
+    harness.aal = { currentLevel: 'aal2', nextLevel: 'aal2' };
+    harness.aalError = null;
+    requireUser.mockClear();
+    stores.createCampaign.mockReset();
+    stores.updateCampaign.mockReset();
+    stores.revalidatePath.mockReset();
+    delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
+    delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
+    delete process.env.E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED;
+  });
+
+  it('returns disabled before auth or a store when any of the three flags is not exactly true', async () => {
+    const values = [undefined, '', 'TRUE', '1', ' true', 'false', 'true'] as const;
+    const calls = [
+      () => createDrawingCampaignAction(sampleForm()),
+      () => updateDrawingCampaignAction(EDITOR_ID, sampleForm()),
+    ];
+    for (const action of calls) {
+      for (const adminValue of values) {
+        for (const actionValue of values) {
+          for (const editorValue of values) {
+            if (adminValue === 'true' && actionValue === 'true' && editorValue === 'true') continue;
+            setFlag('E09_DRAWINGS_ADMIN_ENABLED', adminValue);
+            setFlag('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', actionValue);
+            setFlag('E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED', editorValue);
+            requireUser.mockClear();
+            const result = await action();
+            expect(result).toEqual({
+              ok: false,
+              error: 'disabled',
+              message: campaignEditorMessage('disabled'),
+            });
+          }
+        }
+      }
+    }
+    expect(requireUser).not.toHaveBeenCalled();
+    expect(editorStoresCalled()).toBe(0);
+    expect(harness.tables).toEqual([]);
+    expect(harness.sessionClients).toBe(0);
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('rejects a signed-out user, a non-admin, and an admin without MFA before any store call', async () => {
+    enableEditorFlags();
+    const calls = [
+      () => createDrawingCampaignAction(sampleForm()),
+      () => updateDrawingCampaignAction(EDITOR_ID, sampleForm()),
+    ];
+    for (const action of calls) {
+      harness.user = { ok: false, error: 'You must be signed in.' };
+      harness.tables = [];
+      harness.sessionClients = 0;
+      const signedOut = await action();
+      expect(signedOut).toMatchObject({ ok: false, error: 'forbidden' });
+      expect(harness.tables).toEqual([]);
+      expect(harness.sessionClients).toBe(0);
+
+      harness.user = { ok: true, userId: ADMIN_ID, email: 'member@example.com' };
+      harness.role = 'member';
+      harness.tables = [];
+      const member = await action();
+      expect(member).toMatchObject({ ok: false, error: 'forbidden' });
+      expect(harness.tables).toEqual(['user_profiles']);
+      expect(harness.sessionClients).toBe(0);
+
+      harness.role = 'admin';
+      harness.aal = { currentLevel: 'aal1', nextLevel: 'aal1' };
+      const enroll = await action();
+      expect(enroll).toEqual({
+        ok: false,
+        error: 'mfa_enroll',
+        message: campaignEditorMessage('mfa_enroll'),
+      });
+
+      harness.aal = { currentLevel: 'aal1', nextLevel: 'aal2' };
+      const challenge = await action();
+      expect(challenge).toEqual({
+        ok: false,
+        error: 'mfa_challenge',
+        message: campaignEditorMessage('mfa_challenge'),
+      });
+      harness.aal = { currentLevel: 'aal2', nextLevel: 'aal2' };
+      harness.user = { ok: true, userId: ADMIN_ID, email: 'admin@example.com' };
+    }
+    expect(editorStoresCalled()).toBe(0);
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('creates one sample draft and prefixes a label that is missing the sample marker', async () => {
+    enableEditorFlags();
+    stores.createCampaign.mockResolvedValue({ ok: true, campaign: { id: EDITOR_ID } });
+    const created = await createDrawingCampaignAction(
+      sampleForm({ label: 'Dinner for two', totalBudgetDollars: '100.00', unitValueDollars: '40.00' }),
+    );
+    expect(created).toEqual({ ok: true });
+    expect(stores.createCampaign).toHaveBeenCalledTimes(1);
+    expect(stores.createCampaign).toHaveBeenCalledWith({
+      quarterKey: '2027-Q1',
+      mode: 'sample',
+      rulesVersion: 'v0',
+      totalBudgetCents: 10_000,
+      fulfillmentAllowanceCents: 2_000,
+      prizes: [
+        {
+          label: 'Sample prize: Dinner for two',
+          quantity: 2,
+          unitValueCents: 4_000,
+          isSample: true,
+        },
+      ],
+      eligibleEntrySources: ['level_milestone'],
+    });
+    expect(stores.updateCampaign).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).toHaveBeenCalledWith('/admin/drawings');
+  });
+
+  it('updates a draft by id and does not create another row', async () => {
+    enableEditorFlags();
+    stores.updateCampaign.mockResolvedValue({ ok: true, campaign: { id: EDITOR_ID } });
+    const updated = await updateDrawingCampaignAction(`  ${EDITOR_ID.toUpperCase()}  `, sampleForm({ label: 'Sample prize: Lunch' }));
+    expect(updated).toEqual({ ok: true });
+    expect(stores.updateCampaign).toHaveBeenCalledTimes(1);
+    expect(stores.updateCampaign.mock.calls[0]?.[0]).toBe(EDITOR_ID);
+    expect(stores.updateCampaign.mock.calls[0]?.[1]).toMatchObject({
+      quarterKey: '2027-Q1',
+      mode: 'sample',
+      prizes: [expect.objectContaining({ label: 'Sample prize: Lunch', quantity: 2 })],
+    });
+    expect(stores.createCampaign).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns field errors and does not call the store for an empty prize list, a bad quantity, or a bad amount', async () => {
+    enableEditorFlags();
+    const cases = [
+      sampleForm({ prizes: [] }),
+      sampleForm({ quantity: '0' }),
+      sampleForm({ quantity: '1001' }),
+      sampleForm({ unitValueDollars: '-1' }),
+      sampleForm({ unitValueDollars: '12.345' }),
+      sampleForm({ unitValueDollars: 'abc' }),
+      sampleForm({ totalBudgetDollars: '' }),
+      sampleForm({ fulfillmentAllowanceDollars: '100001' }),
+    ];
+    for (const input of cases) {
+      const created = await createDrawingCampaignAction(input);
+      expect(created.ok, JSON.stringify(input)).toBe(false);
+      if (created.ok) continue;
+      expect(created.error).toBe('invalid_form');
+      expect(created.fieldErrors?.length).toBeGreaterThan(0);
+      expect(created.message).not.toMatch(/invalid_amount|zero_quantity|empty_prizes/);
+      expect(created.message.length).toBeGreaterThan(0);
+    }
+    const missingId = await updateDrawingCampaignAction('not-a-uuid', sampleForm());
+    expect(missingId).toEqual({
+      ok: false,
+      error: 'not_found',
+      message: campaignEditorMessage('not_found'),
+    });
+    expect(editorStoresCalled()).toBe(0);
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('maps over_budget, quarter_campaign_open, and campaign_locked to plain messages', async () => {
+    enableEditorFlags();
+    stores.createCampaign.mockResolvedValue({ ok: false, errors: ['over_budget'] });
+    const over = await createDrawingCampaignAction(sampleForm({ fulfillmentAllowanceDollars: '30' }));
+    expect(over).toEqual({
+      ok: false,
+      error: 'over_budget',
+      message: 'The prizes and fulfillment allowance are over the campaign budget.',
+    });
+    expect(over.ok ? '' : over.message).not.toContain('over_budget');
+
+    stores.createCampaign.mockResolvedValue({ ok: false, error: 'quarter_campaign_open' });
+    const open = await createDrawingCampaignAction(sampleForm());
+    expect(open).toEqual({
+      ok: false,
+      error: 'quarter_campaign_open',
+      message: 'A campaign for that quarter is already open.',
+    });
+
+    stores.updateCampaign.mockResolvedValue({ ok: false, error: 'campaign_locked' });
+    const locked = await updateDrawingCampaignAction(EDITOR_ID, sampleForm());
+    expect(locked).toEqual({
+      ok: false,
+      error: 'campaign_locked',
+      message: "This campaign is no longer a draft, so it can't be edited.",
+    });
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('maps every campaign setup code and store error to a plain message', async () => {
+    enableEditorFlags();
+    const codes = [...CAMPAIGN_ERROR_CODES, ...CAMPAIGN_EDITOR_STORE_ERRORS] as const;
+    const seen = new Set<string>();
+    for (const code of codes) {
+      if (seen.has(code)) continue;
+      seen.add(code);
+      stores.revalidatePath.mockClear();
+      const message = campaignEditorMessage(code);
+      expect(message, code).not.toBe(code);
+      expect(message.length, code).toBeGreaterThan(0);
+      if (code !== 'unavailable') expect(message, code).not.toContain(code);
+      stores.createCampaign.mockResolvedValue(
+        code === 'over_budget' || (CAMPAIGN_ERROR_CODES as readonly string[]).includes(code)
+          ? { ok: false, errors: [code] }
+          : { ok: false, error: code },
+      );
+      const result = await createDrawingCampaignAction(sampleForm());
+      expect(result, code).toEqual({ ok: false, error: code, message });
+      expect(stores.revalidatePath).not.toHaveBeenCalled();
+    }
+    stores.createCampaign.mockResolvedValue({ ok: false, error: 'mystery' });
+    const unknown = await createDrawingCampaignAction(sampleForm());
+    expect(unknown).toEqual({
+      ok: false,
+      error: 'unavailable',
+      message: campaignEditorMessage('unavailable'),
+    });
+    expect(JSON.stringify(unknown)).not.toContain('mystery');
+    stores.createCampaign.mockRejectedValue(new Error('postgres down'));
+    const thrown = await createDrawingCampaignAction(sampleForm());
+    expect(thrown).toEqual({
+      ok: false,
+      error: 'unavailable',
+      message: 'Drawing records are unavailable.',
+    });
+    expect(JSON.stringify(thrown)).not.toContain('postgres');
+  });
+
+  it('checks the editor flag before assertAdmin and parses before the store', () => {
+    const source = readFileSync(path.join(ROOT, 'src/app/(site)/admin/drawings/actions.ts'), 'utf8');
+    const gate = source.slice(source.indexOf('async function editorAuth'), source.indexOf('function fieldFailure'));
+    expect(gate.indexOf('drawingsCampaignEditorEnabled()')).toBeGreaterThan(-1);
+    expect(gate.indexOf('drawingsCampaignEditorEnabled()')).toBeLessThan(gate.indexOf('assertAdmin()'));
+    expect(gate).not.toMatch(/createCampaign\(|updateCampaign\(/);
+    const createBody = source.slice(
+      source.indexOf('export async function createDrawingCampaignAction'),
+      source.indexOf('export async function updateDrawingCampaignAction'),
+    );
+    expect(createBody.indexOf('editorAuth()')).toBeLessThan(createBody.indexOf('parseCampaignEditorForm('));
+    expect(createBody.indexOf('parseCampaignEditorForm(')).toBeLessThan(createBody.indexOf('createCampaign('));
+    const updateBody = source.slice(source.indexOf('export async function updateDrawingCampaignAction'));
+    expect(updateBody.indexOf('editorAuth()')).toBeLessThan(updateBody.indexOf('parseCampaignEditorForm('));
+    expect(updateBody.indexOf('parseCampaignEditorForm(')).toBeLessThan(updateBody.indexOf('updateCampaign('));
+    expect(createBody).not.toMatch(/activateCampaign\(|closeCampaign\(|runSimulatedSelection\(|createFulfillments\(/);
+    const codes = [
+      'disabled',
+      'forbidden',
+      'quarter_campaign_open',
+      'campaign_locked',
+      'over_budget',
+      'unavailable',
+    ] as const satisfies readonly CampaignEditorError[];
+    for (const code of codes) expect(campaignEditorMessage(code).length).toBeGreaterThan(0);
   });
 });

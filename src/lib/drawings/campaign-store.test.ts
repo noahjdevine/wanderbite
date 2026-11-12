@@ -409,7 +409,9 @@ describe('campaign store source', () => {
     const caller = readFileSync(path.join(ROOT, appCaller), 'utf8');
     expect(caller).toMatch(/activateCampaign\(/);
     expect(caller).toMatch(/closeCampaign\(/);
-    expect(caller).not.toMatch(/createCampaign|updateCampaign|save_drawing_campaign/);
+    expect(caller).toMatch(/createCampaign\(/);
+    expect(caller).toMatch(/updateCampaign\(/);
+    expect(caller).not.toMatch(/save_drawing_campaign/);
   });
 });
 

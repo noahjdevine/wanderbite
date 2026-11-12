@@ -163,6 +163,7 @@ describe('admin drawings guard', () => {
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
     delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
     delete process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED;
+    delete process.env.E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED;
   });
 
   it('404s before any Supabase call unless the flag is exactly true', async () => {
@@ -178,6 +179,7 @@ describe('admin drawings guard', () => {
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
     process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED = 'true';
     process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED = 'true';
+    process.env.E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED = 'true';
     harness.calls = [];
     await expect(AdminDrawingsPage()).rejects.toThrow('NOT_FOUND');
     expect(harness.calls).toEqual([]);
@@ -266,6 +268,18 @@ describe('admin drawings guard', () => {
     expect(screen.queryByRole('button', { name: 'Mark ready' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Mark fulfilled' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Forfeit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'New sample campaign' })).toBeNull();
+    expect(document.body.textContent ?? '').not.toMatch(/@/);
+
+    cleanup();
+    harness.calls = [];
+    process.env.E09_DRAWINGS_CAMPAIGN_EDITOR_ENABLED = 'true';
+    const withEditor = await AdminDrawingsPage();
+    render(withEditor as ReactElement);
+    expect(screen.getByText(DRAWINGS_NOT_SET_UP)).toBeTruthy();
+    expect(screen.getByText(/Create or edit a draft sample campaign/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'New sample campaign' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
     expect(document.body.textContent ?? '').not.toMatch(/@/);
   });
 
