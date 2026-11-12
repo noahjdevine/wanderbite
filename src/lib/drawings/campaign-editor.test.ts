@@ -193,9 +193,14 @@ describe('quarterOptions and campaignWindowLabel', () => {
 
   it('returns the same quarters under TZ=UTC and TZ=America/Chicago', () => {
     const tsx = path.join(ROOT, 'node_modules', '.bin', 'tsx');
-    const probe = 'src/lib/drawings/campaign-editor.tz-probe.ts';
+    const script = [
+      "import { quarterOptions } from './src/lib/drawings/campaign-editor.ts';",
+      "const samples = ['2026-12-31T23:30:00-06:00','2027-01-01T05:30:00.000Z','2026-11-12T18:00:00.000Z','2027-01-01T06:00:00.000Z'];",
+      'const quarters = Object.fromEntries(samples.map((iso) => [iso, quarterOptions(iso)]));',
+      "process.stdout.write(JSON.stringify({ quarters }) + '\\n');",
+    ].join('\n');
     const run = (tz: string) => {
-      const result = spawnSync(tsx, [probe], {
+      const result = spawnSync(tsx, ['-e', script], {
         cwd: ROOT,
         encoding: 'utf8',
         env: { ...process.env, TZ: tz },

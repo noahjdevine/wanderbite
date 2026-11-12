@@ -18,7 +18,7 @@ import {
   type CampaignEditorError,
   type CampaignEditorFieldError,
 } from '@/lib/drawings/campaign-editor';
-import { activateCampaign, closeCampaign, createCampaign, updateCampaign } from '@/lib/drawings/campaign-store';
+import { activateCampaign, closeCampaign, createCampaign, getCampaign, updateCampaign } from '@/lib/drawings/campaign-store';
 import {
   drawingsAdminActionsEnabled,
   drawingsCampaignEditorEnabled,
@@ -354,8 +354,10 @@ export async function createDrawingCampaignAction(formInput: unknown): Promise<D
 }
 
 /**
- * Replaces one draft. An active or closed id returns campaign_locked from
- * the store and does not write. The id is the stored campaign id.
+ * Replaces one sample draft. The stored row is read after the form parses.
+ * A missing id is not_found. A failed read is unavailable. A mode other
+ * than sample is invalid_mode and does not call updateCampaign. An active
+ * or closed sample campaign still returns campaign_locked from the store.
  */
 export async function updateDrawingCampaignAction(
   id: string,
@@ -368,6 +370,9 @@ export async function updateDrawingCampaignAction(
   const parsed = parseCampaignEditorForm(formInput);
   if (!parsed.ok) return fieldFailure(parsed.fieldErrors);
   try {
+    const current = await getCampaign(campaignId);
+    if (!current.ok) return failEditor(current.error === 'not_found' ? 'not_found' : 'unavailable');
+    if (current.campaign.mode !== 'sample') return failEditor('invalid_mode');
     const result = await updateCampaign(campaignId, parsed.draft);
     if (!result.ok) return editorStoreFailure(result);
     revalidatePath('/admin/drawings');

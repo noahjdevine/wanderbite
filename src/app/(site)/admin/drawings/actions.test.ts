@@ -54,6 +54,7 @@ const stores = vi.hoisted(() => ({
   budget: vi.fn(),
   createCampaign: vi.fn(),
   updateCampaign: vi.fn(),
+  getCampaign: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -111,6 +112,7 @@ vi.mock('@/lib/drawings/campaign-store', () => ({
   closeCampaign: (...args: unknown[]) => stores.close(...args),
   createCampaign: (...args: unknown[]) => stores.createCampaign(...args),
   updateCampaign: (...args: unknown[]) => stores.updateCampaign(...args),
+  getCampaign: (...args: unknown[]) => stores.getCampaign(...args),
 }));
 
 vi.mock('@/lib/drawings/selection-store', () => ({
@@ -1042,7 +1044,15 @@ function enableEditorFlags() {
 }
 
 function editorStoresCalled(): number {
-  return stores.createCampaign.mock.calls.length + stores.updateCampaign.mock.calls.length;
+  return (
+    stores.createCampaign.mock.calls.length +
+    stores.updateCampaign.mock.calls.length +
+    stores.getCampaign.mock.calls.length
+  );
+}
+
+function storedSample() {
+  return { ok: true as const, campaign: { id: EDITOR_ID, mode: 'sample' as const, status: 'draft' as const } };
 }
 
 describe('drawing campaign editor actions', () => {
@@ -1057,6 +1067,8 @@ describe('drawing campaign editor actions', () => {
     requireUser.mockClear();
     stores.createCampaign.mockReset();
     stores.updateCampaign.mockReset();
+    stores.getCampaign.mockReset();
+    stores.getCampaign.mockResolvedValue(storedSample());
     stores.revalidatePath.mockReset();
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
     delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
@@ -1182,7 +1194,50 @@ describe('drawing campaign editor actions', () => {
       prizes: [expect.objectContaining({ label: 'Sample prize: Lunch', quantity: 2 })],
     });
     expect(stores.createCampaign).not.toHaveBeenCalled();
+    expect(stores.getCampaign).toHaveBeenCalledWith(EDITOR_ID);
     expect(stores.revalidatePath).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a non-sample campaign before updateCampaign, and maps a missing or failed read', async () => {
+    enableEditorFlags();
+    stores.getCampaign.mockResolvedValue({
+      ok: true,
+      campaign: { id: EDITOR_ID, mode: 'live', status: 'draft' },
+    });
+    const live = await updateDrawingCampaignAction(EDITOR_ID, sampleForm());
+    expect(live).toEqual({
+      ok: false,
+      error: 'invalid_mode',
+      message: 'This page saves sample campaigns only.',
+    });
+    expect(stores.getCampaign).toHaveBeenCalledWith(EDITOR_ID);
+    expect(stores.updateCampaign).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+
+    stores.getCampaign.mockResolvedValue({ ok: false, error: 'not_found' });
+    const missing = await updateDrawingCampaignAction(EDITOR_ID, sampleForm());
+    expect(missing).toEqual({
+      ok: false,
+      error: 'not_found',
+      message: campaignEditorMessage('not_found'),
+    });
+    expect(stores.updateCampaign).not.toHaveBeenCalled();
+
+    stores.getCampaign.mockResolvedValue({ ok: false, error: 'unavailable' });
+    const failed = await updateDrawingCampaignAction(EDITOR_ID, sampleForm());
+    expect(failed).toEqual({
+      ok: false,
+      error: 'unavailable',
+      message: campaignEditorMessage('unavailable'),
+    });
+    expect(stores.updateCampaign).not.toHaveBeenCalled();
+
+    stores.getCampaign.mockResolvedValue(storedSample());
+    stores.updateCampaign.mockResolvedValue({ ok: true, campaign: { id: EDITOR_ID } });
+    const saved = await updateDrawingCampaignAction(EDITOR_ID, sampleForm());
+    expect(saved).toEqual({ ok: true });
+    expect(stores.updateCampaign).toHaveBeenCalledTimes(1);
+    expect(stores.updateCampaign.mock.calls[0]?.[0]).toBe(EDITOR_ID);
   });
 
   it('returns field errors and does not call the store for an empty prize list, a bad quantity, or a bad amount', async () => {
@@ -1298,7 +1353,9 @@ describe('drawing campaign editor actions', () => {
     expect(createBody.indexOf('parseCampaignEditorForm(')).toBeLessThan(createBody.indexOf('createCampaign('));
     const updateBody = source.slice(source.indexOf('export async function updateDrawingCampaignAction'));
     expect(updateBody.indexOf('editorAuth()')).toBeLessThan(updateBody.indexOf('parseCampaignEditorForm('));
-    expect(updateBody.indexOf('parseCampaignEditorForm(')).toBeLessThan(updateBody.indexOf('updateCampaign('));
+    expect(updateBody.indexOf('parseCampaignEditorForm(')).toBeLessThan(updateBody.indexOf('getCampaign('));
+    expect(updateBody.indexOf('getCampaign(')).toBeLessThan(updateBody.indexOf("mode !== 'sample'"));
+    expect(updateBody.indexOf("mode !== 'sample'")).toBeLessThan(updateBody.indexOf('updateCampaign('));
     expect(createBody).not.toMatch(/activateCampaign\(|closeCampaign\(|runSimulatedSelection\(|createFulfillments\(/);
     const codes = [
       'disabled',
