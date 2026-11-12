@@ -8,6 +8,7 @@ import {
   SAMPLE_DRAWING_UNAVAILABLE,
   SampleDrawingCard,
   formatSampleValue,
+  sampleForfeitedLine,
   samplePickedLine,
   samplePrizeLine,
 } from '@/components/journey/sample-drawing-card';
@@ -28,7 +29,7 @@ const summary: MemberProgressionSummary = {
   ignored: { events: 0, milestones: 0, entries: 0 },
 };
 
-function campaign(result: 'not_drawn' | 'picked' | 'not_picked'): MemberSampleDrawing {
+function campaign(result: 'not_drawn' | 'picked' | 'not_picked' | 'forfeited'): MemberSampleDrawing {
   return {
     kind: 'campaign',
     quarterKey: '2027-Q1',
@@ -38,7 +39,9 @@ function campaign(result: 'not_drawn' | 'picked' | 'not_picked'): MemberSampleDr
     prizes: [{ label: 'Sample prize: Dinner for two', quantity: 2, sampleValueCents: 4000 }],
     entryCount: 3,
     result,
-    ...(result === 'picked' ? { pickedPrizeLabel: 'Sample prize: Dinner for two' } : {}),
+    ...(result === 'picked' || result === 'forfeited'
+      ? { pickedPrizeLabel: 'Sample prize: Dinner for two' }
+      : {}),
   };
 }
 
@@ -54,6 +57,9 @@ describe('SampleDrawingCard', () => {
     expect(formatSampleValue(4050)).toBe('$40.50');
     expect(samplePickedLine('Sample prize: Dinner for two')).toBe(
       'In this simulated drawing you were picked for Sample prize: Dinner for two',
+    );
+    expect(sampleForfeitedLine('Sample prize: Dinner for two')).toBe(
+      'In this simulated drawing you were picked for Sample prize: Dinner for two, but this sample prize was forfeited.',
     );
   });
 
@@ -79,6 +85,17 @@ describe('SampleDrawingCard', () => {
     expect(screen.getByText(SAMPLE_DRAWING_NOT_PICKED)).toBeTruthy();
     expect(document.body.textContent).not.toContain('prize_id');
     expect(document.body.textContent).not.toContain('user_id');
+    cleanup();
+
+    const forfeited = render(<SampleDrawingCard drawing={campaign('forfeited')} />);
+    expect(
+      screen.getByText(
+        'In this simulated drawing you were picked for Sample prize: Dinner for two, but this sample prize was forfeited.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('In this simulated drawing you were picked for Sample prize: Dinner for two')).toBeNull();
+    expect(forfeited.container.innerHTML).not.toMatch(/actual_cost|notes|actor|pending|ready|fulfilled/i);
+    expect(forfeited.container.textContent).not.toContain('424242');
   });
 
   it('renders nothing for none and a quiet line when the read is unavailable', () => {

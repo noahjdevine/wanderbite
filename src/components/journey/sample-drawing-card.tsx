@@ -41,6 +41,10 @@ export function samplePickedLine(label: string): string {
   return `In this simulated drawing you were picked for ${label}`;
 }
 
+export function sampleForfeitedLine(label: string): string {
+  return `In this simulated drawing you were picked for ${label}, but this sample prize was forfeited.`;
+}
+
 export function sampleDateLine(startsOn: string, endsOn: string): string {
   return `${startsOn} \u2013 ${endsOn}`;
 }
@@ -63,12 +67,15 @@ export function SampleDrawingCard({ drawing }: SampleDrawingCardProps) {
     );
   }
 
+  const prizeLabel = drawing.pickedPrizeLabel ?? 'Sample prize';
   const result =
-    drawing.result === 'picked'
-      ? samplePickedLine(drawing.pickedPrizeLabel ?? 'Sample prize')
-      : drawing.result === 'not_picked'
-        ? SAMPLE_DRAWING_NOT_PICKED
-        : SAMPLE_DRAWING_NOT_DRAWN;
+    drawing.result === 'forfeited'
+      ? sampleForfeitedLine(prizeLabel)
+      : drawing.result === 'picked'
+        ? samplePickedLine(prizeLabel)
+        : drawing.result === 'not_picked'
+          ? SAMPLE_DRAWING_NOT_PICKED
+          : SAMPLE_DRAWING_NOT_DRAWN;
 
   return (
     <section aria-labelledby="sample-drawing-heading" className="flex min-w-0 flex-col gap-2">

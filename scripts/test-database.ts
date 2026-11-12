@@ -193,6 +193,8 @@ async function main() {
   process.stdout.write('PASS: E09-B5 one selection row when two draws race.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b6-drawing-fulfillment.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E09-B6 sample fulfillment, status edges, and the append-only log.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b12-drawing-fk-indexes.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E09-B12 drawing foreign-key covering indexes.\n');
   await runE09B6FulfillmentConcurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: E09-B6 one fulfillment change when two transitions race.\n');
   await runE09A4BackfillConcurrency({ docker, host, containerId: id, sql });
