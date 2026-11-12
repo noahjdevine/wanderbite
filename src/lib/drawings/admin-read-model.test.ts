@@ -83,6 +83,8 @@ describe('summarizeDrawingsAdmin', () => {
     const view = summarizeDrawingsAdmin(sampleSource());
     expect(view).not.toBeNull();
     if (!view) return;
+    expect(view.mode).toBe('sample');
+    expect(view.status).toBe('closed');
     expect(view.modeLabel).toBe('Sample');
     expect(view.statusLabel).toBe('Closed');
     expect(view.quarterKey).toBe('2027-Q1');

@@ -450,7 +450,7 @@ describe('selection store boundaries under TZ=UTC and TZ=America/Chicago', () =>
 });
 
 describe('selection module boundaries', () => {
-  it('is server-only, uses the service-role client, and is not called from the app', () => {
+  it('is server-only, and runSimulatedSelection is called only from the admin actions', () => {
     const source = readFileSync(path.join(ROOT, 'src/lib/drawings/selection-store.ts'), 'utf8');
     expect(source.startsWith("import 'server-only';")).toBe(true);
     expect(source).toContain('getSupabaseAdmin');
@@ -461,6 +461,7 @@ describe('selection module boundaries', () => {
       path.join(ROOT, 'src/lib/drawings/selection-store.tz-probe.ts'),
     ]);
     const readers = new Set([path.join(ROOT, 'src/lib/drawings/admin-read-model.ts')]);
+    const actionFile = path.join(ROOT, 'src/app/(site)/admin/drawings/actions.ts');
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -474,6 +475,11 @@ describe('selection module boundaries', () => {
         if (readers.has(full)) {
           expect(text).not.toMatch(/runSimulatedSelection\(/);
           expect(text).toMatch(/getSelection\(/);
+          continue;
+        }
+        if (full === actionFile) {
+          expect(text).toMatch(/runSimulatedSelection\(/);
+          expect(text).not.toMatch(/verifySelection\(/);
           continue;
         }
         if (

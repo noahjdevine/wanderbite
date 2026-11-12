@@ -23,8 +23,9 @@ import {
  * select_drawing_winners. verifySelection replays the stored seed and
  * the stored entry pool, then reports whether the entries eligible now
  * still match that pool. The admin drawings page calls getSelection.
- * It does not run a draw. The tables are not in database.types.ts.
- * No member is notified.
+ * Admin drawing actions call runSimulatedSelection when their flag is on.
+ * verifySelection has no app caller. The tables are not in
+ * database.types.ts. No member is notified.
  */
 
 /** PostgREST returns at most this many rows unless the read is paged. */
