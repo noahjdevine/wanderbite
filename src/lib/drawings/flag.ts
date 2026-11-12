@@ -20,3 +20,18 @@ export function drawingsAdminActionsEnabled(
 ): boolean {
   return actionsValue === 'true' && drawingsAdminEnabled(adminValue);
 }
+
+/** Exact string only, and only together with the read flag and the campaign-action flag. Ships unset. */
+export const DRAWINGS_FULFILLMENT_ACTIONS_FLAG = 'E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED';
+
+/**
+ * Admin create and move of sample fulfillment records.
+ * True only when this flag is exactly "true" and both drawing flags are also on.
+ */
+export function drawingsFulfillmentActionsEnabled(
+  fulfillmentValue: string | undefined = process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED,
+  actionsValue: string | undefined = process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED,
+  adminValue: string | undefined = process.env.E09_DRAWINGS_ADMIN_ENABLED,
+): boolean {
+  return fulfillmentValue === 'true' && drawingsAdminActionsEnabled(actionsValue, adminValue);
+}

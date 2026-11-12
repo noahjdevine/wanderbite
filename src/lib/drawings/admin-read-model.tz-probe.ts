@@ -38,6 +38,7 @@ async function main() {
       ],
     },
     selection: {
+      id: '51111111-1111-4111-8111-111111111111',
       seed: SEED,
       eligibleEntryCount: 3,
       unfilledUnitCount: 0,
@@ -84,6 +85,10 @@ async function main() {
       note: view.note,
       expectedNote: OVER_ALLOWANCE_NOTE,
       member: view.winners[0]?.memberLabel ?? null,
+      memberDeleted: view.winners[0]?.memberDeleted ?? null,
+      fulfillmentStatus: view.winners[0]?.fulfillmentStatus ?? null,
+      recordedCostCents: view.recordedCostCents,
+      allowanceCents: view.allowanceCents,
       seedPreview: view.selection?.seedPreview ?? null,
     })}\n`,
   );

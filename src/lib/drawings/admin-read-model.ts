@@ -2,7 +2,12 @@ import 'server-only';
 
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { displayPrizeLabel, type CampaignMode } from '@/lib/drawings/campaign';
-import { compareCreatedAt, summarizeFulfillment } from '@/lib/drawings/fulfillment';
+import {
+  compareCreatedAt,
+  isFulfillmentStatus,
+  summarizeFulfillment,
+  type FulfillmentStatus,
+} from '@/lib/drawings/fulfillment';
 import { listFulfillments } from '@/lib/drawings/fulfillment-store';
 import { getSelection } from '@/lib/drawings/selection-store';
 
@@ -61,6 +66,8 @@ export type DrawingsAdminCampaign = {
   closedAtSet: boolean;
   prizes: { label: string; quantity: number; unitValue: string }[];
   budgetLabel: string;
+  /** Simulated selection id, when one is stored. Not a member id. */
+  selectionId: string | null;
   selection: {
     seedPreview: string;
     eligibleEntryCount: number;
@@ -73,7 +80,17 @@ export type DrawingsAdminCampaign = {
     prizeLabel: string;
     memberLabel: string;
     fulfillmentLabel: string;
+    /** Fulfillment row id. Null when that winner has no fulfillment row. Not a member id. */
+    fulfillmentId: string | null;
+    /** Stored status. Null when that winner has no fulfillment row. */
+    fulfillmentStatus: string | null;
+    /** True when user_profiles has no row for this winner. */
+    memberDeleted: boolean;
   }[];
+  /** Same total as costLabel's recorded cost: summarizeFulfillment's sum, in cents. */
+  recordedCostCents: number;
+  /** Campaign fulfillment_allowance_cents. Not total_budget_cents. */
+  allowanceCents: number;
   countsLabel: string;
   costLabel: string;
   note: string | null;
@@ -101,6 +118,7 @@ export type DrawingsAdminSource = {
     prizes: DrawingsAdminPrizeSource[];
   };
   selection: {
+    id: string;
     seed: string;
     eligibleEntryCount: number;
     unfilledUnitCount: number;
@@ -278,8 +296,12 @@ function statusLabel(status: DrawingsAdminSource['campaign']['status']): 'Draft'
   return 'Closed';
 }
 
+function memberDeleted(userId: string, profileIds: ReadonlySet<string>): boolean {
+  return !profileIds.has(userId);
+}
+
 function memberLabel(userId: string, profileIds: ReadonlySet<string>): string {
-  if (!profileIds.has(userId)) return DELETED_MEMBER_LABEL;
+  if (memberDeleted(userId, profileIds)) return DELETED_MEMBER_LABEL;
   return userId.slice(0, MEMBER_PREFIX);
 }
 
@@ -346,11 +368,15 @@ export function summarizeDrawingsAdmin(source: DrawingsAdminSource): DrawingsAdm
         })
         .map((winner) => {
           const prize = prizeById.get(winner.prizeId);
+          const fulfillment = fulfillmentByWinner.get(winner.id);
           return {
             rank: winner.rank,
             prizeLabel: prize ? displayPrizeLabel({ label: prize.label }, source.campaign.mode) : 'Unknown prize',
             memberLabel: memberLabel(winner.userId, source.profileIds),
-            fulfillmentLabel: fulfillmentLabel(fulfillmentByWinner.get(winner.id)),
+            fulfillmentLabel: fulfillmentLabel(fulfillment),
+            fulfillmentId: fulfillment?.id ?? null,
+            fulfillmentStatus: fulfillment ? fulfillment.status : null,
+            memberDeleted: memberDeleted(winner.userId, source.profileIds),
           };
         })
     : [];
@@ -385,6 +411,7 @@ export function summarizeDrawingsAdmin(source: DrawingsAdminSource): DrawingsAdm
       unitValue: formatDrawingDollars(prize.unitValueCents),
     })),
     budgetLabel: `Committed ${formatDrawingDollars(committed)} of ${formatDrawingDollars(source.campaign.totalBudgetCents)}`,
+    selectionId: source.selection && source.selection.id.length > 0 ? source.selection.id : null,
     selection: source.selection
       ? {
           seedPreview: seedPreview(source.selection.seed),
@@ -395,6 +422,8 @@ export function summarizeDrawingsAdmin(source: DrawingsAdminSource): DrawingsAdm
         }
       : null,
     winners,
+    recordedCostCents: summary.totalActualCostCents,
+    allowanceCents: allowance,
     countsLabel: `Pending ${summary.counts.pending} · Ready ${summary.counts.ready} · Fulfilled ${summary.counts.fulfilled} · Forfeited ${summary.counts.forfeited}`,
     costLabel: `Recorded cost ${formatDrawingDollars(summary.totalActualCostCents)} · Allowance ${formatDrawingDollars(allowance)}`,
     note: summary.totalActualCostCents > allowance ? OVER_ALLOWANCE_NOTE : null,
@@ -408,6 +437,7 @@ async function loadSelectionDefault(campaignId: string): Promise<SelectionLoad> 
   return {
     ok: true,
     selection: {
+      id: result.selection.id,
       seed: result.selection.seed,
       eligibleEntryCount: result.selection.eligibleEntryCount,
       unfilledUnitCount: result.selection.unfilledUnitCount,
@@ -677,5 +707,118 @@ export async function loadDrawingsAdminView(
     return await loadDrawingsAdminViewInner(options);
   } catch {
     return { ok: false, reason: 'unavailable' };
+  }
+}
+
+export type FulfillmentBudgetResult =
+  | {
+      ok: true;
+      status: FulfillmentStatus;
+      recordedCostCents: number;
+      allowanceCents: number;
+    }
+  | { ok: false; error: 'not_found' | 'unavailable' };
+
+const FULFILLMENT_BUDGET_COLUMNS = 'id, campaign_id, status';
+
+const ALLOWANCE_COLUMNS = 'id, fulfillment_allowance_cents';
+
+async function readFirst(
+  client: DrawingsAdminClient,
+  table: DrawingsAdminTable,
+  columns: string,
+  column: string,
+  value: string,
+): Promise<{ ok: true; row: unknown | null } | { ok: false; error: DbError | null }> {
+  try {
+    const result = await client.from(table).select(columns).eq(column, value).range(0, 0);
+    if (result.error) return { ok: false, error: result.error };
+    if (!Array.isArray(result.data)) return { ok: false, error: null };
+    return { ok: true, row: result.data[0] ?? null };
+  } catch {
+    return { ok: false, error: null };
+  }
+}
+
+function readBudgetFulfillment(value: unknown): { id: string; campaignId: string; status: FulfillmentStatus } | null {
+  const row = asRecord(value);
+  if (!row) return null;
+  const id = readText(row.id);
+  const campaignId = readText(row.campaign_id);
+  const status = readText(row.status);
+  if (!id || !campaignId || !status || !isFulfillmentStatus(status)) return null;
+  return { id, campaignId, status };
+}
+
+function readAllowance(value: unknown): number | null {
+  const row = asRecord(value);
+  if (!row) return null;
+  return readNonNegative(row.fulfillment_allowance_cents);
+}
+
+/**
+ * Recorded cost and allowance for one fulfillment, using the same
+ * summarizeFulfillment total as the admin note. A missing row is
+ * not_found. This does not write.
+ */
+export async function loadFulfillmentBudget(
+  fulfillmentId: string,
+  options: DrawingsAdminLoaderOptions = {},
+): Promise<FulfillmentBudgetResult> {
+  try {
+    const client = options.client ?? drawingsAdminClient();
+    const loadFulfillments = options.loadFulfillments ?? loadFulfillmentsDefault;
+    const fulfillment = await readFirst(
+      client,
+      'drawing_fulfillments',
+      FULFILLMENT_BUDGET_COLUMNS,
+      'id',
+      fulfillmentId,
+    );
+    if (!fulfillment.ok) return { ok: false, error: 'unavailable' };
+    const current = fulfillment.row === null ? null : readBudgetFulfillment(fulfillment.row);
+    if (fulfillment.row === null) return { ok: false, error: 'not_found' };
+    if (!current || current.id !== fulfillmentId) return { ok: false, error: 'unavailable' };
+
+    const campaign = await readFirst(
+      client,
+      'drawing_campaigns',
+      ALLOWANCE_COLUMNS,
+      'id',
+      current.campaignId,
+    );
+    if (!campaign.ok || campaign.row === null) return { ok: false, error: 'unavailable' };
+    const allowanceCents = readAllowance(campaign.row);
+    if (allowanceCents === null) return { ok: false, error: 'unavailable' };
+
+    const prizePage = await readPages(client, 'drawing_campaign_prizes', PRIZE_COLUMNS, (filter) =>
+      filter.eq('campaign_id', current.campaignId).order('position').order('id'),
+    );
+    if (!prizePage.ok) return { ok: false, error: 'unavailable' };
+    const prizes: DrawingsAdminPrizeSource[] = [];
+    for (const row of prizePage.rows) {
+      const prize = readPrize(row);
+      if (!prize || prize.campaignId !== current.campaignId) return { ok: false, error: 'unavailable' };
+      prizes.push(prize);
+    }
+
+    const fulfillments = await loadFulfillments(current.campaignId);
+    if (!fulfillments.ok) return { ok: false, error: 'unavailable' };
+    const summary = summarizeFulfillment(
+      fulfillments.fulfillments.map((row) => ({
+        status: row.status,
+        prizeId: row.prizeId,
+        actualCostCents: row.actualCostCents,
+      })),
+      prizes.map((prize) => ({ id: prize.id, unitValueCents: prize.unitValueCents })),
+    );
+    return {
+      ok: true,
+      status: current.status,
+      recordedCostCents: summary.totalActualCostCents,
+      allowanceCents,
+    };
+  } catch {
+    return { ok: false, error: 'unavailable' };
   }
 }

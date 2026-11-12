@@ -405,7 +405,7 @@ describe('fulfillment store boundaries under TZ=UTC and TZ=America/Chicago', () 
 });
 
 describe('fulfillment module boundaries', () => {
-  it('is server-only, uses the service-role client, and is not called from the app', () => {
+  it('is server-only, uses the service-role client, and is called only from the admin fulfillment actions', () => {
     const source = readFileSync(path.join(ROOT, 'src/lib/drawings/fulfillment-store.ts'), 'utf8');
     expect(source.startsWith("import 'server-only';")).toBe(true);
     expect(source).toContain('getSupabaseAdmin');
@@ -417,6 +417,9 @@ describe('fulfillment module boundaries', () => {
       path.join(ROOT, 'src/lib/drawings/fulfillment.test.ts'),
     ]);
     const readers = new Set([path.join(ROOT, 'src/lib/drawings/admin-read-model.ts')]);
+    const actionFile = path.join(ROOT, 'src/app/(site)/admin/drawings/actions.ts');
+    const actionTest = path.join(ROOT, 'src/app/(site)/admin/drawings/actions.test.ts');
+    const offerTest = path.join(ROOT, 'src/lib/drawings/fulfillment-admin-actions.test.ts');
     const hits: string[] = [];
     const walk = (dir: string) => {
       for (const name of readdirSync(dir)) {
@@ -433,9 +436,17 @@ describe('fulfillment module boundaries', () => {
           expect(text).toMatch(/listFulfillments\(/);
           continue;
         }
+        if (full === actionFile) {
+          expect(text).toMatch(/createFulfillments\(/);
+          expect(text).toMatch(/transitionFulfillment\(/);
+          expect(text).not.toMatch(/listFulfillments\(/);
+          expect(text).not.toMatch(/resend|nodemailer|web-push|sendMail|notification/i);
+          continue;
+        }
+        if (full === actionTest || full === offerTest) continue;
         if (
-          text.includes("from '@/lib/drawings/fulfillment'") ||
-          text.includes("from '@/lib/drawings/fulfillment-store'") ||
+          /from '@\/lib\/drawings\/fulfillment'/.test(text) ||
+          /from '@\/lib\/drawings\/fulfillment-store'/.test(text) ||
           text.includes("from './fulfillment-store'") ||
           text.includes('createFulfillments(') ||
           text.includes('transitionFulfillment(') ||

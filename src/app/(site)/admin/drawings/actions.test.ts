@@ -8,10 +8,20 @@ import {
   type DrawingAdminActionError,
 } from '@/lib/drawings/admin-actions';
 import { CAMPAIGN_ERROR_CODES } from '@/lib/drawings/campaign';
-import { activateCampaignAction, closeCampaignAction, runSelectionAction } from './actions';
+import { FULFILLMENT_ERROR_CODES } from '@/lib/drawings/fulfillment';
+import { drawingFulfillmentActionMessage } from '@/lib/drawings/fulfillment-admin-actions';
+import {
+  activateCampaignAction,
+  closeCampaignAction,
+  createDrawingFulfillmentsAction,
+  runSelectionAction,
+  transitionDrawingFulfillmentAction,
+} from './actions';
 
 const ADMIN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const CAMPAIGN_ID = 'c1111111-1111-4111-8111-111111111111';
+const SELECTION_ID = '51111111-1111-4111-8111-111111111111';
+const FULFILLMENT_ID = 'f1111111-1111-4111-8111-111111111111';
 const ROOT = path.resolve(__dirname, '../../../../..');
 
 const harness = vi.hoisted(() => ({
@@ -32,6 +42,9 @@ const stores = vi.hoisted(() => ({
   activate: vi.fn(),
   close: vi.fn(),
   select: vi.fn(),
+  create: vi.fn(),
+  transition: vi.fn(),
+  budget: vi.fn(),
   revalidatePath: vi.fn(),
 }));
 
@@ -93,13 +106,34 @@ vi.mock('@/lib/drawings/selection-store', () => ({
   runSimulatedSelection: (...args: unknown[]) => stores.select(...args),
 }));
 
+vi.mock('@/lib/drawings/fulfillment-store', () => ({
+  createFulfillments: (...args: unknown[]) => stores.create(...args),
+  transitionFulfillment: (...args: unknown[]) => stores.transition(...args),
+}));
+
+vi.mock('@/lib/drawings/admin-read-model', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/drawings/admin-read-model')>(
+    '@/lib/drawings/admin-read-model',
+  );
+  return {
+    ...actual,
+    loadFulfillmentBudget: (...args: unknown[]) => stores.budget(...args),
+  };
+});
+
 const actions = [
   ['activate', activateCampaignAction, () => stores.activate],
   ['close', closeCampaignAction, () => stores.close],
   ['select', runSelectionAction, () => stores.select],
 ] as const;
 
-function setFlag(name: 'E09_DRAWINGS_ADMIN_ENABLED' | 'E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', value: string | undefined) {
+function setFlag(
+  name:
+    | 'E09_DRAWINGS_ADMIN_ENABLED'
+    | 'E09_DRAWINGS_ADMIN_ACTIONS_ENABLED'
+    | 'E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED',
+  value: string | undefined,
+) {
   if (value === undefined) delete process.env[name];
   else process.env[name] = value;
 }
@@ -110,7 +144,14 @@ function enableFlags() {
 }
 
 function storesCalled(): number {
-  return stores.activate.mock.calls.length + stores.close.mock.calls.length + stores.select.mock.calls.length;
+  return (
+    stores.activate.mock.calls.length +
+    stores.close.mock.calls.length +
+    stores.select.mock.calls.length +
+    stores.create.mock.calls.length +
+    stores.transition.mock.calls.length +
+    stores.budget.mock.calls.length
+  );
 }
 
 describe('drawing admin actions', () => {
@@ -126,9 +167,13 @@ describe('drawing admin actions', () => {
     stores.activate.mockReset();
     stores.close.mockReset();
     stores.select.mockReset();
+    stores.create.mockReset();
+    stores.transition.mockReset();
+    stores.budget.mockReset();
     stores.revalidatePath.mockReset();
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
     delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
+    delete process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED;
   });
 
   it('returns disabled before auth or a store when either flag is not exactly true', async () => {
@@ -402,13 +447,436 @@ describe('drawing admin actions', () => {
     expect(stores.revalidatePath).not.toHaveBeenCalled();
   });
 
-  it('checks both flags and the admin guard before the stores, and does not write fulfillment', () => {
+  it('checks both flags and the admin guard before the stores, and campaign actions do not write fulfillment', () => {
     const source = readFileSync(path.join(ROOT, 'src/app/(site)/admin/drawings/actions.ts'), 'utf8');
+    const campaign = source.slice(
+      source.indexOf('/** Activates one sample draft'),
+      source.indexOf('export type DrawingFulfillmentActionResult'),
+    );
+    expect(campaign.indexOf('ready(')).toBeLessThan(campaign.indexOf('activateCampaign('));
     expect(source.indexOf('drawingsAdminActionsEnabled()')).toBeLessThan(source.indexOf('assertAdmin()'));
     expect(source.indexOf('assertAdmin()')).toBeLessThan(source.indexOf('activateCampaign('));
+    expect(campaign).not.toMatch(/createFulfillments\(|transitionFulfillment\(|loadFulfillmentBudget\(|verifySelection\(/);
+    expect(campaign).not.toMatch(/createCampaign|updateCampaign|save_drawing_campaign/);
     expect(source).not.toMatch(/auth\.email/);
-    expect(source).not.toMatch(
-      /createCampaign|updateCampaign|save_drawing_campaign|createFulfillments|transitionFulfillment|verifySelection/,
+    const gate = source.slice(
+      source.indexOf('async function fulfillmentAuth'),
+      source.indexOf('export async function createDrawingFulfillmentsAction'),
     );
+    expect(gate.indexOf('drawingsFulfillmentActionsEnabled()')).toBeGreaterThan(-1);
+    expect(gate.indexOf('drawingsFulfillmentActionsEnabled()')).toBeLessThan(gate.indexOf('assertAdmin()'));
+    expect(gate).not.toMatch(/createFulfillments\(|transitionFulfillment\(|loadFulfillmentBudget\(/);
+    const fulfillment = source.slice(source.indexOf('export async function createDrawingFulfillmentsAction'));
+    expect(fulfillment.indexOf('fulfillmentAuth()')).toBeLessThan(fulfillment.indexOf('createFulfillments('));
+    expect(fulfillment.indexOf('fulfillmentAuth()')).toBeLessThan(fulfillment.indexOf('loadFulfillmentBudget('));
+    expect(fulfillment.indexOf('loadFulfillmentBudget(')).toBeLessThan(fulfillment.indexOf('transitionFulfillment('));
+  });
+});
+
+const fulfillmentCalls = [
+  ['create', () => createDrawingFulfillmentsAction(SELECTION_ID)],
+  [
+    'transition',
+    () => transitionDrawingFulfillmentAction({ fulfillmentId: FULFILLMENT_ID, toStatus: 'ready' }),
+  ],
+] as const;
+
+function enableFulfillmentFlags() {
+  setFlag('E09_DRAWINGS_ADMIN_ENABLED', 'true');
+  setFlag('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
+  setFlag('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED', 'true');
+}
+
+function writersCalled(): number {
+  return stores.create.mock.calls.length + stores.transition.mock.calls.length;
+}
+
+describe('drawing fulfillment actions', () => {
+  beforeEach(() => {
+    harness.tables = [];
+    harness.sessionClients = 0;
+    harness.user = { ok: true, userId: ADMIN_ID, email: 'admin@example.com' };
+    harness.role = 'admin';
+    harness.roleError = false;
+    harness.aal = { currentLevel: 'aal2', nextLevel: 'aal2' };
+    harness.aalError = null;
+    requireUser.mockClear();
+    stores.create.mockReset();
+    stores.transition.mockReset();
+    stores.budget.mockReset();
+    stores.revalidatePath.mockReset();
+    delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
+    delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
+    delete process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED;
+  });
+
+  it('returns disabled before auth, a budget read, or a store when any flag is not exactly true', async () => {
+    const values = [undefined, '', 'TRUE', '1', ' true', 'false', 'true'] as const;
+    for (const [, action] of fulfillmentCalls) {
+      for (const adminValue of values) {
+        for (const actionValue of values) {
+          for (const fulfillmentValue of values) {
+            if (adminValue === 'true' && actionValue === 'true' && fulfillmentValue === 'true') continue;
+            setFlag('E09_DRAWINGS_ADMIN_ENABLED', adminValue);
+            setFlag('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', actionValue);
+            setFlag('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED', fulfillmentValue);
+            requireUser.mockClear();
+            const result = await action();
+            expect(result).toEqual({
+              ok: false,
+              error: 'disabled',
+              message: drawingFulfillmentActionMessage('disabled'),
+            });
+          }
+        }
+      }
+    }
+    expect(requireUser).not.toHaveBeenCalled();
+    expect(writersCalled()).toBe(0);
+    expect(stores.budget).not.toHaveBeenCalled();
+    expect(harness.tables).toEqual([]);
+    expect(harness.sessionClients).toBe(0);
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('rejects a signed-out user, a non-admin, and an admin without MFA before any store call', async () => {
+    enableFulfillmentFlags();
+    for (const [, action] of fulfillmentCalls) {
+      harness.user = { ok: false, error: 'You must be signed in.' };
+      harness.tables = [];
+      harness.sessionClients = 0;
+      const signedOut = await action();
+      expect(signedOut).toMatchObject({ ok: false, error: 'forbidden' });
+      expect(harness.tables).toEqual([]);
+      expect(harness.sessionClients).toBe(0);
+
+      harness.user = { ok: true, userId: ADMIN_ID, email: 'member@example.com' };
+      harness.role = 'member';
+      harness.tables = [];
+      const member = await action();
+      expect(member).toMatchObject({ ok: false, error: 'forbidden' });
+      expect(harness.tables).toEqual(['user_profiles']);
+      expect(harness.sessionClients).toBe(0);
+
+      harness.role = 'admin';
+      harness.aal = { currentLevel: 'aal1', nextLevel: 'aal1' };
+      const enroll = await action();
+      expect(enroll).toEqual({
+        ok: false,
+        error: 'mfa_enroll',
+        message: drawingFulfillmentActionMessage('mfa_enroll'),
+      });
+
+      harness.aal = { currentLevel: 'aal1', nextLevel: 'aal2' };
+      const challenge = await action();
+      expect(challenge).toEqual({
+        ok: false,
+        error: 'mfa_challenge',
+        message: drawingFulfillmentActionMessage('mfa_challenge'),
+      });
+      harness.aal = { currentLevel: 'aal2', nextLevel: 'aal2' };
+    }
+    expect(writersCalled()).toBe(0);
+    expect(stores.budget).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('creates fulfillment records once per call with admin: plus 8 id characters', async () => {
+    enableFulfillmentFlags();
+    stores.create.mockResolvedValue({ ok: true, fulfillments: [{ id: FULFILLMENT_ID, status: 'pending' }] });
+    const created = await createDrawingFulfillmentsAction(`  ${SELECTION_ID.toUpperCase()}  `);
+    expect(created).toEqual({ ok: true });
+    expect(stores.create).toHaveBeenCalledTimes(1);
+    expect(stores.create).toHaveBeenCalledWith(SELECTION_ID, 'admin:aaaaaaaa');
+    expect(stores.create.mock.calls[0][1]).not.toContain(ADMIN_ID);
+    expect(stores.create.mock.calls[0][1]).not.toContain('admin@example.com');
+    expect(stores.transition).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).toHaveBeenCalledWith('/admin/drawings');
+
+    const again = await createDrawingFulfillmentsAction(SELECTION_ID);
+    expect(again).toEqual({ ok: true });
+    expect(stores.create).toHaveBeenCalledTimes(2);
+    expect(stores.create.mock.calls[1]).toEqual(stores.create.mock.calls[0]);
+  });
+
+  it('refuses a label that cannot be built and a bad id before the store', async () => {
+    enableFulfillmentFlags();
+    harness.user = { ok: true, userId: 'abc', email: 'admin@example.com' };
+    const createLabel = await createDrawingFulfillmentsAction(SELECTION_ID);
+    expect(createLabel).toEqual({
+      ok: false,
+      error: 'invalid_run_by',
+      message: drawingFulfillmentActionMessage('invalid_run_by'),
+    });
+    const moveLabel = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'ready',
+    });
+    expect(moveLabel).toEqual({
+      ok: false,
+      error: 'invalid_actor',
+      message: drawingFulfillmentActionMessage('invalid_actor'),
+    });
+    harness.user = { ok: true, userId: ADMIN_ID, email: 'admin@example.com' };
+    const badSelection = await createDrawingFulfillmentsAction('not-a-uuid');
+    expect(badSelection).toMatchObject({ ok: false, error: 'not_found' });
+    const badFulfillment = await transitionDrawingFulfillmentAction({
+      fulfillmentId: 'not-a-uuid',
+      toStatus: 'ready',
+    });
+    expect(badFulfillment).toMatchObject({ ok: false, error: 'not_found' });
+    expect(writersCalled()).toBe(0);
+    expect(stores.budget).not.toHaveBeenCalled();
+  });
+
+  it('marks ready and forfeited without sending a cost, and does not insert another row', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'pending',
+      recordedCostCents: 0,
+      allowanceCents: 1_000,
+    });
+    stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'ready' } });
+    const ready = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'ready',
+      note: '  packed  ',
+      actualCostDollars: '5.00',
+    });
+    expect(ready).toEqual({ ok: true });
+    expect(stores.transition).toHaveBeenCalledWith(FULFILLMENT_ID, 'ready', 'admin:aaaaaaaa', { note: '  packed  ' });
+    expect(stores.create).not.toHaveBeenCalled();
+
+    stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'forfeited' } });
+    const forfeited = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'forfeited',
+      note: '   ',
+    });
+    expect(forfeited).toEqual({ ok: true });
+    expect(stores.transition).toHaveBeenLastCalledWith(FULFILLMENT_ID, 'forfeited', 'admin:aaaaaaaa', {
+      note: null,
+    });
+    expect(stores.create).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).toHaveBeenCalledTimes(2);
+  });
+
+  it('returns invalid_transition for pending to fulfilled and does not call the store', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'pending',
+      recordedCostCents: 0,
+      allowanceCents: 1_000,
+    });
+    const jumped = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: '5.00',
+    });
+    expect(jumped).toEqual({
+      ok: false,
+      error: 'invalid_transition',
+      message: drawingFulfillmentActionMessage('invalid_transition'),
+    });
+    const malformed = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: 'abc',
+    });
+    expect(malformed).toMatchObject({ ok: false, error: 'invalid_transition' });
+    expect(stores.transition).not.toHaveBeenCalled();
+    expect(stores.create).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+  });
+
+  it('rejects a missing or unusable fulfilled cost before the store', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      recordedCostCents: 0,
+      allowanceCents: 1_000,
+    });
+    const missing = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+    });
+    expect(missing).toEqual({
+      ok: false,
+      error: 'cost_required',
+      message: drawingFulfillmentActionMessage('cost_required'),
+    });
+    const blank = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: '',
+    });
+    expect(blank).toMatchObject({ ok: false, error: 'cost_required' });
+    for (const actualCostDollars of ['12.345', '-1', 'abc']) {
+      const result = await transitionDrawingFulfillmentAction({
+        fulfillmentId: FULFILLMENT_ID,
+        toStatus: 'fulfilled',
+        actualCostDollars,
+      });
+      expect(result, actualCostDollars).toEqual({
+        ok: false,
+        error: 'invalid_cost',
+        message: drawingFulfillmentActionMessage('invalid_cost'),
+      });
+    }
+    expect(stores.transition).not.toHaveBeenCalled();
+    expect(stores.create).not.toHaveBeenCalled();
+  });
+
+  it('records a cost at or under the allowance, including zero, on one confirm', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      recordedCostCents: 500,
+      allowanceCents: 1_000,
+    });
+    stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'fulfilled' } });
+    const equal = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: '5.00',
+    });
+    expect(equal).toEqual({ ok: true });
+    expect(stores.transition).toHaveBeenCalledTimes(1);
+    expect(stores.transition).toHaveBeenCalledWith(FULFILLMENT_ID, 'fulfilled', 'admin:aaaaaaaa', {
+      note: null,
+      actualCostCents: 500,
+    });
+
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      recordedCostCents: 0,
+      allowanceCents: 0,
+    });
+    const zero = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: '0.00',
+    });
+    expect(zero).toEqual({ ok: true });
+    expect(stores.transition).toHaveBeenLastCalledWith(FULFILLMENT_ID, 'fulfilled', 'admin:aaaaaaaa', {
+      note: null,
+      actualCostCents: 0,
+    });
+  });
+
+  it('asks before recording above the allowance, then stores the same cents on the second call', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'ready',
+      recordedCostCents: 500,
+      allowanceCents: 1_000,
+    });
+    stores.transition.mockResolvedValue({ ok: true, fulfillment: { id: FULFILLMENT_ID, status: 'fulfilled' } });
+    const warned = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: '5.01',
+      note: 'receipt',
+    });
+    expect(warned).toEqual({
+      ok: false,
+      error: 'over_allowance_confirm',
+      message:
+        'This cost puts recorded cost above the fulfillment allowance (recorded $5.00 + this $5.01 > allowance $10.00). Click again to record it anyway.',
+    });
+    expect(stores.transition).not.toHaveBeenCalled();
+    expect(stores.revalidatePath).not.toHaveBeenCalled();
+
+    const recorded = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'fulfilled',
+      actualCostDollars: '5.01',
+      note: 'receipt',
+      confirmOverAllowance: true,
+    });
+    expect(recorded).toEqual({ ok: true });
+    expect(stores.transition).toHaveBeenCalledTimes(1);
+    expect(stores.transition).toHaveBeenCalledWith(FULFILLMENT_ID, 'fulfilled', 'admin:aaaaaaaa', {
+      note: 'receipt',
+      actualCostCents: 501,
+    });
+    expect(stores.revalidatePath).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a note over 500 characters before the store', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'pending',
+      recordedCostCents: 0,
+      allowanceCents: 1_000,
+    });
+    const result = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'ready',
+      note: 'n'.repeat(501),
+    });
+    const message = drawingFulfillmentActionMessage('drawing_fulfillment_events_note_check');
+    expect(message).not.toContain('drawing_fulfillment_events_note_check');
+    expect(result).toEqual({
+      ok: false,
+      error: 'drawing_fulfillment_events_note_check',
+      message,
+    });
+    expect(stores.transition).not.toHaveBeenCalled();
+  });
+
+  it('maps each fulfillment store error to a plain message', async () => {
+    enableFulfillmentFlags();
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'pending',
+      recordedCostCents: 0,
+      allowanceCents: 1_000,
+    });
+    for (const code of [...FULFILLMENT_ERROR_CODES, 'unavailable'] as const) {
+      stores.revalidatePath.mockClear();
+      stores.transition.mockResolvedValue({ ok: false, error: code });
+      const result = await transitionDrawingFulfillmentAction({
+        fulfillmentId: FULFILLMENT_ID,
+        toStatus: 'forfeited',
+      });
+      expect(result, code).toEqual({
+        ok: false,
+        error: code,
+        message: drawingFulfillmentActionMessage(code),
+      });
+      expect(JSON.stringify(result)).not.toMatch(/@/);
+      expect(stores.revalidatePath).not.toHaveBeenCalled();
+    }
+    stores.create.mockResolvedValue({ ok: false, error: 'not_found' });
+    expect(await createDrawingFulfillmentsAction(SELECTION_ID)).toMatchObject({ ok: false, error: 'not_found' });
+    stores.create.mockResolvedValue({ ok: false, error: 'mystery' });
+    const unknown = await createDrawingFulfillmentsAction(SELECTION_ID);
+    expect(unknown).toEqual({
+      ok: false,
+      error: 'unavailable',
+      message: drawingFulfillmentActionMessage('unavailable'),
+    });
+    expect(JSON.stringify(unknown)).not.toContain('mystery');
+    stores.transition.mockRejectedValue(new Error('down'));
+    stores.budget.mockResolvedValue({
+      ok: true,
+      status: 'pending',
+      recordedCostCents: 0,
+      allowanceCents: 1_000,
+    });
+    const thrown = await transitionDrawingFulfillmentAction({
+      fulfillmentId: FULFILLMENT_ID,
+      toStatus: 'ready',
+    });
+    expect(thrown).toMatchObject({ ok: false, error: 'unavailable' });
+    expect(JSON.stringify(thrown)).not.toContain('down');
   });
 });

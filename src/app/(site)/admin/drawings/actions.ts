@@ -11,7 +11,17 @@ import {
 } from '@/lib/drawings/admin-actions';
 import { CAMPAIGN_ERROR_CODES } from '@/lib/drawings/campaign';
 import { activateCampaign, closeCampaign } from '@/lib/drawings/campaign-store';
-import { drawingsAdminActionsEnabled } from '@/lib/drawings/flag';
+import { drawingsAdminActionsEnabled, drawingsFulfillmentActionsEnabled } from '@/lib/drawings/flag';
+import { formatDrawingDollars, loadFulfillmentBudget } from '@/lib/drawings/admin-read-model';
+import {
+  drawingFulfillmentActionMessage,
+  isDrawingFulfillmentStoreError,
+  parseFulfillmentDollars,
+  projectedOverAllowance,
+  readFulfillmentNote,
+  type DrawingFulfillmentActionError,
+} from '@/lib/drawings/fulfillment-admin-actions';
+import { createFulfillments, transitionFulfillment } from '@/lib/drawings/fulfillment-store';
 import { runSimulatedSelection } from '@/lib/drawings/selection-store';
 import { parseUuid } from '@/lib/uuid';
 
@@ -109,5 +119,149 @@ export async function runSelectionAction(campaignId: string): Promise<DrawingAdm
     return finish(await runSimulatedSelection(prepared.campaignId, runBy));
   } catch {
     return fail('unavailable');
+  }
+}
+
+export type DrawingFulfillmentActionResult =
+  | { ok: true }
+  | { ok: false; error: DrawingFulfillmentActionError; message: string };
+
+type FulfillmentDenied = Exclude<DrawingFulfillmentActionResult, { ok: true }>;
+
+function failFulfillment(
+  error: Exclude<DrawingFulfillmentActionError, 'over_allowance_confirm'>,
+): FulfillmentDenied {
+  return { ok: false, error, message: drawingFulfillmentActionMessage(error) };
+}
+
+/**
+ * All three flags, then the admin role, then MFA. A miss returns before
+ * any fulfillment read or store call. Identity comes from the session.
+ */
+async function fulfillmentAuth(): Promise<{ ok: true; userId: string } | FulfillmentDenied> {
+  if (!drawingsFulfillmentActionsEnabled()) return failFulfillment('disabled');
+  const auth = await assertAdmin();
+  if (!auth.ok) {
+    if (auth.code === 'unauthenticated' || auth.code === 'not_admin') return failFulfillment('forbidden');
+    return failFulfillment(auth.code);
+  }
+  return { ok: true, userId: auth.userId };
+}
+
+function overAllowanceMessage(recordedCostCents: number, newCostCents: number, allowanceCents: number): string {
+  return `This cost puts recorded cost above the fulfillment allowance (recorded ${formatDrawingDollars(recordedCostCents)} + this ${formatDrawingDollars(newCostCents)} > allowance ${formatDrawingDollars(allowanceCents)}). Click again to record it anyway.`;
+}
+
+/**
+ * One fulfillment row per winner of a simulated selection.
+ * run_by is admin: plus the first 8 characters of the admin user id.
+ * A second call returns the same rows. The store inserts nothing the second time.
+ * No member is contacted.
+ */
+export async function createDrawingFulfillmentsAction(
+  selectionId: string,
+): Promise<DrawingFulfillmentActionResult> {
+  const auth = await fulfillmentAuth();
+  if (!auth.ok) return auth;
+  const id = typeof selectionId === 'string' ? parseUuid(selectionId) : null;
+  if (!id) return failFulfillment('not_found');
+  const runBy = drawingAdminRunByLabel(auth.userId);
+  if (!runBy) return failFulfillment('invalid_run_by');
+  try {
+    const result = await createFulfillments(id, runBy);
+    if (!result.ok) {
+      return failFulfillment(isDrawingFulfillmentStoreError(result.error) ? result.error : 'unavailable');
+    }
+    revalidatePath('/admin/drawings');
+    return { ok: true };
+  } catch {
+    return failFulfillment('unavailable');
+  }
+}
+
+export type TransitionDrawingFulfillmentInput = {
+  fulfillmentId: string;
+  toStatus: string;
+  note?: string | null;
+  /**
+   * Dollar text from the form, such as "12.50" or "0.00".
+   * Parsed to integer cents for the store. Ignored unless the move is fulfilled.
+   */
+  actualCostDollars?: string | null;
+  confirmOverAllowance?: boolean;
+};
+
+/**
+ * Moves one sample fulfillment. A cost is sent only for fulfilled, and only
+ * after a bad edge, a bad dollar amount, a long note, and an unconfirmed
+ * over-allowance warning have all been rejected. The allowance is
+ * fulfillment_allowance_cents. Equal to the allowance is not a warning.
+ * No member is contacted, and a forfeit does not pick a new winner.
+ */
+export async function transitionDrawingFulfillmentAction(
+  input: TransitionDrawingFulfillmentInput,
+): Promise<DrawingFulfillmentActionResult> {
+  const auth = await fulfillmentAuth();
+  if (!auth.ok) return auth;
+  const rawId = input && typeof input === 'object' ? input.fulfillmentId : undefined;
+  const fulfillmentId = typeof rawId === 'string' ? parseUuid(rawId) : null;
+  if (!fulfillmentId) return failFulfillment('not_found');
+  const actor = drawingAdminRunByLabel(auth.userId);
+  if (!actor) return failFulfillment('invalid_actor');
+  const toStatus = input && typeof input === 'object' && typeof input.toStatus === 'string' ? input.toStatus : '';
+  if (toStatus !== 'ready' && toStatus !== 'fulfilled' && toStatus !== 'forfeited') {
+    return failFulfillment('invalid_transition');
+  }
+
+  let budget: Awaited<ReturnType<typeof loadFulfillmentBudget>>;
+  try {
+    budget = await loadFulfillmentBudget(fulfillmentId);
+  } catch {
+    return failFulfillment('unavailable');
+  }
+  if (!budget.ok) return failFulfillment(budget.error);
+  const allowed =
+    (budget.status === 'pending' && (toStatus === 'ready' || toStatus === 'forfeited')) ||
+    (budget.status === 'ready' && (toStatus === 'fulfilled' || toStatus === 'forfeited'));
+  if (!allowed) return failFulfillment('invalid_transition');
+
+  let cents: number | null = null;
+  if (toStatus === 'fulfilled') {
+    const parsed = parseFulfillmentDollars(input.actualCostDollars);
+    if (!parsed.ok) return failFulfillment(parsed.reason);
+    cents = parsed.cents;
+  }
+  const note = readFulfillmentNote(input.note);
+  if (!note.ok) return failFulfillment(note.error);
+
+  if (toStatus === 'fulfilled' && cents !== null) {
+    const over = projectedOverAllowance({
+      recordedCostCents: budget.recordedCostCents,
+      newCostCents: cents,
+      allowanceCents: budget.allowanceCents,
+    });
+    if (over && input.confirmOverAllowance !== true) {
+      return {
+        ok: false,
+        error: 'over_allowance_confirm',
+        message: overAllowanceMessage(budget.recordedCostCents, cents, budget.allowanceCents),
+      };
+    }
+  }
+
+  try {
+    const result = await transitionFulfillment(
+      fulfillmentId,
+      toStatus,
+      actor,
+      toStatus === 'fulfilled' ? { note: note.note, actualCostCents: cents } : { note: note.note },
+    );
+    if (!result.ok) {
+      return failFulfillment(isDrawingFulfillmentStoreError(result.error) ? result.error : 'unavailable');
+    }
+    revalidatePath('/admin/drawings');
+    return { ok: true };
+  } catch {
+    return failFulfillment('unavailable');
   }
 }

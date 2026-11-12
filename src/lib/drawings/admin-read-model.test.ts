@@ -9,6 +9,7 @@ import {
   formatChicagoCalendarDate,
   formatDrawingDollars,
   loadDrawingsAdminView,
+  loadFulfillmentBudget,
   summarizeDrawingsAdmin,
   type DrawingsAdminClient,
   type DrawingsAdminSource,
@@ -44,6 +45,7 @@ function sampleSource(allowance = 3_000): DrawingsAdminSource {
       ],
     },
     selection: {
+      id: '51111111-1111-4111-8111-111111111111',
       seed: SEED,
       eligibleEntryCount: 4,
       unfilledUnitCount: 0,
@@ -105,12 +107,18 @@ describe('summarizeDrawingsAdmin', () => {
       runBy: 'clerk',
       ranOn: 'Jan 2, 2027',
     });
+    expect(view.selectionId).toBe('51111111-1111-4111-8111-111111111111');
+    expect(view.recordedCostCents).toBe(2_500);
+    expect(view.allowanceCents).toBe(3_000);
     expect(view.winners.map((winner) => winner.rank)).toEqual([1, 2, 3]);
     expect(view.winners.map((winner) => winner.memberLabel)).toEqual([
       'aaaaaaaa',
       'bbbbbbbb',
       DELETED_MEMBER_LABEL,
     ]);
+    expect(view.winners.map((winner) => winner.memberDeleted)).toEqual([false, false, true]);
+    expect(view.winners.map((winner) => winner.fulfillmentId)).toEqual(['f1', 'f2', 'f3']);
+    expect(view.winners.map((winner) => winner.fulfillmentStatus)).toEqual(['fulfilled', 'forfeited', 'pending']);
     expect(view.winners.map((winner) => winner.fulfillmentLabel)).toEqual([
       'Fulfilled · $25.00',
       'Forfeited',
@@ -135,9 +143,13 @@ describe('summarizeDrawingsAdmin', () => {
   it('notes a recorded cost above the allowance and stays quiet when the cost is not above it', () => {
     const above = summarizeDrawingsAdmin(sampleSource(2_000));
     expect(above?.note).toBe(OVER_ALLOWANCE_NOTE);
+    expect(above?.recordedCostCents).toBe(2_500);
+    expect(above?.allowanceCents).toBe(2_000);
     expect(above?.costLabel).toBe('Recorded cost $25.00 · Allowance $20.00');
     const equal = summarizeDrawingsAdmin(sampleSource(2_500));
     expect(equal?.note).toBeNull();
+    expect(equal?.recordedCostCents).toBe(2_500);
+    expect(equal?.allowanceCents).toBe(2_500);
     expect(equal?.costLabel).toBe('Recorded cost $25.00 · Allowance $25.00');
   });
 
@@ -221,6 +233,7 @@ type StoredCall = {
   select: string;
   range: [number, number];
   inValues: string[] | null;
+  eq: { column: string; value: string } | null;
 };
 
 function fakeClient(
@@ -229,9 +242,10 @@ function fakeClient(
   const calls: StoredCall[] = [];
   const client: DrawingsAdminClient = {
     from(table) {
-      const current: StoredCall = { table, select: '', range: [0, 0], inValues: null };
+      const current: StoredCall = { table, select: '', range: [0, 0], inValues: null, eq: null };
       const filter = {
-        eq() {
+        eq(column: string, value: string) {
+          current.eq = { column, value };
           return filter;
         },
         in(_column: string, values: readonly string[]) {
@@ -247,6 +261,7 @@ function fakeClient(
             select: current.select,
             range: [from, to],
             inValues: current.inValues ? [...current.inValues] : null,
+            eq: current.eq ? { ...current.eq } : null,
           };
           calls.push(call);
           return Promise.resolve(handler(call));
@@ -356,6 +371,7 @@ describe('loadDrawingsAdminView', () => {
     const loadSelection = vi.fn(async () => ({
       ok: true as const,
       selection: {
+        id: '51111111-1111-4111-8111-111111111111',
         seed: SEED,
         eligibleEntryCount: 4,
         unfilledUnitCount: 0,
@@ -408,6 +424,12 @@ describe('loadDrawingsAdminView', () => {
     expect(view.campaigns).toHaveLength(1);
     expect(view.campaigns[0]?.countsLabel).toBe('Pending 1 · Ready 0 · Fulfilled 1 · Forfeited 1');
     expect(view.campaigns[0]?.winners[2]?.memberLabel).toBe(DELETED_MEMBER_LABEL);
+    expect(view.campaigns[0]?.winners[2]?.memberDeleted).toBe(true);
+    expect(view.campaigns[0]?.winners[0]?.fulfillmentId).toBe('f1');
+    expect(view.campaigns[0]?.winners[0]?.fulfillmentStatus).toBe('fulfilled');
+    expect(view.campaigns[0]?.selectionId).toBe('51111111-1111-4111-8111-111111111111');
+    expect(view.campaigns[0]?.recordedCostCents).toBe(2_500);
+    expect(view.campaigns[0]?.allowanceCents).toBe(3_000);
     expect(view.campaigns[0]?.closedOn).toBe('Dec 31, 2026');
     const serialized = JSON.stringify(view);
     expect(serialized).not.toContain(SEED);
@@ -437,6 +459,7 @@ describe('loadDrawingsAdminView', () => {
       loadSelection: async () => ({
         ok: true,
         selection: {
+          id: '51111111-1111-4111-8111-111111111111',
           seed: SEED,
           eligibleEntryCount: 1,
           unfilledUnitCount: 0,
@@ -474,6 +497,63 @@ describe('loadDrawingsAdminView', () => {
   });
 });
 
+describe('loadFulfillmentBudget', () => {
+  it('returns the same recorded-cost total the admin note uses, plus the allowance', async () => {
+    const loadFulfillments = vi.fn(async () => ({
+      ok: true as const,
+      fulfillments: sampleSource().fulfillments,
+    }));
+    const { client, calls } = fakeClient((call) => {
+      if (call.table === 'drawing_fulfillments') {
+        return { data: [{ id: 'f1', campaign_id: CAMPAIGN_ID, status: 'ready' }], error: null };
+      }
+      if (call.table === 'drawing_campaigns') {
+        return { data: [{ id: CAMPAIGN_ID, fulfillment_allowance_cents: 3_000 }], error: null };
+      }
+      if (call.table === 'drawing_campaign_prizes') return { data: prizeRows, error: null };
+      throw new Error(`unexpected ${call.table}`);
+    });
+    await expect(loadFulfillmentBudget('f1', { client, loadFulfillments })).resolves.toEqual({
+      ok: true,
+      status: 'ready',
+      recordedCostCents: 2_500,
+      allowanceCents: 3_000,
+    });
+    expect(loadFulfillments).toHaveBeenCalledWith(CAMPAIGN_ID);
+    expect(calls.find((call) => call.table === 'drawing_fulfillments')?.eq).toEqual({ column: 'id', value: 'f1' });
+    expect(calls.find((call) => call.table === 'drawing_campaigns')?.select).toBe('id, fulfillment_allowance_cents');
+    expect(JSON.stringify(calls)).not.toContain(MEMBER_EMAIL);
+    expect(JSON.stringify(calls)).not.toContain(USER_1);
+  });
+
+  it('returns not_found for a missing row and does not read the campaign', async () => {
+    const loadFulfillments = vi.fn();
+    const { client, calls } = fakeClient(() => ({ data: [], error: null }));
+    await expect(loadFulfillmentBudget('f-missing', { client, loadFulfillments })).resolves.toEqual({
+      ok: false,
+      error: 'not_found',
+    });
+    expect(loadFulfillments).not.toHaveBeenCalled();
+    expect(calls.map((call) => call.table)).toEqual(['drawing_fulfillments']);
+  });
+
+  it('returns unavailable when the fulfillment table is missing', async () => {
+    const loadFulfillments = vi.fn();
+    const { client } = fakeClient(() => ({
+      data: null,
+      error: {
+        code: 'PGRST205',
+        message: "Could not find the table 'public.drawing_fulfillments' in the schema cache",
+      },
+    }));
+    await expect(loadFulfillmentBudget('f1', { client, loadFulfillments })).resolves.toEqual({
+      ok: false,
+      error: 'unavailable',
+    });
+    expect(loadFulfillments).not.toHaveBeenCalled();
+  });
+});
+
 describe('admin drawings summary under TZ=UTC and TZ=America/Chicago', () => {
   it('keeps the Chicago calendar date, the cost, and the deleted-member label', () => {
     const tsx = path.join(process.cwd(), 'node_modules', '.bin', 'tsx');
@@ -497,6 +577,10 @@ describe('admin drawings summary under TZ=UTC and TZ=America/Chicago', () => {
         note: string;
         expectedNote: string;
         member: string;
+        memberDeleted: boolean;
+        fulfillmentStatus: string;
+        recordedCostCents: number;
+        allowanceCents: number;
         seedPreview: string;
       };
     };
@@ -512,6 +596,10 @@ describe('admin drawings summary under TZ=UTC and TZ=America/Chicago', () => {
     expect(utc.note).toBe(OVER_ALLOWANCE_NOTE);
     expect(utc.note).toBe(utc.expectedNote);
     expect(utc.member).toBe(DELETED_MEMBER_LABEL);
+    expect(utc.memberDeleted).toBe(true);
+    expect(utc.fulfillmentStatus).toBe('fulfilled');
+    expect(utc.recordedCostCents).toBe(2_500);
+    expect(utc.allowanceCents).toBe(2_000);
     expect(utc.seedPreview).toBe('abababab…');
   }, 20000);
 });

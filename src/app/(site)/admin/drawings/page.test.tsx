@@ -162,6 +162,7 @@ describe('admin drawings guard', () => {
     setAal('aal2', 'aal2');
     delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
     delete process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED;
+    delete process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED;
   });
 
   it('404s before any Supabase call unless the flag is exactly true', async () => {
@@ -174,6 +175,12 @@ describe('admin drawings guard', () => {
       await expect(AdminDrawingsPage()).rejects.toThrow('NOT_FOUND');
       expect(harness.calls).toEqual([]);
     }
+    delete process.env.E09_DRAWINGS_ADMIN_ENABLED;
+    process.env.E09_DRAWINGS_ADMIN_ACTIONS_ENABLED = 'true';
+    process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED = 'true';
+    harness.calls = [];
+    await expect(AdminDrawingsPage()).rejects.toThrow('NOT_FOUND');
+    expect(harness.calls).toEqual([]);
   });
 
   it('gives signed-out and non-admin visitors the existing admin response and does not query drawings', async () => {
@@ -244,6 +251,21 @@ describe('admin drawings guard', () => {
     expect(screen.queryByRole('button', { name: 'Activate' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Close' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Run simulated selection' })).toBeNull();
+    expect(screen.getByText(/move a fulfillment/)).toBeTruthy();
+    expect(document.body.textContent ?? '').not.toMatch(/@/);
+
+    cleanup();
+    harness.calls = [];
+    process.env.E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED = 'true';
+    const withFulfillment = await AdminDrawingsPage();
+    render(withFulfillment as ReactElement);
+    expect(screen.getByText(DRAWINGS_NOT_SET_UP)).toBeTruthy();
+    expect(screen.getByText(/record sample fulfillment/)).toBeTruthy();
+    expect(screen.queryByText(/move a fulfillment/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Create fulfillment records' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark ready' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark fulfilled' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Forfeit' })).toBeNull();
     expect(document.body.textContent ?? '').not.toMatch(/@/);
   });
 

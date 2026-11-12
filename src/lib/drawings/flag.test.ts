@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   DRAWINGS_ADMIN_ACTIONS_FLAG,
   DRAWINGS_ADMIN_FLAG,
+  DRAWINGS_FULFILLMENT_ACTIONS_FLAG,
   drawingsAdminActionsEnabled,
   drawingsAdminEnabled,
+  drawingsFulfillmentActionsEnabled,
 } from '@/lib/drawings/flag';
 
 describe('drawingsAdminEnabled', () => {
@@ -60,5 +62,41 @@ describe('drawingsAdminActionsEnabled', () => {
     expect(drawingsAdminActionsEnabled()).toBe(false);
     vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
     expect(drawingsAdminActionsEnabled()).toBe(true);
+  });
+});
+
+describe('drawingsFulfillmentActionsEnabled', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is true only when all three flags are exactly true', () => {
+    expect(DRAWINGS_FULFILLMENT_ACTIONS_FLAG).toBe('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED');
+    const off = [undefined, '', 'TRUE', 'True', '1', ' true', 'true ', 'false'] as const;
+    for (const fulfillmentValue of off) {
+      expect(drawingsFulfillmentActionsEnabled(fulfillmentValue, 'true', 'true')).toBe(false);
+    }
+    for (const actionsValue of off) {
+      expect(drawingsFulfillmentActionsEnabled('true', actionsValue, 'true')).toBe(false);
+    }
+    for (const adminValue of off) {
+      expect(drawingsFulfillmentActionsEnabled('true', 'true', adminValue)).toBe(false);
+    }
+    expect(drawingsFulfillmentActionsEnabled('true', 'true', 'true')).toBe(true);
+  });
+
+  it('reads all three env vars when no argument is passed', () => {
+    vi.stubEnv('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ENABLED', '');
+    expect(drawingsFulfillmentActionsEnabled()).toBe(false);
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'TRUE');
+    expect(drawingsFulfillmentActionsEnabled()).toBe(false);
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED', 'TRUE');
+    expect(drawingsFulfillmentActionsEnabled()).toBe(false);
+    vi.stubEnv('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED', 'true');
+    expect(drawingsFulfillmentActionsEnabled()).toBe(true);
   });
 });
