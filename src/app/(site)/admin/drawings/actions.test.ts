@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DRAWING_ADMIN_ACTION_ERRORS,
   drawingAdminActionMessage,
+  isDrawingStoreError,
   type DrawingAdminActionError,
 } from '@/lib/drawings/admin-actions';
+import { CAMPAIGN_ERROR_CODES } from '@/lib/drawings/campaign';
 import { activateCampaignAction, closeCampaignAction, runSelectionAction } from './actions';
 
 const ADMIN_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -284,6 +286,52 @@ describe('drawing admin actions', () => {
     stores.activate.mockRejectedValue(new Error('down'));
     const thrown = await activateCampaignAction(CAMPAIGN_ID);
     expect(thrown).toMatchObject({ ok: false, error: 'unavailable' });
+    expect(stores.select).not.toHaveBeenCalled();
+  });
+
+  it('maps setup-only campaign codes to campaign_invalid and leaves an unrecognized result unavailable', async () => {
+    enableFlags();
+    const message = drawingAdminActionMessage('campaign_invalid');
+    for (const code of CAMPAIGN_ERROR_CODES) {
+      stores.revalidatePath.mockClear();
+      stores.activate.mockResolvedValue({ ok: false, errors: [code] });
+      const activated = await activateCampaignAction(CAMPAIGN_ID);
+      stores.close.mockResolvedValue({ ok: false, errors: [code] });
+      const closed = await closeCampaignAction(CAMPAIGN_ID);
+      if (isDrawingStoreError(code)) {
+        expect(activated, code).toEqual({ ok: false, error: code, message: drawingAdminActionMessage(code) });
+        expect(closed, code).toEqual({ ok: false, error: code, message: drawingAdminActionMessage(code) });
+      } else {
+        expect(activated, code).toEqual({ ok: false, error: 'campaign_invalid', message });
+        expect(closed, code).toEqual({ ok: false, error: 'campaign_invalid', message });
+        expect(JSON.stringify(activated)).not.toContain(code);
+        expect(JSON.stringify(closed)).not.toContain(code);
+      }
+      expect(stores.revalidatePath).not.toHaveBeenCalled();
+    }
+
+    stores.activate.mockResolvedValue({ ok: false, errors: ['invalid_label', 'over_budget'] });
+    expect(await activateCampaignAction(CAMPAIGN_ID)).toMatchObject({ ok: false, error: 'over_budget' });
+    stores.close.mockResolvedValue({ ok: false, error: 'not_found', errors: ['invalid_quarter_key'] });
+    expect(await closeCampaignAction(CAMPAIGN_ID)).toMatchObject({ ok: false, error: 'not_found' });
+
+    stores.activate.mockResolvedValue({ ok: false, errors: [] });
+    expect(await activateCampaignAction(CAMPAIGN_ID)).toMatchObject({ ok: false, error: 'unavailable' });
+    stores.close.mockResolvedValue({ ok: false, errors: ['not_a_campaign_code'] });
+    const unknown = await closeCampaignAction(CAMPAIGN_ID);
+    expect(unknown).toEqual({
+      ok: false,
+      error: 'unavailable',
+      message: drawingAdminActionMessage('unavailable'),
+    });
+    expect(JSON.stringify(unknown)).not.toContain('not_a_campaign_code');
+    stores.activate.mockResolvedValue({ ok: false });
+    expect(await activateCampaignAction(CAMPAIGN_ID)).toMatchObject({ ok: false, error: 'unavailable' });
+
+    stores.close.mockRejectedValue(new Error('postgres down'));
+    const thrown = await closeCampaignAction(CAMPAIGN_ID);
+    expect(thrown).toMatchObject({ ok: false, error: 'unavailable' });
+    expect(JSON.stringify(thrown)).not.toContain('postgres');
     expect(stores.select).not.toHaveBeenCalled();
   });
 

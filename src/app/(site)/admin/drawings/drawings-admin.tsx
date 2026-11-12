@@ -144,6 +144,8 @@ function CampaignActionRow({ campaign }: { campaign: DrawingsAdminCampaign }) {
     status: campaign.status,
     mode: campaign.mode,
     hasSelection: campaign.selection !== null,
+    activatedAtSet: campaign.activatedAtSet,
+    closedAtSet: campaign.closedAtSet,
   });
   if (offer.actions.length === 0 && offer.note === null) return null;
   return (

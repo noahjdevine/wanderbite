@@ -68,7 +68,7 @@ export function DrawingCampaignActions({
       <div className="flex flex-wrap gap-2">
         {actions.map((action) =>
           confirming === action.kind ? (
-            <div key={action.kind} className="flex flex-wrap gap-2">
+            <div key={action.kind} className="flex flex-wrap items-center gap-2">
               <Button type="button" size="sm" disabled={pending} onClick={() => void confirm(action.kind)}>
                 {action.confirmLabel}
               </Button>
@@ -81,6 +81,7 @@ export function DrawingCampaignActions({
               >
                 Cancel
               </Button>
+              {action.confirmNote ? <p className="text-sm">{action.confirmNote}</p> : null}
             </div>
           ) : (
             <Button

@@ -9,6 +9,7 @@ import {
   type DrawingAdminActionError,
   type DrawingStoreError,
 } from '@/lib/drawings/admin-actions';
+import { CAMPAIGN_ERROR_CODES } from '@/lib/drawings/campaign';
 import { activateCampaign, closeCampaign } from '@/lib/drawings/campaign-store';
 import { drawingsAdminActionsEnabled } from '@/lib/drawings/flag';
 import { runSimulatedSelection } from '@/lib/drawings/selection-store';
@@ -42,12 +43,24 @@ async function ready(campaignId: string): Promise<Ready | Denied> {
   return { ok: true, userId: auth.userId, campaignId: id };
 }
 
-function storeCode(result: { error?: string; errors?: readonly string[] }): DrawingStoreError | 'unavailable' {
+const CAMPAIGN_SETUP_CODES: ReadonlySet<string> = new Set(CAMPAIGN_ERROR_CODES);
+
+/**
+ * A store code in `error` or `errors` wins. An `errors` array that has a
+ * campaign setup code and no store code is `campaign_invalid`. An empty
+ * list, an unrecognized code, or no code is `unavailable`. The caller maps a throw.
+ */
+function storeCode(
+  result: { error?: string; errors?: readonly string[] },
+): DrawingStoreError | 'campaign_invalid' {
   const found: string[] = [];
   if (typeof result.error === 'string') found.push(result.error);
   if (Array.isArray(result.errors)) found.push(...result.errors);
   for (const code of found) {
     if (isDrawingStoreError(code)) return code;
+  }
+  if (Array.isArray(result.errors) && result.errors.some((code) => CAMPAIGN_SETUP_CODES.has(code))) {
+    return 'campaign_invalid';
   }
   return 'unavailable';
 }
