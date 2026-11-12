@@ -4,10 +4,12 @@ import {
   DRAWINGS_ADMIN_FLAG,
   DRAWINGS_CAMPAIGN_EDITOR_FLAG,
   DRAWINGS_FULFILLMENT_ACTIONS_FLAG,
+  MEMBER_DRAWING_CARD_FLAG,
   drawingsAdminActionsEnabled,
   drawingsAdminEnabled,
   drawingsCampaignEditorEnabled,
   drawingsFulfillmentActionsEnabled,
+  memberDrawingCardEnabled,
 } from '@/lib/drawings/flag';
 
 describe('drawingsAdminEnabled', () => {
@@ -100,6 +102,43 @@ describe('drawingsFulfillmentActionsEnabled', () => {
     expect(drawingsFulfillmentActionsEnabled()).toBe(false);
     vi.stubEnv('E09_DRAWINGS_FULFILLMENT_ACTIONS_ENABLED', 'true');
     expect(drawingsFulfillmentActionsEnabled()).toBe(true);
+  });
+});
+
+describe('memberDrawingCardEnabled', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('is true only when both member flags are exactly true', () => {
+    expect(MEMBER_DRAWING_CARD_FLAG).toBe('E09_MEMBER_DRAWING_CARD_ENABLED');
+    const off = [undefined, '', 'TRUE', 'True', '1', ' true', 'true ', 'false'] as const;
+    for (const cardValue of off) {
+      expect(memberDrawingCardEnabled(cardValue, 'true')).toBe(false);
+    }
+    for (const progressionValue of off) {
+      expect(memberDrawingCardEnabled('true', progressionValue)).toBe(false);
+    }
+    expect(memberDrawingCardEnabled('true', 'true')).toBe(true);
+  });
+
+  it('reads both env vars when no argument is passed', () => {
+    vi.stubEnv('E09_MEMBER_DRAWING_CARD_ENABLED', 'true');
+    vi.stubEnv('E09_MEMBER_PROGRESSION_UI_ENABLED', '');
+    expect(memberDrawingCardEnabled()).toBe(false);
+    vi.stubEnv('E09_MEMBER_PROGRESSION_UI_ENABLED', 'true');
+    vi.stubEnv('E09_MEMBER_DRAWING_CARD_ENABLED', 'TRUE');
+    expect(memberDrawingCardEnabled()).toBe(false);
+    vi.stubEnv('E09_MEMBER_DRAWING_CARD_ENABLED', 'true');
+    expect(memberDrawingCardEnabled()).toBe(true);
+  });
+
+  it('does not follow the ledger writer flag or the admin drawing flags', () => {
+    vi.stubEnv('E09_PROGRESSION_LEDGER_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ENABLED', 'true');
+    vi.stubEnv('E09_DRAWINGS_ADMIN_ACTIONS_ENABLED', 'true');
+    expect(memberDrawingCardEnabled()).toBe(false);
+    expect(memberDrawingCardEnabled('true', undefined)).toBe(false);
   });
 });
 

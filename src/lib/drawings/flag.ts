@@ -1,3 +1,5 @@
+import { memberProgressionUiEnabled } from '@/lib/progression/flag';
+
 /** Exact string only. Unset, empty, and every other value stay off. */
 export const DRAWINGS_ADMIN_FLAG = 'E09_DRAWINGS_ADMIN_ENABLED';
 
@@ -49,4 +51,18 @@ export function drawingsCampaignEditorEnabled(
   adminValue: string | undefined = process.env.E09_DRAWINGS_ADMIN_ENABLED,
 ): boolean {
   return editorValue === 'true' && drawingsAdminActionsEnabled(actionsValue, adminValue);
+}
+
+/** Exact string only, and only together with the member progression panel. Ships unset. */
+export const MEMBER_DRAWING_CARD_FLAG = 'E09_MEMBER_DRAWING_CARD_ENABLED';
+
+/**
+ * Member sample-drawing card on Progress.
+ * True only when this flag is exactly "true" and the member progression UI flag is also on.
+ */
+export function memberDrawingCardEnabled(
+  cardValue: string | undefined = process.env.E09_MEMBER_DRAWING_CARD_ENABLED,
+  progressionValue: string | undefined = process.env.E09_MEMBER_PROGRESSION_UI_ENABLED,
+): boolean {
+  return cardValue === 'true' && memberProgressionUiEnabled(progressionValue);
 }
