@@ -10,8 +10,9 @@ import { chicagoQuarterKey } from '@/lib/progression/quarter';
  * The session client identifies the signed-in member. The service-role
  * client then reads drawing rows, and winner rows are limited to that
  * member. The returned view has no member id, rank, entry id, seed,
- * operator label, or fulfillment cost. This module does not write and
- * does not read fulfillment rows.
+ * operator label, fulfillment cost, note, or actor. The only fulfillment
+ * fact that can reach the view is that this member's own prize was
+ * forfeited. This module does not write.
  *
  * `mapMemberSampleDrawing` does not touch the database. Entry counts are
  * the stored `quarter_key` totals from the progression summary. They are
@@ -34,10 +35,13 @@ export const MEMBER_DRAWING_PRIZE_COLUMNS =
 export const MEMBER_DRAWING_SELECTION_COLUMNS = 'id, campaign_id';
 
 /**
- * `user_id` is selected so a row for anyone else can be dropped.
- * It is not copied onto the view. Rank and entry id are not selected.
+ * `id` matches this member's fulfillment row. `user_id` drops anyone else.
+ * Neither is copied onto the view. Rank and entry id are not selected.
  */
-export const MEMBER_DRAWING_WINNER_COLUMNS = 'campaign_id, prize_id, user_id';
+export const MEMBER_DRAWING_WINNER_COLUMNS = 'id, campaign_id, prize_id, user_id';
+
+/** Status only, and only for this member's winner ids. */
+export const MEMBER_DRAWING_FULFILLMENT_COLUMNS = 'winner_id, status';
 
 export type MemberSampleDrawingPrize = {
   label: string;
@@ -56,7 +60,7 @@ export type MemberSampleDrawing =
       status: 'active' | 'closed';
       prizes: MemberSampleDrawingPrize[];
       entryCount: number;
-      result: 'not_drawn' | 'picked' | 'not_picked';
+      result: 'not_drawn' | 'picked' | 'not_picked' | 'forfeited';
       pickedPrizeLabel?: string;
     };
 
@@ -66,6 +70,11 @@ export type MemberSampleDrawingRows = {
   prizes: readonly unknown[];
   selections: readonly unknown[];
   winners: readonly unknown[];
+  /**
+   * Fulfillment rows for this member's own winners. Omitted means the
+   * card keeps the plain picked line. Extra fields on a row are ignored.
+   */
+  fulfillments?: readonly unknown[];
   /** Counts already grouped by the stored quarter key. */
   entriesByQuarter: readonly { quarterKey: string; count: number }[];
   memberUserId: string;
@@ -104,7 +113,8 @@ export type MemberDrawingTable =
   | 'drawing_campaigns'
   | 'drawing_campaign_prizes'
   | 'drawing_selections'
-  | 'drawing_selection_winners';
+  | 'drawing_selection_winners'
+  | 'drawing_fulfillments';
 
 export type MemberDrawingClient = {
   from: (table: MemberDrawingTable) => {
@@ -218,14 +228,29 @@ function parseSelection(value: unknown): { campaignId: string } | null {
   return { campaignId };
 }
 
-function parseWinner(value: unknown): { campaignId: string; prizeId: string; userId: string } | null {
+function parseWinner(
+  value: unknown,
+): { id: string | null; campaignId: string; prizeId: string; userId: string } | null {
   const row = asRecord(value);
   if (!row) return null;
   const campaignId = readText(row.campaign_id);
   const prizeId = readText(row.prize_id);
   const userId = readText(row.user_id);
   if (!campaignId || !prizeId || !userId) return null;
-  return { campaignId, prizeId, userId };
+  return { id: readText(row.id), campaignId, prizeId, userId };
+}
+
+/** Winner ids whose own fulfillment status is exactly forfeited. Other fields are ignored. */
+function forfeitedWinnerIds(rows: readonly unknown[]): Set<string> {
+  const ids = new Set<string>();
+  for (const value of rows) {
+    const row = asRecord(value);
+    if (!row) continue;
+    const winnerId = readText(row.winner_id);
+    if (!winnerId || row.status !== 'forfeited') continue;
+    ids.add(winnerId);
+  }
+  return ids;
 }
 
 function visibleCampaigns(campaigns: readonly ParsedCampaign[], quarterKey: string): ParsedCampaign[] {
@@ -272,7 +297,8 @@ function entryCountFor(
  * Picks the current Chicago quarter's sample campaign and this member's result.
  * An active sample campaign wins over a closed one. Draft and live rows are
  * not shown. A selection row decides picked, not picked, or not drawn.
- * Fulfillment is not read.
+ * A forfeited status on this member's own winner replaces the picked line.
+ * Any other status, or no fulfillment row, stays on the picked line.
  */
 export function mapMemberSampleDrawing(input: MemberSampleDrawingRows): MemberSampleDrawing {
   let quarterKey: string;
@@ -315,12 +341,12 @@ export function mapMemberSampleDrawing(input: MemberSampleDrawingRows): MemberSa
     selections.push(selection);
   }
 
-  const ownWinners: { prizeId: string }[] = [];
+  const ownWinners: { id: string | null; prizeId: string }[] = [];
   for (const row of input.winners) {
     const winner = parseWinner(row);
     if (!winner) return { kind: 'unavailable' };
     if (winner.userId !== input.memberUserId || winner.campaignId !== chosen.id) continue;
-    ownWinners.push({ prizeId: winner.prizeId });
+    ownWinners.push({ id: winner.id, prizeId: winner.prizeId });
   }
 
   const startsOn = formatChicagoReachedDate(chosen.startsAt);
@@ -328,14 +354,17 @@ export function mapMemberSampleDrawing(input: MemberSampleDrawingRows): MemberSa
   if (!startsOn || !endsOn) return { kind: 'unavailable' };
 
   const drawn = selections.some((selection) => selection.campaignId === chosen.id);
-  let result: 'not_drawn' | 'picked' | 'not_picked' = 'not_drawn';
+  let result: 'not_drawn' | 'picked' | 'not_picked' | 'forfeited' = 'not_drawn';
   let pickedPrizeLabel: string | undefined;
   if (drawn) {
     if (ownWinners.length === 0) {
       result = 'not_picked';
     } else {
-      result = 'picked';
-      const won = prizes.find((prize) => ownWinners.some((winner) => winner.prizeId === prize.id));
+      const forfeitedIds = forfeitedWinnerIds(input.fulfillments ?? []);
+      const forfeited = ownWinners.find((winner) => winner.id !== null && forfeitedIds.has(winner.id));
+      const source = forfeited ?? ownWinners[0];
+      result = forfeited ? 'forfeited' : 'picked';
+      const won = prizes.find((prize) => prize.id === source.prizeId);
       pickedPrizeLabel = won ? displayPrizeLabel({ label: won.label }, 'sample') : SAMPLE_PRIZE_MARKER;
     }
   }
@@ -441,12 +470,42 @@ export async function loadMemberSampleDrawing(
     ]);
     if (!prizePage.ok || !selectionPage.ok || !winnerPage.ok) return { kind: 'unavailable' };
 
+    const ownWinnerIds: string[] = [];
+    for (const row of winnerPage.rows) {
+      const winner = parseWinner(row);
+      if (!winner) return { kind: 'unavailable' };
+      if (winner.userId === sessionUserId && winner.id) ownWinnerIds.push(winner.id);
+    }
+
+    // A failed fulfillment read keeps today's picked line. It does not
+    // take the card down, and the error text is not logged.
+    const fulfillmentRows: unknown[] = [];
+    if (ownWinnerIds.length > 0) {
+      const fulfillmentPage = await readPages(
+        admin,
+        'drawing_fulfillments',
+        MEMBER_DRAWING_FULFILLMENT_COLUMNS,
+        (filter) => filter.in('winner_id', ownWinnerIds),
+      );
+      if (fulfillmentPage.ok) {
+        for (const row of fulfillmentPage.rows) {
+          const record = asRecord(row);
+          if (!record) continue;
+          const winnerId = readText(record.winner_id);
+          const status = readText(record.status);
+          if (!winnerId || !status) continue;
+          fulfillmentRows.push({ winner_id: winnerId, status });
+        }
+      }
+    }
+
     return mapMemberSampleDrawing({
       now: input.now,
       campaigns: campaignPage.rows,
       prizes: prizePage.rows,
       selections: selectionPage.rows,
       winners: winnerPage.rows,
+      fulfillments: fulfillmentRows,
       entriesByQuarter: input.entriesByQuarter,
       memberUserId: sessionUserId,
     });

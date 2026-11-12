@@ -6,6 +6,7 @@ import { SAMPLE_PRIZE_MARKER, campaignWindow } from '@/lib/drawings/campaign';
 import { campaignWindowLabel } from '@/lib/drawings/campaign-editor';
 import {
   MEMBER_DRAWING_CAMPAIGN_COLUMNS,
+  MEMBER_DRAWING_FULFILLMENT_COLUMNS,
   MEMBER_DRAWING_PRIZE_COLUMNS,
   MEMBER_DRAWING_SELECTION_COLUMNS,
   MEMBER_DRAWING_WINNER_COLUMNS,
@@ -238,6 +239,148 @@ describe('mapMemberSampleDrawing', () => {
       ].sort(),
     );
     expectNoForeign(view);
+  });
+
+  it('replaces the picked line only when this member’s own fulfillment is forfeited', () => {
+    const campaignKeys = [
+      'endsOn',
+      'entryCount',
+      'kind',
+      'pickedPrizeLabel',
+      'prizes',
+      'quarterKey',
+      'result',
+      'startsOn',
+      'status',
+    ].sort();
+    const drawn = rows({
+      campaigns: [
+        campaign({ status: 'closed' }),
+        campaign({ id: 'camp-closed', status: 'closed', quarter_key: '2027-Q1' }),
+      ],
+      prizes: [
+        prize(),
+        prize({ id: 'closed-prize', campaign_id: 'camp-closed', label: 'Sample prize: Closed gift' }),
+      ],
+      selections: [
+        { id: 'selection-1', campaign_id: 'camp-active', seed: SEED, run_by: RUN_BY },
+        { id: 'selection-closed', campaign_id: 'camp-closed', seed: SEED, run_by: RUN_BY },
+      ],
+      winners: [
+        {
+          id: 'winner-other',
+          campaign_id: 'camp-active',
+          prize_id: 'prize-dinner',
+          user_id: OTHER,
+          rank: 4,
+          entry_id: ENTRY_ID,
+          actual_cost_cents: COST,
+          note: 'secret note',
+          actor: RUN_BY,
+          fulfillment_status: 'forfeited',
+        },
+        {
+          id: 'winner-self',
+          campaign_id: 'camp-active',
+          prize_id: 'prize-dinner',
+          user_id: SELF,
+          rank: 8,
+          entry_id: 'entry-self',
+          actual_cost_cents: COST,
+          note: 'secret note',
+          actor: RUN_BY,
+        },
+        {
+          id: 'winner-closed',
+          campaign_id: 'camp-closed',
+          prize_id: 'closed-prize',
+          user_id: SELF,
+          actual_cost_cents: COST,
+          note: 'secret note',
+        },
+      ],
+    });
+    const leaked = {
+      actual_cost_cents: COST,
+      note: 'secret note',
+      actor: RUN_BY,
+      events: [{ actor: RUN_BY, note: 'secret note', actual_cost_cents: COST }],
+    };
+
+    const forfeited = mapMemberSampleDrawing({
+      ...drawn,
+      campaigns: [campaign({ status: 'closed' })],
+      prizes: [prize()],
+      selections: [{ id: 'selection-1', campaign_id: 'camp-active', seed: SEED, run_by: RUN_BY }],
+      winners: drawn.winners.slice(0, 2),
+      fulfillments: [
+        { winner_id: 'winner-self', status: 'forfeited', ...leaked },
+        { winner_id: 'winner-other', status: 'pending', ...leaked },
+      ],
+    });
+    expect(forfeited).toMatchObject({
+      kind: 'campaign',
+      result: 'forfeited',
+      pickedPrizeLabel: 'Sample prize: Dinner for two',
+    });
+    expect(Object.keys(forfeited).sort()).toEqual(campaignKeys);
+    const encoded = JSON.stringify(forfeited);
+    for (const secret of [String(COST), 'secret note', RUN_BY, OTHER, ENTRY_ID, 'actual_cost', 'note', 'actor', 'events']) {
+      expect(encoded).not.toContain(secret);
+    }
+
+    for (const status of ['pending', 'ready', 'fulfilled'] as const) {
+      const view = mapMemberSampleDrawing({
+        ...drawn,
+        campaigns: [campaign({ status: 'closed' })],
+        prizes: [prize()],
+        selections: [{ id: 'selection-1', campaign_id: 'camp-active' }],
+        winners: drawn.winners.slice(0, 2),
+        fulfillments: [
+          { winner_id: 'winner-self', status, ...leaked },
+          { winner_id: 'winner-other', status: 'forfeited', ...leaked },
+        ],
+      });
+      expect(view, status).toMatchObject({ kind: 'campaign', result: 'picked' });
+      expect(Object.keys(view).sort()).toEqual(campaignKeys);
+      expect(JSON.stringify(view)).not.toContain(status);
+      expect(JSON.stringify(view)).not.toContain('forfeited');
+      expect(JSON.stringify(view)).not.toContain('secret note');
+    }
+
+    const missing = mapMemberSampleDrawing({
+      ...drawn,
+      campaigns: [campaign({ status: 'closed' })],
+      prizes: [prize()],
+      selections: [{ id: 'selection-1', campaign_id: 'camp-active' }],
+      winners: drawn.winners.slice(0, 2),
+      fulfillments: [{ winner_id: 'winner-other', status: 'forfeited', ...leaked }, null, { status: 'forfeited' }],
+    });
+    expect(missing).toMatchObject({ kind: 'campaign', result: 'picked' });
+    expectNoForeign(missing);
+
+    const otherCampaign = mapMemberSampleDrawing({
+      ...drawn,
+      campaigns: [
+        campaign({ id: 'camp-active', status: 'active' }),
+        campaign({ id: 'camp-closed', status: 'closed' }),
+      ],
+      selections: [
+        { id: 'selection-1', campaign_id: 'camp-active' },
+        { id: 'selection-closed', campaign_id: 'camp-closed' },
+      ],
+      fulfillments: [
+        { winner_id: 'winner-self', status: 'pending', ...leaked },
+        { winner_id: 'winner-closed', status: 'forfeited', ...leaked },
+      ],
+    });
+    expect(otherCampaign).toMatchObject({
+      kind: 'campaign',
+      status: 'active',
+      result: 'picked',
+      pickedPrizeLabel: 'Sample prize: Dinner for two',
+    });
+    expectNoForeign(otherCampaign);
   });
 
   it('says this member was not picked when a selection exists without their row', () => {
@@ -498,7 +641,7 @@ describe('loadMemberSampleDrawing', () => {
     }
   });
 
-  it('reads only this member and does not select seed, rank, entry id, or fulfillment', async () => {
+  it('reads only this member and selects fulfillment status without cost or notes', async () => {
     const admin = fakeAdmin((call) => {
       if (call.table === 'drawing_campaigns') return { data: [campaign({ status: 'closed' })], error: null };
       if (call.table === 'drawing_campaign_prizes') return { data: [prize()], error: null };
@@ -507,7 +650,31 @@ describe('loadMemberSampleDrawing', () => {
       }
       if (call.table === 'drawing_selection_winners') {
         return {
-          data: [{ campaign_id: 'camp-active', prize_id: 'prize-dinner', user_id: SELF }],
+          data: [
+            { id: 'winner-self', campaign_id: 'camp-active', prize_id: 'prize-dinner', user_id: SELF },
+            {
+              id: 'winner-other',
+              campaign_id: 'camp-active',
+              prize_id: 'prize-dinner',
+              user_id: OTHER,
+              actual_cost_cents: COST,
+              note: 'secret note',
+            },
+          ],
+          error: null,
+        };
+      }
+      if (call.table === 'drawing_fulfillments') {
+        return {
+          data: [
+            {
+              winner_id: 'winner-self',
+              status: 'pending',
+              actual_cost_cents: COST,
+              note: 'secret note',
+              actor: RUN_BY,
+            },
+          ],
           error: null,
         };
       }
@@ -532,6 +699,7 @@ describe('loadMemberSampleDrawing', () => {
       'drawing_campaign_prizes',
       'drawing_selections',
       'drawing_selection_winners',
+      'drawing_fulfillments',
     ]);
     const campaignCall = admin.calls[0];
     expect(campaignCall?.columns).toBe(MEMBER_DRAWING_CAMPAIGN_COLUMNS);
@@ -543,14 +711,101 @@ describe('loadMemberSampleDrawing', () => {
     expect(winners?.eqs).toEqual([['user_id', SELF]]);
     expect(winners?.ins).toEqual([['campaign_id', ['camp-active']]]);
     expect(winners?.columns).not.toMatch(/rank|entry_id|seed|run_by|actual_cost/);
-    expect(admin.calls.some((call) => call.table === 'drawing_fulfillments')).toBe(false);
+    const fulfillment = admin.calls[4];
+    expect(fulfillment?.columns).toBe(MEMBER_DRAWING_FULFILLMENT_COLUMNS);
+    expect(fulfillment?.columns).not.toMatch(/cost|note|actor|event/i);
+    expect(fulfillment?.ins).toEqual([['winner_id', ['winner-self']]]);
   });
 
-  it('does not name fulfillment columns in the selects', () => {
+  it('shows forfeited from this member’s fulfillment and keeps the picked line when that read fails', async () => {
+    const forfeitedAdmin = fakeAdmin((call) => {
+      if (call.table === 'drawing_campaigns') return { data: [campaign({ status: 'closed' })], error: null };
+      if (call.table === 'drawing_campaign_prizes') return { data: [prize()], error: null };
+      if (call.table === 'drawing_selections') {
+        return { data: [{ id: 'selection-1', campaign_id: 'camp-active' }], error: null };
+      }
+      if (call.table === 'drawing_selection_winners') {
+        return {
+          data: [{ id: 'winner-self', campaign_id: 'camp-active', prize_id: 'prize-dinner', user_id: SELF }],
+          error: null,
+        };
+      }
+      if (call.table === 'drawing_fulfillments') {
+        return {
+          data: [
+            {
+              winner_id: 'winner-self',
+              status: 'forfeited',
+              actual_cost_cents: COST,
+              note: 'secret note',
+              actor: RUN_BY,
+            },
+          ],
+          error: null,
+        };
+      }
+      throw new Error(`unexpected table ${call.table}`);
+    });
+    const forfeited = await loadMemberSampleDrawing({
+      userId: SELF,
+      now: new Date(Q1_NOW),
+      entriesByQuarter: [{ quarterKey: '2027-Q1', count: 3 }],
+      session: session(SELF),
+      admin: forfeitedAdmin.client,
+    });
+    expect(forfeited).toMatchObject({
+      kind: 'campaign',
+      result: 'forfeited',
+      pickedPrizeLabel: 'Sample prize: Dinner for two',
+    });
+    expect(Object.keys(forfeited).sort()).toEqual(
+      ['endsOn', 'entryCount', 'kind', 'pickedPrizeLabel', 'prizes', 'quarterKey', 'result', 'startsOn', 'status'].sort(),
+    );
+    const encoded = JSON.stringify(forfeited);
+    for (const secret of [String(COST), 'secret note', RUN_BY, 'actual_cost', 'note', 'actor', 'events']) {
+      expect(encoded).not.toContain(secret);
+    }
+
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const failed = fakeAdmin((call) => {
+      if (call.table === 'drawing_campaigns') return { data: [campaign({ status: 'closed' })], error: null };
+      if (call.table === 'drawing_campaign_prizes') return { data: [prize()], error: null };
+      if (call.table === 'drawing_selections') {
+        return { data: [{ id: 'selection-1', campaign_id: 'camp-active' }], error: null };
+      }
+      if (call.table === 'drawing_selection_winners') {
+        return {
+          data: [{ id: 'winner-self', campaign_id: 'camp-active', prize_id: 'prize-dinner', user_id: SELF }],
+          error: null,
+        };
+      }
+      if (call.table === 'drawing_fulfillments') {
+        return { data: null, error: { code: '42P01', message: `relation missing ${SECRET}` } };
+      }
+      throw new Error(`unexpected table ${call.table}`);
+    });
+    await expect(
+      loadMemberSampleDrawing({
+        userId: SELF,
+        now: new Date(Q1_NOW),
+        entriesByQuarter: [{ quarterKey: '2027-Q1', count: 3 }],
+        session: session(SELF),
+        admin: failed.client,
+      }),
+    ).resolves.toMatchObject({ kind: 'campaign', result: 'picked', pickedPrizeLabel: 'Sample prize: Dinner for two' });
+    expect(errorSpy.mock.calls.flat().join('\n')).not.toContain(SECRET);
+    errorSpy.mockRestore();
+  });
+
+  it('names no cost, note, or actor column in the drawing selects', () => {
     const source = readFileSync(path.join(ROOT, 'src/lib/drawings/member-drawing-read-model.ts'), 'utf8');
     expect(source.startsWith("import 'server-only';")).toBe(true);
-    expect(source).not.toContain('drawing_fulfillments');
+    expect(source).not.toContain('drawing_fulfillment_events');
+    expect(source).not.toContain('actual_cost_cents');
+    expect(MEMBER_DRAWING_FULFILLMENT_COLUMNS).toBe('winner_id, status');
+    expect(MEMBER_DRAWING_FULFILLMENT_COLUMNS).not.toMatch(/cost|note|actor|event/i);
     expect(MEMBER_DRAWING_SELECTION_COLUMNS).not.toMatch(/seed|run_by|eligible_/);
+    expect(MEMBER_DRAWING_WINNER_COLUMNS).toBe('id, campaign_id, prize_id, user_id');
     expect(MEMBER_DRAWING_WINNER_COLUMNS).not.toMatch(/rank|entry_id/);
     expect(MEMBER_DRAWING_CAMPAIGN_COLUMNS).not.toMatch(/total_budget|fulfillment_allowance|rules_version/);
   });
