@@ -10,7 +10,10 @@
  * name a prize, a prize value, or a drawing date.
  */
 
-/** 2027-01-01 00:00 America/Chicago. January is CST (UTC−6). */
+/**
+ * 2027-01-01 00:00 America/Chicago. January is CST (UTC−6).
+ * Same instant as public.progression_drawing_entries_from().
+ */
 export const DRAWING_ENTRIES_FROM_ISO = '2027-01-01T06:00:00.000Z';
 
 export const MEMBER_PROGRESSION_HEADING = 'Levels and drawing entries';

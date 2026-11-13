@@ -181,6 +181,8 @@ async function main() {
   process.stdout.write('PASS: E09-A2 progression ledger idempotency, quarter boundary, and member read.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-a4-progression-backfill.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E09-A4 backfill counts, cutoff, dry run, recovery, and frozen milestones.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b16-drawing-entry-start.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E09-B16 live drawing entries start on 2027-01-01 America/Chicago.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b3-drawing-campaigns.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E09-B3 drawing campaigns, budget, sample and live rules, and service_role grants.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e09-b4-drawing-campaign-lifecycle.sql'), 'utf8')) + '\n');

@@ -1,7 +1,8 @@
 -- Run only through the guarded local harness. All fixture rows are rolled back.
--- E09-A2: one event per verified visit, one milestone per level, one drawing
--- entry per milestone. Idempotent replay, out-of-order event time, the
--- Chicago quarter boundary, unverified redemptions, member read, and grants.
+-- E09-A2: one event per verified visit, one milestone per level. A drawing
+-- entry is inserted only when reached_at is on or after the entry start
+-- (E09-B16). Idempotent replay, out-of-order event time, the Chicago quarter
+-- boundary, unverified redemptions, member read, and grants.
 begin;
 set local statement_timeout = '15s';
 
@@ -238,7 +239,7 @@ begin
   result := public.record_verified_visit_progress(mid_a);
   if jsonb_array_length(result->'events') <> 1
      or jsonb_array_length(result->'milestones') <> 1
-     or jsonb_array_length(result->'entries') <> 1
+     or result->'entries' <> '[]'::jsonb
      or result->'milestones'->0->>'milestone_key' is distinct from 'v1:level:1'
      or (result->'milestones'->0->>'reached_at')::timestamptz is distinct from q4_at
      or result->'milestones'->0->>'quarter_key' is distinct from '2026-Q4'
@@ -255,9 +256,9 @@ begin
       where m.user_id = member_a and m.milestone_key = 'v1:level:1') is distinct from late_a
      or (select reached_at from public.progression_milestones
          where user_id = member_a and milestone_key = 'v1:level:1') is distinct from q4_at
-     or (select d.quarter_key from public.progression_drawing_entries d
-         join public.progression_milestones m on m.id = d.milestone_id
-         where m.user_id = member_a) is distinct from '2026-Q4' then
+     or (select quarter_key from public.progression_milestones
+         where user_id = member_a and milestone_key = 'v1:level:1') is distinct from '2026-Q4'
+     or (select count(*) from public.progression_drawing_entries where user_id = member_a) <> 0 then
     raise exception 'FAIL: crossing visit was not the December event';
   end if;
 
@@ -293,7 +294,7 @@ begin
   if replay->'events' <> '[]'::jsonb
      or (select count(*) from public.progression_events where user_id = member_e) <> 3
      or (select count(*) from public.progression_milestones where user_id = member_e) <> 1
-     or (select count(*) from public.progression_drawing_entries where user_id = member_e) <> 1 then
+     or (select count(*) from public.progression_drawing_entries where user_id = member_e) <> 0 then
     raise exception 'FAIL: member E replay';
   end if;
 
@@ -306,10 +307,12 @@ begin
   end if;
   result := public.record_verified_visit_progress(late_b);
   if jsonb_array_length(result->'milestones') <> 1
+     or jsonb_array_length(result->'entries') <> 1
      or (result->'milestones'->0->>'reached_at')::timestamptz is distinct from q1_at
      or result->'milestones'->0->>'quarter_key' is distinct from '2027-Q1'
      or result->'entries'->0->>'quarter_key' is distinct from '2027-Q1'
-     or result->'entries'->0->>'entry_source' is distinct from 'level_milestone' then
+     or result->'entries'->0->>'entry_source' is distinct from 'level_milestone'
+     or (select count(*) from public.progression_drawing_entries where user_id = member_b) <> 1 then
     raise exception 'FAIL: 2027-Q1 crossing %', result;
   end if;
   replay := public.record_verified_visit_progress(late_b);
@@ -318,7 +321,8 @@ begin
      or replay->'milestones' <> '[]'::jsonb
      or replay->'entries' <> '[]'::jsonb
      or (select count(*) from public.progression_events where user_id = member_b) <> 3
-     or (select count(*) from public.progression_milestones where user_id = member_b) <> 1 then
+     or (select count(*) from public.progression_milestones where user_id = member_b) <> 1
+     or (select count(*) from public.progression_drawing_entries where user_id = member_b) <> 1 then
     raise exception 'FAIL: member B replay %', replay;
   end if;
 
@@ -360,7 +364,7 @@ begin
         raise exception 'FAIL: visit % created a milestone %', i, result;
       end if;
     elsif jsonb_array_length(result->'milestones') <> 1
-          or jsonb_array_length(result->'entries') <> 1
+          or result->'entries' <> '[]'::jsonb
           or (result->'milestones'->0->>'level')::integer <> level_n
           or result->'milestones'->0->>'milestone_key' is distinct from 'v1:level:' || level_n::text
           or (result->'milestones'->0->>'reached_at')::timestamptz is distinct from visit_at
@@ -371,7 +375,7 @@ begin
 
   if (select count(*) from public.progression_events where user_id = member_c) <> 35
      or (select count(*) from public.progression_milestones where user_id = member_c) <> 5
-     or (select count(*) from public.progression_drawing_entries where user_id = member_c) <> 5
+     or (select count(*) from public.progression_drawing_entries where user_id = member_c) <> 0
      or (select max(level) from public.progression_milestones where user_id = member_c) <> 5
      or exists (
        select 1 from public.progression_milestones
@@ -464,7 +468,7 @@ begin
   end if;
   if (select count(*) from public.progression_events) <> 3
      or (select count(*) from public.progression_milestones) <> 1
-     or (select count(*) from public.progression_drawing_entries) <> 1
+     or (select count(*) from public.progression_drawing_entries) <> 0
      or exists (
        select 1 from public.progression_events
        where user_id is distinct from auth.uid()
@@ -572,7 +576,7 @@ do $$
 begin
   if (select count(*) from public.progression_events) <> 44
      or (select count(*) from public.progression_milestones) <> 8
-     or (select count(*) from public.progression_drawing_entries) <> 8 then
+     or (select count(*) from public.progression_drawing_entries) <> 1 then
     raise exception 'FAIL: role checks changed ledger counts';
   end if;
 end;

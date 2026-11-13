@@ -59,6 +59,7 @@ begin
 
   select p.prosrc into recorder_src from pg_proc p where p.oid = recorder::regprocedure;
   if position('progression_insert_missing_v1_milestones' in recorder_src) = 0
+     or position('progression_drawing_entries_from' in recorder_src) = 0
      or position('(1, 300)' in recorder_src) > 0
      or position('2500 + step.n * 1000' in recorder_src) > 0
      or position('wanderbite.progression.v1' in recorder_src) = 0
@@ -500,12 +501,15 @@ begin
   perform public.record_verified_visit_progress(f2);
   perform public.record_verified_visit_progress(f3);
   perform public.record_verified_visit_progress(f4);
-  select m.id, m.reached_at, m.quarter_key, m.source_event_id, d.id, d.quarter_key, d.created_at
-    into f_milestone, f_reached, f_quarter, f_source, f_entry, f_entry_quarter, f_entry_created
+  -- f4 is 2026-05-04, before the live entry start, so the recorder stores the
+  -- milestone and withholds the entry. f_entry stays null.
+  select m.id, m.reached_at, m.quarter_key, m.source_event_id
+    into f_milestone, f_reached, f_quarter, f_source
   from public.progression_milestones m
-  join public.progression_drawing_entries d on d.milestone_id = m.id
   where m.user_id = member_f;
-  if f_reached is distinct from f4_at or f_quarter is distinct from '2026-Q2' then
+  if f_reached is distinct from f4_at
+     or f_quarter is distinct from '2026-Q2'
+     or (select count(*) from public.progression_drawing_entries where user_id = member_f) <> 0 then
     raise exception 'FAIL: frozen setup reached % quarter %', f_reached, f_quarter;
   end if;
   result := public.backfill_verified_visit_progress('2026-01-01 06:00:00+00', member_f, false);
@@ -536,9 +540,12 @@ begin
   loop
     perform public.record_verified_visit_progress(visit_id);
   end loop;
+  -- These visits end in 2026, before the live entry start, so the recorder
+  -- writes the five milestones and no drawing entries. Backfill below still
+  -- uses `base`, which is earlier than every milestone, and can insert entries.
   if (select count(*) from public.progression_events where user_id = member_r) <> 36
      or (select count(*) from public.progression_milestones where user_id = member_r) <> 5
-     or (select count(*) from public.progression_drawing_entries where user_id = member_r) <> 5
+     or (select count(*) from public.progression_drawing_entries where user_id = member_r) <> 0
      or (select count(*) from public.progression_events where user_id = member_s) <> 0 then
     raise exception 'FAIL: record path did not match the 36-visit schedule';
   end if;
@@ -584,6 +591,7 @@ begin
          from public.progression_milestones m
          join public.progression_events e on e.id = m.source_event_id
          where m.user_id = member_s)
+     or (select count(*) from public.progression_drawing_entries where user_id = member_r) <> 0
      or (select count(*) from public.progression_drawing_entries where user_id = member_s) <> 5
      or (select count(*) from public.progression_milestones where user_id = member_s and level = 6) <> 0 then
     raise exception 'FAIL: backfill milestones diverged from record %', result;

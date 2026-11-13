@@ -17,6 +17,9 @@ const RACE_VISITS = [
 ];
 const SENTINEL = 'E09A4_BACKFILL_DONE';
 const EARLY = '2026-04-01 17:00:00+00';
+// Both writers insert the level-1 entry only when the crossing visit is on or
+// after 2027-01-01 00:00 America/Chicago. Earlier dates make the race depend
+// on which writer creates the milestone.
 
 class PsqlSession {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -89,8 +92,8 @@ export async function runE09A4BackfillConcurrency(opts: {
       insert into public.redemptions (
         id, user_id, restaurant_id, token_hash, status, verified_at, expires_at
       ) values
-        ${visitRows(LOCK_USER, LOCK_VISITS, '2026-04-01')},
-        ${visitRows(RACE_USER, RACE_VISITS, '2026-05-01')};
+        ${visitRows(LOCK_USER, LOCK_VISITS, '2027-01-01')},
+        ${visitRows(RACE_USER, RACE_VISITS, '2027-02-01')};
     `);
     sql(`select public.record_verified_visit_progress('${RACE_VISITS[0]}');`);
     sql(`select public.record_verified_visit_progress('${RACE_VISITS[1]}');`);
