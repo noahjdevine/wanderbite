@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MemberProgressionPanel } from '@/components/journey/progression-panel';
 import {
   SAMPLE_DRAWING_BANNER,
+  SAMPLE_DRAWING_CLOSED,
+  SAMPLE_DRAWING_CLOSED_NOT_RUN,
+  SAMPLE_DRAWING_HEADING,
   SAMPLE_DRAWING_NOT_DRAWN,
   SAMPLE_DRAWING_NOT_PICKED,
   SAMPLE_DRAWING_UNAVAILABLE,
@@ -29,13 +32,16 @@ const summary: MemberProgressionSummary = {
   ignored: { events: 0, milestones: 0, entries: 0 },
 };
 
-function campaign(result: 'not_drawn' | 'picked' | 'not_picked' | 'forfeited'): MemberSampleDrawing {
+function campaign(
+  result: 'not_drawn' | 'picked' | 'not_picked' | 'forfeited',
+  status: 'active' | 'closed' = result === 'not_drawn' ? 'active' : 'closed',
+): MemberSampleDrawing {
   return {
     kind: 'campaign',
     quarterKey: '2027-Q1',
     startsOn: 'Jan 1, 2027',
     endsOn: 'Mar 31, 2027',
-    status: result === 'not_drawn' ? 'active' : 'closed',
+    status,
     prizes: [{ label: 'Sample prize: Dinner for two', quantity: 2, sampleValueCents: 4000 }],
     entryCount: 3,
     result,
@@ -96,6 +102,55 @@ describe('SampleDrawingCard', () => {
     expect(screen.queryByText('In this simulated drawing you were picked for Sample prize: Dinner for two')).toBeNull();
     expect(forfeited.container.innerHTML).not.toMatch(/actual_cost|notes|actor|pending|ready|fulfilled/i);
     expect(forfeited.container.textContent).not.toContain('424242');
+  });
+
+  it('leaves an active campaign unchanged', () => {
+    const view = render(<SampleDrawingCard drawing={campaign('not_drawn', 'active')} />);
+    expect(view.container.textContent).toBe(
+      [
+        SAMPLE_DRAWING_HEADING,
+        SAMPLE_DRAWING_BANNER,
+        'Jan 1, 2027 \u2013 Mar 31, 2027',
+        'Sample prize: Dinner for two \u00d72 \u00b7 Sample value $40',
+        '3 entries this quarter',
+        SAMPLE_DRAWING_NOT_DRAWN,
+      ].join(''),
+    );
+    expect(screen.queryByText(SAMPLE_DRAWING_CLOSED)).toBeNull();
+    expect(screen.queryByText(SAMPLE_DRAWING_CLOSED_NOT_RUN)).toBeNull();
+    expect(view.container.innerHTML).not.toMatch(/budget|allowance|actual_cost|notes|user_id/i);
+  });
+
+  it('shows a closed cue when the campaign closed without a selection', () => {
+    const view = render(<SampleDrawingCard drawing={campaign('not_drawn', 'closed')} />);
+    expect(screen.getByText(SAMPLE_DRAWING_BANNER)).toBeTruthy();
+    expect(screen.getByText(SAMPLE_DRAWING_CLOSED)).toBeTruthy();
+    expect(screen.getByText(SAMPLE_DRAWING_CLOSED_NOT_RUN)).toBeTruthy();
+    expect(screen.queryByText(SAMPLE_DRAWING_NOT_DRAWN)).toBeNull();
+    expect(screen.getByText('3 entries this quarter')).toBeTruthy();
+    expect(view.container.innerHTML).not.toMatch(/budget|allowance|actual_cost|notes|user_id/i);
+  });
+
+  it('keeps the selection lines when a closed campaign has already been run', () => {
+    const picked = render(<SampleDrawingCard drawing={campaign('picked', 'closed')} />);
+    expect(screen.getByText(SAMPLE_DRAWING_CLOSED)).toBeTruthy();
+    expect(screen.getByText(samplePickedLine('Sample prize: Dinner for two'))).toBeTruthy();
+    expect(screen.queryByText(SAMPLE_DRAWING_NOT_DRAWN)).toBeNull();
+    expect(screen.queryByText(SAMPLE_DRAWING_CLOSED_NOT_RUN)).toBeNull();
+    picked.unmount();
+
+    const forfeited = render(<SampleDrawingCard drawing={campaign('forfeited', 'closed')} />);
+    expect(screen.getByText(SAMPLE_DRAWING_CLOSED)).toBeTruthy();
+    expect(screen.getByText(sampleForfeitedLine('Sample prize: Dinner for two'))).toBeTruthy();
+    expect(screen.queryByText(SAMPLE_DRAWING_NOT_DRAWN)).toBeNull();
+    expect(screen.queryByText(SAMPLE_DRAWING_CLOSED_NOT_RUN)).toBeNull();
+    forfeited.unmount();
+
+    render(<SampleDrawingCard drawing={campaign('not_picked', 'closed')} />);
+    expect(screen.getByText(SAMPLE_DRAWING_CLOSED)).toBeTruthy();
+    expect(screen.getByText(SAMPLE_DRAWING_NOT_PICKED)).toBeTruthy();
+    expect(screen.queryByText(SAMPLE_DRAWING_NOT_DRAWN)).toBeNull();
+    expect(screen.queryByText(SAMPLE_DRAWING_CLOSED_NOT_RUN)).toBeNull();
   });
 
   it('renders nothing for none and a quiet line when the read is unavailable', () => {
