@@ -20,16 +20,20 @@ export const PARTNER_CODE_NOT_FOUND_MESSAGE =
 /**
  * Trim, drop internal whitespace, and uppercase.
  * Accepts `WB-XXXXX`, `WBXXXXX`, `wb xxxxx`, or bare `XXXXX`.
+ * A compact string of exactly 5 characters is the body, even when it starts
+ * with WB. `WB-` or `WB` is a prefix only when the string is longer than that.
  * Returns `WB-XXXXX`, or null when the result is not that shape.
  */
 export function normalizePartnerRedemptionCode(raw: string): string | null {
   const compact = raw.trim().replace(/\s+/g, '').toUpperCase();
   if (!compact) return null;
   let body = compact;
-  if (body.startsWith(REDEMPTION_CODE_PREFIX)) {
-    body = body.slice(REDEMPTION_CODE_PREFIX.length);
-  } else if (body.startsWith('WB')) {
-    body = body.slice(2);
+  if (compact.length > REDEMPTION_CODE_LENGTH) {
+    if (body.startsWith(REDEMPTION_CODE_PREFIX)) {
+      body = body.slice(REDEMPTION_CODE_PREFIX.length);
+    } else if (body.startsWith('WB')) {
+      body = body.slice(2);
+    }
   }
   if (!CODE_BODY.test(body)) return null;
   return `${REDEMPTION_CODE_PREFIX}${body}`;
