@@ -13,17 +13,17 @@ import {
   persistAndStripPartnerRedeemCode,
   takePartnerRedeemCodeForVerify,
 } from '@/lib/pending-redeem-storage';
-import { PARTNER_CODE_HINT, partnerCodeInputValue } from '@/lib/partner-redemption-code';
+import {
+  PARTNER_CODE_HINT,
+  partnerCodeInputValue,
+  partnerCodeSubmitValue,
+} from '@/lib/partner-redemption-code';
 
 type VerifyState =
   | { status: 'idle' }
   | { status: 'verifying' }
   | { status: 'success'; email: string | null; verifiedAt: string; savingsCopy: string | null }
   | { status: 'error'; message: string };
-
-function normalizeCode(raw: string): string {
-  return partnerCodeInputValue(raw);
-}
 
 type PartnerRedeemClientProps = {
   restaurantName: string;
@@ -37,18 +37,19 @@ export function PartnerRedeemClient({
   initialCode,
 }: PartnerRedeemClientProps) {
   const router = useRouter();
-  const [code, setCode] = useState(() => (initialCode ? normalizeCode(initialCode) : ''));
+  const [code, setCode] = useState(() => (initialCode ? partnerCodeInputValue(initialCode) : ''));
   const [state, setState] = useState<VerifyState>({ status: 'idle' });
   const autoRan = useRef(false);
 
   const runVerify = useCallback(async (rawCode: string) => {
-    const trimmed = normalizeCode(rawCode);
-    if (!trimmed) return;
+    const submitted = partnerCodeSubmitValue(rawCode);
+    if (!submitted) return;
+    setCode(submitted);
 
     consumePendingRedeemCode(slug);
     setState({ status: 'verifying' });
     try {
-      const res = await verifyRedemptionTokenForPartner(trimmed);
+      const res = await verifyRedemptionTokenForPartner(submitted);
       if (res.success) {
         setState({
           status: 'success',

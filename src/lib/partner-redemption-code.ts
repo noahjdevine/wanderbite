@@ -39,8 +39,20 @@ export function normalizePartnerRedemptionCode(raw: string): string | null {
   return `${REDEMPTION_CODE_PREFIX}${body}`;
 }
 
-/** What the partner input shows. A complete code snaps to the canonical form. */
+/**
+ * What the field shows while typing. Whitespace is removed and letters are
+ * uppercased. A partial value is not rewritten into `WB-XXXXX`, because a
+ * 5-character prefix-without-dash is still unfinished.
+ */
 export function partnerCodeInputValue(raw: string): string {
-  const compact = raw.replace(/\s+/g, '').toUpperCase();
-  return normalizePartnerRedemptionCode(compact) ?? compact;
+  return raw.replace(/\s+/g, '').toUpperCase();
+}
+
+/**
+ * Value sent on submit. A shape the server accepts is the canonical code.
+ * Anything else stays as typed so the server can reject it.
+ */
+export function partnerCodeSubmitValue(raw: string): string {
+  const display = partnerCodeInputValue(raw);
+  return normalizePartnerRedemptionCode(display) ?? display;
 }

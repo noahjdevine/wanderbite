@@ -8,7 +8,11 @@ import { partnerVerifiedOfferLine } from '@/lib/boost/savings-copy';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import type { PartnerAnalyticsResult } from '@/app/actions/partner-auth';
-import { PARTNER_CODE_HINT, partnerCodeInputValue } from '@/lib/partner-redemption-code';
+import {
+  PARTNER_CODE_HINT,
+  partnerCodeInputValue,
+  partnerCodeSubmitValue,
+} from '@/lib/partner-redemption-code';
 
 type PartnerDashboardProps = {
   restaurantName: string;
@@ -66,12 +70,13 @@ export function PartnerDashboard({
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = code.trim();
-    if (!trimmed) return;
+    const submitted = partnerCodeSubmitValue(code);
+    if (!submitted) return;
+    setCode(submitted);
     setIsVerifying(true);
     setResult(null);
     try {
-      const res = await verifyRedemptionTokenForPartner(trimmed);
+      const res = await verifyRedemptionTokenForPartner(submitted);
       if (res.success) {
         setResult({
           success: true,

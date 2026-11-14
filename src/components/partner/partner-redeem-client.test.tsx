@@ -33,6 +33,12 @@ beforeEach(() => {
   refresh.mockReset();
 });
 
+function typeKeys(input: HTMLInputElement, text: string) {
+  for (const char of text) {
+    fireEvent.change(input, { target: { value: `${input.value}${char}` } });
+  }
+}
+
 describe('PartnerRedeemClient', () => {
   it('has one h1, the same code field, and one verify call', async () => {
     verifyRedemptionTokenForPartner.mockResolvedValue({
@@ -70,6 +76,26 @@ describe('PartnerRedeemClient', () => {
     expect(alert.getAttribute('aria-live')).toBe('assertive');
     expect(input.getAttribute('aria-describedby')).toBe('partner-redeem-hint partner-redeem-error');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  it.each([
+    ['WBABCDE', 'WB-ABCDE'],
+    ['WB-ABCDE', 'WB-ABCDE'],
+    ['ABCDE', 'WB-ABCDE'],
+    ['WB3K7', 'WB-WB3K7'],
+  ] as const)('submits %s typed key by key as %s', async (typed, submitted) => {
+    verifyRedemptionTokenForPartner.mockResolvedValue({
+      success: false,
+      message: PARTNER_CODE_NOT_FOUND_MESSAGE,
+    });
+    render(<PartnerRedeemClient restaurantName="North Grill" slug="north-grill" />);
+    const input = screen.getByLabelText('Customer code') as HTMLInputElement;
+    typeKeys(input, typed);
+    expect(input.value).toBe(typed);
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => {
+      expect(verifyRedemptionTokenForPartner).toHaveBeenCalledWith(submitted);
+    });
   });
 
   it('shows the same verified copy', async () => {

@@ -4,6 +4,7 @@ import {
   PARTNER_CODE_NOT_FOUND_MESSAGE,
   normalizePartnerRedemptionCode,
   partnerCodeInputValue,
+  partnerCodeSubmitValue,
 } from '@/lib/partner-redemption-code';
 
 describe('normalizePartnerRedemptionCode', () => {
@@ -55,9 +56,24 @@ describe('normalizePartnerRedemptionCode', () => {
     expect(PARTNER_CODE_NOT_FOUND_MESSAGE).not.toMatch(/restaurant|verified|expired/i);
   });
 
-  it('shows a complete body that starts with WB as the canonical code', () => {
-    expect(partnerCodeInputValue('wb3k7')).toBe('WB-WB3K7');
-    expect(partnerCodeInputValue(' wb wb3k7 ')).toBe('WB-WB3K7');
+  it('uppercases a keystroke and does not insert WB- until submit', () => {
+    expect(partnerCodeInputValue(' wb3k7 ')).toBe('WB3K7');
     expect(partnerCodeInputValue('WB3')).toBe('WB3');
+    expect(partnerCodeInputValue('WBABC')).toBe('WBABC');
+
+    function typeKeys(text: string): string {
+      let shown = '';
+      for (const char of text) shown = partnerCodeInputValue(shown + char);
+      return shown;
+    }
+
+    expect(typeKeys('WBABCDE')).toBe('WBABCDE');
+    expect(typeKeys('WB-ABCDE')).toBe('WB-ABCDE');
+    expect(typeKeys('ABCDE')).toBe('ABCDE');
+    expect(typeKeys('WB3K7')).toBe('WB3K7');
+    expect(partnerCodeSubmitValue(typeKeys('WBABCDE'))).toBe('WB-ABCDE');
+    expect(partnerCodeSubmitValue(typeKeys('WB-ABCDE'))).toBe('WB-ABCDE');
+    expect(partnerCodeSubmitValue(typeKeys('ABCDE'))).toBe('WB-ABCDE');
+    expect(partnerCodeSubmitValue(typeKeys('WB3K7'))).toBe('WB-WB3K7');
   });
 });
