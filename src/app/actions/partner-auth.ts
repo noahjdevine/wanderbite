@@ -14,6 +14,7 @@ import { parseUuid } from '@/lib/uuid';
 import { trustedClientIpFromHeaders } from '@/lib/client-ip';
 import { hashClientIp, hasIpHashSecret } from '@/lib/ai-ip-hash';
 import { evaluatePartnerLoginLimit } from '@/lib/ratelimit';
+import { formatPartnerVerifiedAt } from '@/lib/partner-verified-at';
 import {
   LEGACY_PARTNER_COOKIE_NAME,
   PARTNER_ANALYTICS_UNAVAILABLE_MESSAGE,
@@ -394,15 +395,7 @@ export async function getPartnerAnalytics(): Promise<PartnerAnalyticsResult> {
     const email = r.user_id ? emailByUserId[r.user_id] ?? null : null;
     return {
       emailMasked: maskEmail(email),
-      verifiedAt: r.verified_at
-        ? new Date(r.verified_at).toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })
-        : '—',
+      verifiedAt: formatPartnerVerifiedAt(r.verified_at),
     };
   });
 

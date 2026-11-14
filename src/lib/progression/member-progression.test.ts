@@ -153,6 +153,7 @@ describe('loadMemberProgression', () => {
     });
     expect(result.summary.milestones).toEqual([
       {
+        id: 'm1',
         level: 1,
         name: 'The Explorer',
         reachedAt: '2026-02-03T18:00:00.000Z',
@@ -160,6 +161,7 @@ describe('loadMemberProgression', () => {
         hasEntry: false,
       },
       {
+        id: 'm4',
         level: 4,
         name: 'The Local Legend',
         reachedAt: CHICAGO_EDGE,

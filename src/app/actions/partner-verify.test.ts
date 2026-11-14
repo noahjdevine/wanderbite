@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PARTNER_SESSION_EXPIRED_MESSAGE } from '@/lib/partner-session';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
+import { PARTNER_CODE_NOT_FOUND_MESSAGE } from '@/lib/partner-redemption-code';
 import {
   VERIFY_THROTTLED_MESSAGE,
   VERIFY_UNAVAILABLE_MESSAGE,
@@ -67,7 +68,7 @@ function issuedRow(overrides: Record<string, unknown> = {}) {
     user_id: USER_ID,
     restaurant_id: ACTIVE_ID,
     status: 'issued',
-    token_hash: hashRedemptionToken('WB-G6OK1'),
+    token_hash: hashRedemptionToken('WB-G6PK2'),
     verified_at: null,
     expires_at: new Date(Date.now() + 86_400_000).toISOString(),
     ...overrides,
@@ -146,9 +147,8 @@ describe('verifyRedemptionTokenForPartner', () => {
   });
 
   it('maps a single claimed row to success', async () => {
-    const now = new Date().toISOString();
     rpc.mockResolvedValue({
-      data: [issuedRow({ status: 'verified', verified_at: now })],
+      data: [issuedRow({ status: 'verified', verified_at: '2026-11-14T15:14:00.000Z' })],
       error: null,
     });
     from.mockImplementation((table: string) => {
@@ -189,15 +189,16 @@ describe('verifyRedemptionTokenForPartner', () => {
       return { select: () => ({}) };
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.redemptionDetails.email).toBe('a@b.c');
       expect(result.redemptionDetails.restaurantName).toBe('Active Grill');
+      expect(result.redemptionDetails.verifiedAt).toContain('9:14 AM CT');
       expect(result.hideDiscountAmount).toBe(false);
     }
     expect(rpc).toHaveBeenCalledWith('verify_redemption', {
-      p_token_hash: hashRedemptionToken('WB-G6OK1'),
+      p_token_hash: hashRedemptionToken('WB-G6PK2'),
       p_restaurant_id: ACTIVE_ID,
     });
   });
@@ -265,9 +266,9 @@ describe('verifyRedemptionTokenForPartner', () => {
       return { select: () => ({}) };
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(rpc).toHaveBeenCalledWith('verify_redemption_and_settle', {
-      p_token_hash: hashRedemptionToken('WB-G6OK1'),
+      p_token_hash: hashRedemptionToken('WB-G6PK2'),
       p_restaurant_id: ACTIVE_ID,
     });
     expect(result).toMatchObject({
@@ -305,7 +306,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       };
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.message).toMatch(/already used/);
@@ -325,7 +326,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       error: null,
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+    await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual({
       success: false,
       message: 'Verification failed. Please try again later.',
     });
@@ -339,7 +340,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       error: { message: 'duplicate issued redemptions for token_hash', code: '23514' },
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+    await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual({
       success: false,
       message: 'Verification failed. Please try again later.',
     });
@@ -364,7 +365,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       };
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+    await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual({
       success: false,
       message: 'This code is not for your restaurant.',
     });
@@ -391,7 +392,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       };
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+    await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual({
       success: false,
       message: 'Code expired',
     });
@@ -414,7 +415,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       };
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+    await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual({
       success: false,
       message: 'Code expired',
     });
@@ -435,16 +436,50 @@ describe('verifyRedemptionTokenForPartner', () => {
       };
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    await expect(verifyRedemptionTokenForPartner('WB-OLDHASH')).resolves.toEqual({
+    await expect(verifyRedemptionTokenForPartner('WB-ZZZZZ')).resolves.toEqual({
       success: false,
-      message: 'Invalid code',
+      message: PARTNER_CODE_NOT_FOUND_MESSAGE,
     });
+  });
+
+  it('hashes the canonical code after the rate limit, and rejects a bad shape before lookup', async () => {
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    await verifyRedemptionTokenForPartner(' wb abcde ');
+    expect(enforcePartnerVerifyLimit).toHaveBeenCalledTimes(1);
+    expect(rpc).toHaveBeenCalledWith('verify_redemption', {
+      p_token_hash: hashRedemptionToken('WB-ABCDE'),
+      p_restaurant_id: ACTIVE_ID,
+    });
+    const limitOrder = enforcePartnerVerifyLimit.mock.invocationCallOrder[0] ?? 0;
+    const rpcOrder = rpc.mock.invocationCallOrder[0] ?? 0;
+    expect(limitOrder).toBeGreaterThan(0);
+    expect(limitOrder).toBeLessThan(rpcOrder);
+
+    rpc.mockClear();
+    from.mockClear();
+    enforcePartnerVerifyLimit.mockClear();
+    for (const junk of ['WB-AB0DE', 'WB-ABODE', 'WB-AB1DE', 'WB-ABIDE', 'ABC', 'WB-ABCDEF']) {
+      await expect(verifyRedemptionTokenForPartner(junk)).resolves.toEqual({
+        success: false,
+        message: PARTNER_CODE_NOT_FOUND_MESSAGE,
+      });
+    }
+    expect(enforcePartnerVerifyLimit).toHaveBeenCalledTimes(6);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalled();
+
+    enforcePartnerVerifyLimit.mockResolvedValue('throttled');
+    await expect(verifyRedemptionTokenForPartner('0OOOO')).resolves.toEqual({
+      success: false,
+      message: VERIFY_THROTTLED_MESSAGE,
+    });
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('does not settle when the arrival flag is off, even if a quote exists', async () => {
     installVisit({});
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       hideDiscountAmount: true,
@@ -462,7 +497,7 @@ describe('verifyRedemptionTokenForPartner', () => {
     vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
     const installed = installVisit({});
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       hideDiscountAmount: false,
@@ -526,7 +561,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       quote: quoteRow({ total_discount_cents: 1800, base_discount_cents: 1800, boost_discount_cents: 0 }),
     });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       confirmedTotalDiscountCents: 2500,
@@ -550,7 +585,7 @@ describe('verifyRedemptionTokenForPartner', () => {
       boost_id: null,
     }) });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       hideDiscountAmount: true,
@@ -565,7 +600,7 @@ describe('verifyRedemptionTokenForPartner', () => {
     vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
     installVisit({ deadline: '2020-01-01T00:00:00.000Z' });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       hideDiscountAmount: true,
@@ -579,7 +614,7 @@ describe('verifyRedemptionTokenForPartner', () => {
     vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
     installVisit({ session: null });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       hideDiscountAmount: true,
@@ -599,7 +634,7 @@ describe('verifyRedemptionTokenForPartner', () => {
     vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
     const installed = installVisit({ recordError: true });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
-    const result = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       newBadgesEarned: ['First Bite'],
@@ -612,14 +647,14 @@ describe('verifyRedemptionTokenForPartner', () => {
   it('does not call the ledger when the flag is unset or any value other than true', async () => {
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     installClaimed();
-    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     for (const value of ['', 'TRUE', 'True', '1']) {
       rpc.mockClear();
       process.env.E09_PROGRESSION_LEDGER_ENABLED = value;
       installClaimed();
-      await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+      await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual(baseline);
       expect(ledgerCalls()).toEqual([]);
     }
   });
@@ -627,14 +662,14 @@ describe('verifyRedemptionTokenForPartner', () => {
   it('records one inserted visit after badges and leaves the verify response unchanged', async () => {
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     installClaimed();
-    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6PK2');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       rpc.mockClear();
       captureException.mockClear();
       process.env.E09_PROGRESSION_LEDGER_ENABLED = 'true';
       const installed = installClaimed({ ledger: 'recorded' });
-      await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+      await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual(baseline);
       expect(ledgerCalls()).toEqual([
         ['record_verified_visit_progress', { p_redemption_id: 'redemption-1' }],
       ]);
@@ -662,13 +697,13 @@ describe('verifyRedemptionTokenForPartner', () => {
   it('treats an empty ledger payload as a replay and does nothing else', async () => {
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     installClaimed();
-    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6PK2');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       rpc.mockClear();
       process.env.E09_PROGRESSION_LEDGER_ENABLED = 'true';
       installClaimed({ ledger: 'replay' });
-      await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+      await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual(baseline);
       expect(ledgerCalls()).toHaveLength(1);
       expect(errorSpy).not.toHaveBeenCalled();
       expect(captureException).not.toHaveBeenCalled();
@@ -680,7 +715,7 @@ describe('verifyRedemptionTokenForPartner', () => {
   it('keeps the verify response when the ledger errors, throws, returns null, or is malformed', async () => {
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     installClaimed();
-    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6PK2');
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       process.env.E09_PROGRESSION_LEDGER_ENABLED = 'true';
@@ -689,7 +724,7 @@ describe('verifyRedemptionTokenForPartner', () => {
         captureException.mockClear();
         errorSpy.mockClear();
         installClaimed({ ledger: mode });
-        await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+        await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual(baseline);
         expect(ledgerCalls()).toHaveLength(1);
         expect(errorSpy.mock.calls).toEqual([['progression ledger record failed']]);
         expect(captureException).toHaveBeenCalledTimes(1);
@@ -698,7 +733,7 @@ describe('verifyRedemptionTokenForPartner', () => {
         expect((reported as Error).message).toBe('progression ledger record failed');
         const logged = JSON.stringify(errorSpy.mock.calls) + (reported as Error).message;
         expect(logged).not.toContain(USER_ID);
-        expect(logged).not.toContain('WB-G6OK1');
+        expect(logged).not.toContain('WB-G6PK2');
         expect(logged).not.toContain('a@b.c');
         expect(logged).not.toContain('redemption-1');
       }
@@ -712,7 +747,7 @@ describe('verifyRedemptionTokenForPartner', () => {
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
 
     requirePartnerSession.mockResolvedValue({ ok: false });
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     requirePartnerSession.mockResolvedValue({
@@ -722,11 +757,11 @@ describe('verifyRedemptionTokenForPartner', () => {
       tokenHash: 'session-hash',
     });
     enforcePartnerVerifyLimit.mockResolvedValue('throttled');
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     enforcePartnerVerifyLimit.mockResolvedValue('unavailable');
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     enforcePartnerVerifyLimit.mockResolvedValue('allow');
@@ -737,11 +772,11 @@ describe('verifyRedemptionTokenForPartner', () => {
       data: null,
       error: { message: 'duplicate issued redemptions for token_hash', code: '23514' },
     });
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     rpc.mockResolvedValue({ data: null, error: { message: 'connection reset' } });
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     rpc.mockResolvedValue({
@@ -751,18 +786,18 @@ describe('verifyRedemptionTokenForPartner', () => {
       ],
       error: null,
     });
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     installClaimed({ userId: null });
-    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual({
+    await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual({
       success: false,
       message: 'Verification failed. Please try again later.',
     });
     expect(ledgerCalls()).toEqual([]);
 
     installClaimed({ id: '' });
-    const missingId = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const missingId = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(missingId.success).toBe(true);
     expect(ledgerCalls()).toEqual([]);
 
@@ -786,7 +821,7 @@ describe('verifyRedemptionTokenForPartner', () => {
         }),
       };
     });
-    const alreadyUsed = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const alreadyUsed = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(alreadyUsed.success).toBe(false);
     expect(ledgerCalls()).toEqual([]);
 
@@ -804,7 +839,7 @@ describe('verifyRedemptionTokenForPartner', () => {
         }),
       };
     });
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     from.mockImplementation((table: string) => {
@@ -821,7 +856,7 @@ describe('verifyRedemptionTokenForPartner', () => {
         }),
       };
     });
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
 
     from.mockImplementation((table: string) => {
@@ -835,7 +870,7 @@ describe('verifyRedemptionTokenForPartner', () => {
         }),
       };
     });
-    await verifyRedemptionTokenForPartner('WB-G6OK1');
+    await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(ledgerCalls()).toEqual([]);
   });
 
@@ -843,11 +878,11 @@ describe('verifyRedemptionTokenForPartner', () => {
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
     installVisit({});
-    const baseline = await verifyRedemptionTokenForPartner('WB-G6OK1');
+    const baseline = await verifyRedemptionTokenForPartner('WB-G6PK2');
     rpc.mockClear();
     vi.stubEnv('E09_PROGRESSION_LEDGER_ENABLED', 'true');
     const installed = installVisit({ ledger: 'recorded' });
-    await expect(verifyRedemptionTokenForPartner('WB-G6OK1')).resolves.toEqual(baseline);
+    await expect(verifyRedemptionTokenForPartner('WB-G6PK2')).resolves.toEqual(baseline);
     expect(installed.events).toEqual(['badges', 'record', 'ledger']);
     expect(ledgerCalls()).toEqual([
       ['record_verified_visit_progress', { p_redemption_id: 'redemption-1' }],
@@ -926,11 +961,11 @@ function ledgerCalls(): unknown[][] {
 }
 
 function ledgerResponse(mode: LedgerMode = 'recorded') {
-  if (mode === 'throw') return Promise.reject(new Error(`timeout ${USER_ID} WB-G6OK1 a@b.c`));
+  if (mode === 'throw') return Promise.reject(new Error(`timeout ${USER_ID} WB-G6PK2 a@b.c`));
   if (mode === 'error') {
     return Promise.resolve({
       data: null,
-      error: { message: `missing function ${USER_ID} WB-G6OK1 a@b.c redemption-1` },
+      error: { message: `missing function ${USER_ID} WB-G6PK2 a@b.c redemption-1` },
     });
   }
   if (mode === 'null') return Promise.resolve({ data: null, error: null });

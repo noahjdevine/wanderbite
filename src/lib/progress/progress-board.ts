@@ -676,14 +676,23 @@ function codeMove(
     ? `/challenges/show/${encodeURIComponent(adventure.redemptionId)}`
     : '/challenges';
   const levelUp = levelUpAccent(input.xp, input.nextLevelName, input.nextLevelXp);
-  if (kind === 'code_expired') {
+  const expiry = kind === 'code_issued' ? codeExpiryPhrase(adventure.expiresAt, input.now) : null;
+  const lapsed = kind === 'code_expired' || codeClockPassed(adventure.expiresAt, input.now);
+  if (lapsed || !expiry) {
     return {
       kind,
-      sentence: `Get a new code for ${adventure.restaurantName}.`,
-      accent: null,
-      meta: joinMeta(['Code expired', daysLeftLabel(adventure.deadline, input.now)]),
+      sentence:
+        kind === 'code_expired'
+          ? `Get a new code for ${adventure.restaurantName}.`
+          : levelUp
+            ? `Show your code at ${adventure.restaurantName} and you'll level up to`
+            : `Show your code at ${adventure.restaurantName}.`,
+      accent: kind === 'code_expired' ? null : levelUp,
+      meta: lapsed
+        ? joinMeta(['Code expired', visitWindowPhrase(adventure.deadline, input.now)])
+        : 'Code issued',
       actionHref: href,
-      actionLabel: 'Get a new code',
+      actionLabel: kind === 'code_expired' ? 'Get a new code' : 'Show code',
     };
   }
   return {
@@ -692,7 +701,7 @@ function codeMove(
       ? `Show your code at ${adventure.restaurantName} and you'll level up to`
       : `Show your code at ${adventure.restaurantName}.`,
     accent: levelUp,
-    meta: joinMeta(['Code issued', daysLeftLabel(adventure.deadline, input.now)]),
+    meta: joinMeta(['Code issued', expiry]),
     actionHref: href,
     actionLabel: 'Show code',
   };
@@ -746,6 +755,32 @@ function pickReady(adventures: readonly ProgressAdventure[]): ProgressAdventure 
     return a.id.localeCompare(b.id);
   });
   return matches[0] ?? null;
+}
+
+function codeExpiryPhrase(expiresAt: string | null, now: Date): string | null {
+  const at = time(expiresAt);
+  if (at == null) return null;
+  const ms = at - now.getTime();
+  if (ms <= 0) return null;
+  const minutes = Math.ceil(ms / 60_000);
+  if (minutes < 60) return minutes === 1 ? 'expires in 1 min' : `expires in ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  const hourLabel = hours === 1 ? '1 hr' : `${hours} hr`;
+  if (rest === 0) return `expires in ${hourLabel}`;
+  return `expires in ${hourLabel} ${rest} min`;
+}
+
+function codeClockPassed(expiresAt: string | null, now: Date): boolean {
+  const at = time(expiresAt);
+  if (at == null) return false;
+  return at <= now.getTime();
+}
+
+function visitWindowPhrase(deadline: string | null, now: Date): string | null {
+  const days = daysLeftLabel(deadline, now);
+  if (!days) return null;
+  return `Visit window: ${days}`;
 }
 
 function daysLeftLabel(deadline: string | null, now: Date): string | null {

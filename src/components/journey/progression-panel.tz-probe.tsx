@@ -46,6 +46,7 @@ const november = {
   ...summary,
   milestones: [
     {
+      id: 'm-nov',
       level: 1,
       name: 'The Explorer',
       reachedAt: NOVEMBER_FALLBACK,

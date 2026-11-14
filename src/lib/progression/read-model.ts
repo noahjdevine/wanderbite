@@ -21,6 +21,7 @@ import {
 const ENTRY_SOURCE = 'level_milestone';
 
 export type MemberProgressionMilestone = {
+  id: string;
   level: number;
   name: string;
   reachedAt: string;
@@ -184,6 +185,7 @@ export function summarizeMemberProgression(
     nextLevel: level.nextLevel,
     progressPercent: level.progressPercent,
     milestones: kept.map((milestone) => ({
+      id: milestone.id,
       level: milestone.level,
       name: milestone.name,
       reachedAt: milestone.reachedAt,

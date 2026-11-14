@@ -1,4 +1,5 @@
 import { ProgressView } from '@/components/journey/progress-view';
+import { WANDERER_BADGE_DESCRIPTION } from '@/lib/progress/badge-copy';
 import { buildProgressModel, noPairCta, type ProgressAdventure } from '@/lib/progress/progress-board';
 import type { MemberProgress } from '@/lib/progress/get-member-progress';
 import { RESTAURANT_IMAGE_PLACEHOLDER } from '@/lib/restaurant-image';
@@ -16,7 +17,7 @@ const adventures: ProgressAdventure[] = [
     visitStatus: 'code_issued',
     occurredAt: '2026-11-03T18:00:00.000Z',
     verifiedAt: null,
-    expiresAt: '2026-11-03T18:15:00.000Z',
+    expiresAt: '2026-11-04T00:15:00.000Z',
     deadline: '2026-12-08T18:00:00.000Z',
     slotNumber: 2,
   },
@@ -89,7 +90,7 @@ const progress: Exclude<MemberProgress, { error: 'progress_unavailable' }> = {
       name: 'Wanderer',
       earnedAt: null,
       progress: { current: 1, target: 3 },
-      description: 'Three neighborhoods',
+      description: WANDERER_BADGE_DESCRIPTION,
       icon: '🚲',
     },
   ],

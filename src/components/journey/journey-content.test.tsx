@@ -139,6 +139,10 @@ describe('JourneyContent member progression panel', () => {
       ok: true,
       summary: { ...legend, consistent: false, ignored: { events: 97, milestones: 98, entries: 99 } },
     });
+    localStorage.clear();
+    for (const level of [1, 2, 3, 4, 5]) {
+      localStorage.setItem(`wb:levelup-seen:m${level}`, '1');
+    }
   });
 
   afterEach(() => {
@@ -160,6 +164,7 @@ describe('JourneyContent member progression panel', () => {
       expect(screen.getAllByText('Max level').length).toBeGreaterThan(0);
       expect(screen.queryByRole('heading', { name: 'Levels and drawing entries' })).toBeNull();
       expect(screen.queryByText('The Local Legend II')).toBeNull();
+      expect(screen.queryByRole('dialog')).toBeNull();
       expect(loadMemberProgression).not.toHaveBeenCalled();
       expect(loadMemberSampleDrawing).not.toHaveBeenCalled();
       expect(createClient).not.toHaveBeenCalled();

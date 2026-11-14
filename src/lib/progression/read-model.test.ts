@@ -82,6 +82,7 @@ describe('summarizeMemberProgression', () => {
     expect(chicagoQuarterKey(CHICAGO_EDGE)).toBe('2026-Q4');
     expect(summary.milestones).toEqual([
       {
+        id: 'milestone-1',
         level: 1,
         name: 'The Explorer',
         reachedAt: '2026-02-03T18:00:00.000Z',
@@ -89,6 +90,7 @@ describe('summarizeMemberProgression', () => {
         hasEntry: false,
       },
       {
+        id: 'milestone-2',
         level: 2,
         name: 'The Tastemaker',
         reachedAt: '2026-04-10T18:00:00.000Z',
@@ -96,6 +98,7 @@ describe('summarizeMemberProgression', () => {
         hasEntry: true,
       },
       {
+        id: 'milestone-3',
         level: 3,
         name: 'The Connoisseur',
         reachedAt: '2026-06-15T18:00:00.000Z',
@@ -103,6 +106,7 @@ describe('summarizeMemberProgression', () => {
         hasEntry: true,
       },
       {
+        id: 'milestone-4',
         level: 4,
         name: 'The Local Legend',
         reachedAt: CHICAGO_EDGE,
@@ -110,6 +114,7 @@ describe('summarizeMemberProgression', () => {
         hasEntry: false,
       },
       {
+        id: 'milestone-5',
         level: 5,
         name: 'The Local Legend II',
         reachedAt: '2027-01-15T18:00:00.000Z',
@@ -217,6 +222,7 @@ describe('summarizeMemberProgression', () => {
     expect(summary.visits).toBe(3);
     expect(summary.milestones).toEqual([
       {
+        id: 'milestone-1',
         level: 1,
         name: 'The Explorer',
         reachedAt: '2026-06-01T18:00:00.000Z',

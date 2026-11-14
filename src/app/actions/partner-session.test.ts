@@ -541,6 +541,21 @@ describe('session-bound partner analytics and verify', () => {
     expect(ok.ok).toBe(true);
     expect(state.redemptionRestaurantIds.every((id) => id === ACTIVE_ID)).toBe(true);
 
+    state.redemptions.push({
+      id: 'redemption-ct',
+      user_id: 'user-ct',
+      restaurant_id: ACTIVE_ID,
+      status: 'verified',
+      token_hash: 'not-a-code',
+      verified_at: '2026-07-14T15:14:00.000Z',
+      expires_at: '2026-07-14T15:30:00.000Z',
+    });
+    const summer = await getPartnerAnalytics();
+    expect(summer.ok).toBe(true);
+    if (summer.ok) {
+      expect(summer.recentCustomers.some((guest) => guest.verifiedAt.includes('10:14 AM CT'))).toBe(true);
+    }
+
     state.analyticsError = true;
     await expect(getPartnerAnalytics()).resolves.toEqual({
       ok: false,
@@ -550,7 +565,7 @@ describe('session-bound partner analytics and verify', () => {
 
   it('binds verify to the session restaurant', async () => {
     putSession(ACTIVE_ID);
-    const code = 'WB-G3TEST';
+    const code = 'WB-G3TES';
     state.redemptions.push({
       id: 'redemption-1',
       user_id: 'user-1',

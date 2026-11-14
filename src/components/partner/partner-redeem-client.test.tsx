@@ -20,6 +20,7 @@ vi.mock('@/app/actions/partner-verify', () => ({
   verifyRedemptionTokenForPartner: (...args: unknown[]) => verifyRedemptionTokenForPartner(...args),
 }));
 
+import { PARTNER_CODE_HINT, PARTNER_CODE_NOT_FOUND_MESSAGE } from '@/lib/partner-redemption-code';
 import { PartnerRedeemClient } from './partner-redeem-client';
 
 afterEach(() => {
@@ -36,7 +37,7 @@ describe('PartnerRedeemClient', () => {
   it('has one h1, the same code field, and one verify call', async () => {
     verifyRedemptionTokenForPartner.mockResolvedValue({
       success: false,
-      message: 'Invalid code',
+      message: PARTNER_CODE_NOT_FOUND_MESSAGE,
     });
     render(<PartnerRedeemClient restaurantName="North Grill" slug="north-grill" />);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
@@ -52,6 +53,8 @@ describe('PartnerRedeemClient', () => {
     expect(input.getAttribute('autocomplete')).toBe('off');
     expect(input.getAttribute('inputmode')).toBeNull();
     expect(input.getAttribute('placeholder')).toBe('WB-XXXXX');
+    expect(screen.getByText(PARTNER_CODE_HINT)).toBeTruthy();
+    expect(input.getAttribute('aria-describedby')).toBe('partner-redeem-hint');
     expect(input.getAttribute('spellcheck')).toBe('false');
 
     fireEvent.change(input, { target: { value: 'wb-abcde' } });
@@ -63,9 +66,9 @@ describe('PartnerRedeemClient', () => {
     });
     expect(verifyRedemptionTokenForPartner).toHaveBeenCalledWith('WB-ABCDE');
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('Invalid code');
+    expect(alert.textContent).toContain(PARTNER_CODE_NOT_FOUND_MESSAGE);
     expect(alert.getAttribute('aria-live')).toBe('assertive');
-    expect(input.getAttribute('aria-describedby')).toBe('partner-redeem-error');
+    expect(input.getAttribute('aria-describedby')).toBe('partner-redeem-hint partner-redeem-error');
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 

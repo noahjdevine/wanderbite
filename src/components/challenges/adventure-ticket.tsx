@@ -36,6 +36,7 @@ import {
 } from '@/lib/challenges/challenge-deadline';
 import { challengeTicketOffer } from '@/lib/boost/savings-copy';
 import { memoryActionForStatus } from '@/lib/notes/note-rules';
+import { visitStatusCountsAsVisit } from '@/lib/visits/visit-status';
 import { REDEMPTION_CODE_LIFETIME_LABEL } from '@/lib/redemption-expiry';
 import { RECIPES_SECTION_HEADING, type RecipeCardModel } from '@/lib/recipes/display';
 import type { VisitStatus } from '@/lib/visits/visit-status';
@@ -157,11 +158,12 @@ export function AdventureTicket({
   const badge = photoBadge(item.visitStatus);
   const isAssigned = item.challengeItem.status === 'assigned';
   const isRedeemed = item.challengeItem.status === 'redeemed';
+  const postVerify = item.visitStatus != null && visitStatusCountsAsVisit(item.visitStatus);
   const windowClosed = isExpired || item.visitStatus === 'expired';
   const [displayCode, setDisplayCode] = useState<string | null>(item.redemptionToken ?? null);
 
   useEffect(() => {
-    if (!isRedeemed || !item.redemptionId) return;
+    if (!isRedeemed || !item.redemptionId || postVerify) return;
     let cancelled = false;
     void getRedemptionCode(item.redemptionId).then((result) => {
       if (cancelled) return;
@@ -170,7 +172,7 @@ export function AdventureTicket({
     return () => {
       cancelled = true;
     };
-  }, [isRedeemed, item.redemptionId, item.redemptionToken]);
+  }, [isRedeemed, item.redemptionId, item.redemptionToken, postVerify]);
 
   const hasCoords =
     item.restaurant.lat != null &&
@@ -232,7 +234,7 @@ export function AdventureTicket({
         </AlertDialogContent>
       </AlertDialog>
     );
-  } else if (isRedeemed && item.redemptionId) {
+  } else if (isRedeemed && item.redemptionId && !postVerify) {
     const label = item.visitStatus === 'code_expired' ? 'Get a new one' : 'Show code to your server';
     action = (
       <CtaButton
@@ -318,7 +320,7 @@ export function AdventureTicket({
           Directions
         </a>
       ) : null}
-      {isRedeemed && item.redemptionId ? (
+      {isRedeemed && item.redemptionId && !postVerify ? (
         <div className="space-y-2">
           {displayCode ? (
             <p className="m-0 text-center font-mono text-lg font-bold tracking-wide text-wb-plum">{displayCode}</p>

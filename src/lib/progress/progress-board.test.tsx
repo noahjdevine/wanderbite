@@ -88,6 +88,50 @@ describe('selectNextMove', () => {
     expect(move.sentence).toContain('Zen Sushi & Grill');
   });
 
+  it('uses the code clock for a live code and the visit window after it lapses', () => {
+    const live = selectNextMove({
+      now: NOW,
+      hasPair: true,
+      xp: 0,
+      nextLevelName: null,
+      nextLevelXp: null,
+      noPair: GENERATE,
+      adventures: [
+        adventure({
+          id: 'live',
+          redemptionId: 'live',
+          visitStatus: 'code_issued',
+          restaurantName: 'Zen Sushi & Grill',
+          expiresAt: '2026-11-04T00:12:00.000Z',
+          deadline: '2026-11-11T00:00:00.000Z',
+        }),
+      ],
+    });
+    expect(live.meta).toBe('Code issued · expires in 12 min');
+    expect(live.meta).not.toContain('days left');
+
+    const lapsed = selectNextMove({
+      now: NOW,
+      hasPair: true,
+      xp: 0,
+      nextLevelName: null,
+      nextLevelXp: null,
+      noPair: GENERATE,
+      adventures: [
+        adventure({
+          id: 'lapsed',
+          redemptionId: 'lapsed',
+          visitStatus: 'code_expired',
+          restaurantName: 'Zen Sushi & Grill',
+          expiresAt: '2026-11-03T23:45:00.000Z',
+          deadline: '2026-11-11T00:00:00.000Z',
+        }),
+      ],
+    });
+    expect(lapsed.meta).toBe('Code expired · Visit window: 7 days left');
+    expect(lapsed.actionLabel).toBe('Get a new code');
+  });
+
   it('asks for a new code when the issued code has expired and nothing is still issued', () => {
     const move = selectNextMove({
       now: NOW,
@@ -593,7 +637,8 @@ describe('Progress page', () => {
     expect(screen.getByRole('link', { name: 'Show code' }).getAttribute('href')).toBe(
       '/challenges/show/red-zen',
     );
-    expect(screen.getByText('Code issued')).toBeTruthy();
+    expect(screen.getByText('Code issued · expires in 15 min')).toBeTruthy();
+    expect(screen.queryByText(/days left/)).toBeNull();
     expect(screen.getByText(/\+1 pending/)).toBeTruthy();
     const visits = screen.getAllByText('0');
     expect(visits.length).toBeGreaterThan(0);

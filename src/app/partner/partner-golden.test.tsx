@@ -254,6 +254,7 @@ describe('partner verify form', () => {
     expect(input.getAttribute('inputmode')).toBeNull();
     expect(input.getAttribute('placeholder')).toBe('Enter code (e.g., WB-XXXXX)');
     expect(input.getAttribute('aria-describedby')).toBe('partner-dashboard-code-hint');
+    expect(screen.getByText('Enter the 5 letters/numbers after WB- — with or without WB-.')).toBeTruthy();
 
     fireEvent.submit(input.closest('form') as HTMLFormElement);
     expect(verifyRedemptionTokenForPartner).not.toHaveBeenCalled();

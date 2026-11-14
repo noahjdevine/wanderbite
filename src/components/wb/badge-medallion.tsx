@@ -6,14 +6,17 @@ type BadgeMedallionProps = {
   icon: ReactNode;
   earnedLabel?: string;
   progress?: { current: number; target: number };
+  /** Catalog sentence. Hidden when it repeats the name. */
+  description?: string;
 };
 
-export function BadgeMedallion({ name, earned, icon, earnedLabel, progress }: BadgeMedallionProps) {
+export function BadgeMedallion({ name, earned, icon, earnedLabel, progress, description }: BadgeMedallionProps) {
   const fraction = progress && progress.target > 0 ? Math.max(0, Math.min(1, progress.current / progress.target)) : 0;
   const turn = `${Math.round(fraction * 100)}%`;
+  const detail = description && description !== name ? description : null;
 
   return (
-    <div className="flex w-[84px] flex-col items-center gap-2 text-center">
+    <div className="flex w-[84px] flex-col items-center gap-2 text-center" title={detail ?? undefined}>
       {earned ? (
         <span
           aria-hidden="true"
@@ -44,6 +47,7 @@ export function BadgeMedallion({ name, earned, icon, earnedLabel, progress }: Ba
       <span className="text-[11px] text-wb-muted">
         {earned ? earnedLabel : progress ? `${progress.current} of ${progress.target}` : "Locked"}
       </span>
+      {detail ? <span className="sr-only">{detail}</span> : null}
     </div>
   );
 }

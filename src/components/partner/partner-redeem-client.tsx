@@ -13,6 +13,7 @@ import {
   persistAndStripPartnerRedeemCode,
   takePartnerRedeemCodeForVerify,
 } from '@/lib/pending-redeem-storage';
+import { PARTNER_CODE_HINT, partnerCodeInputValue } from '@/lib/partner-redemption-code';
 
 type VerifyState =
   | { status: 'idle' }
@@ -21,7 +22,7 @@ type VerifyState =
   | { status: 'error'; message: string };
 
 function normalizeCode(raw: string): string {
-  return raw.trim().toUpperCase();
+  return partnerCodeInputValue(raw);
 }
 
 type PartnerRedeemClientProps = {
@@ -145,7 +146,7 @@ export function PartnerRedeemClient({
               id="partner-redeem-code"
               type="text"
               value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onChange={(e) => setCode(partnerCodeInputValue(e.target.value))}
               placeholder="WB-XXXXX"
               autoComplete="off"
               autoFocus
@@ -153,8 +154,15 @@ export function PartnerRedeemClient({
               className="wb-partner-code"
               disabled={state.status === 'verifying'}
               aria-invalid={state.status === 'error' || undefined}
-              aria-describedby={state.status === 'error' ? 'partner-redeem-error' : undefined}
+              aria-describedby={
+                state.status === 'error'
+                  ? 'partner-redeem-hint partner-redeem-error'
+                  : 'partner-redeem-hint'
+              }
             />
+            <p id="partner-redeem-hint" className="wb-partner-section-copy">
+              {PARTNER_CODE_HINT}
+            </p>
           </div>
           <button
             type="submit"
