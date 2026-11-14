@@ -2,7 +2,7 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { cleanup, render, screen, within } from '@testing-library/react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   MemberProgressionPanel,
   MemberProgressionUnavailable,
@@ -65,8 +65,16 @@ function sectionOf(heading: HTMLElement): HTMLElement {
   return section;
 }
 
+beforeEach(() => {
+  localStorage.clear();
+  for (const id of ['m1', 'm2', 'm3', 'm4', 'm5', 'm-nov-1', 'm-nov-2', 'm-nov-5']) {
+    localStorage.setItem(`wb:levelup-seen:${id}`, '1');
+  }
+});
+
 afterEach(() => {
   cleanup();
+  localStorage.clear();
 });
 
 describe('member progression panel', () => {
@@ -162,6 +170,7 @@ describe('member progression panel', () => {
     const summary = legendSummary();
     summary.milestones = [
       {
+        id: 'm-nov-1',
         level: 1,
         name: 'The Explorer',
         reachedAt: '2026-11-01T06:30:00.000Z',
@@ -169,6 +178,7 @@ describe('member progression panel', () => {
         hasEntry: false,
       },
       {
+        id: 'm-nov-2',
         level: 2,
         name: 'The Tastemaker',
         reachedAt: '2026-11-01T07:30:00.000Z',
@@ -176,6 +186,7 @@ describe('member progression panel', () => {
         hasEntry: false,
       },
       {
+        id: 'm-nov-5',
         level: 5,
         name: 'The Local Legend II',
         reachedAt: '2027-01-15T18:00:00.000Z',

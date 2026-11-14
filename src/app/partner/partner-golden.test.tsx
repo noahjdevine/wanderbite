@@ -239,6 +239,12 @@ describe('partner arrival entry', () => {
   });
 });
 
+function typeKeys(input: HTMLInputElement, text: string) {
+  for (const char of text) {
+    fireEvent.change(input, { target: { value: `${input.value}${char}` } });
+  }
+}
+
 describe('partner verify form', () => {
   it('labels the code field and sends the trimmed code once', async () => {
     verifyRedemptionTokenForPartner.mockResolvedValue({
@@ -254,6 +260,7 @@ describe('partner verify form', () => {
     expect(input.getAttribute('inputmode')).toBeNull();
     expect(input.getAttribute('placeholder')).toBe('Enter code (e.g., WB-XXXXX)');
     expect(input.getAttribute('aria-describedby')).toBe('partner-dashboard-code-hint');
+    expect(screen.getByText('Enter the 5 letters/numbers after WB- — with or without WB-.')).toBeTruthy();
 
     fireEvent.submit(input.closest('form') as HTMLFormElement);
     expect(verifyRedemptionTokenForPartner).not.toHaveBeenCalled();
@@ -272,6 +279,28 @@ describe('partner verify form', () => {
     expect(alert.getAttribute('aria-live')).toBe('assertive');
     expect(input.getAttribute('aria-describedby')).toBe('partner-dashboard-code-hint partner-dashboard-code-error');
     expect(input.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it.each([
+    ['WBABCDE', 'WB-ABCDE'],
+    ['WB-ABCDE', 'WB-ABCDE'],
+    ['ABCDE', 'WB-ABCDE'],
+    ['WB3K7', 'WB-WB3K7'],
+  ] as const)('submits %s typed key by key as %s', async (typed, submitted) => {
+    verifyRedemptionTokenForPartner.mockResolvedValue({
+      success: false,
+      message: 'Code expired',
+    });
+    render(
+      <PartnerDashboard restaurantName="North Grill" restaurantSlug="north-grill" analytics={analytics} />,
+    );
+    const input = screen.getByLabelText('Redeem Customer Code') as HTMLInputElement;
+    typeKeys(input, typed);
+    expect(input.value).toBe(typed);
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => {
+      expect(verifyRedemptionTokenForPartner).toHaveBeenCalledWith(submitted);
+    });
   });
 
   it('shows the same success lines for a legacy and a sealed code', async () => {

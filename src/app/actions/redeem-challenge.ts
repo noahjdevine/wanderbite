@@ -22,10 +22,15 @@ import {
 } from '@/lib/redemption-expiry';
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import type { RedeemChallengeResult } from '@/types/redeem-challenge';
+import {
+  REDEMPTION_CODE_ALPHABET,
+  REDEMPTION_CODE_LENGTH,
+  REDEMPTION_CODE_PREFIX,
+} from '@/lib/partner-redemption-code';
 
-const TOKEN_PREFIX = 'WB-';
-const TOKEN_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O, 1/I for readability
-const TOKEN_LENGTH = 5;
+const TOKEN_PREFIX = REDEMPTION_CODE_PREFIX;
+const TOKEN_CHARS = REDEMPTION_CODE_ALPHABET; // no 0/O, 1/I for readability
+const TOKEN_LENGTH = REDEMPTION_CODE_LENGTH;
 const TOKEN_ATTEMPTS = 3;
 
 function generateRedemptionToken(): string {

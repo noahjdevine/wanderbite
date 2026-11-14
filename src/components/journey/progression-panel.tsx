@@ -1,3 +1,4 @@
+import { LevelUpCelebration } from '@/components/journey/level-up-celebration';
 import { SampleDrawingCard } from '@/components/journey/sample-drawing-card';
 import type { MemberSampleDrawing } from '@/lib/drawings/member-drawing-read-model';
 import { pluralize } from '@/lib/format/text';
@@ -35,6 +36,8 @@ export function MemberProgressionPanel({ summary, sampleDrawing = null }: Member
   const next = nextLevelLine(summary.nextLevel);
 
   return (
+    <>
+    <LevelUpCelebration enabled milestones={summary.milestones} />
     <section aria-labelledby="member-progression-heading" className="flex min-w-0 flex-col gap-4">
       <h2
         id="member-progression-heading"
@@ -130,6 +133,7 @@ export function MemberProgressionPanel({ summary, sampleDrawing = null }: Member
 
       {sampleDrawing ? <SampleDrawingCard drawing={sampleDrawing} /> : null}
     </section>
+    </>
   );
 }
 

@@ -154,6 +154,7 @@ describe('golden challenges', () => {
     expect(text).toContain('swap left');
     expect(text).toContain("I'm here — get my code");
     expect(text).toContain('Show code to your server');
+    expect(text).not.toContain('Add memory');
     expect(text).toContain('$10 off when you spend $40+');
     expect(view.querySelector('[data-visit-status="ready"]')?.textContent).toContain('Ready');
     expect(view.querySelector('[data-visit-status="code_issued"]')?.textContent).toContain(
@@ -286,6 +287,50 @@ describe('golden challenges', () => {
       (node) => node.textContent === 'codes issued',
     );
     expect(zeroLabel?.parentElement?.textContent).toBe('0codes issued');
+  });
+
+  it('does not offer the server code after a visit is verified', async () => {
+    const verified = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([
+          item('done-v', 'QA Kitchen', 'redeemed', 'verified'),
+          item('done-n', 'Note Kitchen', 'redeemed', 'note_added'),
+        ])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const verifiedText = verified.textContent ?? '';
+    expect(verifiedText).not.toContain('Show code to your server');
+    expect(verifiedText).not.toContain('Open full-screen QR');
+    expect(verifiedText).toContain('Add memory');
+    expect(verifiedText).toContain('Edit memory');
+
+    const issued = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([item('code-1', 'Zen Sushi', 'redeemed', 'code_issued')])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    expect(issued.textContent).toContain('Show code to your server');
+    expect(issued.textContent).toContain('Open full-screen QR');
+
+    const expired = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([item('code-2', 'South Grill', 'redeemed', 'code_expired')])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    expect(expired.textContent).toContain('Get a new one');
+    expect(expired.textContent).not.toContain('Show code to your server');
   });
 
   it('maps code_expired to the code step and a closed visit to the ended adventure', async () => {

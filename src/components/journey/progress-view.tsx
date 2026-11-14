@@ -190,6 +190,7 @@ export function ProgressView({ model, savedRecipes, progression }: ProgressViewP
                       earned={earned}
                       earnedLabel={earned && badge.earnedAt ? formatEarnedOn(badge.earnedAt) : undefined}
                       progress={earned ? undefined : badge.progress}
+                      description={badge.description}
                       icon={<span aria-hidden="true">{badge.icon}</span>}
                     />
                   );

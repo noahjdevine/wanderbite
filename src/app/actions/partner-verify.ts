@@ -1,11 +1,15 @@
 'use server';
 
-import { format } from 'date-fns';
 import type { Json } from '@/types/database.types';
 import { headers } from 'next/headers';
 import * as Sentry from '@sentry/nextjs';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
+import {
+  normalizePartnerRedemptionCode,
+  PARTNER_CODE_NOT_FOUND_MESSAGE,
+} from '@/lib/partner-redemption-code';
+import { formatPartnerVerifiedAt } from '@/lib/partner-verified-at';
 import { PARTNER_SESSION_EXPIRED_MESSAGE } from '@/lib/partner-session';
 import { requirePartnerSession } from '@/lib/require-partner-session';
 import {
@@ -146,7 +150,7 @@ function messageForUnclaimedRow(
   }
   if (redemption.status === 'verified') {
     const usedAt = redemption.verified_at
-      ? format(new Date(redemption.verified_at), 'PPp')
+      ? formatPartnerVerifiedAt(redemption.verified_at)
       : 'a previous time';
     return `This code was already used on ${usedAt}.`;
   }
@@ -159,7 +163,7 @@ function messageForUnclaimedRow(
   ) {
     return 'Code expired';
   }
-  return 'Invalid code';
+  return PARTNER_CODE_NOT_FOUND_MESSAGE;
 }
 
 /**
@@ -188,13 +192,13 @@ export async function verifyRedemptionTokenForPartner(
     return { success: false, message: VERIFY_THROTTLED_MESSAGE };
   }
 
-  const trimmed = token?.trim();
-  if (!trimmed) {
-    return { success: false, message: 'Invalid code' };
+  const canonical = normalizePartnerRedemptionCode(token ?? '');
+  if (!canonical) {
+    return { success: false, message: PARTNER_CODE_NOT_FOUND_MESSAGE };
   }
 
   const supabase = getSupabaseAdmin();
-  const tokenHash = hashRedemptionToken(trimmed);
+  const tokenHash = hashRedemptionToken(canonical);
 
   const { data: issuedRow } = await supabase
     .from('redemptions')
@@ -254,7 +258,7 @@ export async function verifyRedemptionTokenForPartner(
     const email = (profile as { email: string | null } | null)?.email ?? null;
     const restaurantName =
       (restaurant as { name: string } | null)?.name ?? 'Unknown restaurant';
-    const verifiedAt = format(new Date(verifiedAtIso), 'PPp');
+    const verifiedAt = formatPartnerVerifiedAt(verifiedAtIso);
 
     const newBadgesEarned = await awardBadgesForVerifiedCount(
       supabase,
@@ -348,7 +352,7 @@ export async function verifyRedemptionTokenForPartner(
     return { success: false, message: VERIFY_FAILED_MESSAGE };
   }
   if (!rows?.length) {
-    return { success: false, message: 'Invalid code' };
+    return { success: false, message: PARTNER_CODE_NOT_FOUND_MESSAGE };
   }
   if (rows.length > 1) {
     return recordIntegrityFailure(

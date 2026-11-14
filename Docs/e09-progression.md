@@ -155,6 +155,14 @@ The main Journey level card and `levelFromXp` are unchanged. Continuing levels a
 
 Rollback is unsetting `E09_MEMBER_PROGRESSION_UI_ENABLED`, or reverting this PR. No schema and no data. This does not claim E09, E07, or E02 acceptance.
 
+## Level-up celebration
+
+When `E09_MEMBER_PROGRESSION_UI_ENABLED` is exactly `true`, Journey shows one dialog for the highest reached milestone this browser has not marked seen. The seen key is `wb:levelup-seen:<milestone id>` in localStorage. Dismiss, including Escape, marks every unseen milestone seen. The dialog names the level from `XP_LEVELS` (schedule name after level 4), shows a medal, and runs the existing confetti helper. `prefers-reduced-motion: reduce` keeps the dialog and skips confetti. A localStorage failure keeps the dialog closed. The flag off adds no dialog and no confetti. The dialog does not award XP, a badge, or a drawing entry.
+
+## Wanderer copy
+
+Wanderer stays three total verified visits, the same count Hat Trick uses. Award and progress thresholds are unchanged. The description is "Explored with three verified visits." Hat Trick stays "Verified three restaurant visits." Journey reads `badges.description`. Migration `20261114153626_e09_wanderer_badge_copy.sql` updates the wanderer row only. It is not applied to hosted. Do not run `supabase db push` for it until Noah asks. The dev progress preview uses the same Wanderer sentence.
+
 ## Hosted status
 
 B3, B4, B5, and B6 were recorded on hosted on 2026-11-12 from the Hosted DB Watcher's hosted check. Noah decided that day to wait on applying B12 until after testing. On 2026-11-13 this doc read hosted `schema_migrations` and `pg_indexes` and did not write. B12 is applied. Repo file `20261112224919_e09_b12_drawing_fk_covering_indexes.sql` is hosted version `20261113145455` (`e09_b12_drawing_fk_covering_indexes`). `schema_migrations` has no separate applied-at column, so the apply date is that version's `20261113` prefix. Index `drawing_selection_winners_selection_campaign_idx` exists on hosted. Do not run `supabase db push` for this file. The repo filenames keep their original timestamps. The repo does not record which reported hosted version belongs to which of the B3–B6 files, so that exact version-to-file mapping is UNKNOWN. This doc did not read or set any E09 flag. Production stays unset for `E09_MEMBER_PROGRESSION_UI_ENABLED` and `E09_MEMBER_DRAWING_CARD_ENABLED`. Preview values for those two flags are managed outside the repo. Specific preview values are UNKNOWN. Any other E09 flag's value on Vercel is UNKNOWN. This does not claim E09, E07, or E02 acceptance.

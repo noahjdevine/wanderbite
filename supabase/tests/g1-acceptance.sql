@@ -18,6 +18,12 @@ begin
     left join public.badges b on b.id=expected.id
     where b.icon is distinct from expected.icon
   ) then raise exception 'FAIL: badge glyph seeds do not match the text renderer'; end if;
+  if (select description from public.badges where id = 'wanderer')
+      is distinct from 'Explored with three verified visits.'
+    or (select description from public.badges where id = 'hat_trick')
+      is distinct from 'Verified three restaurant visits.' then
+    raise exception 'FAIL: wanderer or hat trick description';
+  end if;
   if not exists (select 1 from storage.buckets where id='restaurant-photos'
       and public and file_size_limit=5242880
       and allowed_mime_types=array['image/jpeg','image/png','image/webp']) then

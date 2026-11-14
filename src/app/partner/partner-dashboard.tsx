@@ -8,6 +8,11 @@ import { partnerVerifiedOfferLine } from '@/lib/boost/savings-copy';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import type { PartnerAnalyticsResult } from '@/app/actions/partner-auth';
+import {
+  PARTNER_CODE_HINT,
+  partnerCodeInputValue,
+  partnerCodeSubmitValue,
+} from '@/lib/partner-redemption-code';
 
 type PartnerDashboardProps = {
   restaurantName: string;
@@ -65,12 +70,13 @@ export function PartnerDashboard({
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
-    const trimmed = code.trim();
-    if (!trimmed) return;
+    const submitted = partnerCodeSubmitValue(code);
+    if (!submitted) return;
+    setCode(submitted);
     setIsVerifying(true);
     setResult(null);
     try {
-      const res = await verifyRedemptionTokenForPartner(trimmed);
+      const res = await verifyRedemptionTokenForPartner(submitted);
       if (res.success) {
         setResult({
           success: true,
@@ -140,7 +146,7 @@ export function PartnerDashboard({
               Redeem Customer Code
             </label>
             <p id={CODE_HINT_ID} className="wb-partner-section-copy">
-              Enter the code from the customer&apos;s device.
+              {PARTNER_CODE_HINT}
             </p>
           </div>
           <div className="wb-partner-verify-row">
@@ -148,7 +154,7 @@ export function PartnerDashboard({
               id="partner-dashboard-code"
               type="text"
               value={code}
-              onChange={(e) => setCode(e.target.value)}
+              onChange={(e) => setCode(partnerCodeInputValue(e.target.value))}
               placeholder="Enter code (e.g., WB-XXXXX)"
               className="wb-partner-code"
               disabled={isVerifying}
