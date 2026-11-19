@@ -15,6 +15,10 @@ vi.mock('@/app/actions/redeem-challenge', () => ({
   redeemChallengeItem: vi.fn(),
 }));
 
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }),
+}));
+
 const base = {
   redemptionId: 'red-live',
   challengeItemId: 'item-1',
@@ -49,6 +53,7 @@ describe('redemption stamp unlock', () => {
 
   afterEach(() => {
     cleanup();
+    sessionStorage.clear();
     Reflect.deleteProperty(document, 'visibilityState');
     vi.useRealTimers();
   });

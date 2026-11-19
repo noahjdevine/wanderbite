@@ -4,9 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const getRedemptionCode = vi.fn();
 const redeemChallengeItem = vi.fn();
+const refreshRouter = vi.hoisted(() => vi.fn());
 
 vi.mock('@/app/actions/get-redemption-code', () => ({
   getRedemptionCode: (...args: unknown[]) => getRedemptionCode(...args),
+}));
+
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ refresh: refreshRouter, push: vi.fn() }),
 }));
 
 vi.mock('@/app/actions/redeem-challenge', () => ({
@@ -33,6 +38,8 @@ describe('ShowRedemptionCode', () => {
   beforeEach(() => {
     getRedemptionCode.mockReset();
     redeemChallengeItem.mockReset();
+    refreshRouter.mockReset();
+    sessionStorage.clear();
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   });
 
@@ -43,6 +50,7 @@ describe('ShowRedemptionCode', () => {
     container?.remove();
     root = null;
     container = null;
+    sessionStorage.clear();
   });
 
   async function render(node: ReactElement) {
@@ -220,5 +228,101 @@ describe('ShowRedemptionCode', () => {
     expect(verified.querySelector('[aria-live="polite"]')?.textContent).toBe('Already verified');
     expect(verified.textContent).not.toContain('Get a new one');
     expect(redeemChallengeItem).not.toHaveBeenCalled();
+  });
+
+  it('replaces the open code with Verified when the status poll sees a verify', async () => {
+    vi.useFakeTimers();
+    try {
+      const start = new Date('2026-11-05T01:00:00.000Z').getTime();
+      vi.setSystemTime(start);
+      const expiresAt = new Date(start + 10 * 60 * 1000).toISOString();
+      getRedemptionCode.mockResolvedValue({
+        state: 'verified',
+        verifiedAt: '2026-11-05T01:00:05.000Z',
+      });
+      const view = await render(
+        <ShowRedemptionCode {...base} code="WB-LIVE1" expiresAt={expiresAt} status="issued" />,
+      );
+      expect(view.textContent).toContain('WB-LIVE1');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(view.textContent).not.toContain('WB-LIVE1');
+      expect(view.textContent).toContain('Verified');
+      expect(view.querySelector('a[href="/challenges"]')?.textContent).toContain('Back to challenges');
+      expect(refreshRouter).toHaveBeenCalled();
+      expect(getRedemptionCode).toHaveBeenCalledWith('red-1');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('hides the code when the page props become verified and ignores a later issued read', async () => {
+    vi.useFakeTimers();
+    try {
+      const start = new Date('2026-11-05T01:00:00.000Z').getTime();
+      vi.setSystemTime(start);
+      const expiresAt = new Date(start + 10 * 60 * 1000).toISOString();
+      getRedemptionCode.mockResolvedValue({
+        state: 'issued',
+        code: 'WB-LIVE1',
+        expiresAt,
+      });
+      const view = await render(
+        <ShowRedemptionCode {...base} code="WB-LIVE1" expiresAt={expiresAt} status="issued" />,
+      );
+      expect(view.textContent).toContain('WB-LIVE1');
+      await act(async () => {
+        root?.render(
+          <ShowRedemptionCode
+            {...base}
+            code="WB-LIVE1"
+            expiresAt={expiresAt}
+            status="verified"
+            verifiedAt="Nov 4, 2026, 7:00 PM"
+            verifiedAtIso="2026-11-04T18:00:00.000Z"
+          />,
+        );
+      });
+      expect(view.textContent).not.toContain('WB-LIVE1');
+      expect(view.textContent).toContain('Verified');
+      expect(view.querySelector('a[href="/challenges"]')?.textContent).toContain('Back to challenges');
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      expect(view.textContent).not.toContain('WB-LIVE1');
+      expect(view.textContent).toContain('Already verified');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('stays Verified when the screen remounts with the old issued props', async () => {
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await render(
+      <ShowRedemptionCode
+        {...base}
+        code={null}
+        expiresAt={null}
+        status="verified"
+        verifiedAt="Nov 4, 2026, 7:00 PM"
+        verifiedAtIso="2026-11-04T18:00:00.000Z"
+      />,
+    );
+
+    act(() => {
+      root?.unmount();
+    });
+    container?.remove();
+    root = null;
+    container = null;
+
+    const again = await render(
+      <ShowRedemptionCode {...base} code="WB-LIVE1" expiresAt={expiresAt} status="issued" />,
+    );
+    expect(again.textContent).not.toContain('WB-LIVE1');
+    expect(again.textContent).toContain('Verified');
+    expect(again.querySelector('a[href="/challenges"]')?.textContent).toContain('Back to challenges');
   });
 });

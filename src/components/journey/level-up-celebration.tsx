@@ -42,7 +42,7 @@ function levelUpSnapshot(
 
 /**
  * One celebration for the highest unseen milestone. Dismiss marks every unseen
- * milestone seen in this browser. This does not write the ledger.
+ * milestone seen in this browser, including on the next page. This does not write the ledger.
  */
 export function LevelUpCelebration({ enabled, milestones }: LevelUpCelebrationProps) {
   const titleId = useId();
