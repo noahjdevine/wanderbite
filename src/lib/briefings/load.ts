@@ -11,7 +11,7 @@ import {
   briefingFieldOrder,
   formatBriefingChecked,
   httpsSourceUrl,
-  isBriefingField,
+  isMemberBriefingField,
   SAMPLE_BADGE_LABEL,
   type BriefingFact,
   type BriefingField,
@@ -31,7 +31,7 @@ function isBriefingRecord(value: BriefingRecord): boolean {
 
 function toFact(row: BriefingRecord): BriefingFact | null {
   if (row.status !== 'active') return null;
-  if (!isBriefingField(row.field)) return null;
+  if (!isMemberBriefingField(row.field)) return null;
   const text = row.body.trim();
   if (!text || text.length > 400) return null;
   const sourceUrl = httpsSourceUrl(row.source_url);

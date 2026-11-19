@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import type { RecipeSnapshot } from '@/lib/content-pipeline/change-detect';
 import type { DescriptionFact } from '@/lib/content-pipeline/facts';
 import { refreshContentSources, type ContentSourceRecord, type RefreshEffects } from '@/lib/content-pipeline/refresh';
+import { readBriefingDraft } from '@/lib/content-pipeline/briefing-review';
 import { formatContentInstant } from '@/lib/content-pipeline/facts';
 import { resolveSavedDescription } from '@/lib/content-pipeline/rollback';
 import {
@@ -726,5 +727,96 @@ describe('activity review writes', () => {
       name: rejected.snapshot.name,
       status: 'active',
     });
+  });
+});
+
+describe('briefing review fields', () => {
+  const sourceId = '11111111-1111-4111-8111-111111111111';
+  const restaurantId = '22222222-2222-4222-8222-222222222222';
+
+  function draftRow(field: string, id: string) {
+    return {
+      id,
+      source_id: sourceId,
+      subject_id: restaurantId,
+      field,
+      version: 1,
+      status: 'pending_review',
+      value: { text: `Fact for ${field}.` },
+      evidence_excerpt: `Fact for ${field}.`,
+    };
+  }
+
+  it('reviews the new stored fields and still refuses an unknown field', () => {
+    for (const field of ['parking', 'vibe', 'known_for', 'good_for', 'seating', 'reservations']) {
+      expect(readBriefingDraft(draftRow(field, `00000000-0000-4000-8000-00000000000${field.length}`))?.field).toBe(field);
+    }
+    expect(readBriefingDraft(draftRow('offer', '00000000-0000-4000-8000-000000000099'))).toBeNull();
+
+    const model = assembleContentReview({
+      restaurantNames: new Map([[restaurantId, 'Cafe']]),
+      sources: [{
+        id: sourceId,
+        url: 'https://example.com/official',
+        status: 'active',
+        restaurantId,
+        lastAttemptedAt: EVENING,
+        lastVerifiedAt: EVENING,
+      }],
+      recipes: [],
+      facts: [],
+      exceptions: [
+        {
+          id: '55555555-5555-4555-8555-555555555555',
+          sourceId,
+          subjectType: 'briefing',
+          subjectId: restaurantId,
+          field: 'vibe',
+          reason: 'conflict',
+          before: { text: 'The room is cozy.' },
+          after: { text: 'The room is candlelit.' },
+          evidenceExcerpt: 'The room is candlelit.',
+          status: 'open',
+        },
+        {
+          id: '66666666-6666-4666-8666-666666666666',
+          sourceId,
+          subjectType: 'briefing',
+          subjectId: restaurantId,
+          field: 'offer',
+          reason: 'conflict',
+          before: { text: 'Not a field.' },
+          after: { text: 'Still not a field.' },
+          evidenceExcerpt: 'Still not a field.',
+          status: 'open',
+        },
+      ],
+      briefingDrafts: ['parking', 'vibe', 'known_for', 'good_for', 'seating', 'reservations'].map((field, index) => ({
+        id: `77777777-7777-4777-8777-77777777777${index}`,
+        sourceId,
+        restaurantId,
+        field,
+        version: 1,
+        status: 'pending_review' as const,
+        text: `Fact for ${field}.`,
+        before: null,
+        evidenceExcerpt: `Fact for ${field}.`,
+        changeSummary: null,
+      })),
+    });
+    const drafts = model.exceptions.filter((row) => row.queueKind === 'briefing_draft');
+    expect(drafts.map((row) => row.field)).toEqual([
+      'reservations',
+      'seating',
+      'good_for',
+      'known_for',
+      'vibe',
+      'parking',
+    ]);
+    expect(drafts.every((row) => row.canEdit && row.editKind === 'briefing' && row.subjectLabel === 'Briefing')).toBe(true);
+    const vibe = model.exceptions.find((row) => row.field === 'vibe' && row.queueKind === 'exception');
+    expect(vibe).toMatchObject({ canEdit: true, editKind: 'briefing', subjectLabel: 'Briefing' });
+    const offer = model.exceptions.find((row) => row.field === 'offer');
+    expect(offer).toMatchObject({ canEdit: false, editKind: 'none' });
   });
 });

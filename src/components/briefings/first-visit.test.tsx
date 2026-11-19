@@ -138,6 +138,62 @@ describe('FirstVisitBriefing', () => {
     expect(links[0]?.getAttribute('translate')).toBeNull();
   });
 
+  it('hides the stored fields that are not on the member card', async () => {
+    const view = await render(
+      <FirstVisitBriefing
+        headingId="brief-member"
+        facts={[
+          fact(),
+          fact({
+            field: 'vibe',
+            label: 'Vibe',
+            text: 'The room is cozy and candlelit.',
+            sourceUrl: 'https://example.com/e06-vibe',
+          }),
+          fact({
+            field: 'known_for',
+            label: 'Known for',
+            text: 'Known for brisket and ribs.',
+            sourceUrl: 'https://example.com/e06-known',
+          }),
+          fact({
+            field: 'good_for',
+            label: 'Good for',
+            text: 'Good for kids.',
+            sourceUrl: 'https://example.com/e06-good',
+          }),
+          fact({
+            field: 'seating',
+            label: 'Seating',
+            text: 'Dogs are welcome on the patio.',
+            sourceUrl: 'https://example.com/e06-seating',
+          }),
+          fact({
+            field: 'reservations',
+            label: 'Reservations',
+            text: 'Walk-ins are welcome.',
+            sourceUrl: 'https://example.com/e06-reservations',
+          }),
+        ]}
+      />,
+    );
+    const text = view.textContent ?? '';
+    expect(text).toContain('Parking');
+    expect(text).toContain('Sample note: the lot is behind the building.');
+    expect(text).not.toContain('Vibe');
+    expect(text).not.toContain('cozy');
+    expect(text).not.toContain('Known for');
+    expect(text).not.toContain('brisket');
+    expect(text).not.toContain('Good for');
+    expect(text).not.toContain('Seating');
+    expect(text).not.toContain('patio');
+    expect(text).not.toContain('Reservations');
+    expect(text).not.toContain('Walk-ins');
+    expect([...view.querySelectorAll('a')].map((link) => link.getAttribute('href'))).toEqual([
+      'https://example.com/e06-parking',
+    ]);
+  });
+
   it('attributes a Google Maps source with the required text', async () => {
     const view = await render(
       <FirstVisitBriefing

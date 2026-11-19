@@ -9,7 +9,10 @@ import {
   BRIEFING_WEB_SEARCH_MAX_USES,
   BRIEFING_WEB_SEARCH_TOOL,
   WEB_SEARCH_MICRODOLLARS_PER_REQUEST,
+  briefingFieldOutcomeCounts,
   briefingInsertRow,
+  briefingMaintenanceSystemPrompt,
+  briefingSystemPrompt,
   normalizeHttpsUrl,
   briefingModelMatchesDiscover,
   briefingResearchAllowed,
@@ -29,6 +32,9 @@ import {
   type BriefingModelCaller,
 } from '@/lib/briefings/research';
 import { PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS } from '@/lib/briefings/places';
+import { restaurantFactsGuideForPrompt, renderRestaurantFactsGuideModule } from '@/lib/briefings/facts-guide-module';
+import { RESTAURANT_FACTS_GUIDE } from '@/lib/briefings/restaurant-facts-guide.generated';
+import { BRIEFING_FIELDS, MEMBER_BRIEFING_FIELDS } from '@/lib/briefings/types';
 
 const RESTAURANT = {
   id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -175,7 +181,7 @@ describe('briefing research filter', () => {
       1500 + 2 * WEB_SEARCH_MICRODOLLARS_PER_REQUEST,
     );
     expect(BRIEFING_WEB_SEARCH_TOOL).toBe('web_search_20260318');
-    expect(BRIEFING_WEB_SEARCH_MAX_USES).toBe(3);
+    expect(BRIEFING_WEB_SEARCH_MAX_USES).toBe(5);
     expect(briefingModelMatchesDiscover()).toBe(true);
     const sql = readFileSync(
       path.resolve(process.cwd(), 'supabase/migrations/20260919172836_ai_budget_reservations.sql'),
@@ -274,12 +280,175 @@ describe('support passage', () => {
     expect(filtered.dropped.join('\n')).toMatch(/does not support/);
   });
 
+  it('keeps the original six on the generic support check', () => {
+    const fact = 'Valet parking sits beside the front door after 5 pm.';
+    expect(findSupportPassage(fact, page, 'parking')).toBe(
+      'Valet parking is available beside the front door after 5 pm.',
+    );
+    expect(findSupportPassage('Street parking is available.', page, 'arrival')).toBeNull();
+    expect(findSupportPassage('Most dinners last about 45 minutes.', page, 'duration')).toBeNull();
+    expect(MEMBER_BRIEFING_FIELDS).toEqual([
+      'parking',
+      'arrival',
+      'what_to_expect',
+      'duration',
+      'attire',
+      'accessibility',
+    ]);
+    expect(BRIEFING_FIELDS.slice(0, MEMBER_BRIEFING_FIELDS.length)).toEqual([...MEMBER_BRIEFING_FIELDS]);
+  });
+
   it('drops a fact whose number is not the number in the passage', () => {
     const fact = 'Most dinners last about 45 minutes.';
     expect(findSupportPassage(fact, page)).toBeNull();
     expect(findSupportPassage('Most dinners last about 90 minutes.', page)).toBe(
       'Most dinners last about 90 minutes.',
     );
+  });
+});
+
+describe('new briefing fields', () => {
+  const cases: Array<{
+    field: 'vibe' | 'known_for' | 'good_for' | 'seating' | 'reservations';
+    page: string;
+    supported: string;
+    invented: string;
+  }> = [
+    {
+      field: 'vibe',
+      page: 'The room is cozy and candlelit, with a lively bar.',
+      supported: 'Cozy and candlelit.',
+      invented: 'A loud nightclub.',
+    },
+    {
+      field: 'known_for',
+      page: 'Known for smoked brisket and house ribs.',
+      supported: 'Known for brisket and ribs.',
+      invented: 'Known for lobster thermidor.',
+    },
+    {
+      field: 'good_for',
+      page: 'Kids are welcome, and the room works for date night.',
+      supported: 'Good for kids.',
+      invented: 'Good for watching sports.',
+    },
+    {
+      field: 'seating',
+      page: 'Dogs are welcome on the patio.',
+      supported: 'Dog-friendly patio.',
+      invented: 'Private rooftop seating.',
+    },
+    {
+      field: 'reservations',
+      page: 'Walk-ins are welcome. Reservations are not required.',
+      supported: 'Walk-ins are welcome.',
+      invented: 'A waitlist is required.',
+    },
+  ];
+
+  it.each(cases)('keeps a supported $field fact and drops an invented one', ({ field, page, supported, invented }) => {
+    const kept = filterSupportedFacts({
+      raw: { facts: [{ field, text: supported, source_url: OFFICIAL }] },
+      pages: [{ url: OFFICIAL, text: page }],
+    });
+    expect(kept.kept.map((fact) => fact.text)).toEqual([supported]);
+    expect(kept.kept[0]?.supportPassage.length).toBeGreaterThan(0);
+    const dropped = filterSupportedFacts({
+      raw: { facts: [{ field, text: invented, source_url: OFFICIAL }] },
+      pages: [{ url: OFFICIAL, text: page }],
+    });
+    expect(dropped.kept).toEqual([]);
+    expect(dropped.dropped.join('\n')).toMatch(/does not support/);
+  });
+
+  it('requires the short cue the generic word share would miss or invent', () => {
+    expect(findSupportPassage('Good for kids.', 'Kids are welcome.')).toBeNull();
+    expect(findSupportPassage('Good for kids.', 'Kids are welcome.', 'good_for')).not.toBeNull();
+    expect(findSupportPassage('Good for date night.', 'Open late at night for dinner.')).not.toBeNull();
+    expect(findSupportPassage('Good for date night.', 'Open late at night for dinner.', 'good_for')).toBeNull();
+    expect(findSupportPassage('Walk-ins are welcome.', 'Guests are welcome.')).not.toBeNull();
+    expect(findSupportPassage('Walk-ins are welcome.', 'Guests are welcome.', 'reservations')).toBeNull();
+    expect(findSupportPassage('Dog-friendly patio.', 'Dogs are welcome on the patio.')).toBeNull();
+    expect(findSupportPassage('Dog-friendly patio.', 'Dogs are welcome on the patio.', 'seating')).not.toBeNull();
+    expect(findSupportPassage('Known for brisket and ribs.', 'Known for smoked brisket.')).not.toBeNull();
+    expect(findSupportPassage('Known for brisket and ribs.', 'Known for smoked brisket.', 'known_for')).toBeNull();
+    expect(findSupportPassage('Reservations are not accepted.', 'Reservations are accepted.', 'reservations')).toBeNull();
+  });
+});
+
+describe('research guide prompt', () => {
+  const guidePath = path.resolve(process.cwd(), 'Docs/research/restaurant-facts-guide.md');
+  const generatedPath = path.resolve(process.cwd(), 'src/lib/briefings/restaurant-facts-guide.generated.ts');
+
+  it('builds the extraction prompt from the markdown guide', () => {
+    const markdown = readFileSync(guidePath, 'utf8');
+    expect(readFileSync(generatedPath, 'utf8')).toBe(renderRestaurantFactsGuideModule(markdown));
+    expect(RESTAURANT_FACTS_GUIDE).toBe(markdown);
+    const prompt = briefingSystemPrompt();
+    const guide = restaurantFactsGuideForPrompt(markdown);
+    expect(prompt).toContain(guide);
+    expect(prompt).toContain('Return JSON only');
+    expect(prompt).toContain('source_url must be copied exactly');
+    expect(prompt).toMatch(/Do not invent/);
+    for (const field of BRIEFING_FIELDS) {
+      expect(prompt).toContain(`### ${field}`);
+      expect(prompt).toContain('What counts:');
+      expect(prompt).toContain('What does not count:');
+    }
+    const maintenance = briefingMaintenanceSystemPrompt();
+    expect(maintenance).toContain(prompt);
+    expect(maintenance).toContain('change_summary');
+    expect(maintenance).toContain('160');
+    expect(maintenance).toContain('Do not add a second object.');
+  });
+});
+
+describe('field counts', () => {
+  it('tallies kept and dropped facts for each field in the dry-run report', () => {
+    const counts = briefingFieldOutcomeCounts(
+      [{ field: 'parking' }, { field: 'vibe' }],
+      [
+        'dropped good_for because the page text does not support it',
+        'dropped duplicate parking',
+        'dropped Places seating because a page fact is already kept',
+        'dropped unknown field offer',
+        'dropped a fact that was not an object',
+      ],
+    );
+    expect(counts.parking).toEqual({ kept: 1, dropped: 1 });
+    expect(counts.vibe).toEqual({ kept: 1, dropped: 0 });
+    expect(counts.good_for).toEqual({ kept: 0, dropped: 1 });
+    expect(counts.seating).toEqual({ kept: 0, dropped: 1 });
+    expect(counts.reservations).toEqual({ kept: 0, dropped: 0 });
+    const report = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [
+        {
+          restaurantId: RESTAURANT.id,
+          restaurantName: RESTAURANT.name,
+          fetchedUrls: [OFFICIAL],
+          facts: [
+            {
+              field: 'parking',
+              text: 'Valet parking is available beside the front door.',
+              sourceUrl: OFFICIAL,
+              supportPassage: 'Valet parking is available beside the front door.',
+            },
+          ],
+          dropped: ['dropped vibe because the page text does not support it'],
+          units: { input: 10, output: 4 },
+          estimatedMicrodollars: 30,
+          notes: [],
+        },
+      ],
+      stoppedBecause: null,
+      totals: { input: 10, output: 4, estimatedMicrodollars: 30 },
+    });
+    expect(report.markdown).toContain('Field counts:');
+    expect(report.markdown).toContain('- parking: kept 1, dropped 0');
+    expect(report.markdown).toContain('- vibe: kept 0, dropped 1');
+    expect(report.json).toContain('"fieldCountTotals"');
+    expect(report.json).toContain('"fieldCounts"');
   });
 });
 
@@ -308,7 +477,7 @@ describe('discoverBriefingUrls', () => {
       {
         type: 'web_search_20260318',
         name: 'web_search',
-        max_uses: 3,
+        max_uses: 5,
         allowed_callers: ['direct'],
         user_location: {
           type: 'approximate',
@@ -321,6 +490,8 @@ describe('discoverBriefingUrls', () => {
     ]);
     expect(body.messages?.[0]?.content).toContain('Hutchins BBQ');
     expect(body.messages?.[0]?.content).toContain('McKinney');
+    expect(body.messages?.[0]?.content).toContain('official website');
+    expect(body.messages?.[0]?.content).toContain('menu, about, and FAQ');
     expect(String(vi.mocked(fetchMock).mock.calls[0]?.[0])).toBe('https://api.anthropic.com/v1/messages');
   });
 
@@ -423,7 +594,7 @@ describe('discoverBriefingUrls', () => {
     });
     expect(calls).toHaveLength(2);
     const secondTools = calls[1]?.tools as Array<{ max_uses?: number }>;
-    expect(secondTools[0]?.max_uses).toBe(2);
+    expect(secondTools[0]?.max_uses).toBe(4);
     expect(found.failure).toBeNull();
     expect(found.urls).toEqual([OFFICIAL]);
     expect(found.warnings).toEqual(['Anthropic web search was unavailable']);
@@ -1198,7 +1369,7 @@ describe('official website host rules', () => {
     });
     expect(calls).toHaveLength(2);
     const secondTools = calls[1]?.tools as Array<{ max_uses?: number }>;
-    expect(secondTools[0]?.max_uses).toBe(2);
+    expect(secondTools[0]?.max_uses).toBe(4);
     const secondMessages = calls[1]?.messages as Array<{ content?: string }>;
     expect(secondMessages.at(-1)?.content).toMatch(/own website/);
     expect(found.urls).toEqual([

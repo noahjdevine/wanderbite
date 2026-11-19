@@ -1,7 +1,8 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { SCHEMA_CONTRACT } from '@/lib/schema-contract';
+import { RESTAURANT_BRIEFING_FACT_FIELDS, SCHEMA_CONTRACT } from '@/lib/schema-contract';
+import { BRIEFING_FIELDS } from '@/lib/briefings/types';
 
 const ROOT = path.resolve(__dirname, '../..');
 const MIGRATIONS_DIR = path.join(ROOT, 'supabase/migrations');
@@ -128,5 +129,36 @@ describe('OPS-03 schema contract', () => {
     expect(reconcile).toMatch(/add column if not exists subscription_status/);
     expect(reconcile).toMatch(/add column if not exists is_admin/);
     expect(reconcile).toMatch(/add column if not exists address_street/);
+  });
+
+  it('widens briefing fact fields in a forward migration', () => {
+    const files = readdirSync(MIGRATIONS_DIR);
+    const widened = files.filter((name) => name.endsWith('_e06_briefing_fact_fields.sql'));
+    expect(widened).toEqual(['20261119222710_e06_briefing_fact_fields.sql']);
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, widened[0]), 'utf8');
+    const lists = ['field in (', 'p_field not in ('].map((marker) => {
+      const at = sql.indexOf(marker);
+      expect(at, marker).toBeGreaterThan(-1);
+      const body = sql.slice(at, at + 500).match(/\(([^)]*)\)/);
+      expect(body, marker).toBeTruthy();
+      return [...(body?.[1] ?? '').matchAll(/'([a-z_]+)'/g)].map((match) => match[1]);
+    });
+    expect(lists[0]).toEqual([...RESTAURANT_BRIEFING_FACT_FIELDS]);
+    expect(lists[1]).toEqual([...RESTAURANT_BRIEFING_FACT_FIELDS]);
+    expect([...BRIEFING_FIELDS]).toEqual([...RESTAURANT_BRIEFING_FACT_FIELDS]);
+    const original = readFileSync(
+      path.join(MIGRATIONS_DIR, '20261105181304_e06_a2_restaurant_briefings.sql'),
+      'utf8',
+    );
+    const named = readFileSync(
+      path.join(MIGRATIONS_DIR, '20261105212138_e06_b4_briefing_updates.sql'),
+      'utf8',
+    );
+    expect(original).not.toContain("'vibe'");
+    expect(original).toContain("'accessibility'");
+    expect(named).not.toContain("'vibe'");
+    expect(named).toContain('briefing field is not storable');
+    expect(sql).toContain('drop constraint restaurant_briefing_facts_field_check');
+    expect(sql).toContain('create or replace function public.briefing_field_name');
   });
 });

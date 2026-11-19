@@ -7,6 +7,8 @@ import {
   type PlacesFactDraft,
   type PlacesLookupResult,
 } from '@/lib/briefings/places';
+import { restaurantFactsGuideForPrompt } from '@/lib/briefings/facts-guide-module';
+import { RESTAURANT_FACTS_GUIDE } from '@/lib/briefings/restaurant-facts-guide.generated';
 import {
   BRIEFING_FIELDS,
   briefingSourceLabel,
@@ -71,7 +73,7 @@ export const BRIEFING_SUBPAGE_HINTS = [
  */
 export const BRIEFING_WEB_SEARCH_TOOL = 'web_search_20260318';
 /** Anthropic bills each completed search. Cap uses per restaurant. */
-export const BRIEFING_WEB_SEARCH_MAX_USES = 3;
+export const BRIEFING_WEB_SEARCH_MAX_USES = 5;
 /** Published price: $10 per 1,000 searches = 10,000 microdollars each. */
 export const WEB_SEARCH_MICRODOLLARS_PER_REQUEST = 10_000;
 
@@ -909,12 +911,214 @@ function passageWindows(pageText: string): string[] {
   return windows;
 }
 
+const FUNCTION_WORDS = new Set([
+  'about',
+  'after',
+  'also',
+  'and',
+  'are',
+  'been',
+  'before',
+  'being',
+  'for',
+  'from',
+  'has',
+  'have',
+  'here',
+  'into',
+  'its',
+  'our',
+  'over',
+  'that',
+  'the',
+  'their',
+  'there',
+  'these',
+  'they',
+  'this',
+  'those',
+  'was',
+  'were',
+  'where',
+  'which',
+  'while',
+  'with',
+  'you',
+  'your',
+]);
+
+/** Short words that flip a claim. They stay required even when under four letters. */
+const POLARITY_WORDS = ['none', 'not', 'only', 'without'] as const;
+
+type FactCue = { pattern: RegExp };
+
+const GOOD_FOR_CUES: readonly FactCue[] = [
+  { pattern: /\bdate[\s-]?nights?\b/i },
+  { pattern: /\bgroups?\b/i },
+  { pattern: /\bfamil(?:y|ies)\b/i },
+  { pattern: /\bkids?\b|\bchildren\b/i },
+  { pattern: /\bsolo\b/i },
+  { pattern: /\bsports?\b/i },
+  { pattern: /\bbrunch\b/i },
+  { pattern: /\bbusiness\b/i },
+  { pattern: /\b(?:celebrations?|birthdays?|anniversar(?:y|ies))\b/i },
+];
+
+const RESERVATION_CUES: readonly FactCue[] = [
+  { pattern: /\breserv(?:e|ed|ation|ations|able)\b/i },
+  { pattern: /\bwalk[\s-]?ins?\b/i },
+  { pattern: /\bwait[\s-]?lists?\b/i },
+  { pattern: /\bfirst[\s-]come\b/i },
+];
+
+const SEATING_CUES: readonly FactCue[] = [
+  { pattern: /\bpatios?\b/i },
+  { pattern: /\brooftops?\b|\broof[\s-]?deck\b/i },
+  { pattern: /\bbar\b/i },
+  { pattern: /\bprivate\s+(?:rooms?|dining)\b/i },
+  { pattern: /\bdog[\s-]?friendly\b|\bdogs?\b/i },
+  { pattern: /\bbooths?\b/i },
+  { pattern: /\boutdoor\b/i },
+  { pattern: /\bcounters?\b/i },
+];
+
+const CUE_FIELDS: Partial<Record<BriefingField, { cues: readonly FactCue[]; filler: ReadonlySet<string> }>> = {
+  good_for: {
+    cues: GOOD_FOR_CUES,
+    filler: new Set(['good', 'well', 'guests', 'people', 'dining', 'works', 'suitable']),
+  },
+  reservations: {
+    cues: RESERVATION_CUES,
+    filler: new Set(['please', 'guests']),
+  },
+  seating: {
+    cues: SEATING_CUES,
+    filler: new Set(['seating', 'seats', 'seat', 'available', 'listed']),
+  },
+};
+
+const KNOWN_FOR_FILLER = new Set([
+  'also',
+  'classic',
+  'classics',
+  'dish',
+  'dishes',
+  'drink',
+  'drinks',
+  'famous',
+  'house',
+  'item',
+  'items',
+  'known',
+  'made',
+  'menu',
+  'plus',
+  'popular',
+  'restaurant',
+  'served',
+  'serves',
+  'serving',
+  'signature',
+  'specials',
+  'specialty',
+]);
+
+const VIBE_FILLER = new Set([
+  'ambiance',
+  'ambience',
+  'atmosphere',
+  'dining',
+  'feeling',
+  'feels',
+  'inside',
+  'overall',
+  'place',
+  'restaurant',
+  'room',
+  'space',
+  'vibe',
+]);
+
+const FIELD_SPECIFIC = new Set<BriefingField>(['vibe', 'known_for', 'good_for', 'seating', 'reservations']);
+
+function wordPattern(word: string): RegExp {
+  return new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(word)}(?:[^A-Za-z0-9]|$)`, 'i');
+}
+
+function wordsAtLeast(text: string, min: number, skip: ReadonlySet<string>): string[] {
+  const found = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  return [...new Set(found.filter((word) => word.length >= min && !skip.has(word)))];
+}
+
+function polarityPatterns(text: string): RegExp[] {
+  const words = new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
+  return POLARITY_WORDS.filter((word) => words.has(word)).map((word) => wordPattern(word));
+}
+
+function withoutCueHits(text: string, cues: readonly FactCue[]): string {
+  let rest = text;
+  for (const cue of cues) rest = rest.replace(new RegExp(cue.pattern.source, 'gi'), ' ');
+  return rest;
+}
+
+/**
+ * Short fields need more than the generic two-thirds share.
+ * A cue field stays only when every stated cue, polarity word, and leftover
+ * content word is in one passage. known_for and vibe require every content token.
+ * Returns null when the fact names nothing those rules can check.
+ */
+function fieldSupportPatterns(field: BriefingField, factText: string): RegExp[] | null {
+  if (field === 'known_for' || field === 'vibe') {
+    const skip = new Set([
+      ...FUNCTION_WORDS,
+      ...(field === 'known_for' ? KNOWN_FOR_FILLER : VIBE_FILLER),
+    ]);
+    const tokens = wordsAtLeast(factText, field === 'known_for' ? 3 : 4, skip);
+    const patterns = [...tokens.map((word) => wordPattern(word)), ...polarityPatterns(factText)];
+    return patterns.length > 0 ? patterns : null;
+  }
+  const spec = CUE_FIELDS[field];
+  if (!spec) return null;
+  const matched = spec.cues.filter((cue) => cue.pattern.test(factText));
+  if (matched.length === 0) return null;
+  const skip = new Set([...FUNCTION_WORDS, ...spec.filler]);
+  const extra = wordsAtLeast(withoutCueHits(factText, matched), 4, skip);
+  return [
+    ...matched.map((cue) => cue.pattern),
+    ...extra.map((word) => wordPattern(word)),
+    ...polarityPatterns(factText),
+  ];
+}
+
+function findFieldSupportPassage(field: BriefingField, factText: string, pageText: string): string | null {
+  const patterns = fieldSupportPatterns(field, factText);
+  if (!patterns) return null;
+  const anchors = extractAnchors(factText);
+  let best: string | null = null;
+  for (const passage of passageWindows(pageText)) {
+    if (!anchorsInPassage(anchors, passage)) continue;
+    if (!patterns.every((pattern) => pattern.test(passage))) continue;
+    if (!best || passage.length < best.length) best = passage;
+  }
+  return best;
+}
+
 /**
  * A fact stays only when one passage of this page holds a two-thirds share of
  * its distinctive words and every number, time, price, and proper noun in it.
  * Generic words such as "parking" and "street" do not carry the fact.
+ * vibe, known_for, good_for, seating, and reservations use field-specific rules.
  */
-export function findSupportPassage(factText: string, pageText: string): string | null {
+export function findSupportPassage(
+  factText: string,
+  pageText: string,
+  field?: BriefingField,
+): string | null {
+  if (field && FIELD_SPECIFIC.has(field)) return findFieldSupportPassage(field, factText, pageText);
+  return findGenericSupportPassage(factText, pageText);
+}
+
+function findGenericSupportPassage(factText: string, pageText: string): string | null {
   const distinctive = distinctiveWords(factText);
   if (distinctive.length === 0) return null;
   const anchors = extractAnchors(factText);
@@ -999,7 +1203,7 @@ export function filterSupportedFacts(args: {
       dropped.push(`dropped ${field} because ${sourceUrl} was not fetched in this run`);
       continue;
     }
-    const supportPassage = findSupportPassage(body, pageText);
+    const supportPassage = findSupportPassage(body, pageText, field);
     if (!supportPassage) {
       dropped.push(`dropped ${field} because the page text does not support it`);
       continue;
@@ -1029,7 +1233,9 @@ export function briefingSystemPrompt(): string {
     'Do not invent, guess, or use outside knowledge.',
     'Omit a field when the pages do not support it. An empty facts array is valid.',
     'Do not include prices, offers, discounts, credits, or bookings.',
-  ].join(' ');
+    'Follow the research guide below. It is the field rules for this extraction.',
+    restaurantFactsGuideForPrompt(RESTAURANT_FACTS_GUIDE),
+  ].join('\n');
 }
 
 /** Same extraction as briefingSystemPrompt, plus an optional grounded change summary. Maintenance only. */
@@ -1385,8 +1591,8 @@ export function briefingSearchUserPrompt(restaurant: BriefingRestaurant): string
   const where = restaurant.address ? ` Address: ${restaurant.address}.` : '';
   return [
     `Find public pages for ${restaurant.name}.${where}`,
-    'Search the web.',
-    'Prefer the restaurant official website, then a reputable listing such as Yelp, Tripadvisor, OpenTable, Resy, Tock, Michelin Guide, The Infatuation, Eater, Time Out, Zagat, or Google Maps.',
+    'Search the web for the restaurant official website and for its menu, about, and FAQ pages.',
+    'Prefer that official site, then a reputable listing such as Yelp, Tripadvisor, OpenTable, Resy, Tock, Michelin Guide, The Infatuation, Eater, Time Out, Zagat, or Google Maps.',
     'Do not invent URLs.',
   ].join(' ');
 }
@@ -1841,6 +2047,48 @@ export function briefingInsertRow(fact: SupportedFact, restaurantId: string, ver
   };
 }
 
+export type BriefingFieldCounts = Record<BriefingField, { kept: number; dropped: number }>;
+
+function emptyFieldCounts(): BriefingFieldCounts {
+  return Object.fromEntries(BRIEFING_FIELDS.map((field) => [field, { kept: 0, dropped: 0 }])) as BriefingFieldCounts;
+}
+
+/** Field named by a drop line. Unknown and non-field drops are not counted. */
+export function droppedBriefingField(reason: string): BriefingField | null {
+  const match = /^dropped (?:Places |duplicate )?([a-z_]+)\b/.exec(reason);
+  if (!match || !isBriefingField(match[1])) return null;
+  return match[1];
+}
+
+/** Kept facts and dropped lines, one tally per stored field. */
+export function briefingFieldOutcomeCounts(
+  facts: readonly { field: string }[],
+  dropped: readonly string[],
+): BriefingFieldCounts {
+  const counts = emptyFieldCounts();
+  for (const fact of facts) {
+    if (isBriefingField(fact.field)) counts[fact.field].kept += 1;
+  }
+  for (const reason of dropped) {
+    const field = droppedBriefingField(reason);
+    if (field) counts[field].dropped += 1;
+  }
+  return counts;
+}
+
+function addFieldCounts(total: BriefingFieldCounts, next: BriefingFieldCounts): void {
+  for (const field of BRIEFING_FIELDS) {
+    total[field].kept += next[field].kept;
+    total[field].dropped += next[field].dropped;
+  }
+}
+
+function formatFieldCountLines(counts: BriefingFieldCounts): string[] {
+  return BRIEFING_FIELDS.map(
+    (field) => `- ${field}: kept ${counts[field].kept}, dropped ${counts[field].dropped}`,
+  );
+}
+
 /** Fetch notes plus whether this restaurant kept a supported fact. */
 export function briefingResultReasons(
   result: Pick<RestaurantResearchResult, 'notes' | 'facts'>,
@@ -1868,11 +2116,17 @@ export function placesReportLine(units: ModelUsage): string {
 }
 
 export function formatBriefingReport(run: BriefingRun): { json: string; markdown: string } {
-  const restaurants = run.restaurants.map((restaurant) => ({
-    ...restaurant,
-    reasons: briefingResultReasons(restaurant),
-  }));
-  const json = `${JSON.stringify({ schema: 'wanderbite.e06.briefing_research.v1', ...run, restaurants }, null, 2)}\n`;
+  const fieldCountTotals = emptyFieldCounts();
+  const restaurants = run.restaurants.map((restaurant) => {
+    const fieldCounts = briefingFieldOutcomeCounts(restaurant.facts, restaurant.dropped);
+    addFieldCounts(fieldCountTotals, fieldCounts);
+    return {
+      ...restaurant,
+      reasons: briefingResultReasons(restaurant),
+      fieldCounts,
+    };
+  });
+  const json = `${JSON.stringify({ schema: 'wanderbite.e06.briefing_research.v1', ...run, fieldCountTotals, restaurants }, null, 2)}\n`;
   const lines = [
     '# First-visit briefing research',
     '',
@@ -1883,6 +2137,9 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     placesReportLine(run.restaurants.reduce<ModelUsage>((sum, result) => mergeModelUsage(sum, result.units), {})),
     `Estimated cost: ${formatEstimatedUsd(run.totals.estimatedMicrodollars)} USD`,
     run.stoppedBecause ? `Stopped: ${run.stoppedBecause}` : 'Stopped: completed the selected restaurants',
+    '',
+    'Field counts:',
+    ...formatFieldCountLines(fieldCountTotals),
     '',
   ];
   for (const restaurant of restaurants) {
@@ -1897,6 +2154,9 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     lines.push('');
     lines.push('Reasons:');
     for (const reason of restaurant.reasons) lines.push(`- ${reason}`);
+    lines.push('');
+    lines.push('Field counts:');
+    lines.push(...formatFieldCountLines(restaurant.fieldCounts));
     lines.push('');
     lines.push('Fetched:');
     if (restaurant.fetchedUrls.length === 0) lines.push('- none');

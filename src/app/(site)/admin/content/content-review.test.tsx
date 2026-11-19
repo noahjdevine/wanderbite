@@ -382,4 +382,43 @@ describe('ContentReview', () => {
     expect(approveContentException).not.toHaveBeenCalled();
     expect(approveActivitySummary).not.toHaveBeenCalled();
   });
+
+  it('shows a new briefing field in the same review card', async () => {
+    const briefingModel = model();
+    briefingModel.history = [];
+    briefingModel.exceptions = [
+      {
+        id: 'fafafafa-fafa-4afa-8afa-fafafafafafa',
+        restaurantName: 'Cafe',
+        sourceUrl: 'https://example.com/official',
+        sourceHref: 'https://example.com/official',
+        reason: 'pending_review',
+        field: 'vibe',
+        beforeText: '',
+        afterText: 'The room is cozy and candlelit.',
+        evidenceText: 'The room is cozy and candlelit.',
+        attemptedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        verifiedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        recipeLabel: '',
+        subjectLabel: 'Briefing',
+        activityName: null,
+        checkedLabel: 'Nov 4, 2026, 11:30 PM CST',
+        editKind: 'briefing',
+        queueKind: 'briefing_draft',
+        approveKind: 'review_only',
+        approveBlock: null,
+        canEdit: true,
+        keepActiveDefault: false,
+      },
+    ];
+    await act(async () => {
+      root.render(<ContentReview model={briefingModel} />);
+    });
+    expect(document.body.textContent).toContain('Field vibe');
+    expect(document.body.textContent).toContain('The room is cozy and candlelit.');
+    expect(document.body.textContent).toContain('Briefing');
+    expect(document.body.textContent).toContain('Edit saves the fact you type.');
+    const edit = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Publish edit');
+    expect(edit).toBeTruthy();
+  });
 });

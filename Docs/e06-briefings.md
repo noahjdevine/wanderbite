@@ -1,12 +1,12 @@
 # E06-A2 first-visit briefing
 
-This slice shows a short sourced "First visit" block on a revealed restaurant challenge. It lists parking, arrival, what to expect, typical visit duration, and attire or accessibility only when a fact is stored. Every shown fact has an https source link and a "Checked" date in America/Chicago. A missing fact is omitted. If a restaurant has no active facts, the block is absent and the card matches the flag-off page.
+This slice shows a short sourced "First visit" block on a revealed restaurant challenge. The member card lists parking, arrival, what to expect, typical visit duration, and attire or accessibility only when that fact is stored. Five more fields are stored for later use: vibe, known for, good for, seating, and reservations. The member card does not render those five. Every shown fact has an https source link and a "Checked" date in America/Chicago. A missing fact is omitted. If a restaurant has no active facts, the block is absent and the card matches the flag-off page.
 
 `E06_BRIEFINGS_ENABLED` is server-only. Only the exact string `true` turns the block on. Unset, the challenges page does not query `restaurant_briefing_facts`. Unsetting the flag hides the block without a code change. This slice does not call a model from the page. It does not write credits, XP, verified visits, badges, bookings, or offers.
 
 ## What is stored
 
-`restaurant_briefing_facts` has one row per restaurant and field. `body` is the fact text (1–400 characters). `source_url` is https only. `last_verified_at` is required. `status` is `active` or `paused`, and the default is `paused`. Client roles can select active rows and cannot insert, update, or delete. `service_role` writes. `is_sample` marks local fixtures. The UI shows "Sample" only when that column is true.
+`restaurant_briefing_facts` has one row per restaurant and field. The stored fields are parking, arrival, what_to_expect, duration, attire, accessibility, vibe, known_for, good_for, seating, and reservations. `body` is the fact text (1–400 characters). `source_url` is https only. `last_verified_at` is required. `status` is `active` or `paused`, and the default is `paused`. Client roles can select active rows and cannot insert, update, or delete. `service_role` writes. `is_sample` marks local fixtures. The UI shows "Sample" only when that column is true. `/admin/content` reviews every stored field, including the five that the member card hides.
 
 `content_sources` is unchanged by the briefing page. E06-B1 can register a `venue_page` separately. The member page does not write `restaurant_briefing_facts` from a refresh.
 
@@ -38,11 +38,13 @@ Migration `20261105214940_e06_b5_draft_summaries.sql` replaces `apply_briefing_f
 
 ## Research script
 
-`npm run research:briefings` (`scripts/research-briefings.ts`) is an operator dry-run. It reads active restaurants. `restaurants.official_website` is the operator-accepted https site. When that column is set, the script fetches it first and treats it as the official host. Redirects from that URL may land on another domain. The final page is still official. Search hits that are not that stored URL still follow only same-site redirects. For each restaurant, the script also asks Claude Haiku `claude-haiku-4-5-20251001` to search with Anthropic's server-side web search tool on the Messages API (`type: web_search_20260318`, `name: web_search`). `max_uses` is 3. `user_location` is McKinney, Texas, US, `America/Chicago`. This Haiku snapshot calls the tool directly (`allowed_callers: ["direct"]`). The current tool version defaults to dynamic filtering, which this model does not support and which the API rejects with HTTP 400.
+`Docs/research/restaurant-facts-guide.md` is the extraction guide. It states, for each field, what counts, what does not count, the 400-character cap, the tone, and one good and one bad example. Global rules: only the supplied page text, no outside knowledge, no prices, offers, discounts, credits, or bookings, no reviewer names or quotes, paraphrase rather than copy a long passage, and empty is fine. `briefingSystemPrompt()` and `briefingMaintenanceSystemPrompt()` are built from that file. The research script and the content-refresh server path import `src/lib/briefings/restaurant-facts-guide.generated.ts`, so the guide does not depend on a filesystem read in Vercel. After editing the markdown, regenerate that module with `npx tsx scripts/generate-facts-guide.ts`. A test fails when the module and the markdown differ. The prompts still require JSON only, an exact `source_url`, and, on the maintenance prompt, a `change_summary` of at most 160 characters.
+
+`npm run research:briefings` (`scripts/research-briefings.ts`) is an operator dry-run. It reads active restaurants. `restaurants.official_website` is the operator-accepted https site. When that column is set, the script fetches it first and treats it as the official host. Redirects from that URL may land on another domain. The final page is still official. Search hits that are not that stored URL still follow only same-site redirects. For each restaurant, the script also asks Claude Haiku `claude-haiku-4-5-20251001` to search with Anthropic's server-side web search tool on the Messages API (`type: web_search_20260318`, `name: web_search`). The search prompt asks for the official website and for menu, about, and FAQ pages. `max_uses` is 5. `user_location` is McKinney, Texas, US, `America/Chicago`. This Haiku snapshot calls the tool directly (`allowed_callers: ["direct"]`). The current tool version defaults to dynamic filtering, which this model does not support and which the API rejects with HTTP 400.
 
 Candidate URLs come from `web_search_tool_result` pages and web-search citations. The script ranks an official-looking host first, then a reputable listing. It fetches robots.txt once per origin and skips a disallowed path without downloading that page. A disallowed listing does not consume one of the three page slots and does not start another web search. Allowed pages fill those three slots, preferring hosts robots.txt allows. From the first official page that returns text, the script also fetches up to four same-host links whose path or text matches menu, about, faq, visit, location, contact, hours, reservations, parking, or private-dining. `www` and the apex host count as the same site. Other subdomains and other hosts are not followed. Each page request sends browser-like `Accept` and `Accept-Language` headers and the user agent `WanderbiteBriefingResearchBot/1.0 (+https://wanderbite.com; first-visit research)`. HTTP 403 skips that URL only. The body is streamed and truncated to the first 1.5 MB of HTML instead of being dropped. Extracted text is capped at 8,000 characters. The report lists a reason for every restaurant.
 
-It then asks Haiku, without the search tool, for facts the fetched page text supports. A fact is kept only when its `source_url` is https and was fetched in that run, and when one passage of that page contains a two-thirds share of the fact's distinctive words plus every number, time, price, and proper noun in the fact. Generic words such as "parking" and "street" do not carry a fact by themselves. The dry-run report prints that passage next to the fact. A URL the search mentioned but this run did not fetch cannot support a fact. Anything else is dropped. A result that is neither an official-looking host nor a reputable listing is not fetched.
+It then asks Haiku, without the search tool, for facts the fetched page text supports. A fact is kept only when its `source_url` is https and was fetched in that run, and when one passage of that page contains a two-thirds share of the fact's distinctive words plus every number, time, price, and proper noun in the fact. Generic words such as "parking" and "street" do not carry a fact by themselves. vibe, known_for, good_for, seating, and reservations also require every cue or content word the field rule names, so a short phrase such as "good for kids" or "walk-ins" cannot pass on a leftover generic word and cannot drop a word the page actually uses. The dry-run report prints that passage next to the fact, and it prints kept and dropped counts for each of the eleven fields, per restaurant and as a run total. A URL the search mentioned but this run did not fetch cannot support a fact. Anything else is dropped. A result that is neither an official-looking host nor a reputable listing is not fetched.
 
 If that search fails, the report records a reason for that restaurant: the HTTP status and Anthropic error text, a tool error such as `too_many_requests`, a paused search that returned no page, or no candidate URL. The script continues with the next restaurant until a cap stops it.
 
@@ -102,7 +104,15 @@ Field masks, per restaurant, when the key is set:
 
 ## Hosted
 
-Migration `20261105181304_e06_a2_restaurant_briefings.sql` is applied to hosted (2026-11-05, empty table, Hosted DB Watcher PASS). `E06_BRIEFINGS_ENABLED` stays unset. Do not run `supabase db push` or `npm run types:db` for this slice. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited for the new table. `npm run types:db` is a separate approved PR. The table is additive. Revert this PR to remove the code. The hosted table is empty. Once the code is reverted, the table is unused. No drop is required for that rollback.
+Migration `20261105181304_e06_a2_restaurant_briefings.sql` is applied to hosted (2026-11-05, empty table, Hosted DB Watcher PASS). `E06_BRIEFINGS_ENABLED` stays unset. Do not run `supabase db push` or `npm run types:db` for that earlier slice. Checked-in `src/types/database.types.ts` and `src/lib/schema-contract.ts` were hand-edited for the new table. `npm run types:db` is a separate approved PR. The table is additive. Revert that earlier PR to remove the code. The hosted table is empty. Once the code is reverted, the table is unused. No drop is required for that rollback.
+
+Migration `20261119222710_e06_briefing_fact_fields.sql` widens `restaurant_briefing_facts_field_check` and `public.briefing_field_name()` from the original six fields to the eleven fields above. It does not change columns, RLS, or existing rows. It is not applied to hosted. After Noah's yes, the operator runs:
+
+```bash
+supabase db push
+```
+
+Do not run that command, and do not run `npm run types:db`, until then. The column types are unchanged, so the checked-in database types do not need a regeneration for this migration. `src/lib/schema-contract.ts` lists the eleven field names beside the table columns.
 
 ## Local check
 
@@ -112,6 +122,12 @@ Apply the migration on a local database, then:
 npm run seed
 ```
 
-Set `E06_BRIEFINGS_ENABLED=true` in `.env.local` and open a challenge for Hutchins BBQ and one for a seeded restaurant with no facts. Hutchins shows First visit with parking, arrival, and duration, each with Source and Checked in America/Chicago, plus Sample. Attire and accessibility are absent. The other restaurant has no First visit block. Unset `E06_BRIEFINGS_ENABLED` and the block is gone, with no briefing query.
+Set `E06_BRIEFINGS_ENABLED=true` in `.env.local` and open a challenge for Hutchins BBQ and one for a seeded restaurant with no facts. Hutchins shows First visit with parking, arrival, and duration, each with Source and Checked in America/Chicago, plus Sample. Attire and accessibility are absent. vibe, known_for, good_for, seating, and reservations stay off the card even when an active row exists. The other restaurant has no First visit block. Unset `E06_BRIEFINGS_ENABLED` and the block is gone, with no briefing query.
 
-Do not point this seed or `npm run research:briefings` at hosted.
+To rerun research later, as a dry-run:
+
+```bash
+npm run research:briefings
+```
+
+That command does not write. Do not add `--write`. Do not point this seed or `npm run research:briefings` at hosted. Hosted still needs Noah's separate OK and `WANDERBITE_BRIEFINGS_HOSTED_OK=1` for that run only.

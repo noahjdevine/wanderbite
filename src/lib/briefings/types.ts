@@ -1,11 +1,26 @@
-/** Stored first-visit fields. Missing fields are omitted, not filled in. */
-export const BRIEFING_FIELDS = [
+/**
+ * Fields the member First visit card may show. The stored set is wider.
+ * Missing fields are omitted, not filled in.
+ */
+export const MEMBER_BRIEFING_FIELDS = [
   'parking',
   'arrival',
   'what_to_expect',
   'duration',
   'attire',
   'accessibility',
+] as const;
+
+export type MemberBriefingField = (typeof MEMBER_BRIEFING_FIELDS)[number];
+
+/** Stored first-visit fields. The member card still uses MEMBER_BRIEFING_FIELDS. */
+export const BRIEFING_FIELDS = [
+  ...MEMBER_BRIEFING_FIELDS,
+  'vibe',
+  'known_for',
+  'good_for',
+  'seating',
+  'reservations',
 ] as const;
 
 export type BriefingField = (typeof BRIEFING_FIELDS)[number];
@@ -17,6 +32,11 @@ export const BRIEFING_FIELD_LABELS: Record<BriefingField, string> = {
   duration: 'Typical visit',
   attire: 'Attire',
   accessibility: 'Accessibility',
+  vibe: 'Vibe',
+  known_for: 'Known for',
+  good_for: 'Good for',
+  seating: 'Seating',
+  reservations: 'Reservations',
 };
 
 export const FIRST_VISIT_HEADING = 'First visit';
@@ -57,6 +77,10 @@ export type RestaurantBriefings = {
 
 export function isBriefingField(value: string): value is BriefingField {
   return (BRIEFING_FIELDS as readonly string[]).includes(value);
+}
+
+export function isMemberBriefingField(value: string): value is MemberBriefingField {
+  return (MEMBER_BRIEFING_FIELDS as readonly string[]).includes(value);
 }
 
 export function briefingFieldOrder(field: BriefingField): number {
