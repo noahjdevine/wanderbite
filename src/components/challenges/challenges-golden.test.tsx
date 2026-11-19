@@ -8,8 +8,11 @@ import { AREA_HOLD_HEADING } from '@/lib/launch-market';
 import { PROGRESS_UNAVAILABLE_MESSAGE } from '@/lib/progress/rules';
 import { visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 
+const pushRouter = vi.hoisted(() => vi.fn());
+const redeemChallengeItem = vi.hoisted(() => vi.fn());
+
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: pushRouter, refresh: vi.fn() }),
 }));
 
 vi.mock('@/app/actions/generate-challenge', () => ({
@@ -21,7 +24,7 @@ vi.mock('@/app/actions/swap-challenge', () => ({
 }));
 
 vi.mock('@/app/actions/redeem-challenge', () => ({
-  redeemChallengeItem: vi.fn(),
+  redeemChallengeItem: (...args: unknown[]) => redeemChallengeItem(...args),
 }));
 
 vi.mock('@/app/actions/get-redemption-code', () => ({
@@ -252,9 +255,9 @@ describe('golden challenges', () => {
     expect(text).toContain('Corrected after review');
     expect(text).toContain('Offer $10 off $40+');
     const codeLabel = Array.from(corrected.querySelectorAll('span')).find(
-      (node) => node.textContent === 'code issued',
+      (node) => node.textContent === 'codes issued',
     );
-    expect(codeLabel?.parentElement?.textContent).toBe('1code issued');
+    expect(codeLabel?.parentElement?.textContent).toBe('3codes issued');
 
     const unchanged = await render(
       <DashboardClient
@@ -286,7 +289,7 @@ describe('golden challenges', () => {
     const zeroLabel = Array.from(unchanged.querySelectorAll('span')).find(
       (node) => node.textContent === 'codes issued',
     );
-    expect(zeroLabel?.parentElement?.textContent).toBe('0codes issued');
+    expect(zeroLabel?.parentElement?.textContent).toBe('2codes issued');
   });
 
   it('does not offer the server code after a visit is verified', async () => {
@@ -508,5 +511,62 @@ describe('golden challenges', () => {
     expect(paired.textContent).toContain('The Common Table');
     expect(paired.textContent).toContain("I'm here — get my code");
     expect(paired.textContent).not.toContain('Your credits are waiting');
+  });
+
+  it('keeps get my code pending until the show-code screen opens', async () => {
+    pushRouter.mockReset();
+    redeemChallengeItem.mockReset();
+    let resolveRedeem: (value: {
+      ok: true;
+      data: { redemptionId: string; token: string; expiresAt: string; redeemedAt: string };
+    }) => void = () => {};
+    redeemChallengeItem.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRedeem = resolve;
+        }),
+    );
+    const view = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        currentChallenge={challenge([item('ready-1', 'The Common Table', 'assigned', 'ready')])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const open = Array.from(view.querySelectorAll('button')).find((node) =>
+      node.textContent?.includes("I'm here — get my code"),
+    );
+    if (!(open instanceof HTMLButtonElement)) throw new Error('missing get-code button');
+    await act(async () => {
+      open.click();
+    });
+    const confirm = Array.from(document.body.querySelectorAll('button')).find((node) =>
+      node.textContent?.includes('Yes, Redeem Now'),
+    );
+    if (!(confirm instanceof HTMLButtonElement)) throw new Error('missing confirm');
+    await act(async () => {
+      confirm.click();
+      confirm.click();
+    });
+    expect(redeemChallengeItem).toHaveBeenCalledTimes(1);
+    expect(view.textContent).toContain('Getting your code…');
+    expect(view.textContent).not.toContain("I'm here — get my code");
+
+    await act(async () => {
+      resolveRedeem({
+        ok: true,
+        data: {
+          redemptionId: 'red-ready-1',
+          token: 'WB-READY',
+          expiresAt: '2026-11-04T18:15:00.000Z',
+          redeemedAt: '2026-11-04T18:00:00.000Z',
+        },
+      });
+    });
+    expect(pushRouter).toHaveBeenCalledWith('/challenges/show/red-ready-1');
+    expect(view.textContent).toContain('Getting your code…');
+    expect(view.textContent).not.toContain("I'm here — get my code");
   });
 });

@@ -30,6 +30,17 @@ export function formatPartnerVerifiedAt(
   }
 }
 
+/**
+ * Member show-code clock. Same America/Chicago label as the partner screen,
+ * so a server render and a later client poll print one string.
+ * Missing or invalid input is null so the row stays hidden.
+ */
+export function formatMemberVerifiedAt(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const label = formatPartnerVerifiedAt(iso, PARTNER_VERIFIED_AT_FALLBACK_ZONE);
+  return label === '—' ? null : label;
+}
+
 function usableZone(timeZone: string | null | undefined): string | null {
   const zone = timeZone?.trim();
   if (!zone) return null;

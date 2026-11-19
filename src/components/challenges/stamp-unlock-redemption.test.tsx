@@ -1,9 +1,9 @@
 import { act } from 'react';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { format } from 'date-fns';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
+import { formatMemberVerifiedAt } from '@/lib/partner-verified-at';
 import { stampRotationDegrees } from '@/lib/passport/passport-board';
 import { SEEN_STAMPS_STORAGE_KEY } from '@/lib/passport/stamp-unlock';
 
@@ -127,7 +127,7 @@ describe('redemption stamp unlock', () => {
     expect(document.querySelector('svg')).toBeNull();
     expect(screen.getByRole('link', { name: /North Grill/ }).className).toContain('wb-stamp-slam');
     expect(screen.getByText('New stamp: North Grill')).toBeTruthy();
-    expect(screen.getByText(format(new Date(verifiedAt), 'PPp'))).toBeTruthy();
+    expect(screen.getByText(formatMemberVerifiedAt(verifiedAt) ?? '')).toBeTruthy();
     expect(vi.mocked(getRedemptionCode)).toHaveBeenCalledTimes(1);
 
     await act(async () => {

@@ -1,5 +1,4 @@
 import { Suspense } from 'react';
-import { format } from 'date-fns';
 import { redirect } from 'next/navigation';
 import { MemberLevelUpCelebration } from '@/components/journey/member-level-up';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
@@ -7,6 +6,7 @@ import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code
 import { createClient } from '@/lib/supabase/server';
 import { memberQrConfirmedDiscountLabel } from '@/lib/boost/confirm-visit';
 import { visitProblemsEnabled } from '@/lib/boost/flag';
+import { formatMemberVerifiedAt } from '@/lib/partner-verified-at';
 import { formatCents, lowestSealedBase } from '@/lib/offers/sealed-base';
 import { visitWindowOpen } from '@/lib/redemption-expiry';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
@@ -152,7 +152,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
       : codeResult?.state === 'verified'
         ? codeResult.verifiedAt
         : null;
-  const verifiedAt = verifiedIso ? format(new Date(verifiedIso), 'PPp') : null;
+  const verifiedAt = formatMemberVerifiedAt(verifiedIso);
   const phase =
     row.status === 'verified' || codeResult?.state === 'verified'
       ? 'verified'

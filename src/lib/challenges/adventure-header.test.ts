@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   adventureMonthName,
   adventureStatTiles,
+  countsAsIssuedCode,
   daysLeftInChicagoMonth,
   daysLeftLabel,
   swapsRemainingForHeader,
@@ -46,8 +47,14 @@ describe('adventure header', () => {
       swapsRemaining: swapsRemainingForHeader(1, null),
     });
     expect(noneLeft.find((tile) => tile.id === 'verified')).toMatchObject({ value: '1', suffix: '/2' });
-    expect(noneLeft.find((tile) => tile.id === 'codes')).toMatchObject({ value: '0', label: 'codes issued' });
+    expect(noneLeft.find((tile) => tile.id === 'codes')).toMatchObject({ value: '2', label: 'codes issued' });
     expect(noneLeft.find((tile) => tile.id === 'swaps')).toMatchObject({ value: '0', label: 'swaps left' });
+    expect(
+      adventureStatTiles({
+        activeItems: [{ visitStatus: 'ready' }, { visitStatus: 'expired' }],
+        swapsRemaining: 0,
+      }).find((tile) => tile.id === 'codes'),
+    ).toMatchObject({ value: '0', label: 'codes issued' });
 
     expect(swapsRemainingForHeader(null, null)).toBeNull();
     expect(swapsRemainingForHeader(0, 0)).toBe(0);
@@ -59,16 +66,22 @@ describe('adventure header', () => {
     ]);
   });
 
-  it('counts an issued make-up code without changing the pair or a real zero', () => {
+  it('counts an issued code after verify, and adds an open make-up code', () => {
+    expect(countsAsIssuedCode('ready')).toBe(false);
+    expect(countsAsIssuedCode('expired')).toBe(false);
+    expect(countsAsIssuedCode('swapped')).toBe(false);
+    expect(countsAsIssuedCode('code_issued')).toBe(true);
+    expect(countsAsIssuedCode('verified')).toBe(true);
+
     const pair = [{ visitStatus: 'verified' as const }, { visitStatus: 'note_added' as const }];
     expect(
       adventureStatTiles({ activeItems: pair, swapsRemaining: 1 }).find((tile) => tile.id === 'codes'),
-    ).toMatchObject({ value: '0', label: 'codes issued' });
+    ).toMatchObject({ value: '2', label: 'codes issued' });
     expect(
       adventureStatTiles({ activeItems: pair, swapsRemaining: 1, makeupIssuedCodes: 0 }).find(
         (tile) => tile.id === 'codes',
       ),
-    ).toMatchObject({ value: '0', label: 'codes issued' });
+    ).toMatchObject({ value: '2', label: 'codes issued' });
 
     const withMakeup = adventureStatTiles({
       activeItems: pair,
@@ -76,8 +89,8 @@ describe('adventure header', () => {
       makeupIssuedCodes: 1,
     });
     expect(withMakeup.find((tile) => tile.id === 'codes')).toMatchObject({
-      value: '1',
-      label: 'code issued',
+      value: '3',
+      label: 'codes issued',
     });
     expect(withMakeup.find((tile) => tile.id === 'verified')).toMatchObject({
       value: '2',

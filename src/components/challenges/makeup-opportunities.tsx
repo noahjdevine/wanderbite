@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { startMakeupVisit } from '@/app/actions/visit-problems';
 import type { MemberMakeupSpot } from '@/lib/boost/visit-problem';
@@ -28,19 +28,29 @@ export function MakeupOpportunities({ spots }: { spots: readonly MemberMakeupSpo
 function MakeupSpotCard({ spot }: { spot: MemberMakeupSpot }) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const used = spot.status === 'used';
 
   async function onStart() {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setPending(true);
     setError(null);
-    const result = await startMakeupVisit(spot.id);
-    setPending(false);
-    if (!result.ok) {
-      setError(result.message);
-      return;
+    try {
+      const result = await startMakeupVisit(spot.id);
+      if (!result.ok) {
+        pendingRef.current = false;
+        setPending(false);
+        setError(result.message);
+        return;
+      }
+      router.push(`/challenges/show/${result.redemptionId}`);
+    } catch {
+      pendingRef.current = false;
+      setPending(false);
+      setError('Unable to get a code right now. Please try again.');
     }
-    router.push(`/challenges/show/${result.redemptionId}`);
   }
 
   return (

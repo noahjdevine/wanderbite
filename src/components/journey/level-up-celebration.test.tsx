@@ -120,6 +120,15 @@ describe('level-up celebration', () => {
     expect(confetti).not.toHaveBeenCalled();
   });
 
+  it('does not celebrate the same level again when a refresh replaces the milestone', async () => {
+    const { rerender } = render(<LevelUpCelebration enabled milestones={[explorer]} />);
+    await screen.findByRole('dialog');
+    expect(confetti).toHaveBeenCalledTimes(1);
+    rerender(<LevelUpCelebration enabled milestones={[{ ...explorer }]} />);
+    await screen.findByRole('dialog');
+    expect(confetti).toHaveBeenCalledTimes(1);
+  });
+
   it('shows a level once it is known and stays closed on the next page', async () => {
     const { rerender, unmount } = render(<LevelUpCelebration enabled milestones={[]} />);
     expect(screen.queryByRole('dialog')).toBeNull();

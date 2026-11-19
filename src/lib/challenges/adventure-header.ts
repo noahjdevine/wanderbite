@@ -70,6 +70,19 @@ export function swapsRemainingForHeader(
 }
 
 /**
+ * A code this pair has issued. An open code, a code that expired, and a
+ * verified visit all count. Ready, swapped, and a closed visit window do not.
+ */
+export function countsAsIssuedCode(status: VisitStatus | null | undefined): boolean {
+  return (
+    status === 'code_issued' ||
+    status === 'code_expired' ||
+    status === 'verified' ||
+    status === 'note_added'
+  );
+}
+
+/**
  * Glass tiles from loaded challenge items and the loaded swap allowance.
  * An empty list means that number was not loaded. Zero is kept when the
  * source exists.
@@ -78,7 +91,7 @@ export function adventureStatTiles(input: {
   activeItems: { visitStatus?: VisitStatus | null }[] | null;
   swapsRemaining: number | null;
   /**
-   * Issued make-up codes that are not items on the current pair.
+   * Open make-up codes that are not items on the current pair.
    * Omitted or zero keeps today's pair count.
    */
   makeupIssuedCodes?: number;
@@ -91,7 +104,7 @@ export function adventureStatTiles(input: {
     ).length;
     const extraIssued = input.makeupIssuedCodes ?? 0;
     const codes =
-      items.filter((item) => item.visitStatus === 'code_issued').length +
+      items.filter((item) => countsAsIssuedCode(item.visitStatus)).length +
       (extraIssued > 0 ? extraIssued : 0);
     tiles.push({
       id: 'verified',

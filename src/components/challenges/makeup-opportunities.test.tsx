@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MakeupOpportunities } from '@/components/challenges/makeup-opportunities';
 import {
@@ -7,12 +7,15 @@ import {
 } from '@/lib/boost/visit-problem';
 import type { MemberMakeupSpot } from '@/lib/boost/visit-problem';
 
+const pushRouter = vi.hoisted(() => vi.fn());
+const startMakeupVisit = vi.hoisted(() => vi.fn());
+
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: pushRouter }),
 }));
 
 vi.mock('@/app/actions/visit-problems', () => ({
-  startMakeupVisit: vi.fn(),
+  startMakeupVisit: (...args: unknown[]) => startMakeupVisit(...args),
 }));
 
 const NOW = new Date('2026-11-09T18:00:00.000Z');
@@ -64,6 +67,31 @@ describe('make-up challenge spots', () => {
     );
     expect(screen.getByText(MAKEUP_RESTAURANT_CLOSED)).toBeTruthy();
     expect(screen.queryByRole('button')).toBeNull();
+  });
+
+  it('keeps get my code pending until the show-code screen opens', async () => {
+    pushRouter.mockReset();
+    startMakeupVisit.mockReset();
+    let resolveStart: (value: { ok: true; redemptionId: string }) => void = () => {};
+    startMakeupVisit.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveStart = resolve;
+        }),
+    );
+    render(<MakeupOpportunities spots={[spot()]} />);
+    const button = screen.getByRole('button', { name: "I'm here — get my code" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(startMakeupVisit).toHaveBeenCalledTimes(1);
+    expect(button.textContent).toBe('Getting your code…');
+    expect(button.hasAttribute('disabled')).toBe(true);
+
+    await act(async () => {
+      resolveStart({ ok: true, redemptionId: 'red-makeup' });
+    });
+    expect(pushRouter).toHaveBeenCalledWith('/challenges/show/red-makeup');
+    expect(screen.getByRole('button').textContent).toBe('Getting your code…');
   });
 
   it('renders nothing when there is no spot', () => {
