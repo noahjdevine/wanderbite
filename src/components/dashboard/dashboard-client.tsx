@@ -138,6 +138,7 @@ export function DashboardClient({
   const [isGenerating, setIsGenerating] = useState(false);
   const [swappingItemId, setSwappingItemId] = useState<string | null>(null);
   const [redeemingItemId, setRedeemingItemId] = useState<string | null>(null);
+  const redeemingRef = useRef<string | null>(null);
 
   async function handleGenerate() {
     setIsGenerating(true);
@@ -174,19 +175,21 @@ export function DashboardClient({
   }
 
   async function handleRedeem(challengeItemId: string) {
+    if (redeemingRef.current) return;
+    redeemingRef.current = challengeItemId;
     setRedeemingItemId(challengeItemId);
     try {
       const result = await redeemChallengeItem(challengeItemId);
       if (result.ok) {
         router.push(`/challenges/show/${result.data.redemptionId}`);
-      } else {
-        toast.error(result.error);
+        return;
       }
+      toast.error(result.error);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Something went wrong');
-    } finally {
-      setRedeemingItemId(null);
     }
+    redeemingRef.current = null;
+    setRedeemingItemId(null);
   }
 
   const swapCountUsed = currentChallenge?.cycle.swap_count_used ?? 0;

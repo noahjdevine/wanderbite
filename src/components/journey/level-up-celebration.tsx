@@ -49,6 +49,8 @@ export function LevelUpCelebration({ enabled, milestones }: LevelUpCelebrationPr
   const descriptionId = useId();
   const medalId = useId();
   const dismissRef = useRef<HTMLButtonElement>(null);
+  const celebratedId = useRef<string | null>(null);
+  const focusedId = useRef<string | null>(null);
   const [revision, setRevision] = useState(0);
   const snapshot = useSyncExternalStore(
     subscribeLevelUpStorage,
@@ -62,12 +64,16 @@ export function LevelUpCelebration({ enabled, milestones }: LevelUpCelebrationPr
 
   useEffect(() => {
     if (!milestone) return;
+    if (celebratedId.current === milestone.id) return;
+    celebratedId.current = milestone.id;
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     void celebrate();
   }, [milestone]);
 
   useEffect(() => {
     if (!milestone) return;
+    if (focusedId.current === milestone.id) return;
+    focusedId.current = milestone.id;
     const previous = document.activeElement;
     const restore = previous instanceof HTMLElement ? previous : null;
     dismissRef.current?.focus();

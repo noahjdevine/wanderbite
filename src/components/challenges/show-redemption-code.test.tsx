@@ -19,6 +19,7 @@ vi.mock('@/app/actions/redeem-challenge', () => ({
 }));
 
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
+import { VERIFIED_LEVEL_REFRESH_MS } from '@/lib/progression/verified-level-refresh';
 
 const base = {
   redemptionId: 'red-1',
@@ -249,9 +250,18 @@ describe('ShowRedemptionCode', () => {
       });
       expect(view.textContent).not.toContain('WB-LIVE1');
       expect(view.textContent).toContain('Verified');
+      expect(view.textContent).toContain('Nov 4, 2026, 7:00 PM CT');
       expect(view.querySelector('a[href="/challenges"]')?.textContent).toContain('Back to challenges');
-      expect(refreshRouter).toHaveBeenCalled();
+      expect(refreshRouter).toHaveBeenCalledTimes(1);
       expect(getRedemptionCode).toHaveBeenCalledWith('red-1');
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(VERIFIED_LEVEL_REFRESH_MS);
+      });
+      expect(refreshRouter).toHaveBeenCalledTimes(2);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(VERIFIED_LEVEL_REFRESH_MS);
+      });
+      expect(refreshRouter).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

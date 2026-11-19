@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { format } from 'date-fns';
 import QRCode from 'react-qr-code';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { redeemChallengeItem } from '@/app/actions/redeem-challenge';
@@ -18,6 +17,8 @@ import {
   REDEMPTION_CODE_LIFETIME_LABEL,
   visitWindowOpen,
 } from '@/lib/redemption-expiry';
+import { formatMemberVerifiedAt } from '@/lib/partner-verified-at';
+import { scheduleVerifiedLevelRefresh } from '@/lib/progression/verified-level-refresh';
 import { deriveVisitStatus, visitStatusLabel, type VisitStatus } from '@/lib/visits/visit-status';
 
 const ONE_MINUTE_LEFT = '1 minute left';
@@ -25,9 +26,10 @@ const CODE_REISSUED = 'Code reissued';
 const ONE_MINUTE_MS = 60_000;
 /**
  * While an issued code is on a visible tab, re-read verification on this cadence
- * and refresh the page so a partner verify replaces the code and a new level
- * can celebrate. Polling stops when the code expires or is verified, and while
- * the tab is hidden.
+ * and refresh the page so a partner verify replaces the code. Polling stops when
+ * the code expires or is verified, and while the tab is hidden. The verified
+ * transition schedules one later refresh, because the level can land just after
+ * the redemption is visible.
  */
 const ISSUED_STATUS_POLL_MS = 5_000;
 const SHOW_CODE_VERIFIED_PREFIX = 'wb:show-code-verified:';
@@ -53,10 +55,9 @@ function showCodeVerifiedRemembered(id: string): boolean {
 }
 
 function verifiedStampClock(iso: string | null): { iso: string | null; label: string | null } {
-  if (!iso) return { iso: null, label: null };
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return { iso: null, label: null };
-  return { iso, label: format(at, 'PPp') };
+  const label = formatMemberVerifiedAt(iso);
+  if (!label || !iso) return { iso: null, label: null };
+  return { iso, label };
 }
 
 function liveVisitStatus(args: {
@@ -240,6 +241,9 @@ export function ShowRedemptionCode({
         setPhase('verified');
         setError(null);
         setAnnouncement('Already verified');
+        scheduleVerifiedLevelRefresh(redemptionId, () => {
+          router.refresh();
+        });
         return;
       }
       if (result.state === 'expired') {
@@ -265,7 +269,7 @@ export function ShowRedemptionCode({
     } finally {
       refreshing.current = false;
     }
-  }, [hasNote, itemStatus, liveVerifiedAt, noteReissue, redemptionDeadline, redemptionId]);
+  }, [hasNote, itemStatus, liveVerifiedAt, noteReissue, redemptionDeadline, redemptionId, router]);
 
   useEffect(() => {
     if (displayPhase === 'verified') return;
