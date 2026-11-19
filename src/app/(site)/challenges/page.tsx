@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
+import { MemberLevelUpCelebration } from '@/components/journey/member-level-up';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getCurrentChallenge } from '@/app/actions/generate-challenge';
@@ -195,6 +196,9 @@ export default async function ChallengesPage() {
 
   return (
     <main className="min-h-screen bg-wb-cream">
+      <Suspense fallback={null}>
+        <MemberLevelUpCelebration />
+      </Suspense>
       <Suspense fallback={null}>
         <SubscriptionSuccessToast />
       </Suspense>

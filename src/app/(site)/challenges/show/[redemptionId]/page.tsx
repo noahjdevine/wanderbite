@@ -1,5 +1,7 @@
+import { Suspense } from 'react';
 import { format } from 'date-fns';
 import { redirect } from 'next/navigation';
+import { MemberLevelUpCelebration } from '@/components/journey/member-level-up';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
 import { createClient } from '@/lib/supabase/server';
@@ -165,6 +167,9 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
 
   return (
     <main className="min-h-screen bg-wb-cream">
+      <Suspense fallback={null}>
+        <MemberLevelUpCelebration />
+      </Suspense>
       <ShowRedemptionCode
         redemptionId={row.id}
         challengeItemId={row.challenge_item_id}

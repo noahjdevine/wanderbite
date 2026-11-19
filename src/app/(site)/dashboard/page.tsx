@@ -1,5 +1,6 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
+import { MemberLevelUpCelebration } from '@/components/journey/member-level-up';
 import { createClient } from '@/lib/supabase/server';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { getCurrentChallenge } from '@/app/actions/generate-challenge';
@@ -130,6 +131,9 @@ export default async function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-background">
+      <Suspense fallback={null}>
+        <MemberLevelUpCelebration />
+      </Suspense>
       <Suspense fallback={null}>
         <SubscriptionSuccessToast />
       </Suspense>

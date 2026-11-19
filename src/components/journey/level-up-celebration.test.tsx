@@ -120,6 +120,24 @@ describe('level-up celebration', () => {
     expect(confetti).not.toHaveBeenCalled();
   });
 
+  it('shows a level once it is known and stays closed on the next page', async () => {
+    const { rerender, unmount } = render(<LevelUpCelebration enabled milestones={[]} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    rerender(<LevelUpCelebration enabled milestones={[explorer]} />);
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.textContent).toContain('The Explorer');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Got it' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(localStorage.getItem(levelUpSeenKey('m1'))).toBe('1');
+
+    unmount();
+    render(<LevelUpCelebration enabled milestones={[explorer]} />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(confetti).toHaveBeenCalledTimes(1);
+  });
+
   it('stays closed when localStorage throws', async () => {
     const original = window.localStorage;
     Object.defineProperty(window, 'localStorage', {

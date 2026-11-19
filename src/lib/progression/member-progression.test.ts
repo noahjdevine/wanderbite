@@ -271,7 +271,7 @@ describe('member progression loader source', () => {
     expect(source).toMatch(/loadMemberProgression/);
   });
 
-  it('is called only from the flag-gated Progress panel', () => {
+  it('is called only from the flag-gated Progress panel and level-up host', () => {
     const allowed = new Set([
       'src/lib/progression/member-progression.ts',
       'src/lib/progression/member-progression.test.ts',
@@ -280,6 +280,8 @@ describe('member progression loader source', () => {
       'src/lib/progression/read-model.tz-probe.ts',
       'src/components/journey/journey-content.tsx',
       'src/components/journey/journey-content.test.tsx',
+      'src/components/journey/member-level-up.tsx',
+      'src/components/journey/member-level-up.test.tsx',
       'src/components/journey/progression-panel.test.tsx',
       'src/components/journey/progression-panel.tz-probe.tsx',
     ]);
