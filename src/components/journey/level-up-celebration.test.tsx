@@ -6,6 +6,31 @@ import type { MemberProgressionMilestone } from '@/lib/progression/read-model';
 
 const confetti = vi.hoisted(() => vi.fn());
 
+// celebrate() fires a second burst 150ms later. Cancel it with the test so a
+// slow runner cannot count that burst in the next case.
+const nativeSetTimeout = window.setTimeout.bind(window);
+const nativeClearTimeout = window.clearTimeout.bind(window);
+const pendingTimeouts: unknown[] = [];
+
+function trackTimeouts() {
+  vi.spyOn(window, 'setTimeout').mockImplementation(((
+    handler: TimerHandler,
+    timeout?: number,
+    ...args: unknown[]
+  ) => {
+    const id = nativeSetTimeout(handler, timeout, ...(args as []));
+    pendingTimeouts.push(id);
+    return id;
+  }) as typeof window.setTimeout);
+}
+
+function clearPendingTimeouts() {
+  for (const id of pendingTimeouts) {
+    nativeClearTimeout(id as Parameters<typeof nativeClearTimeout>[0]);
+  }
+  pendingTimeouts.length = 0;
+}
+
 vi.mock('canvas-confetti', () => ({
   default: (...args: unknown[]) => confetti(...args),
 }));
@@ -41,11 +66,14 @@ beforeEach(() => {
   confetti.mockReset();
   localStorage.clear();
   setReducedMotion(false);
+  trackTimeouts();
 });
 
 afterEach(() => {
   cleanup();
   localStorage.clear();
+  clearPendingTimeouts();
+  vi.restoreAllMocks();
 });
 
 describe('level-up celebration', () => {
@@ -116,7 +144,7 @@ describe('level-up celebration', () => {
     const dialog = await screen.findByRole('dialog');
     expect(dialog.getAttribute('data-motion')).toBe('static');
     expect(dialog.textContent).toContain('The Explorer');
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await new Promise((resolve) => setTimeout(resolve, 200));
     expect(confetti).not.toHaveBeenCalled();
   });
 
@@ -165,7 +193,8 @@ describe('level-up celebration', () => {
     });
     try {
       render(<LevelUpCelebration enabled milestones={[explorer]} />);
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      // Past celebrate()'s 150ms follow-up, so a leaked burst fails this case.
+      await new Promise((resolve) => setTimeout(resolve, 200));
       expect(screen.queryByRole('dialog')).toBeNull();
       expect(confetti).not.toHaveBeenCalled();
     } finally {
