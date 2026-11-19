@@ -30,7 +30,8 @@ set, that https URL is fetched first. A redirect from that URL may land on
 another domain, and that page is the official page. Other page fetches do not
 follow a redirect onto another domain. It asks Claude Haiku
 (claude-haiku-4-5-20251001) to search with Anthropic's server-side web_search
-tool (web_search_20260318, at most 3 searches, McKinney TX). It then fetches
+tool (web_search_20260318, at most 5 searches, McKinney TX). It asks for the
+official site and for menu, about, and FAQ pages. It then fetches
 those public https pages itself. The official site is first. Up to four
 same-host subpages (menu, about, faq, visit, location, contact, hours,
 reservations, parking, private-dining) are fetched from that site. A reputable
@@ -46,8 +47,9 @@ does not write those sentences. Raw Places fields are not stored. place_id is
 stored only on --write, and only when google_place_id is null. List prices
 count toward the USD cap. The free monthly Places cap is not subtracted.
 
-It writes a JSON and markdown report under .briefings/. It does not write the
-database unless --write is set.
+It writes a JSON and markdown report under .briefings/. The report counts kept
+and dropped facts for each field. It does not write the database unless
+--write is set.
 
   npm run research:briefings
   npm run research:briefings -- --limit 5

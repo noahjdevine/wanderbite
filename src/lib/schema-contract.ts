@@ -635,6 +635,24 @@ export const SCHEMA_CONTRACT = {
   ],
 } as const;
 
+/**
+ * Values allowed by restaurant_briefing_facts_field_check and
+ * public.briefing_field_name(). The member card shows only the first six.
+ */
+export const RESTAURANT_BRIEFING_FACT_FIELDS = [
+  'parking',
+  'arrival',
+  'what_to_expect',
+  'duration',
+  'attire',
+  'accessibility',
+  'vibe',
+  'known_for',
+  'good_for',
+  'seating',
+  'reservations',
+] as const;
+
 export const POSTGIS_TYPE_TABLES = [
   'spatial_ref_sys',
   'geography_columns',

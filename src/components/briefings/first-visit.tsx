@@ -2,6 +2,7 @@ import {
   FIRST_VISIT_HEADING,
   briefingSourceLabel,
   formatBriefingChecked,
+  isMemberBriefingField,
   type BriefingFact,
 } from '@/lib/briefings/types';
 
@@ -11,14 +12,15 @@ type FirstVisitBriefingProps = {
 };
 
 export function FirstVisitBriefing({ headingId, facts }: FirstVisitBriefingProps) {
-  if (facts.length === 0) return null;
+  const visible = facts.filter((fact) => isMemberBriefingField(fact.field));
+  if (visible.length === 0) return null;
   return (
     <section className="space-y-2" aria-labelledby={headingId}>
       <h3 id={headingId} className="text-sm font-semibold text-foreground">
         {FIRST_VISIT_HEADING}
       </h3>
       <ul className="space-y-2">
-        {facts.map((fact) => {
+        {visible.map((fact) => {
           const checked = formatBriefingChecked(fact.lastVerifiedAt);
           if (!checked) return null;
           const sourceLabel = briefingSourceLabel(fact.sourceUrl);

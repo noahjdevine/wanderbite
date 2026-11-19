@@ -110,6 +110,31 @@ describe('loadRestaurantBriefings', () => {
           body: 'Casual clothes are fine on the sample page.',
           is_sample: false,
         }),
+        row({
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccd',
+          field: 'vibe',
+          body: 'The room is cozy and candlelit.',
+        }),
+        row({
+          id: 'dddddddd-dddd-4ddd-8ddd-ddddddddddde',
+          field: 'known_for',
+          body: 'Known for brisket and ribs.',
+        }),
+        row({
+          id: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeef',
+          field: 'good_for',
+          body: 'Good for kids.',
+        }),
+        row({
+          id: 'ffffffff-ffff-4fff-8fff-fffffffffff0',
+          field: 'seating',
+          body: 'Dogs are welcome on the patio.',
+        }),
+        row({
+          id: '11111111-1111-4111-8111-111111111112',
+          field: 'reservations',
+          body: 'Walk-ins are welcome.',
+        }),
       ],
       error: null,
     });
@@ -132,6 +157,12 @@ describe('loadRestaurantBriefings', () => {
     );
     expect(loaded.byRestaurantId[OTHER]?.map((fact) => fact.field)).toEqual(['attire']);
     expect(loaded.byRestaurantId[OTHER]?.[0]?.sampleLabel).toBeNull();
+    const shown = JSON.stringify(loaded.byRestaurantId);
+    expect(shown).not.toContain('cozy');
+    expect(shown).not.toContain('brisket');
+    expect(shown).not.toContain('Good for kids');
+    expect(shown).not.toContain('patio');
+    expect(shown).not.toContain('Walk-ins');
   });
 
   it('returns nothing when the table is missing', async () => {

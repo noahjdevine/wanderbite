@@ -150,6 +150,40 @@ begin
 end $$;
 
 do $$
+declare
+  v_field text;
+begin
+  foreach v_field in array array['vibe', 'known_for', 'good_for', 'seating', 'reservations']
+  loop
+    if public.briefing_field_name(v_field) is distinct from v_field then
+      raise exception 'FAIL: briefing_field_name rejected %', v_field;
+    end if;
+    insert into public.restaurant_briefing_facts (
+      restaurant_id, field, body, source_url, last_verified_at, status
+    ) values (
+      'e06a2000-0000-4000-8000-000000000010',
+      v_field,
+      'Sample note for this field.',
+      'https://example.com/e06-new-field',
+      now(),
+      'paused'
+    );
+    delete from public.restaurant_briefing_facts
+    where restaurant_id = 'e06a2000-0000-4000-8000-000000000010'
+      and field = v_field;
+  end loop;
+
+  begin
+    perform public.briefing_field_name('offer');
+    raise exception 'FAIL: briefing_field_name accepted offer';
+  exception when sqlstate '22023' then null; end;
+
+  if (select count(*) from public.restaurant_briefing_facts) <> 2 then
+    raise exception 'FAIL: new-field inserts were left in place';
+  end if;
+end $$;
+
+do $$
 begin
   begin
     update public.restaurants
