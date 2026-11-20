@@ -85,6 +85,14 @@ const OWN_DOMAIN_FOLLOWUP =
 
 const HOSTED_PROJECT_REF = 'yiajoycgiyxjvznndjge';
 const FETCH_TIMEOUT_MS = 8_000;
+/**
+ * Redirects followed in one fetch chain. The response after the last redirect
+ * can be the page. 10 matches the usual client default and covers the official
+ * sites that failed at 3. One more redirect is "too many redirects".
+ */
+export const BRIEFING_REDIRECT_HOP_CAP = 10;
+/** Dropped-fact text in the dry-run report. The stored candidate can be longer. */
+export const DROPPED_FACT_TEXT_CAP = 200;
 const PAGE_REQUEST_HEADERS: Record<string, string> = {
   accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.7',
   'accept-language': 'en-US,en;q=0.9',
@@ -121,6 +129,23 @@ const LISTING_HOSTS = [
   'roadtrippers.com',
   'mindtrip.ai',
   'joe.coffee',
+];
+
+/**
+ * Thin auto-generated restaurant directories. Checked on the hostname only.
+ * A match is skipped before fetch: no page slot, and it does not by itself
+ * start another web search.
+ *
+ * - hey-rest: generated directory pages. One of these stated a multi-storey car park.
+ * - restaurantji.com: one templated page per restaurant from scraped fragments.
+ * - sluurp.com: the same kind of thin generated restaurant page.
+ *
+ * `hey-rest` must not match a longer token such as hey-restaurant.
+ */
+export const WEAK_AGGREGATOR_HOSTS: readonly { id: string; host: RegExp }[] = [
+  { id: 'hey-rest', host: /hey-rest(?:[^a-z0-9]|$)/i },
+  { id: 'restaurantji.com', host: /(?:^|\.)restaurantji\.com$/i },
+  { id: 'sluurp.com', host: /(?:^|\.)sluurp\.com$/i },
 ];
 
 const SKIP_HOSTS = [
@@ -217,6 +242,23 @@ export type BriefingRestaurant = {
   googlePlaceId?: string | null;
   lat?: number | null;
   lon?: number | null;
+  /** Loaded for the test-restaurant skip. Absent in unit fixtures. */
+  marketName?: string | null;
+  marketSlug?: string | null;
+  /** Partner org name. The restaurants table calls this org, not partner. */
+  orgName?: string | null;
+};
+
+export type DroppedFact = {
+  field: string | null;
+  text: string | null;
+  sourceUrl: string | null;
+  reason: string;
+};
+
+export type SkippedTestRestaurant = {
+  name: string;
+  reason: string;
 };
 
 export type SupportedFact = {
@@ -232,6 +274,8 @@ export type SupportedFact = {
 export type FetchedPage = {
   url: string;
   text: string;
+  /** Raw HTML for review-body stripping. Omitted when the caller only has text. */
+  html?: string;
 };
 
 export type ModelUsage = Record<string, number>;
@@ -247,6 +291,8 @@ export type RestaurantResearchResult = {
   fetchedUrls: string[];
   facts: SupportedFact[];
   dropped: string[];
+  /** Candidate facts the filter rejected. The report lists these in full. */
+  droppedFacts?: DroppedFact[];
   units: ModelUsage;
   estimatedMicrodollars: number;
   notes: string[];
@@ -261,6 +307,9 @@ export type BriefingRun = {
   restaurants: RestaurantResearchResult[];
   stoppedBecause: string | null;
   totals: { input: number; output: number; estimatedMicrodollars: number };
+  /** Set by the operator script. Omitted in older callers, which hide the header. */
+  skippedTestRestaurants?: readonly SkippedTestRestaurant[];
+  includeTestRestaurants?: boolean;
 };
 
 export type BriefingInsert = {
@@ -391,18 +440,21 @@ export function briefingResearchAllowed(
 export function parseBriefingArgs(argv: readonly string[]): {
   help: boolean;
   write: boolean;
+  includeTest: boolean;
   restaurantCap: number;
   costCapMicrodollars: number;
   error?: string;
 } {
   let help = false;
   let write = false;
+  let includeTest = false;
   let restaurantCap = DEFAULT_RESTAURANT_CAP;
   let costCapMicrodollars = DEFAULT_COST_CAP_MICRODOLLARS;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') help = true;
     else if (arg === '--write') write = true;
+    else if (arg === '--include-test') includeTest = true;
     else if (arg === '--limit') {
       const value = Number(argv[i + 1]);
       i += 1;
@@ -410,6 +462,7 @@ export function parseBriefingArgs(argv: readonly string[]): {
         return {
           help,
           write,
+          includeTest,
           restaurantCap,
           costCapMicrodollars,
           error: '--limit must be a positive integer',
@@ -423,6 +476,7 @@ export function parseBriefingArgs(argv: readonly string[]): {
         return {
           help,
           write,
+          includeTest,
           restaurantCap,
           costCapMicrodollars,
           error: '--cost-cap-cents must be a positive integer',
@@ -433,13 +487,60 @@ export function parseBriefingArgs(argv: readonly string[]): {
       return {
         help,
         write,
+        includeTest,
         restaurantCap,
         costCapMicrodollars,
         error: `Unknown argument ${arg}`,
       };
     }
   }
-  return { help, write, restaurantCap, costCapMicrodollars };
+  return { help, write, includeTest, restaurantCap, costCapMicrodollars };
+}
+
+export function weakAggregatorLabel(hostname: string): string | null {
+  const host = hostname.toLowerCase().replace(/\.+$/, '');
+  const hit = WEAK_AGGREGATOR_HOSTS.find((entry) => entry.host.test(host));
+  return hit?.id ?? null;
+}
+
+function markedTestLabel(value: string | null | undefined): boolean {
+  const label = value?.trim().toLowerCase() ?? '';
+  if (!label) return false;
+  if (label.includes('(not real)') || /\bnot\s+real\b/.test(label)) return true;
+  return /(?:^|[^a-z0-9])(?:qa|test|fixture)(?:[^a-z0-9]|$)/.test(label);
+}
+
+/** Null when this restaurant should be researched. One reason, name before market before partner. */
+export function testRestaurantSkipReason(
+  restaurant: Pick<BriefingRestaurant, 'name' | 'marketName' | 'marketSlug' | 'orgName'>,
+): string | null {
+  const name = restaurant.name.trim();
+  if (/\(not real\)/i.test(name)) return 'name contains "(not real)"';
+  if (/^qa(?:\s|$)/i.test(name)) return 'name starts with "QA "';
+  if (/^test(?:\s|$)/i.test(name)) return 'name starts with "Test "';
+  if (markedTestLabel(restaurant.marketName) || markedTestLabel(restaurant.marketSlug)) {
+    const label = restaurant.marketName?.trim() || restaurant.marketSlug?.trim() || 'market';
+    return `market "${label}" is marked test`;
+  }
+  if (markedTestLabel(restaurant.orgName)) {
+    return `partner "${restaurant.orgName?.trim()}" is marked test`;
+  }
+  return null;
+}
+
+export function partitionBriefingRestaurants<T extends BriefingRestaurant>(
+  restaurants: readonly T[],
+  includeTest: boolean,
+): { selected: T[]; skippedTestRestaurants: SkippedTestRestaurant[] } {
+  if (includeTest) return { selected: [...restaurants], skippedTestRestaurants: [] };
+  const selected: T[] = [];
+  const skippedTestRestaurants: SkippedTestRestaurant[] = [];
+  for (const restaurant of restaurants) {
+    const reason = testRestaurantSkipReason(restaurant);
+    if (reason) skippedTestRestaurants.push({ name: restaurant.name, reason });
+    else selected.push(restaurant);
+  }
+  return { selected, skippedTestRestaurants };
 }
 
 export function htmlToText(html: string): string {
@@ -621,6 +722,7 @@ function urlClass(
   const url = new URL(normalized);
   const host = url.hostname;
   if (SKIP_HOSTS.some((suffix) => hostMatches(host, suffix))) return 'blocked';
+  if (weakAggregatorLabel(host)) return 'blocked';
   if (host === 'google.com' || host === 'www.google.com' || host === 'maps.google.com') {
     return url.pathname.startsWith('/maps') ? 'listing' : 'blocked';
   }
@@ -632,8 +734,13 @@ function urlClass(
 }
 
 function needsOwnDomainSearch(urls: readonly string[], restaurant: BriefingRestaurant): boolean {
-  if (urls.length === 0) return false;
-  return urls.every((url) => {
+  const considered = urls.filter((url) => {
+    const normalized = normalizeHttpsUrl(url);
+    if (!normalized) return false;
+    return weakAggregatorLabel(new URL(normalized).hostname) == null;
+  });
+  if (considered.length === 0) return false;
+  return considered.every((url) => {
     const kind = urlClass(url, restaurant.name, [], restaurant.address);
     return kind === 'listing' || kind === 'blocked';
   });
@@ -1041,6 +1148,9 @@ const VIBE_FILLER = new Set([
 
 const FIELD_SPECIFIC = new Set<BriefingField>(['vibe', 'known_for', 'good_for', 'seating', 'reservations']);
 
+/** A review comment cannot be the only support for these. Listing amenities can. */
+const PHYSICAL_FEATURE_FIELDS = new Set<BriefingField>(['parking', 'arrival', 'accessibility', 'seating']);
+
 function wordPattern(word: string): RegExp {
   return new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(word)}(?:[^A-Za-z0-9]|$)`, 'i');
 }
@@ -1138,6 +1248,149 @@ export function groundedInPage(factText: string, pageText: string): boolean {
   return findSupportPassage(factText, pageText) != null;
 }
 
+const REVIEW_OPEN_TAG = /<([A-Za-z][\w:-]*)\b([^>]*)>/g;
+const VOID_HTML_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'source',
+  'track',
+  'wbr',
+]);
+
+function reviewAttributeValue(value: string): boolean {
+  const tokens = value.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (tokens.includes('reviewbody')) return true;
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    const pair = `${tokens[index]}-${tokens[index + 1]}`;
+    if (
+      pair === 'review-body' ||
+      pair === 'review-text' ||
+      pair === 'review-content' ||
+      pair === 'user-review'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** class, id, itemprop, or data-* values that name a user review body. */
+function attributesMarkReview(attrs: string): boolean {
+  if (/itemprop\s*=\s*["']reviewbody["']/i.test(attrs)) return true;
+  if (/itemtype\s*=\s*["'][^"']*schema\.org\/(?:user)?review["']/i.test(attrs)) return true;
+  const named = /(?:^|\s)(?:class|id|itemprop|data-[\w:-]+)\s*=\s*("([^"]*)"|'([^']*)')/gi;
+  let match: RegExpExecArray | null;
+  while ((match = named.exec(attrs))) {
+    if (reviewAttributeValue(match[2] ?? match[3] ?? '')) return true;
+  }
+  return false;
+}
+
+function endOfHtmlElement(html: string, tag: string, from: number): number {
+  const token = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'gi');
+  token.lastIndex = from;
+  let depth = 1;
+  let match: RegExpExecArray | null;
+  while ((match = token.exec(html))) {
+    const closing = match[1] === '/';
+    const selfClosing = !closing && /\/>\s*$/.test(match[0]);
+    if (selfClosing) continue;
+    depth += closing ? -1 : 1;
+    if (depth === 0) return match.index + match[0].length;
+  }
+  return html.length;
+}
+
+/**
+ * Remove user-review bodies (itemprop=reviewBody, schema.org/Review, or a
+ * review-body / review-text / user-review class or id). Listing amenities stay.
+ */
+function stripReviewMarkup(html: string): string {
+  let cursor = 0;
+  let out = '';
+  while (cursor < html.length) {
+    REVIEW_OPEN_TAG.lastIndex = cursor;
+    const match = REVIEW_OPEN_TAG.exec(html);
+    if (!match) {
+      out += html.slice(cursor);
+      break;
+    }
+    const start = match.index;
+    out += html.slice(cursor, start);
+    const tag = (match[1] ?? '').toLowerCase();
+    const whole = match[0];
+    const selfClosing = /\/>\s*$/.test(whole) || VOID_HTML_TAGS.has(tag);
+    if (selfClosing || !tag || !attributesMarkReview(match[2] ?? '')) {
+      out += whole;
+      cursor = start + whole.length;
+      continue;
+    }
+    cursor = endOfHtmlElement(html, tag, start + whole.length);
+  }
+  return out;
+}
+
+function pageTextWithoutReviews(page: FetchedPage): string | null {
+  if (!page.html) return null;
+  return htmlToText(stripReviewMarkup(page.html)).slice(0, BRIEFING_PAGE_CHARS);
+}
+
+function droppedFactSummary(fact: DroppedFact): string {
+  const field = fact.field ?? 'fact';
+  switch (fact.reason) {
+    case 'unknown field':
+      return `dropped unknown field ${field}`;
+    case 'no text':
+      return `dropped ${field} with no text`;
+    case 'outside the length check':
+      return `dropped ${field} outside the length check`;
+    case 'without an https source_url':
+      return `dropped ${field} without an https source_url`;
+    case 'duplicate':
+      return `dropped duplicate ${field}`;
+    case 'not fetched in this run':
+      return `dropped ${field} because ${fact.sourceUrl ?? 'the source'} was not fetched in this run`;
+    case 'page fact is already kept':
+      return `dropped Places ${field} because a page fact is already kept`;
+    case 'outside the fact checks':
+      return `dropped Places ${field} outside the fact checks`;
+    case 'without an https source':
+      return `dropped Places ${field} without an https source`;
+    default:
+      return `dropped ${field} because ${fact.reason}`;
+  }
+}
+
+function pushDropped(dropped: string[], droppedFacts: DroppedFact[], fact: DroppedFact): void {
+  dropped.push(droppedFactSummary(fact));
+  droppedFacts.push(fact);
+}
+
+function supportDecision(
+  field: BriefingField,
+  factText: string,
+  page: FetchedPage,
+): { passage: string } | { reason: string } {
+  const passage = findSupportPassage(factText, page.text, field);
+  if (!passage) {
+    return { reason: FIELD_SPECIFIC.has(field) ? 'failed field cue check' : 'no support passage' };
+  }
+  if (!PHYSICAL_FEATURE_FIELDS.has(field)) return { passage };
+  const withoutReviews = pageTextWithoutReviews(page);
+  if (withoutReviews != null && !findSupportPassage(factText, withoutReviews, field)) {
+    return { reason: 'review-only source' };
+  }
+  return { passage };
+}
+
 export function parseBriefingModelJson(text: string): unknown {
   const trimmed = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
   const start = trimmed.indexOf('{');
@@ -1153,13 +1406,14 @@ export function parseBriefingModelJson(text: string): unknown {
 export function filterSupportedFacts(args: {
   raw: unknown;
   pages: readonly FetchedPage[];
-}): { kept: SupportedFact[]; dropped: string[] } {
+}): { kept: SupportedFact[]; dropped: string[]; droppedFacts: DroppedFact[] } {
   const dropped: string[] = [];
-  const pages = new Map<string, string>();
+  const droppedFacts: DroppedFact[] = [];
+  const pages = new Map<string, FetchedPage>();
   for (const page of args.pages) {
     const url = normalizeHttpsUrl(page.url);
     if (!url) continue;
-    pages.set(url, page.text);
+    pages.set(url, page);
   }
   const payload = args.raw;
   const facts =
@@ -1167,7 +1421,7 @@ export function filterSupportedFacts(args: {
       ? (payload as { facts?: unknown }).facts
       : null;
   if (!Array.isArray(facts)) {
-    return { kept: [], dropped: ['model JSON has no facts array'] };
+    return { kept: [], dropped: ['model JSON has no facts array'], droppedFacts };
   }
   const kept: SupportedFact[] = [];
   const seen = new Set<BriefingField>();
@@ -1180,36 +1434,74 @@ export function filterSupportedFacts(args: {
     const field = record.field;
     const text = record.text;
     const source = record.source_url;
+    const rawSource = typeof source === 'string' && source.trim() ? source.trim() : null;
+    const proposed = typeof text === 'string' ? text.trim() : null;
     if (typeof field !== 'string' || !isBriefingField(field)) {
-      dropped.push(`dropped unknown field ${String(field)}`);
+      pushDropped(dropped, droppedFacts, {
+        field: typeof field === 'string' ? field : null,
+        text: proposed,
+        sourceUrl: rawSource,
+        reason: 'unknown field',
+      });
       continue;
     }
     if (typeof text !== 'string') {
-      dropped.push(`dropped ${field} with no text`);
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: null,
+        sourceUrl: rawSource,
+        reason: 'no text',
+      });
       continue;
     }
     const body = text.trim();
     if (body.length < 1 || body.length > 400) {
-      dropped.push(`dropped ${field} outside the length check`);
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: body || null,
+        sourceUrl: rawSource,
+        reason: 'outside the length check',
+      });
       continue;
     }
-    const sourceUrl = typeof source === 'string' ? normalizeHttpsUrl(source) : null;
+    const sourceUrl = rawSource ? normalizeHttpsUrl(rawSource) : null;
     if (!sourceUrl) {
-      dropped.push(`dropped ${field} without an https source_url`);
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: body,
+        sourceUrl: rawSource,
+        reason: 'without an https source_url',
+      });
       continue;
     }
-    const pageText = pages.get(sourceUrl);
-    if (pageText == null) {
-      dropped.push(`dropped ${field} because ${sourceUrl} was not fetched in this run`);
+    const page = pages.get(sourceUrl);
+    if (!page) {
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: body,
+        sourceUrl,
+        reason: 'not fetched in this run',
+      });
       continue;
     }
-    const supportPassage = findSupportPassage(body, pageText, field);
-    if (!supportPassage) {
-      dropped.push(`dropped ${field} because the page text does not support it`);
+    const decision = supportDecision(field, body, page);
+    if ('reason' in decision) {
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: body,
+        sourceUrl,
+        reason: decision.reason,
+      });
       continue;
     }
+    const supportPassage = decision.passage;
     if (seen.has(field)) {
-      dropped.push(`dropped duplicate ${field}`);
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: body,
+        sourceUrl,
+        reason: 'duplicate',
+      });
       continue;
     }
     seen.add(field);
@@ -1220,7 +1512,7 @@ export function filterSupportedFacts(args: {
       : { field, text: body, sourceUrl, supportPassage });
   }
   kept.sort((a, b) => BRIEFING_FIELDS.indexOf(a.field) - BRIEFING_FIELDS.indexOf(b.field));
-  return { kept, dropped };
+  return { kept, dropped, droppedFacts };
 }
 
 export function briefingSystemPrompt(): string {
@@ -1334,14 +1626,17 @@ async function readBounded(
 async function requestOnce(
   fetchImpl: typeof fetch,
   url: string,
+  cookieHeader: string | null,
 ): Promise<{ response: Response } | { error: string }> {
+  const headers: Record<string, string> = { ...PAGE_REQUEST_HEADERS };
+  if (cookieHeader) headers.cookie = cookieHeader;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
     const response = await fetchImpl(url, {
       method: 'GET',
       redirect: 'manual',
-      headers: PAGE_REQUEST_HEADERS,
+      headers,
       signal: controller.signal,
     });
     return { response };
@@ -1352,6 +1647,122 @@ async function requestOnce(
   }
 }
 
+/**
+ * Next hop URL. Keeps a trailing slash so a canonical slash redirect is one hop,
+ * not a loop back to the slash-stripped URL. www vs the bare host is a different
+ * URL here; sameOfficialHost still treats them as one site.
+ */
+function resolveRedirectUrl(location: string, current: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(location, current);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:') return null;
+  if (url.username || url.password) return null;
+  if (!isPublicHost(url.hostname)) return null;
+  url.hash = '';
+  url.hostname = url.hostname.toLowerCase();
+  return url.toString();
+}
+
+type StoredCookie = {
+  name: string;
+  value: string;
+  domain: string;
+  path: string;
+  hostOnly: boolean;
+};
+
+const COOKIE_NAME = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
+function defaultCookiePath(pathname: string): string {
+  if (!pathname.startsWith('/')) return '/';
+  const slash = pathname.lastIndexOf('/');
+  if (slash <= 0) return '/';
+  return pathname.slice(0, slash);
+}
+
+function cookieDomainMatches(hostname: string, domain: string): boolean {
+  const host = hostname.toLowerCase().replace(/\.+$/, '');
+  const suffix = domain.toLowerCase().replace(/^\./, '').replace(/\.+$/, '');
+  if (!suffix) return false;
+  return host === suffix || host.endsWith(`.${suffix}`);
+}
+
+function cookiePathMatches(pathname: string, cookiePath: string): boolean {
+  const path = pathname || '/';
+  if (cookiePath === '/') return true;
+  if (!path.startsWith(cookiePath)) return false;
+  if (path.length === cookiePath.length) return true;
+  if (cookiePath.endsWith('/')) return true;
+  return path[cookiePath.length] === '/';
+}
+
+/**
+ * Cookies for a single fetch chain. Not stored, not written to the report.
+ * A host-only cookie stays on the host that set it. A Domain cookie is sent
+ * only when the next hop's host matches that domain.
+ */
+class FetchCookieJar {
+  private cookies: StoredCookie[] = [];
+
+  store(setCookie: string, requestUrl: URL): void {
+    const parts = setCookie.split(';');
+    const pair = parts[0]?.trim() ?? '';
+    const eq = pair.indexOf('=');
+    if (eq <= 0) return;
+    const name = pair.slice(0, eq).trim();
+    const value = pair.slice(eq + 1).trim();
+    if (!COOKIE_NAME.test(name) || /[\r\n]/.test(value)) return;
+    let domain = requestUrl.hostname.toLowerCase();
+    let hostOnly = true;
+    let path = defaultCookiePath(requestUrl.pathname);
+    let remove = false;
+    for (const raw of parts.slice(1)) {
+      const attr = raw.trim();
+      if (!attr) continue;
+      const sep = attr.indexOf('=');
+      const key = (sep < 0 ? attr : attr.slice(0, sep)).trim().toLowerCase();
+      const attrValue = sep < 0 ? '' : attr.slice(sep + 1).trim();
+      if (key === 'domain' && attrValue) {
+        if (!cookieDomainMatches(requestUrl.hostname, attrValue)) return;
+        domain = attrValue.toLowerCase().replace(/^\./, '').replace(/\.+$/, '');
+        hostOnly = false;
+      } else if (key === 'path' && attrValue.startsWith('/')) {
+        path = attrValue;
+      } else if (key === 'max-age' && (!/^\d+$/.test(attrValue) || Number(attrValue) === 0)) {
+        remove = true;
+      }
+    }
+    this.cookies = this.cookies.filter(
+      (cookie) =>
+        !(cookie.name === name && cookie.domain === domain && cookie.path === path && cookie.hostOnly === hostOnly),
+    );
+    if (remove) return;
+    this.cookies.push({ name, value, domain, path, hostOnly });
+  }
+
+  header(requestUrl: URL): string | null {
+    const host = requestUrl.hostname.toLowerCase();
+    const path = requestUrl.pathname || '/';
+    const pairs: string[] = [];
+    for (const cookie of this.cookies) {
+      const hostOk = cookie.hostOnly ? host === cookie.domain : cookieDomainMatches(host, cookie.domain);
+      if (!hostOk || !cookiePathMatches(path, cookie.path)) continue;
+      pairs.push(`${cookie.name}=${cookie.value}`);
+    }
+    return pairs.length > 0 ? pairs.join('; ') : null;
+  }
+}
+
+function setCookieLines(headers: Headers): string[] {
+  if (typeof headers.getSetCookie === 'function') return headers.getSetCookie();
+  const single = headers.get('set-cookie');
+  return single ? [single] : [];
+}
+
 async function fetchHttps(
   fetchImpl: typeof fetch,
   startUrl: string,
@@ -1359,19 +1770,27 @@ async function fetchHttps(
 ): Promise<{ url: string; text: string; contentType: string; truncated: boolean } | { error: string }> {
   const start = normalizeHttpsUrl(startUrl);
   if (!start) return { error: 'url is not https' };
+  const seen = new Set<string>([start]);
+  const jar = new FetchCookieJar();
   let current: string = start;
-  for (let hop = 0; hop < 3; hop += 1) {
-    const result = await requestOnce(fetchImpl, current);
+  for (let hop = 0; hop <= BRIEFING_REDIRECT_HOP_CAP; hop += 1) {
+    const cookieHeader = jar.header(new URL(current));
+    const result = await requestOnce(fetchImpl, current, cookieHeader);
     if ('error' in result) return result;
     const status = result.response.status;
     if (status >= 300 && status < 400) {
       const location = result.response.headers.get('location');
+      const cookies = setCookieLines(result.response.headers);
       await result.response.body?.cancel().catch(() => undefined);
-      const resolved = location ? normalizeHttpsUrl(new URL(location, current).toString()) : null;
+      if (hop === BRIEFING_REDIRECT_HOP_CAP) return { error: 'too many redirects' };
+      const resolved = location ? resolveRedirectUrl(location, current) : null;
       if (!resolved) return { error: 'redirect was not https' };
       if (options?.allowCrossDomainRedirect === false && !sameOfficialHost(start, resolved)) {
         return { error: 'redirect left the site' };
       }
+      if (seen.has(resolved)) return { error: 'redirect loop' };
+      for (const cookie of cookies) jar.store(cookie, new URL(current));
+      seen.add(resolved);
       current = resolved;
       continue;
     }
@@ -1387,27 +1806,61 @@ async function fetchHttps(
 }
 
 type RobotsRecord =
-  | { kind: 'absent' }
+  | { kind: 'absent'; note: string | null }
   | { kind: 'unavailable'; reason: string }
   | { kind: 'text'; text: string };
 
 type RobotsCache = Map<string, RobotsRecord>;
 
+function robotsBodyKind(contentType: string, text: string): 'rules' | 'html' | 'unreadable' {
+  const type = contentType.toLowerCase();
+  const head = text.slice(0, 400).trim().toLowerCase();
+  const looksHtml =
+    type.includes('text/html') ||
+    type.includes('application/xhtml') ||
+    head.startsWith('<!doctype html') ||
+    head.startsWith('<html') ||
+    /^<head[\s>]/.test(head) ||
+    /^<body[\s>]/.test(head);
+  if (looksHtml) return 'html';
+  if (!type || type.includes('text/plain') || type.startsWith('text/')) return 'rules';
+  return 'unreadable';
+}
+
+/** RFC 9309 / Google: 4xx and an unreadable 2xx are no rules. 5xx and network errors skip. */
+function robotsRecordFromError(robotsUrl: string, error: string): RobotsRecord {
+  const status = /^status (\d+)$/.exec(error);
+  if (status) {
+    const code = Number(status[1]);
+    if (code === 404 || code === 410) return { kind: 'absent', note: null };
+    if ((code >= 400 && code < 500) || (code >= 200 && code < 300)) {
+      return { kind: 'absent', note: `${robotsUrl}: status ${code}, treated as no rules (allowed)` };
+    }
+    if (code >= 500 && code < 600) {
+      return { kind: 'unavailable', reason: `robots.txt status ${code}, skipped (server error)` };
+    }
+  }
+  return { kind: 'unavailable', reason: `robots.txt ${error}, skipped (network failure)` };
+}
+
 async function readRobots(fetchImpl: typeof fetch, pageUrl: string, cache: RobotsCache): Promise<RobotsRecord> {
   const origin = new URL(pageUrl).origin;
   const cached = cache.get(origin);
   if (cached) return cached;
-  const robots = await fetchHttps(fetchImpl, new URL('/robots.txt', pageUrl).toString());
+  const robotsUrl = new URL('/robots.txt', pageUrl).toString();
+  const robots = await fetchHttps(fetchImpl, robotsUrl);
   let record: RobotsRecord;
   if ('error' in robots) {
-    record =
-      robots.error === 'status 404' || robots.error === 'status 410'
-        ? { kind: 'absent' }
-        : { kind: 'unavailable', reason: `robots.txt unavailable (${robots.error})` };
-  } else if (/text\/html|application\/xhtml/i.test(robots.contentType)) {
-    record = { kind: 'unavailable', reason: 'robots.txt was not plain text' };
+    record = robotsRecordFromError(robotsUrl, robots.error);
   } else {
-    record = { kind: 'text', text: robots.text };
+    const kind = robotsBodyKind(robots.contentType, robots.text);
+    if (kind === 'html') {
+      record = { kind: 'absent', note: `${robotsUrl}: HTML body, treated as no rules (allowed)` };
+    } else if (kind === 'unreadable') {
+      record = { kind: 'absent', note: `${robotsUrl}: unreadable body, treated as no rules (allowed)` };
+    } else {
+      record = { kind: 'text', text: robots.text };
+    }
   }
   cache.set(origin, record);
   return record;
@@ -1451,7 +1904,15 @@ async function takeBriefingPages(args: {
     const normalized = normalizeHttpsUrl(raw);
     if (!normalized || args.seen.has(normalized)) continue;
     if (args.officialUrl && !sameOfficialHost(args.officialUrl, normalized)) continue;
-    const decision = robotsDecision(await readRobots(args.fetchImpl, normalized, args.robotsCache), normalized);
+    const aggregator = weakAggregatorLabel(new URL(normalized).hostname);
+    if (aggregator) {
+      pushNote(args.notes, `${normalized}: skipped weak aggregator host (${aggregator})`);
+      args.seen.add(normalized);
+      continue;
+    }
+    const robots = await readRobots(args.fetchImpl, normalized, args.robotsCache);
+    if (robots.kind === 'absent' && robots.note) pushNote(args.notes, robots.note);
+    const decision = robotsDecision(robots, normalized);
     if (!decision.ok) {
       pushNote(args.notes, `${normalized}: ${decision.reason}`);
       args.seen.add(normalized);
@@ -1778,22 +2239,38 @@ export async function discoverBriefingUrls(args: {
 function mergePageAndPlacesFacts(
   pageFacts: readonly SupportedFact[],
   placesFacts: readonly PlacesFactDraft[],
-): { kept: SupportedFact[]; dropped: string[] } {
+): { kept: SupportedFact[]; dropped: string[]; droppedFacts: DroppedFact[] } {
   const kept = [...pageFacts];
   const seen = new Set(pageFacts.map((fact) => fact.field));
   const dropped: string[] = [];
+  const droppedFacts: DroppedFact[] = [];
   for (const fact of placesFacts) {
     if (seen.has(fact.field)) {
-      dropped.push(`dropped Places ${fact.field} because a page fact is already kept`);
+      pushDropped(dropped, droppedFacts, {
+        field: fact.field,
+        text: fact.text,
+        sourceUrl: fact.sourceUrl,
+        reason: 'page fact is already kept',
+      });
       continue;
     }
     if (!isBriefingField(fact.field) || fact.text.trim().length < 1 || fact.text.length > 400) {
-      dropped.push(`dropped Places ${fact.field} outside the fact checks`);
+      pushDropped(dropped, droppedFacts, {
+        field: fact.field,
+        text: fact.text,
+        sourceUrl: fact.sourceUrl,
+        reason: 'outside the fact checks',
+      });
       continue;
     }
     const sourceUrl = normalizeHttpsUrl(fact.sourceUrl);
     if (!sourceUrl) {
-      dropped.push(`dropped Places ${fact.field} without an https source`);
+      pushDropped(dropped, droppedFacts, {
+        field: fact.field,
+        text: fact.text,
+        sourceUrl: fact.sourceUrl,
+        reason: 'without an https source',
+      });
       continue;
     }
     seen.add(fact.field);
@@ -1805,7 +2282,19 @@ function mergePageAndPlacesFacts(
     });
   }
   kept.sort((a, b) => BRIEFING_FIELDS.indexOf(a.field) - BRIEFING_FIELDS.indexOf(b.field));
-  return { kept, dropped };
+  return { kept, dropped, droppedFacts };
+}
+
+function noteWeakAggregators(urls: readonly string[], notes: string[]): void {
+  const seen = new Set<string>();
+  for (const raw of urls) {
+    const normalized = normalizeHttpsUrl(raw);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    const label = weakAggregatorLabel(new URL(normalized).hostname);
+    if (!label) continue;
+    pushNote(notes, `${normalized}: skipped weak aggregator host (${label})`);
+  }
 }
 
 function hostOf(pageUrl: string): string | null {
@@ -1858,6 +2347,7 @@ export async function researchOneRestaurant(args: {
     fetchedUrls: [] as string[],
     facts: [] as SupportedFact[],
     dropped: [] as string[],
+    droppedFacts: [] as DroppedFact[],
     units,
     estimatedMicrodollars: 0,
     notes,
@@ -1901,6 +2391,7 @@ export async function researchOneRestaurant(args: {
   if (search.failure) {
     notes.push(search.failure);
   } else {
+    noteWeakAggregators(search.urls, notes);
     for (const warning of search.warnings) notes.push(warning);
     const ranked = rankBriefingUrls(
       search.urls,
@@ -1951,10 +2442,11 @@ export async function researchOneRestaurant(args: {
     ...subpages,
     ...listings,
   ];
-  const pages: FetchedPage[] = ordered.map((page) => ({ url: page.url, text: page.text }));
+  const pages: FetchedPage[] = ordered.map((page) => ({ url: page.url, text: page.text, html: page.html }));
   base.fetchedUrls = pages.map((page) => page.url);
   let pageFacts: SupportedFact[] = [];
   const dropped: string[] = [];
+  const droppedFacts: DroppedFact[] = [];
   if (pages.length > 0) {
     try {
       const model = await args.callModel({
@@ -1965,6 +2457,7 @@ export async function researchOneRestaurant(args: {
       const filtered = filterSupportedFacts({ raw: parseBriefingModelJson(model.text), pages });
       pageFacts = filtered.kept;
       dropped.push(...filtered.dropped);
+      droppedFacts.push(...filtered.droppedFacts);
     } catch (error) {
       notes.push(error instanceof Error ? error.message : 'model call failed');
     }
@@ -1976,6 +2469,7 @@ export async function researchOneRestaurant(args: {
     ...priced(),
     facts: merged.kept,
     dropped: [...dropped, ...merged.dropped],
+    droppedFacts: [...droppedFacts, ...merged.droppedFacts],
   };
 }
 
@@ -2083,6 +2577,30 @@ function addFieldCounts(total: BriefingFieldCounts, next: BriefingFieldCounts): 
   }
 }
 
+function clipDroppedFactText(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  if (flat.length <= DROPPED_FACT_TEXT_CAP) return flat;
+  return `${flat.slice(0, DROPPED_FACT_TEXT_CAP - 3)}...`;
+}
+
+function publicDroppedFact(fact: DroppedFact): DroppedFact {
+  return {
+    field: fact.field,
+    text: fact.text ? clipDroppedFactText(fact.text) : null,
+    sourceUrl: fact.sourceUrl,
+    reason: fact.reason,
+  };
+}
+
+function formatDroppedFactLines(fact: DroppedFact): string[] {
+  const shown = publicDroppedFact(fact);
+  return [
+    `- ${shown.field ?? 'unknown'}: ${shown.text ?? '(no text)'}`,
+    `  Source: ${shown.sourceUrl ?? '(no source url)'}`,
+    `  Reason: ${shown.reason}`,
+  ];
+}
+
 function formatFieldCountLines(counts: BriefingFieldCounts): string[] {
   return BRIEFING_FIELDS.map(
     (field) => `- ${field}: kept ${counts[field].kept}, dropped ${counts[field].dropped}`,
@@ -2115,6 +2633,19 @@ export function placesReportLine(units: ModelUsage): string {
   return `Places: ${parts.join('; ')}`;
 }
 
+function formatSkippedTestLines(run: BriefingRun): string[] {
+  if (!run.skippedTestRestaurants) return [];
+  const suffix = run.includeTestRestaurants ? ' (--include-test)' : '';
+  if (run.skippedTestRestaurants.length === 0) {
+    return ['', `Skipped test restaurants: none${suffix}`];
+  }
+  return [
+    '',
+    'Skipped test restaurants:',
+    ...run.skippedTestRestaurants.map((skipped) => `- ${skipped.name}: ${skipped.reason}`),
+  ];
+}
+
 export function formatBriefingReport(run: BriefingRun): { json: string; markdown: string } {
   const fieldCountTotals = emptyFieldCounts();
   const restaurants = run.restaurants.map((restaurant) => {
@@ -2124,6 +2655,7 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
       ...restaurant,
       reasons: briefingResultReasons(restaurant),
       fieldCounts,
+      droppedFacts: (restaurant.droppedFacts ?? []).map(publicDroppedFact),
     };
   });
   const json = `${JSON.stringify({ schema: 'wanderbite.e06.briefing_research.v1', ...run, fieldCountTotals, restaurants }, null, 2)}\n`;
@@ -2137,6 +2669,7 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     placesReportLine(run.restaurants.reduce<ModelUsage>((sum, result) => mergeModelUsage(sum, result.units), {})),
     `Estimated cost: ${formatEstimatedUsd(run.totals.estimatedMicrodollars)} USD`,
     run.stoppedBecause ? `Stopped: ${run.stoppedBecause}` : 'Stopped: completed the selected restaurants',
+    ...formatSkippedTestLines(run),
     '',
     'Field counts:',
     ...formatFieldCountLines(fieldCountTotals),
@@ -2169,10 +2702,14 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
       lines.push(`  Label: ${briefingSourceLabel(fact.sourceUrl)}`);
       lines.push(`  Passage: ${fact.supportPassage}`);
     }
-    if (restaurant.dropped.length > 0) {
+    const droppedFacts = restaurant.droppedFacts ?? [];
+    const summarized = new Set(droppedFacts.map((fact) => droppedFactSummary(fact)));
+    const metaDrops = restaurant.dropped.filter((reason) => !summarized.has(reason));
+    if (droppedFacts.length > 0 || metaDrops.length > 0) {
       lines.push('');
-      lines.push('Dropped:');
-      for (const reason of restaurant.dropped) lines.push(`- ${reason}`);
+      lines.push('Dropped facts:');
+      for (const fact of droppedFacts) lines.push(...formatDroppedFactLines(fact));
+      for (const reason of metaDrops) lines.push(`- ${reason}`);
     }
     lines.push('');
   }

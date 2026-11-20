@@ -1,3 +1,5 @@
+// @vitest-environment node
+// Node's fetch keeps Set-Cookie. happy-dom strips it, so this file cannot use the default environment.
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -5,7 +7,10 @@ import {
   BRIEFING_HTML_BYTE_CAP,
   BRIEFING_MODEL,
   BRIEFING_PAGE_CHARS,
+  BRIEFING_REDIRECT_HOP_CAP,
   BRIEFING_USER_AGENT,
+  DROPPED_FACT_TEXT_CAP,
+  WEAK_AGGREGATOR_HOSTS,
   BRIEFING_WEB_SEARCH_MAX_USES,
   BRIEFING_WEB_SEARCH_TOOL,
   WEB_SEARCH_MICRODOLLARS_PER_REQUEST,
@@ -27,9 +32,14 @@ import {
   isStorableOfficialWebsite,
   proposeOfficialFromUrls,
   rankBriefingUrls,
+  htmlToText,
+  partitionBriefingRestaurants,
   researchCatalog,
   researchOneRestaurant,
+  testRestaurantSkipReason,
+  weakAggregatorLabel,
   type BriefingModelCaller,
+  type BriefingRestaurant,
 } from '@/lib/briefings/research';
 import { PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS } from '@/lib/briefings/places';
 import { restaurantFactsGuideForPrompt, renderRestaurantFactsGuideModule } from '@/lib/briefings/facts-guide-module';
@@ -153,8 +163,18 @@ describe('briefing research filter', () => {
     ]);
     expect(filtered.dropped.join('\n')).toMatch(/not fetched/);
     expect(filtered.dropped.join('\n')).toMatch(/without an https/);
-    expect(filtered.dropped.join('\n')).toMatch(/does not support/);
+    expect(filtered.dropped.join('\n')).toMatch(/no support passage/);
     expect(filtered.dropped.join('\n')).toMatch(/unknown field/);
+    const attire = filtered.droppedFacts.find((fact) => fact.field === 'attire');
+    expect(attire).toMatchObject({
+      field: 'attire',
+      text: 'Black tie is required every night.',
+      sourceUrl: OFFICIAL,
+      reason: 'no support passage',
+    });
+    const arrival = filtered.droppedFacts.find((fact) => fact.field === 'arrival');
+    expect(arrival?.reason).toBe('not fetched in this run');
+    expect(arrival?.sourceUrl).toBe('https://evil.example/not-fetched');
   });
 
   it('rejects http, credentials, and non-public hosts', () => {
@@ -208,6 +228,8 @@ describe('briefing research filter', () => {
     expect(parseBriefingArgs([]).write).toBe(false);
     expect(parseBriefingArgs(['--cost-cap-cents', '50']).costCapMicrodollars).toBe(500_000);
     expect(parseBriefingArgs(['--publish']).error).toMatch(/Unknown argument/);
+    expect(parseBriefingArgs([]).includeTest).toBe(false);
+    expect(parseBriefingArgs(['--include-test']).includeTest).toBe(true);
   });
 
   it('inserts paused non-sample rows and never marks them active', () => {
@@ -277,7 +299,7 @@ describe('support passage', () => {
       pages: [{ url: OFFICIAL, text: page }],
     });
     expect(filtered.kept).toEqual([]);
-    expect(filtered.dropped.join('\n')).toMatch(/does not support/);
+    expect(filtered.dropped.join('\n')).toMatch(/no support passage/);
   });
 
   it('keeps the original six on the generic support check', () => {
@@ -358,7 +380,7 @@ describe('new briefing fields', () => {
       pages: [{ url: OFFICIAL, text: page }],
     });
     expect(dropped.kept).toEqual([]);
-    expect(dropped.dropped.join('\n')).toMatch(/does not support/);
+    expect(dropped.dropped.join('\n')).toMatch(/failed field cue check/);
   });
 
   it('requires the short cue the generic word share would miss or invent', () => {
@@ -860,7 +882,7 @@ describe('official subpages, truncation, and robots skip', () => {
     });
     expect(result.fetchedUrls).toEqual([`${HOME}/`, ABOUT, OFFICIAL, FAQ, HOURS, YELP]);
     expect(result.facts.map((fact) => fact.sourceUrl)).toEqual([HOURS]);
-    expect(result.dropped.join('\n')).toMatch(/does not support/);
+    expect(result.dropped.join('\n')).toMatch(/no support passage/);
     expect(result.notes).toContain(`${HOME}/menu: robots.txt disallows the path`);
     const calls = vi.mocked(fetchMock).mock.calls.map((call) => String(call[0]));
     expect(calls.filter((url) => url === 'https://api.anthropic.com/v1/messages')).toHaveLength(1);
@@ -1420,5 +1442,496 @@ describe('official website host rules', () => {
       url: null,
       kind: 'none',
     });
+  });
+});
+
+function redirectResponse(location: string, setCookie?: string): Response {
+  const headers = new Headers({ location });
+  if (setCookie) headers.append('set-cookie', setCookie);
+  return new Response(null, { status: 302, headers });
+}
+
+function cookieOn(init?: RequestInit): string | null {
+  const headers = init?.headers;
+  if (!headers || headers instanceof Headers || Array.isArray(headers)) return null;
+  const record = headers as Record<string, string>;
+  return record.cookie ?? record.Cookie ?? null;
+}
+
+describe('redirect hops, cookies, and loops', () => {
+  function chainFetch(redirects: number): { fetchImpl: typeof fetch; calls: string[] } {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody(['https://hutchinsbbq.com/hop/0']), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      const hop = /^https:\/\/hutchinsbbq\.com\/hop\/(\d+)$/.exec(url);
+      if (!hop) return response('missing', 404, 'text/plain');
+      const index = Number(hop[1]);
+      if (index < redirects) return redirectResponse(`https://hutchinsbbq.com/hop/${index + 1}`);
+      return response(PAGE);
+    }) as typeof fetch;
+    return { fetchImpl, calls };
+  }
+
+  it('follows 10 redirects and then reads the page', async () => {
+    expect(BRIEFING_REDIRECT_HOP_CAP).toBe(10);
+    const { fetchImpl, calls } = chainFetch(BRIEFING_REDIRECT_HOP_CAP);
+    const result = await researchOneRestaurant({
+      restaurant: { ...RESTAURANT, officialWebsite: 'https://hutchinsbbq.com/hop/0' },
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.notes.join('\n')).not.toMatch(/too many redirects|redirect loop/);
+    expect(result.fetchedUrls).toContain('https://hutchinsbbq.com/hop/10');
+    expect(calls).toContain('https://hutchinsbbq.com/hop/10');
+  });
+
+  it('reports too many redirects one hop past the cap and does not request the next URL', async () => {
+    const { fetchImpl, calls } = chainFetch(BRIEFING_REDIRECT_HOP_CAP + 1);
+    const result = await researchOneRestaurant({
+      restaurant: { ...RESTAURANT, officialWebsite: 'https://hutchinsbbq.com/hop/0' },
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.notes).toContain('https://hutchinsbbq.com/hop/0: too many redirects');
+    expect(calls).not.toContain(`https://hutchinsbbq.com/hop/${BRIEFING_REDIRECT_HOP_CAP + 1}`);
+  });
+
+  it('carries Set-Cookie across hops in one fetch, including www, and not onto another host', async () => {
+    const start = 'https://hutchinsbbq.com/visit';
+    const slashed = 'https://hutchinsbbq.com/visit/';
+    const wwwLand = 'https://www.hutchinsbbq.com/land';
+    const headersByUrl = new Map<string, string | null>();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      headersByUrl.set(url, cookieOn(init));
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([start]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === start) {
+        return redirectResponse(slashed, 'gate=abc; Domain=hutchinsbbq.com; Path=/');
+      }
+      if (url === slashed) return redirectResponse(wwwLand);
+      if (url === wwwLand) return response(PAGE);
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.notes.join('\n')).not.toMatch(/redirect left the site|redirect loop/);
+    expect(headersByUrl.get(slashed)).toBe('gate=abc');
+    expect(headersByUrl.get(wwwLand)).toBe('gate=abc');
+    expect(result.fetchedUrls).toContain(wwwLand);
+    expect(result.notes.join('\n')).not.toContain('gate=abc');
+  });
+
+  it('does not send a host-only cookie to www or to another host', async () => {
+    const start = 'https://bbq.example.net/gate';
+    const wwwLand = 'https://www.bbq.example.net/land';
+    const other = 'https://order.other-domain.test/menu';
+    const headersByUrl = new Map<string, string | null>();
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      headersByUrl.set(url, cookieOn(init));
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([start]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === start) return redirectResponse(wwwLand, 'gate=abc; Path=/');
+      if (url === wwwLand) return redirectResponse(other, 'gate=abc; Path=/');
+      if (url === other) return response(PAGE);
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: { ...RESTAURANT, officialWebsite: start },
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(headersByUrl.get(wwwLand)).toBeNull();
+    expect(headersByUrl.get(other)).toBeNull();
+    expect(result.fetchedUrls[0]).toBe(other);
+    expect(result.notes.join('\n')).not.toContain('gate=abc');
+  });
+
+  it('reports a redirect loop when the same URL is seen twice', async () => {
+    const first = 'https://hutchinsbbq.com/a';
+    const second = 'https://hutchinsbbq.com/b';
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([first]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === first) return redirectResponse(second);
+      if (url === second) return redirectResponse(first);
+      return response(PAGE);
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.notes).toContain(`${first}: redirect loop`);
+    expect(calls.filter((url) => url === first)).toHaveLength(1);
+    expect(calls.filter((url) => url === second)).toHaveLength(1);
+  });
+
+  it('refuses an http redirect', async () => {
+    const start = 'https://hutchinsbbq.com/visit';
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([start]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      if (url === start) return redirectResponse('http://hutchinsbbq.com/visit');
+      return response(PAGE);
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.notes).toContain(`${start}: redirect was not https`);
+    expect(calls.some((url) => url.startsWith('http://'))).toBe(false);
+  });
+});
+
+describe('robots.txt allow and skip cases', () => {
+  const page = 'https://bobs.example/menu';
+  const robotsUrl = 'https://bobs.example/robots.txt';
+
+  async function runWithRobots(robots: Response | 'fail') {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([page]), 200, 'application/json');
+      }
+      if (url === robotsUrl) {
+        if (robots === 'fail') throw new Error('network down');
+        return robots;
+      }
+      if (url === page) return response(`<p>${PARKING_FACT}</p>`);
+      return response('missing', 404, 'text/plain');
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: { ...RESTAURANT, name: 'Bobs Steak', address: '1 Main St, McKinney, TX 75069' },
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    return { result, calls };
+  }
+
+  it('treats robots.txt 401 and 403 as no rules and still fetches the page', async () => {
+    for (const status of [401, 403]) {
+      const { result, calls } = await runWithRobots(response('nope', status, 'text/plain'));
+      expect(result.notes).toContain(`${robotsUrl}: status ${status}, treated as no rules (allowed)`);
+      expect(result.fetchedUrls).toContain(page);
+      expect(calls).toContain(page);
+    }
+  });
+
+  it('treats a non-200 2xx robots.txt response as no rules', async () => {
+    const { result, calls } = await runWithRobots(response('', 202, 'text/plain'));
+    expect(result.notes).toContain(`${robotsUrl}: status 202, treated as no rules (allowed)`);
+    expect(result.fetchedUrls).toContain(page);
+    expect(calls).toContain(page);
+  });
+
+  it('treats an HTML or unreadable robots.txt body as no rules', async () => {
+    const html = await runWithRobots(
+      response('<!doctype html><html><body>missing</body></html>', 200, 'text/html'),
+    );
+    expect(html.result.notes).toContain(`${robotsUrl}: HTML body, treated as no rules (allowed)`);
+    expect(html.result.fetchedUrls).toContain(page);
+    const unreadable = await runWithRobots(response('{"no":"rules"}', 200, 'application/json'));
+    expect(unreadable.result.notes).toContain(`${robotsUrl}: unreadable body, treated as no rules (allowed)`);
+    expect(unreadable.result.fetchedUrls).toContain(page);
+  });
+
+  it('skips the page when robots.txt is a 5xx or the fetch fails', async () => {
+    const server = await runWithRobots(response('down', 503, 'text/plain'));
+    expect(server.result.notes).toContain(`${page}: robots.txt status 503, skipped (server error)`);
+    expect(server.result.fetchedUrls).not.toContain(page);
+    expect(server.calls).not.toContain(page);
+    const network = await runWithRobots('fail');
+    expect(network.result.notes).toContain(`${page}: robots.txt fetch failed, skipped (network failure)`);
+    expect(network.calls).not.toContain(page);
+  });
+
+  it('still skips a path an explicit Disallow matches', async () => {
+    const { result, calls } = await runWithRobots(
+      response('User-agent: *\nDisallow: /\n', 200, 'text/plain'),
+    );
+    expect(result.notes).toContain(`${page}: robots.txt disallows the path`);
+    expect(calls).not.toContain(page);
+  });
+});
+
+describe('dropped facts in the dry-run report', () => {
+  it('lists field, text, source, and reason, and truncates long text', () => {
+    const long = `Patio seating ${'word '.repeat(60)}endmarker`;
+    expect(long.length).toBeGreaterThan(DROPPED_FACT_TEXT_CAP);
+    const droppedFacts = [
+      {
+        field: 'seating',
+        text: long,
+        sourceUrl: TRIPADVISOR,
+        reason: 'review-only source',
+      },
+      {
+        field: 'parking',
+        text: 'There is a multi-storey car park.',
+        sourceUrl: 'https://urban-grill.hey-rest.com/place',
+        reason: 'no support passage',
+      },
+    ];
+    const report = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [
+        {
+          restaurantId: RESTAURANT.id,
+          restaurantName: RESTAURANT.name,
+          fetchedUrls: [OFFICIAL],
+          facts: [
+            {
+              field: 'parking',
+              text: PARKING_FACT,
+              sourceUrl: OFFICIAL,
+              supportPassage: PARKING_FACT,
+            },
+          ],
+          dropped: [
+            'dropped seating because review-only source',
+            'dropped parking because no support passage',
+          ],
+          droppedFacts,
+          units: { input: 1, output: 1 },
+          estimatedMicrodollars: 1,
+          notes: [],
+        },
+      ],
+      stoppedBecause: null,
+      totals: { input: 1, output: 1, estimatedMicrodollars: 1 },
+      skippedTestRestaurants: [{ name: 'QA Kitchen', reason: 'name starts with "QA "' }],
+    });
+    expect(report.markdown).toContain(`- parking: ${PARKING_FACT}`);
+    expect(report.markdown).toContain('Source: ' + OFFICIAL);
+    expect(report.markdown).toContain('Dropped facts:');
+    expect(report.markdown).toContain('Reason: review-only source');
+    expect(report.markdown).toContain('Reason: no support passage');
+    expect(report.markdown).toContain(`Source: ${TRIPADVISOR}`);
+    expect(report.markdown).toContain('There is a multi-storey car park.');
+    expect(report.markdown).not.toContain('endmarker');
+    expect(report.markdown).toContain('QA Kitchen: name starts with "QA "');
+    expect(report.json).toContain('"reason": "review-only source"');
+    expect(report.json).toContain('"reason": "no support passage"');
+    expect(report.json).not.toContain('endmarker');
+    const included = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [],
+      stoppedBecause: null,
+      totals: { input: 0, output: 0, estimatedMicrodollars: 0 },
+      skippedTestRestaurants: [],
+      includeTestRestaurants: true,
+    });
+    expect(included.markdown).toContain('Skipped test restaurants: none (--include-test)');
+  });
+
+  it('drops a physical fact supported only by a review and keeps listing amenities', () => {
+    const html = [
+      '<div class="details">Outdoor seating on the patio. Valet parking is available beside the front door.</div>',
+      '<div class="review-body">The patio was windy and the lot was a multi-storey car park.</div>',
+      '<span itemprop="reviewBody">We sat outside under a heater.</span>',
+    ].join('');
+    const filtered = filterSupportedFacts({
+      raw: {
+        facts: [
+          { field: 'seating', text: 'Outdoor seating on the patio.', source_url: TRIPADVISOR },
+          { field: 'seating', text: 'The patio was windy.', source_url: TRIPADVISOR },
+          { field: 'parking', text: 'Valet parking is available beside the front door.', source_url: TRIPADVISOR },
+          { field: 'parking', text: 'The lot was a multi-storey car park.', source_url: TRIPADVISOR },
+          { field: 'seating', text: 'The room is lovely tonight.', source_url: OFFICIAL },
+        ],
+      },
+      pages: [
+        { url: TRIPADVISOR, text: htmlToText(html), html },
+        { url: OFFICIAL, text: 'The room is lovely tonight.' },
+      ],
+    });
+    expect(filtered.kept.map((fact) => fact.text)).toEqual([
+      'Valet parking is available beside the front door.',
+      'Outdoor seating on the patio.',
+    ]);
+    expect(filtered.droppedFacts.find((fact) => fact.text === 'The patio was windy.')?.reason).toBe(
+      'review-only source',
+    );
+    expect(filtered.droppedFacts.find((fact) => fact.text?.includes('multi-storey'))?.reason).toBe(
+      'review-only source',
+    );
+    expect(filtered.droppedFacts.find((fact) => fact.text === 'The room is lovely tonight.')?.reason).toBe(
+      'failed field cue check',
+    );
+  });
+});
+
+describe('weak aggregator hosts', () => {
+  it('matches hey-rest style hosts and the other thin directories', () => {
+    expect(weakAggregatorLabel('urban-grill-and-wine-bar-mckinney.hey-rest.com')).toBe('hey-rest');
+    expect(weakAggregatorLabel('www.restaurantji.com')).toBe('restaurantji.com');
+    expect(weakAggregatorLabel('sluurp.com')).toBe('sluurp.com');
+    expect(weakAggregatorLabel('hey-restaurant.com')).toBeNull();
+    expect(weakAggregatorLabel('www.yelp.com')).toBeNull();
+    expect(WEAK_AGGREGATOR_HOSTS.map((entry) => entry.id)).toEqual([
+      'hey-rest',
+      'restaurantji.com',
+      'sluurp.com',
+    ]);
+    expect(rankBriefingUrls(['https://urban-grill.hey-rest.com/place', OFFICIAL], 'Hutchins BBQ')).toEqual([
+      OFFICIAL,
+    ]);
+  });
+
+  it('skips aggregator pages before fetch and does not search again when they are the only hits', async () => {
+    const hey = 'https://urban-grill-and-wine-bar-mckinney.hey-rest.com/place';
+    const ji = 'https://www.restaurantji.com/tx/mckinney/urban-grill';
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([hey, ji]), 200, 'application/json');
+      }
+      return response(PAGE);
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: { ...RESTAURANT, name: 'Urban Grill' },
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.units.web_search_requests).toBe(1);
+    expect(result.fetchedUrls).toEqual([]);
+    expect(result.notes).toContain(`${hey}: skipped weak aggregator host (hey-rest)`);
+    expect(result.notes).toContain(`${ji}: skipped weak aggregator host (restaurantji.com)`);
+    expect(calls.some((url) => url.includes('hey-rest') || url.includes('restaurantji'))).toBe(false);
+    const report = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [result],
+      stoppedBecause: null,
+      totals: { input: 0, output: 0, estimatedMicrodollars: result.estimatedMicrodollars },
+    });
+    expect(report.markdown).toContain('skipped weak aggregator host (hey-rest)');
+  });
+
+  it('does not spend a page slot on an aggregator when real pages are also returned', async () => {
+    const hey = 'https://urban-grill.hey-rest.com/place';
+    const sluurp = 'https://sluurp.com/urban-grill';
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([hey, sluurp, OFFICIAL, YELP, OPENTABLE, TRIPADVISOR]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      return response('<p>Open tonight for dinner.</p>');
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.units.web_search_requests).toBe(1);
+    expect(result.fetchedUrls[0]).toBe(OFFICIAL);
+    expect(result.fetchedUrls).not.toContain(hey);
+    expect(result.fetchedUrls).not.toContain(sluurp);
+    expect(calls.some((url) => url.includes('hey-rest') || url.includes('sluurp.com'))).toBe(false);
+    expect(result.notes.join('\n')).toMatch(/skipped weak aggregator host \(sluurp.com\)/);
+  });
+
+  it('does not fetch a stored official website on a weak aggregator host', async () => {
+    const hey = 'https://urban-grill.hey-rest.com/place';
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([OFFICIAL]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      return response(PAGE);
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: { ...RESTAURANT, officialWebsite: hey },
+      fetchImpl,
+      callModel: emptyModel(),
+      apiKey: API_KEY,
+    });
+    expect(result.notes).toContain(`${hey}: skipped weak aggregator host (hey-rest)`);
+    expect(calls.some((url) => url.includes('hey-rest'))).toBe(false);
+    expect(result.fetchedUrls).toContain(OFFICIAL);
+  });
+});
+
+describe('test restaurant skip', () => {
+  it('skips fixture names and a market or partner marked test unless --include-test is set', () => {
+    const real: BriefingRestaurant = { ...RESTAURANT };
+    expect(testRestaurantSkipReason(real)).toBeNull();
+    expect(testRestaurantSkipReason({ ...real, name: 'Quality Grill' })).toBeNull();
+    expect(testRestaurantSkipReason({ ...real, name: 'Greatest BBQ' })).toBeNull();
+    expect(testRestaurantSkipReason({ ...real, name: 'Testaccio' })).toBeNull();
+    expect(testRestaurantSkipReason({ ...real, name: "Bob's (not real)" })).toBe('name contains "(not real)"');
+    expect(testRestaurantSkipReason({ ...real, name: 'QA Kitchen' })).toBe('name starts with "QA "');
+    expect(testRestaurantSkipReason({ ...real, name: 'Test Smokehouse' })).toBe('name starts with "Test "');
+    expect(testRestaurantSkipReason({ ...real, marketName: 'Test Market' })).toBe(
+      'market "Test Market" is marked test',
+    );
+    expect(testRestaurantSkipReason({ ...real, marketSlug: 'g1-test-market' })).toBe(
+      'market "g1-test-market" is marked test',
+    );
+    expect(testRestaurantSkipReason({ ...real, orgName: 'Fixture Partner' })).toBe(
+      'partner "Fixture Partner" is marked test',
+    );
+    const partitioned = partitionBriefingRestaurants(
+      [
+        real,
+        { ...real, id: '11111111-1111-4111-8111-111111111111', name: 'QA Kitchen' },
+        { ...real, id: '22222222-2222-4222-8222-222222222222', name: 'Hutchins (not real)' },
+      ],
+      false,
+    );
+    expect(partitioned.selected.map((item) => item.name)).toEqual([real.name]);
+    expect(partitioned.skippedTestRestaurants).toEqual([
+      { name: 'QA Kitchen', reason: 'name starts with "QA "' },
+      { name: 'Hutchins (not real)', reason: 'name contains "(not real)"' },
+    ]);
+    const included = partitionBriefingRestaurants(
+      [real, { ...real, name: 'QA Kitchen' }],
+      true,
+    );
+    expect(included.selected).toHaveLength(2);
+    expect(included.skippedTestRestaurants).toEqual([]);
   });
 });
