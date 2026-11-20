@@ -13,13 +13,19 @@ import {
   closerChipIncluded,
   dietaryButtonLabel,
   directionsHref,
+  EMPTY_DISCOVER_DRAFT,
+  discoverDraftHasSelection,
   draftToSpinBody,
   followUpDiscoverDraft,
   foodForOutcome,
   messageForDiscoverStatus,
+  discoverEnterSubmits,
   outcomeFromEvents,
   refineDiscoverDraft,
+  rememberShownRestaurant,
   scheduleDiscoverReveal,
+  shownRestaurantExclusions,
+  shownRestaurantId,
   thinkingSteps,
   type DiscoverDraft,
 } from '@/lib/discover/screen';
@@ -114,23 +120,50 @@ describe('discover screen reducer', () => {
     expect(outcome).toBe(true);
   });
 
-  it('labels a fallback as an alternative and keeps a pick as a match', () => {
+  it('labels a fallback as a closest pick and keeps a pick as a match', () => {
     const fallback: DiscoverEvent = {
       type: 'fallback',
       reason: 'no_match',
-      message: 'Alternative: Noodle House. This is a different pick from that request.',
+      message: "Closest I've got: Noodle House. It may not match everything you asked for.",
+      tone: 'alternative',
       alternative: partner,
     };
     const alternative = outcomeFromEvents([...steps, fallback]);
     expect(alternative.kind).toBe('fallback');
     if (alternative.kind === 'fallback') {
-      expect(alternative.event.message).toContain('Alternative:');
+      expect(alternative.event.message).toContain("Closest I've got:");
       expect(alternative.event.message.toLowerCase()).not.toContain('not a match');
+      expect(alternative.event.tone).toBe('alternative');
+      expect(shownRestaurantId([...steps, fallback])).toBe('rest-1');
     }
     expect(foodForOutcome(alternative)).toBe('generic');
     const match = outcomeFromEvents([...steps, pickEvent()]);
     expect(match.kind).toBe('pick');
     expect(foodForOutcome(match)).toBe('dumpling');
+    expect(shownRestaurantId([...steps, pickEvent()])).toBe('rest-1');
+  });
+
+  it('remembers the newest shown ids and drops the oldest past the route cap', () => {
+    let shown: string[] = [];
+    shown = rememberShownRestaurant(shown, 'a');
+    shown = rememberShownRestaurant(shown, 'b');
+    shown = rememberShownRestaurant(shown, 'a');
+    expect(shown).toEqual(['b', 'a']);
+    for (let index = 0; index < 25; index += 1) {
+      shown = rememberShownRestaurant(shown, `id-${index}`);
+    }
+    expect(shown).toHaveLength(20);
+    expect(shown[0]).toBe('id-5');
+    expect(shown.at(-1)).toBe('id-24');
+    expect(shownRestaurantExclusions(shown)).toEqual(shown);
+    expect(discoverEnterSubmits({ key: 'Enter', shiftKey: false })).toBe(true);
+    expect(discoverEnterSubmits({ key: 'Enter', shiftKey: true })).toBe(false);
+    expect(discoverEnterSubmits({ key: 'Enter', shiftKey: false, isComposing: true })).toBe(false);
+    expect(
+      discoverEnterSubmits({ key: 'Enter', shiftKey: false, nativeEvent: { isComposing: true } }),
+    ).toBe(false);
+    expect(discoverEnterSubmits({ key: 'Enter', shiftKey: false, keyCode: 229 })).toBe(false);
+    expect(discoverEnterSubmits({ key: 'a', shiftKey: false })).toBe(false);
   });
 
   it('resubmits refine chips with the original message', () => {
@@ -153,6 +186,21 @@ describe('discover screen reducer', () => {
     const surprise = applyQuickChip(baseDraft, { label: 'Surprise me', surprise: true });
     expect(surprise.message).toBe('spicy noodles');
     expect(draftToSpinBody(surprise).message).toBeUndefined();
+  });
+
+  it('treats a refine or dietary field as an ask when the message is blank', () => {
+    expect(discoverDraftHasSelection(EMPTY_DISCOVER_DRAFT)).toBe(false);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, message: '   ', surprise: true })).toBe(
+      false,
+    );
+    expect(discoverDraftHasSelection({ ...baseDraft, message: '' })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, timeOfDay: 'Dinner' })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, priceRange: '$' })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, preferredCuisine: 'japanese' })).toBe(
+      true,
+    );
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, dietaryFlags: ['vegan'] })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, excludedCuisines: ['thai'] })).toBe(true);
   });
 
   it('replaces the message and clears surprise for a typed follow-up', () => {

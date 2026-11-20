@@ -15,10 +15,10 @@ import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
  *   parsed constraints and the chosen row. `isNewToMember` stays false because
  *   redemption history is not loaded.
  * - fallback: a random pick. `alternative` is that restaurant. A surprise or another
- *   idea is a suggestion. A request with constraints is labeled as an alternative,
- *   without calling it a match. The spec's fallback object has no partner;
- *   `alternative` is how Phase 2.1c can render the same restaurant `/api/roulette`
- *   returns.
+ *   idea is a suggestion. A request with constraints is a closest pick, and the
+ *   copy never calls it a match. `tone` is the card label. The spec's fallback
+ *   object has no partner; `alternative` is how Phase 2.1c can render the same
+ *   restaurant `/api/roulette` returns.
  */
 
 export const DISCOVER_ASK_TONES = ['surprise', 'another', 'request'] as const;
@@ -121,6 +121,12 @@ export type DiscoverEvent =
       reason: DiscoverStreamReason;
       message: string;
       alternative: PartnerLite;
+      /**
+       * Card label. Surprise and another idea stay suggestions. `alternative`
+       * is a closest pick and is never a match. Older streams omit this and
+       * the client reads the message prefix.
+       */
+      tone?: DiscoverFallbackTone;
     }
   | { type: 'error'; message: string };
 
@@ -144,8 +150,8 @@ export function discoverStreamReason(
 }
 
 /**
- * Surprise and another idea had nothing to miss. A constrained ask stays an
- * alternative, in calm wording, and is never called a match.
+ * Surprise and another idea had nothing to miss. A constrained ask is a
+ * closest pick, in calm wording, and is never called a match.
  */
 export function fallbackToneForAsk(args: {
   askTone: DiscoverAskTone | null;
@@ -164,9 +170,17 @@ export function fallbackToneForAsk(args: {
   return hasAsk ? 'alternative' : 'surprise';
 }
 
+export function fallbackBadgeLabel(tone: DiscoverFallbackTone): string {
+  if (tone === 'surprise') return "Here's a surprise";
+  if (tone === 'another') return "Here's another idea";
+  return 'Closest pick';
+}
+
+/** Prefix backup for a stream that omitted `tone`. Keep this aligned with the copy below. */
 export function fallbackPresentation(message: string): DiscoverFallbackTone {
   if (message.startsWith("Here's a surprise")) return 'surprise';
   if (message.startsWith("Here's another idea")) return 'another';
+  if (message.startsWith("Closest I've got") || message.startsWith('Alternative:')) return 'alternative';
   return 'alternative';
 }
 
@@ -179,8 +193,8 @@ export function fallbackAlternativeMessage(name: string, tone: DiscoverFallbackT
     return place ? `Here's another idea: ${place}.` : "Here's another idea.";
   }
   return place
-    ? `Alternative: ${place}. This is a different pick from that request.`
-    : 'Alternative: this is a different pick from that request.';
+    ? `Closest I've got: ${place}. It may not match everything you asked for.`
+    : "Closest I've got. It may not match everything you asked for.";
 }
 
 export function encodeDiscoverSse(events: readonly DiscoverEvent[]): string {

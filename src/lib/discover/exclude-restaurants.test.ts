@@ -26,9 +26,12 @@ describe('restaurant exclusion before the pick', () => {
     expect(applyRestaurantExclusion(pool, ['a', 'a', 'c']).map((row) => row.id)).toEqual(['b']);
   });
 
-  it('falls back to the full pool when exclusion would leave nothing', () => {
-    expect(applyRestaurantExclusion(pool, ['a', 'b', 'c'])).toBe(pool);
+  it('re-allows the oldest excluded id when the list would leave nothing', () => {
+    expect(applyRestaurantExclusion(pool, ['a', 'b', 'c']).map((row) => row.id)).toEqual(['a']);
+    expect(applyRestaurantExclusion(pool, ['c', 'b', 'a']).map((row) => row.id)).toEqual(['c']);
+    expect(applyRestaurantExclusion(pool, ['missing', 'b', 'a', 'c']).map((row) => row.id)).toEqual(['b']);
     expect(applyRestaurantExclusion([{ id: 'only' }], ['only'])).toEqual([{ id: 'only' }]);
+    expect(applyRestaurantExclusion([], ['a'])).toEqual([]);
   });
 
   it('appends a stable id list to the replay filter and leaves an empty list untouched', () => {

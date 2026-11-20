@@ -44,9 +44,9 @@ export type DiscoverCardInput = {
   fallbackReason: DiscoverFallbackReason | null;
   providerTimedOut: boolean;
   /**
-   * Copy only. Surprise and another idea are suggestions. A request is an
-   * alternative when the pick was not chosen by the model. Omitted tones are
-   * inferred from the message and soft chips.
+   * Copy only. Surprise and another idea are suggestions. A request is a
+   * closest pick when the model did not choose it, and that line never calls
+   * it a match. Omitted tones are inferred from the message and soft chips.
    */
   askTone?: DiscoverAskTone | null;
 };
@@ -117,6 +117,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     reason: discoverStreamReason(reason, args.providerTimedOut),
     message: fallbackAlternativeMessage(alternative.name, tone),
     alternative,
+    tone,
   });
   return events;
 }

@@ -238,7 +238,7 @@ export function DiscoveryVoiceControls({
       <div className="flex flex-wrap gap-2">
         {phase === 'recording' ? (
           <>
-            <Button type="button" variant="outline" onClick={stopRecording} disabled={busy}>
+            <Button type="button" variant="outline" className="wb-voice-record" onClick={stopRecording} disabled={busy}>
               Stop
             </Button>
             <Button type="button" variant="ghost" onClick={cancelRecording} disabled={busy}>
@@ -246,7 +246,7 @@ export function DiscoveryVoiceControls({
             </Button>
           </>
         ) : (
-          <Button type="button" variant="outline" onClick={() => void startRecording()} disabled={busy}>
+          <Button type="button" variant="outline" className="wb-voice-record" onClick={() => void startRecording()} disabled={busy}>
             {phase === 'sending' ? 'Transcribing…' : 'Record'}
           </Button>
         )}

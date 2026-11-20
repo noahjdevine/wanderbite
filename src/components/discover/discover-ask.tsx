@@ -14,6 +14,8 @@ import {
   DISCOVER_MESSAGE_TOO_LONG,
   DISCOVER_QUICK_CHIPS,
   dietaryButtonLabel,
+  discoverDraftHasSelection,
+  discoverEnterSubmits,
   discoverGreeting,
   type DiscoverDraft,
 } from '@/lib/discover/screen';
@@ -61,6 +63,13 @@ export function DiscoverAsk({
   onSubmit: () => void;
 }) {
   const tooLong = draft.message.length > ROULETTE_MAX_MESSAGE_CHARS;
+  const blank = draft.message.trim().length === 0;
+  const canSubmit = !tooLong && (!blank || discoverDraftHasSelection(draft));
+
+  function submitAsk() {
+    if (!canSubmit) return;
+    onSubmit();
+  }
   const selections: RouletteSelections = {
     vibe: draft.vibe,
     timeOfDay: draft.timeOfDay,
@@ -94,8 +103,7 @@ export function DiscoverAsk({
         className="flex flex-col gap-4"
         onSubmit={(event) => {
           event.preventDefault();
-          if (tooLong) return;
-          onSubmit();
+          submitAsk();
         }}
       >
         <GlowBorder radius={24} speed={6}>
@@ -110,6 +118,11 @@ export function DiscoverAsk({
                 value={draft.message}
                 rows={2}
                 onChange={(event) => onMessage(event.target.value)}
+                onKeyDown={(event) => {
+                  if (!discoverEnterSubmits(event)) return;
+                  event.preventDefault();
+                  submitAsk();
+                }}
                 className="wb-chat-field relative z-[1] w-full resize-none bg-transparent text-[17px] text-white outline-none"
               />
               {draft.message.length === 0
@@ -146,11 +159,8 @@ export function DiscoverAsk({
                 type="button"
                 className="wb-cta h-11 w-11 min-h-11 px-0"
                 aria-label="Ask Bea"
-                disabled={tooLong}
-                onClick={() => {
-                  if (tooLong) return;
-                  onSubmit();
-                }}
+                disabled={!canSubmit}
+                onClick={submitAsk}
               >
                 <ArrowIcon />
               </button>
@@ -159,18 +169,18 @@ export function DiscoverAsk({
           </div>
         </GlowBorder>
 
-        <div className="flex gap-2 overflow-x-auto pb-1">
+        <div className="flex flex-wrap gap-2">
           {DISCOVER_QUICK_CHIPS.map((chip, index) => (
             <button
               key={chip.label}
               type="button"
-              className="wb-chip-glass shrink-0"
+              className="wb-chip-glass"
               onClick={() => onQuickChip(index)}
             >
               {chip.label}
             </button>
           ))}
-          <button type="button" className="wb-chip-glass shrink-0" onClick={onToggleRefine}>
+          <button type="button" className="wb-chip-glass" onClick={onToggleRefine}>
             Refine
           </button>
         </div>

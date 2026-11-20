@@ -7,6 +7,7 @@ import type { DiscoverEvent, DiscoverFood, DiscoverOffer, PartnerLite } from '@/
 import { dietaryConstraintLabel } from '@/lib/discover/stages';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
 import type { CuisineId } from '@/lib/cuisines';
+import { ROULETTE_MAX_EXCLUDED } from '@/lib/ai-bounds';
 import { formatCents } from '@/lib/offers/sealed-base';
 import type { RouletteDietaryFlag } from '@/lib/roulette-dietary';
 import {
@@ -153,6 +154,51 @@ export function foodForOutcome(outcome: DiscoverOutcome): DiscoverFood | 'generi
   return 'generic';
 }
 
+export function shownRestaurantId(events: readonly DiscoverEvent[]): string | null {
+  const outcome = outcomeFromEvents(events);
+  if (outcome.kind === 'pick') return outcome.event.partner.id;
+  if (outcome.kind === 'fallback') return outcome.event.alternative.id;
+  return null;
+}
+
+/**
+ * Session memory for Another idea and a typed follow-up.
+ * Newest id last. A repeat moves to the end. The route accepts at most
+ * `ROULETTE_MAX_EXCLUDED` ids and keeps the front of the list, so this
+ * keeps the most recent ids, still oldest first.
+ */
+export function rememberShownRestaurant(shown: readonly string[], restaurantId: string): string[] {
+  const id = restaurantId.trim();
+  if (!id) return [...shown];
+  const next = shown.filter((item) => item !== id);
+  next.push(id);
+  if (next.length <= ROULETTE_MAX_EXCLUDED) return next;
+  return next.slice(next.length - ROULETTE_MAX_EXCLUDED);
+}
+
+export function shownRestaurantExclusions(shown: readonly string[]): string[] {
+  if (shown.length <= ROULETTE_MAX_EXCLUDED) return [...shown];
+  return shown.slice(shown.length - ROULETTE_MAX_EXCLUDED);
+}
+
+/**
+ * Enter sends the composer. Shift+Enter keeps the newline. Enter during IME
+ * composition confirms the character and does not send.
+ */
+export function discoverEnterSubmits(event: {
+  key: string;
+  shiftKey: boolean;
+  isComposing?: boolean;
+  keyCode?: number;
+  nativeEvent?: { isComposing?: boolean; keyCode?: number };
+}): boolean {
+  if (event.key !== 'Enter' || event.shiftKey) return false;
+  if (event.isComposing || event.nativeEvent?.isComposing) return false;
+  const keyCode = event.keyCode ?? event.nativeEvent?.keyCode;
+  if (keyCode === 229) return false;
+  return true;
+}
+
 export function beaStateForPhase(phase: 'ask' | 'thinking' | 'pick' | 'error' | 'recipe'): BeaState {
   if (phase === 'thinking') return 'thinking';
   if (phase === 'pick') return 'found';
@@ -264,6 +310,21 @@ export function draftToSpinBody(draft: DiscoverDraft): RouletteSpinPayload {
     message: draft.message,
     surprise: draft.surprise,
   });
+}
+
+/**
+ * Fields `draftToSpinBody` sends besides the message. A blank box still asks
+ * when any of these is set. Surprise alone is a chip, not a Refine selection.
+ */
+export function discoverDraftHasSelection(draft: DiscoverDraft): boolean {
+  return (
+    draft.vibe !== null ||
+    draft.timeOfDay !== null ||
+    draft.priceRange !== null ||
+    draft.preferredCuisine !== null ||
+    draft.dietaryFlags.length > 0 ||
+    draft.excludedCuisines.length > 0
+  );
 }
 
 export function offerChipLabel(offer: DiscoverOffer): string {

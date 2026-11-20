@@ -65,7 +65,8 @@ describe('DiscoverPick directions', () => {
           event: {
             type: 'fallback',
             reason: 'no_match',
-            message: 'Alternative: Mystery. This is a different pick from that request.',
+            message: "Closest I've got: Mystery. It may not match everything you asked for.",
+            tone: 'alternative',
             alternative: { id: 'rest-2', name: '' },
           },
         }}
@@ -77,7 +78,8 @@ describe('DiscoverPick directions', () => {
     expect(screen.queryByRole('link', { name: "Let's go" })).toBeNull();
     expect(screen.getByRole('button', { name: "Let's go" })).toBeTruthy();
     expect(screen.getByText('This card has no address, so directions stay closed.')).toBeTruthy();
-    expect(screen.getByText('An alternative')).toBeTruthy();
+    expect(screen.getByText('Closest pick')).toBeTruthy();
+    expect(screen.queryByText('An alternative')).toBeNull();
     expect(screen.queryByText('Not a match')).toBeNull();
   });
 
@@ -90,6 +92,7 @@ describe('DiscoverPick directions', () => {
             type: 'fallback',
             reason: 'no_match',
             message: "Here's a surprise: Noodle House.",
+            tone: 'surprise',
             alternative: { id: 'rest-1', name: 'Noodle House' },
           },
         }}
@@ -113,7 +116,8 @@ describe('DiscoverPick directions', () => {
           event: {
             type: 'fallback',
             reason: 'provider_error',
-            message: "Here's another idea: Noodle House.",
+            message: "The model wrote something else.",
+            tone: 'another',
             alternative: { id: 'rest-1', name: 'Noodle House' },
           },
         }}
@@ -123,9 +127,32 @@ describe('DiscoverPick directions', () => {
       />,
     );
     expect(screen.getByText("Here's another idea")).toBeTruthy();
-    expect(screen.getByText("Here's another idea: Noodle House.")).toBeTruthy();
+    expect(screen.getByText('The model wrote something else.')).toBeTruthy();
+    expect(screen.queryByText('Closest pick')).toBeNull();
     expect(screen.queryByText('Not a match')).toBeNull();
     expect(screen.queryByText(/not a match/i)).toBeNull();
+  });
+
+  it('reads a closest-pick prefix when the stream omitted tone', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'fallback',
+          event: {
+            type: 'fallback',
+            reason: 'no_match',
+            message: "Closest I've got: Noodle House. It may not match everything you asked for.",
+            alternative: { id: 'rest-1', name: 'Noodle House' },
+          },
+        }}
+        food="generic"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText('Closest pick')).toBeTruthy();
+    expect(screen.queryByText('An alternative')).toBeNull();
+    expect(screen.queryByText('Picked for you')).toBeNull();
   });
 
   it('sends a trimmed follow-up and ignores an empty or too-long one', () => {
@@ -158,5 +185,13 @@ describe('DiscoverPick directions', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
     expect(onFollowUp).toHaveBeenCalledTimes(1);
     expect(onFollowUp).toHaveBeenCalledWith('something spicy instead');
+
+    fireEvent.keyDown(field, { key: 'Enter', shiftKey: true });
+    expect(onFollowUp).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    expect(onFollowUp).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(onFollowUp).toHaveBeenCalledTimes(2);
+    expect(onFollowUp).toHaveBeenLastCalledWith('something spicy instead');
   });
 });
