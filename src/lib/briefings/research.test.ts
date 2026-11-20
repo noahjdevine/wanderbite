@@ -264,7 +264,9 @@ describe('support passage', () => {
       pages: [{ url: OFFICIAL, text: page }],
     });
     expect(filtered.kept).toHaveLength(1);
+    expect(filtered.kept[0]?.text).toBe('Valet parking sits beside the front door.');
     expect(filtered.kept[0]?.supportPassage).toBe(passage);
+    expect(filtered.droppedFacts[0]?.reason).toBe('blocked detail (hours)');
     const report = formatBriefingReport({
       verifiedAt: '2026-11-05T17:00:00.000Z',
       restaurants: [
@@ -398,6 +400,253 @@ describe('new briefing fields', () => {
   });
 });
 
+describe('loose list support and blocked details', () => {
+  const gap = 'The dining room welcomes guests from town for a long visit. '.repeat(8);
+
+  function spread(parts: readonly string[]): string {
+    return parts.join(` ${gap}`);
+  }
+
+  function filterField(field: string, text: string, page: string) {
+    return filterSupportedFacts({
+      raw: { facts: [{ field, text, source_url: OFFICIAL }] },
+      pages: [{ url: OFFICIAL, text: page }],
+    });
+  }
+
+  const spreadCases: Array<{ field: string; text: string; parts: string[] }> = [
+    {
+      field: 'known_for',
+      text: 'Brisket, ribs, sausage, pulled pork, and the Texas Twinkie, a bacon-wrapped brisket-stuffed jalapeño.',
+      parts: [
+        'The pit smokes brisket all day.',
+        'House ribs are cut to order.',
+        'Sausage is ground in the kitchen.',
+        'Pulled pork comes off the pit.',
+        'Order the Texas Twinkie, a bacon-wrapped brisket-stuffed jalapeño.',
+      ],
+    },
+    {
+      field: 'known_for',
+      text: 'House-made pasta rolled daily, premium seafood, aged meats, and seasonal American dishes with Italian influence.',
+      parts: [
+        'Fresh housemade pastas are rolled daily.',
+        'The counter displays premium seafood.',
+        'Aged meats are carved to order.',
+        'Seasonal American dishes show an Italian influence.',
+      ],
+    },
+    {
+      field: 'good_for',
+      text: 'Date night, groups, families, corporate events, rehearsal dinners, and milestone celebrations.',
+      parts: [
+        'Couples book a date night.',
+        'Large groups share one table.',
+        'The family table sits by the window.',
+        'Host a corporate event in the library.',
+        'Rehearsal dinners start in the parlor.',
+        'Milestone celebrations fill the calendar.',
+      ],
+    },
+    {
+      field: 'reservations',
+      text: 'Walk-ins are welcome. Reservations are not taken.',
+      parts: ['Walk-ins are welcome any evening.', 'Reservations are not taken for parties.'],
+    },
+    {
+      field: 'vibe',
+      text: 'Fun, hip, and casual. Historic 1920s building with old brick interior.',
+      parts: [
+        'The night is fun.',
+        'The crowd feels hip.',
+        'Dress is casual.',
+        'The historic 1920s building keeps an old brick interior.',
+      ],
+    },
+    {
+      field: 'good_for',
+      text: 'Groups, families with kids, live music, lawn games, and private events.',
+      parts: [
+        'Groups gather outside.',
+        'Families bring their children.',
+        'Live music plays after dinner.',
+        'Lawn games sit on the grass.',
+        'Private events use the barn.',
+      ],
+    },
+    {
+      field: 'good_for',
+      text: 'Good for weddings, rehearsal dinners, corporate meetings, and social events.',
+      parts: [
+        'Weddings are held in the garden.',
+        'Rehearsal dinners use the long table.',
+        'Corporate meetings book the board room.',
+        'Social events fill the weekend.',
+      ],
+    },
+    {
+      field: 'reservations',
+      text: 'Reservations are available and recommended.',
+      parts: ['Reservations are available most nights.', 'Reservations are recommended for weekends.'],
+    },
+  ];
+
+  it.each(spreadCases)('keeps a spread $field fact when each item is on the page', ({ field, text, parts }) => {
+    const filtered = filterField(field, text, spread(parts));
+    expect(filtered.kept.map((fact) => fact.text)).toEqual([text]);
+    expect(filtered.droppedFacts.map((fact) => fact.reason)).not.toContain('failed field cue check');
+  });
+
+  it('trims a known_for item that is not on the page and keeps the rest', () => {
+    const filtered = filterField(
+      'known_for',
+      'Brisket, ribs, sausage, pulled pork, and lobster thermidor.',
+      spread([
+        'The pit smokes brisket all day.',
+        'House ribs are cut to order.',
+        'Sausage is ground in the kitchen.',
+        'Pulled pork comes off the pit.',
+      ]),
+    );
+    expect(filtered.kept.map((fact) => fact.text)).toEqual(['Brisket, ribs, sausage, and pulled pork.']);
+    expect(filtered.droppedFacts).toEqual([
+      expect.objectContaining({ text: 'lobster thermidor', reason: 'item not on page' }),
+    ]);
+  });
+
+  it('drops a two-item known_for fact when only one item is on the page', () => {
+    const filtered = filterField('known_for', 'Known for brisket and ribs.', 'Known for smoked brisket.');
+    expect(filtered.kept).toEqual([]);
+    expect(filtered.droppedFacts[0]?.reason).toBe('failed field cue check');
+  });
+
+  it('strips a phone clause and keeps the reservation claim', () => {
+    const filtered = filterField(
+      'reservations',
+      'Walk-ins are welcome. Call (214) 726-0251.',
+      'Walk-ins are welcome any evening.',
+    );
+    expect(filtered.kept.map((fact) => fact.text)).toEqual(['Walk-ins are welcome.']);
+    expect(filtered.droppedFacts).toEqual([
+      expect.objectContaining({ reason: 'blocked detail (phone)', text: expect.stringContaining('726-0251') }),
+    ]);
+    const dashed = filterField(
+      'reservations',
+      'Reservations are available. Call 214-548-5815.',
+      'Reservations are available most nights.',
+    );
+    expect(dashed.kept.map((fact) => fact.text)).toEqual(['Reservations are available.']);
+    expect(dashed.droppedFacts[0]?.reason).toBe('blocked detail (phone)');
+  });
+
+  it('strips a day schedule and drops a fact that is only a schedule', () => {
+    const stripped = filterField(
+      'seating',
+      'The patio is dog-friendly. Open Tuesday through Saturday.',
+      'Dogs are welcome on the patio.',
+    );
+    expect(stripped.kept.map((fact) => fact.text)).toEqual(['The patio is dog-friendly.']);
+    expect(stripped.droppedFacts).toEqual([
+      expect.objectContaining({
+        reason: 'blocked detail (hours)',
+        text: expect.stringContaining('Tuesday through Saturday'),
+      }),
+    ]);
+    const onlyHours = filterField('reservations', 'Open Tuesday through Saturday.', 'Open Tuesday through Saturday.');
+    expect(onlyHours.kept).toEqual([]);
+    expect(onlyHours.droppedFacts[0]?.reason).toBe('blocked detail (hours)');
+  });
+
+  it('drops promo, price, email, url, and source commentary', () => {
+    const promo = filterField('good_for', 'Kids eat free on Sundays.', 'Kids eat free on Sundays.');
+    expect(promo.kept).toEqual([]);
+    expect(promo.droppedFacts[0]?.reason).toBe('blocked detail (promo)');
+    const meta = filterField('reservations', 'Walk-ins are not mentioned.', 'Walk-ins are welcome.');
+    expect(meta.kept).toEqual([]);
+    expect(meta.droppedFacts[0]?.reason).toBe('blocked detail (meta)');
+    const price = filterField(
+      'known_for',
+      'Brisket is smoked daily. It is $18 a pound.',
+      'Brisket is smoked daily over oak.',
+    );
+    expect(price.kept.map((fact) => fact.text)).toEqual(['Brisket is smoked daily.']);
+    expect(price.droppedFacts[0]?.reason).toBe('blocked detail (price)');
+    const email = filterField('arrival', 'Email the pit at pit@example.com.', 'Use the side door.');
+    expect(email.kept).toEqual([]);
+    expect(email.droppedFacts[0]?.reason).toBe('blocked detail (email)');
+    const url = filterField('known_for', 'See https://hutchinsbbq.com/menu.', 'Brisket is smoked daily.');
+    expect(url.kept).toEqual([]);
+    expect(url.droppedFacts[0]?.reason).toBe('blocked detail (url)');
+  });
+
+  it('drops a vibe fact whose adjectives are not on the page', () => {
+    const filtered = filterField('vibe', 'Quiet and formal.', 'The night is fun. The crowd feels hip.');
+    expect(filtered.kept).toEqual([]);
+    expect(filtered.droppedFacts[0]?.reason).toBe('failed field cue check');
+  });
+
+  it('drops a reservation polarity flip and does not invent recommended', () => {
+    const flipped = filterField('reservations', 'Reservations are not taken.', 'Reservations are recommended.');
+    expect(flipped.kept).toEqual([]);
+    expect(flipped.droppedFacts[0]?.reason).toBe('failed field cue check');
+    const invented = filterField(
+      'reservations',
+      'Reservations are available and recommended.',
+      'Reservations are available most nights.',
+    );
+    expect(invented.kept.map((fact) => fact.text)).toEqual(['Reservations are available.']);
+    expect(invented.droppedFacts).toEqual([
+      expect.objectContaining({ text: 'recommended', reason: 'item not on page' }),
+    ]);
+  });
+
+  it('counts drop reasons in the dry-run report header', () => {
+    const report = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [
+        {
+          restaurantId: RESTAURANT.id,
+          restaurantName: RESTAURANT.name,
+          fetchedUrls: [OFFICIAL],
+          facts: [],
+          dropped: [
+            'dropped known_for because item not on page',
+            'dropped reservations because blocked detail (phone)',
+            'model JSON has no facts array',
+          ],
+          droppedFacts: [
+            { field: 'known_for', text: 'lobster thermidor', sourceUrl: OFFICIAL, reason: 'item not on page' },
+            {
+              field: 'reservations',
+              text: 'Call (214) 726-0251.',
+              sourceUrl: OFFICIAL,
+              reason: 'blocked detail (phone)',
+            },
+          ],
+          units: { input: 1, output: 1 },
+          estimatedMicrodollars: 1,
+          notes: [],
+        },
+      ],
+      stoppedBecause: null,
+      totals: { input: 1, output: 1, estimatedMicrodollars: 1 },
+    });
+    expect(report.markdown).toContain('Drop reasons:');
+    expect(report.markdown).toContain('- item not on page: 1');
+    expect(report.markdown).toContain('- blocked detail (phone): 1');
+    expect(report.markdown).toContain('- model JSON has no facts array: 1');
+    expect(report.json).toContain('"dropReasonCounts"');
+    expect(report.json).toContain('"item not on page": 1');
+    const empty = formatBriefingReport({
+      verifiedAt: '2026-11-05T17:00:00.000Z',
+      restaurants: [],
+      stoppedBecause: null,
+      totals: { input: 0, output: 0, estimatedMicrodollars: 0 },
+    });
+    expect(empty.markdown).toContain('Drop reasons: none');
+  });
+});
+
 describe('research guide prompt', () => {
   const guidePath = path.resolve(process.cwd(), 'Docs/research/restaurant-facts-guide.md');
   const generatedPath = path.resolve(process.cwd(), 'src/lib/briefings/restaurant-facts-guide.generated.ts');
@@ -412,6 +661,10 @@ describe('research guide prompt', () => {
     expect(prompt).toContain('Return JSON only');
     expect(prompt).toContain('source_url must be copied exactly');
     expect(prompt).toMatch(/Do not invent/);
+    expect(prompt).toContain('Tuesday through Saturday');
+    expect(prompt).toContain('not mentioned');
+    expect(prompt).toContain('phone numbers');
+    expect(prompt).toContain('Say recommended only when the page says recommended');
     for (const field of BRIEFING_FIELDS) {
       expect(prompt).toContain(`### ${field}`);
       expect(prompt).toContain('What counts:');
@@ -467,6 +720,7 @@ describe('field counts', () => {
       totals: { input: 10, output: 4, estimatedMicrodollars: 30 },
     });
     expect(report.markdown).toContain('Field counts:');
+    expect(report.markdown).toContain('Drop reasons:');
     expect(report.markdown).toContain('- parking: kept 1, dropped 0');
     expect(report.markdown).toContain('- vibe: kept 0, dropped 1');
     expect(report.json).toContain('"fieldCountTotals"');
