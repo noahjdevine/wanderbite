@@ -84,6 +84,44 @@ describe('validateDiscoverLine', () => {
     expect(decide('{"restaurantId":"rest-salsa"}')).toEqual({ ok: false, code: 'not_plain' });
   });
 
+  it('rejects unsourced quality praise and keeps a word from the name or facts', () => {
+    expect(
+      validateDiscoverLine({
+        text: 'Kyoto Hibachi offers premium sashimi selections.',
+        otherRestaurantNames: [],
+        sourceText: 'Kyoto Hibachi\nsashimi',
+      }),
+    ).toEqual({ ok: false, code: 'embellishment' });
+    expect(
+      validateDiscoverLine({
+        text: 'Urban Grill serves gourmet comfort food and a carefully curated wine selection.',
+        otherRestaurantNames: [],
+        sourceText: 'Urban Grill',
+      }),
+    ).toEqual({ ok: false, code: 'embellishment' });
+    expect(
+      validateDiscoverLine({
+        text: 'Kyoto Hibachi offers premium sashimi selections.',
+        otherRestaurantNames: [],
+        sourceText: 'Kyoto Hibachi\npremium sashimi',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateDiscoverLine({
+        text: 'Premium Sushi Bar keeps the night simple.',
+        otherRestaurantNames: [],
+        sourceText: 'Premium Sushi Bar',
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateDiscoverLine({
+        text: 'Kyoto Hibachi is known for sashimi.',
+        otherRestaurantNames: [],
+        sourceText: 'Kyoto Hibachi\nsashimi',
+      }),
+    ).toMatchObject({ ok: true });
+  });
+
   it('rejects stock occasion phrases', () => {
     expect(decide('Taco House is perfect for special occasions.')).toEqual({
       ok: false,
@@ -123,6 +161,8 @@ describe('buildDiscoverLinePrompt', () => {
     expect(prompt.systemPrompt).toContain('already chosen');
     expect(prompt.systemPrompt).toContain('Do not invent an occasion');
     expect(prompt.systemPrompt).toContain('perfect for special occasions');
+    expect(prompt.systemPrompt).toContain('premium, gourmet, curated');
+    expect(prompt.systemPrompt).toContain('world-class');
     expect(prompt.userPrompt).toContain('Taco House');
     expect(prompt.userPrompt).toContain('mexican');
     expect(prompt.userPrompt).toContain('West');

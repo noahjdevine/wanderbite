@@ -895,11 +895,18 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
     let lineDecision: ReturnType<typeof validateDiscoverLine> | null = null;
     if (codePickRestaurant && !providerFailed) {
       try {
+        const lineFacts = briefingsEnabled()
+          ? discoverPromptFacts(briefingFacts.byRestaurantId[codePickRestaurant.id] ?? [])
+          : undefined;
+        const sourceText = [codePickRestaurant.name, ...Object.values(lineFacts ?? {})]
+          .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+          .join('\n');
         lineDecision = validateDiscoverLine({
           text: claudeText,
           otherRestaurantNames: restaurants
             .filter((row) => row.id !== codePickRestaurant.id)
             .map((row) => row.name),
+          sourceText,
         });
       } catch {
         lineDecision = { ok: false, code: 'empty' };

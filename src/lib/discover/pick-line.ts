@@ -16,6 +16,7 @@ export const DISCOVER_LINE_REJECT_CODES = [
   'hours',
   'promo',
   'stock_phrase',
+  'embellishment',
   'other_restaurant',
   'multi_sentence',
 ] as const;
@@ -45,6 +46,31 @@ const PROMO =
 const STOCK_PHRASE =
   /\bperfect for special occasions\b|\bcelebrations?\b|\bany occasion\b/i;
 
+/** Quality praise the line may use only when the name or facts already say it. */
+const EMBELLISHMENT_WORDS = [
+  'premium',
+  'gourmet',
+  'curated',
+  'exquisite',
+  'finest',
+  'upscale',
+  'luxurious',
+  'luxury',
+  'elevated',
+  'world-class',
+  'artisanal',
+  'refined',
+  'opulent',
+  'decadent',
+  'premier',
+  'high-end',
+  'sumptuous',
+  'lavish',
+  'impeccable',
+  'sophisticated',
+  'exclusive',
+] as const;
+
 const URL =
   /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|co|us|restaurant)\b/i;
 
@@ -67,6 +93,25 @@ function stripWrappingQuotes(value: string): string {
     }
   }
   return text;
+}
+
+function sourceAllowsPhrase(source: string, phrase: string): boolean {
+  const normalized = phrase.toLowerCase().replace(/-/g, ' ');
+  const haystack = source.toLowerCase().replace(/-/g, ' ');
+  const pattern = new RegExp(`(?:^|[^a-z])${escapeRegExp(normalized)}(?:$|[^a-z])`, 'i');
+  return pattern.test(haystack);
+}
+
+function unsourcedEmbellishment(text: string, source: string): boolean {
+  const phrases = EMBELLISHMENT_WORDS.map((word) =>
+    word === 'world-class' || word === 'high-end' ? word.replace('-', '[\\s-]+') : escapeRegExp(word),
+  );
+  const pattern = new RegExp(`\\b(?:${phrases.join('|')})\\b`, 'gi');
+  for (const match of text.matchAll(pattern)) {
+    const found = match[0] ?? '';
+    if (!sourceAllowsPhrase(source, found)) return true;
+  }
+  return false;
 }
 
 function mentionsOtherRestaurant(text: string, names: readonly string[]): boolean {
@@ -128,6 +173,8 @@ The restaurant is already chosen. Do not name any other place.
 Describe what this place is known for, in plain words. Write one sentence only.
 Do not invent an occasion unless the user's request names one.
 Do not write "perfect for special occasions", "celebrations", or "any occasion".
+Do not add quality or upscale praise unless that word is already in the restaurant name or facts.
+Do not write these unless they are in the name or facts: ${EMBELLISHMENT_WORDS.join(', ')}.
 Do not contradict the request. If they asked for something inexpensive, do not call the place premium, upscale, or a splurge.
 
 Return plain text only: no quotes, no markdown, and no JSON.
@@ -145,6 +192,8 @@ ${prefs || '(No specific preferences.)'}`;
 export function validateDiscoverLine(args: {
   text: string;
   otherRestaurantNames: readonly string[];
+  /** Restaurant name plus fact text. Praise is allowed only when it appears here. */
+  sourceText?: string;
 }): DiscoverLineDecision {
   const text = stripWrappingQuotes(args.text);
   if (!text || !/\p{L}/u.test(text)) return { ok: false, code: 'empty' };
@@ -157,6 +206,9 @@ export function validateDiscoverLine(args: {
   if (DAY_OR_HOURS.test(text)) return { ok: false, code: 'hours' };
   if (PROMO.test(text)) return { ok: false, code: 'promo' };
   if (STOCK_PHRASE.test(text)) return { ok: false, code: 'stock_phrase' };
+  if (unsourcedEmbellishment(text, args.sourceText ?? '')) {
+    return { ok: false, code: 'embellishment' };
+  }
   if (mentionsOtherRestaurant(text, args.otherRestaurantNames)) {
     return { ok: false, code: 'other_restaurant' };
   }

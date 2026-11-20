@@ -70,10 +70,17 @@ export type MessageSoftAsk = {
 
 /**
  * The cue sits immediately before the cuisine. Longer cues are listed first
- * so "not feeling" and "so over" win over "not" and "over".
+ * so "I'm so over" wins over "I'm over". Bare "had" and bare "over" are
+ * handled separately: "had" needs a negative context, and "X over Y" prefers X.
  */
 const NEGATION_BEFORE =
-  /(?:^|[^a-z])(?:not\s+in\s+the\s+mood\s+for|not\s+feeling|(?:i'?m|i\s+am|im)\s+so\s+over|so\s+over|sick\s+of|tired\s+of|(?:anything|something|everything)\s+but|except|without|avoid|skip(?:\s+the)?|had|over|no|not)(?:\s+(?:a|an|the|any|some|more|just))*\s*$/i;
+  /(?:^|[^a-z])(?:not\s+in\s+the\s+mood\s+for|not\s+feeling|(?:i'?m|i\s+am|im)\s+so\s+over|(?:i'?m|i\s+am|im)\s+over|so\s+over|sick\s+of|tired\s+of|(?:anything|something|everything)\s+but|except|without|avoid|skip(?:\s+the)?|no|not)(?:\s+(?:a|an|the|any|some|more|just))*\s*$/i;
+
+const HAD_PRAISE =
+  /\b(?:amazing|great|wonderful|excellent|delicious|fantastic|incredible|best|favorite|favourite)\b/i;
+
+const HAD_NEGATIVE_FOLLOW =
+  /\b(?:last\s+night|yesterday|tonight|something\s+else|something\s+different)\b/i;
 
 type CuisineHit = { id: CuisineId; index: number; end: number };
 
@@ -118,6 +125,39 @@ function continuesNegation(between: string): boolean {
   return /^(?:\s*(?:,|\bor\b|\band\b)\s*)+$/i.test(between);
 }
 
+/** "sushi over thai" prefers sushi. It does not exclude thai. */
+function isComparativeLoser(text: string, hit: CuisineHit, previous?: CuisineHit): boolean {
+  if (!previous) return false;
+  return /^\s+over\s+$/i.test(text.slice(previous.end, hit.index));
+}
+
+/** "over sushi" and "over thai tonight". Not "sushi over thai". */
+function bareOverExcludes(text: string, hit: CuisineHit, previous?: CuisineHit): boolean {
+  if (isComparativeLoser(text, hit, previous)) return false;
+  const before = text.slice(clauseStart(text, hit.index), hit.index);
+  return /(?:^|[^a-z])over(?:\s+(?:a|an|the|any|some|more|just))*\s*$/i.test(before);
+}
+
+/**
+ * "had" excludes only a clearly negative ask: "already had", "had too much",
+ * or "had X last night / yesterday / something else". Praise, "want more",
+ * and "again" keep the cuisine as a preference.
+ */
+function hadExcludes(text: string, hit: CuisineHit, hits: readonly CuisineHit[], index: number): boolean {
+  const before = text.slice(clauseStart(text, hit.index), hit.index);
+  const next = hits[index + 1];
+  const after = text.slice(hit.end, next ? next.index : text.length);
+  const hadGap = /(?:^|[^a-z])had\b([\s\S]*)$/i.exec(before)?.[1] ?? '';
+  const follow = after.replace(/\bcraving\s*$/i, '');
+  const positive =
+    HAD_PRAISE.test(hadGap) || /\bwant\s+more\b/i.test(follow) || /\bagain\b/i.test(follow);
+  if (positive) return false;
+  if (/(?:^|[^a-z])already\s+had(?:\s+(?:a|an|the|any|some|just))*\s*$/i.test(before)) return true;
+  if (/(?:^|[^a-z])had\s+too\s+much(?:\s+(?:a|an|the|any|some))*\s*$/i.test(before)) return true;
+  if (!/(?:^|[^a-z])had(?:\s+(?:a|an|the|any|some|just))*\s*$/i.test(before)) return false;
+  return HAD_NEGATIVE_FOLLOW.test(after);
+}
+
 function parseMessageCuisines(message: string): {
   preferredCuisines: CuisineId[];
   excludedCuisines: CuisineId[];
@@ -125,6 +165,7 @@ function parseMessageCuisines(message: string): {
   const text = message.toLowerCase();
   const hits = cuisineHits(text);
   const negated = new Set<number>();
+  const demoted = new Set<number>();
   hits.forEach((hit, index) => {
     const before = text.slice(clauseStart(text, hit.index), hit.index);
     const free = /^\s*-?free\b/i.test(text.slice(hit.end));
@@ -133,7 +174,17 @@ function parseMessageCuisines(message: string): {
       previous !== undefined &&
       negated.has(index - 1) &&
       continuesNegation(text.slice(previous.end, hit.index));
-    if (free || carried || NEGATION_BEFORE.test(before)) negated.add(index);
+    if (
+      free ||
+      carried ||
+      NEGATION_BEFORE.test(before) ||
+      bareOverExcludes(text, hit, previous) ||
+      hadExcludes(text, hit, hits, index)
+    ) {
+      negated.add(index);
+      return;
+    }
+    if (isComparativeLoser(text, hit, previous)) demoted.add(index);
   });
   const preferred: CuisineId[] = [];
   const excluded: CuisineId[] = [];
@@ -142,6 +193,7 @@ function parseMessageCuisines(message: string): {
       if (!excluded.includes(hit.id) && !preferred.includes(hit.id)) excluded.push(hit.id);
       return;
     }
+    if (demoted.has(index)) return;
     if (!preferred.includes(hit.id)) preferred.push(hit.id);
     const drop = excluded.indexOf(hit.id);
     if (drop !== -1) excluded.splice(drop, 1);

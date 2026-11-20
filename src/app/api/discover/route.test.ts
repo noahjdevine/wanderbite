@@ -1808,6 +1808,20 @@ describe('Discover stream route', () => {
     }
   });
 
+  it('rejects unsourced quality praise and keeps the template', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO];
+    fetchMock.mockResolvedValue(
+      anthropicResponse('Taco House offers premium gourmet tacos and a curated wine selection.'),
+    );
+    const response = await roulettePost(post({ message: '' }));
+    const body = (await response.json()) as { reason: string; selectionMode: string; restaurantId: string };
+    expect(body.restaurantId).toBe(TACO.id);
+    expect(body.selectionMode).toBe('random_fallback');
+    expect(body.reason).toBe(discoveryCardSentence(TACO, LAUNCH_MARKET.displayName));
+    expect(body.reason).not.toContain('premium');
+  });
+
   it('rejects a stock occasion line and keeps the template', async () => {
     vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
     restaurantRows = [TACO];
