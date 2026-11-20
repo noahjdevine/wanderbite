@@ -134,7 +134,11 @@ describe('FirstVisitBriefing', () => {
       'https://example.com/e06-duration',
     ]);
     expect(links[0]?.getAttribute('rel')).toBe('noopener noreferrer');
-    expect(links[0]?.textContent).toBe('Source');
+    expect(links[0]?.textContent).toBe('Source: example.com');
+    expect(links[0]?.getAttribute('aria-label')).toBe('Source: example.com (opens in new tab)');
+    expect(links[0]?.className).toContain('min-h-11');
+    expect(links[0]?.querySelector('span')?.className).toContain('truncate');
+    expect(links[1]?.textContent).toBe('Source: example.com');
     expect(links[0]?.getAttribute('translate')).toBeNull();
   });
 
@@ -211,7 +215,10 @@ describe('FirstVisitBriefing', () => {
     expect(link?.textContent).toBe('Google Maps');
     expect(link?.getAttribute('href')).toBe('https://maps.google.com/?cid=99');
     expect(link?.getAttribute('translate')).toBe('no');
+    expect(link?.getAttribute('aria-label')).toBe('Google Maps (opens in new tab)');
     expect(link?.className).toContain('whitespace-nowrap');
+    expect(link?.className).toContain('min-h-11');
+    expect(link?.className).toContain('text-[#5E5E5E]');
     expect(view.textContent).not.toContain('Source');
   });
 

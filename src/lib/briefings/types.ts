@@ -112,21 +112,39 @@ export function formatBriefingChecked(iso: string | null | undefined): string | 
   return `${month} ${day}, ${year}`;
 }
 
+function parseHttpsUrl(sourceUrl: string): URL | null {
+  try {
+    const url = new URL(sourceUrl);
+    if (url.protocol !== 'https:') return null;
+    return url;
+  } catch {
+    return null;
+  }
+}
+
+/** Same Google Maps detection the Places attribution label uses. */
+function isGoogleMapsHttpsUrl(url: URL): boolean {
+  const host = url.hostname.toLowerCase();
+  if (host === 'maps.google.com') return true;
+  return (host === 'google.com' || host.endsWith('.google.com')) && url.pathname.startsWith('/maps');
+}
+
+/**
+ * Member-facing fact source text. Google Maps wording stays fixed for
+ * Places attribution. Other https links show the host only.
+ */
+export function briefingSourceDisplay(sourceUrl: string): string {
+  const url = parseHttpsUrl(sourceUrl);
+  if (!url) return 'Source';
+  if (isGoogleMapsHttpsUrl(url)) return 'Google Maps';
+  const host = url.hostname.toLowerCase().replace(/^www\./, '');
+  if (!host) return 'Source';
+  return `Source: ${host}`;
+}
+
 /** Link text for a fact. Google Maps wording is fixed for Places attribution. */
 export function briefingSourceLabel(sourceUrl: string): 'Google Maps' | 'Source' {
-  let url: URL;
-  try {
-    url = new URL(sourceUrl);
-  } catch {
-    return 'Source';
-  }
-  if (url.protocol !== 'https:') return 'Source';
-  const host = url.hostname.toLowerCase();
-  if (host === 'maps.google.com') return 'Google Maps';
-  if ((host === 'google.com' || host.endsWith('.google.com')) && url.pathname.startsWith('/maps')) {
-    return 'Google Maps';
-  }
-  return 'Source';
+  return briefingSourceDisplay(sourceUrl) === 'Google Maps' ? 'Google Maps' : 'Source';
 }
 
 export function httpsSourceUrl(value: string | null | undefined): string | null {

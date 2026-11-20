@@ -1,6 +1,6 @@
 import {
   FIRST_VISIT_HEADING,
-  briefingSourceLabel,
+  briefingSourceDisplay,
   formatBriefingChecked,
   isMemberBriefingField,
   type BriefingFact,
@@ -23,10 +23,10 @@ export function FirstVisitBriefing({ headingId, facts }: FirstVisitBriefingProps
         {visible.map((fact) => {
           const checked = formatBriefingChecked(fact.lastVerifiedAt);
           if (!checked) return null;
-          const sourceLabel = briefingSourceLabel(fact.sourceUrl);
+          const sourceLabel = briefingSourceDisplay(fact.sourceUrl);
           const googleMaps = sourceLabel === 'Google Maps';
           return (
-            <li key={fact.field} className="space-y-1 rounded-lg border border-border p-3">
+            <li key={fact.field} className="min-w-0 space-y-1 rounded-lg border border-border p-3">
               <p className="text-sm font-medium text-foreground">{fact.label}</p>
               <p className="text-xs text-muted-foreground">{fact.text}</p>
               {fact.sampleLabel ? (
@@ -38,13 +38,14 @@ export function FirstVisitBriefing({ headingId, facts }: FirstVisitBriefingProps
                 target="_blank"
                 rel="noopener noreferrer"
                 translate={googleMaps ? 'no' : undefined}
+                aria-label={`${sourceLabel} (opens in new tab)`}
                 className={
                   googleMaps
-                    ? 'whitespace-nowrap font-sans text-sm font-normal text-[#5E5E5E]'
-                    : 'text-xs font-medium text-primary underline'
+                    ? 'inline-flex min-h-11 max-w-full min-w-0 items-center px-1 -mx-1 whitespace-nowrap font-sans text-sm font-normal text-[#5E5E5E]'
+                    : 'inline-flex min-h-11 max-w-full min-w-0 items-center px-1 -mx-1 text-xs font-medium text-primary underline'
                 }
               >
-                {sourceLabel}
+                <span className="min-w-0 truncate">{sourceLabel}</span>
               </a>
             </li>
           );

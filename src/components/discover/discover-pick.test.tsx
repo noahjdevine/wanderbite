@@ -247,11 +247,17 @@ describe('DiscoverPick directions', () => {
     expect(screen.queryByText('Sample')).toBeNull();
     expect(screen.queryByText('First visit')).toBeNull();
     expect(screen.getAllByText('Checked Nov 5, 2026')).toHaveLength(2);
-    const maps = screen.getByRole('link', { name: 'Google Maps' });
+    const maps = screen.getByRole('link', { name: 'Google Maps (opens in new tab)' });
     expect(maps.getAttribute('href')).toBe('https://maps.google.com/maps/place/noodle');
     expect(maps.getAttribute('target')).toBe('_blank');
-    const source = screen.getByRole('link', { name: 'Source' });
+    expect(maps.getAttribute('translate')).toBe('no');
+    expect(maps.className).toContain('min-h-11');
+    expect(maps.textContent).toBe('Google Maps');
+    const source = screen.getByRole('link', { name: 'Source: example.com (opens in new tab)' });
     expect(source.getAttribute('href')).toBe('https://example.com/vibe');
+    expect(source.className).toContain('min-h-11');
+    expect(source.textContent).toBe('Source: example.com');
+    expect(source.querySelector('span')?.className).toContain('truncate');
     expect(screen.getByText('“Hot noodles.”')).toBeTruthy();
   });
 
@@ -268,8 +274,8 @@ describe('DiscoverPick directions', () => {
       />,
     );
     expect(screen.queryByText(/^Checked /)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Google Maps' })).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Source' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^Google Maps/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^Source/ })).toBeNull();
     expect(screen.queryByText('Sample')).toBeNull();
     expect(screen.queryByText('First visit')).toBeNull();
     expect(screen.getByText('Picked for you')).toBeTruthy();
@@ -312,9 +318,9 @@ describe('DiscoverPick directions', () => {
         (_, node) => node?.tagName === 'P' && node.textContent === 'Known for Hand-pulled noodles.',
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Source' }).getAttribute('href')).toBe(
-      'https://example.com/known',
-    );
+    const source = screen.getByRole('link', { name: 'Source: example.com (opens in new tab)' });
+    expect(source.getAttribute('href')).toBe('https://example.com/known');
+    expect(source.className).toContain('min-h-11');
     expect(screen.getByText('Checked Nov 4, 2026')).toBeTruthy();
     expect(screen.queryByText('Sample')).toBeNull();
     expect(screen.queryByText('First visit')).toBeNull();
