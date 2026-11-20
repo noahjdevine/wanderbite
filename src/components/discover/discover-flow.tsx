@@ -7,7 +7,7 @@ import { DiscoverThinking } from '@/components/discover/discover-thinking';
 import { useDiscoverAutoStart } from '@/components/discover/use-discover-auto-start';
 import { RecipeQaAnswer, type RecipeQaAnswerView } from '@/components/recipes/recipe-qa-answer';
 import { postDiscoverAsk } from '@/lib/discover/client';
-import type { DiscoverEvent } from '@/lib/discover/events';
+import type { DiscoverAskTone, DiscoverEvent } from '@/lib/discover/events';
 import {
   DISCOVER_ALLERGY_NOTICE,
   DISCOVER_MESSAGE_TOO_LONG,
@@ -19,6 +19,7 @@ import {
   dietaryButtonLabel,
   dietaryFlagsForStatus,
   draftToSpinBody,
+  followUpDiscoverDraft,
   foodForOutcome,
   outcomeFromEvents,
   refineDiscoverDraft,
@@ -95,6 +96,7 @@ export function DiscoverFlow({
       next: DiscoverDraft,
       replaceOrigin: boolean,
       excludeRestaurantIds?: readonly string[],
+      askTone?: DiscoverAskTone,
     ) => {
       if (inFlight.current) return;
       const withExclusions: DiscoverDraft = {
@@ -129,10 +131,15 @@ export function DiscoverFlow({
 
       try {
         const spin = draftToSpinBody(withExclusions);
-        const body =
-          excludeRestaurantIds && excludeRestaurantIds.length > 0
-            ? { ...spin, excludeRestaurantIds: [...excludeRestaurantIds] }
-            : spin;
+        const tone: DiscoverAskTone =
+          askTone ?? (withExclusions.surprise ? 'surprise' : 'request');
+        const body = {
+          ...spin,
+          ...(excludeRestaurantIds && excludeRestaurantIds.length > 0
+            ? { excludeRestaurantIds: [...excludeRestaurantIds] }
+            : {}),
+          askTone: tone,
+        };
         const result = await postDiscoverAsk(body, crypto.randomUUID(), controller.signal);
         if (requestId.current !== id) return;
         if (result.kind === 'error') {
@@ -203,7 +210,8 @@ export function DiscoverFlow({
     const origin = originDraft ?? draft;
     const excludeRestaurantIds =
       refine === 'another' && excludeRestaurantId ? [excludeRestaurantId] : undefined;
-    void run(refineDiscoverDraft(origin, refine), false, excludeRestaurantIds);
+    const tone: DiscoverAskTone | undefined = refine === 'another' ? 'another' : undefined;
+    void run(refineDiscoverDraft(origin, refine), false, excludeRestaurantIds, tone);
   }
 
   const outcome = outcomeFromEvents(events);
@@ -214,6 +222,24 @@ export function DiscoverFlow({
   const streamError =
     outcome.kind === 'error' ? outcome.message : DISCOVER_STREAM_BROKE;
   const quote = (originDraft ?? draft).message;
+
+  function followUp(message: string) {
+    const trimmed = message.trim();
+    if (!trimmed || message.length > ROULETTE_MAX_MESSAGE_CHARS) return;
+    const origin = originDraft ?? draft;
+    const shownId =
+      outcome.kind === 'fallback'
+        ? outcome.event.alternative.id
+        : outcome.kind === 'pick'
+          ? outcome.event.partner.id
+          : null;
+    void run(
+      followUpDiscoverDraft(origin, trimmed),
+      true,
+      shownId ? [shownId] : undefined,
+      'request',
+    );
+  }
 
   return (
     <>
@@ -275,6 +301,7 @@ export function DiscoverFlow({
           }}
           onCheaper={() => resubmit('cheaper')}
           onNewVibe={() => resubmit('new-vibe')}
+          onFollowUp={followUp}
         />
       ) : null}
 

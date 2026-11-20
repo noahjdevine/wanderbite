@@ -99,7 +99,7 @@ export function DiscoverAsk({
         }}
       >
         <GlowBorder radius={24} speed={6}>
-          <div className="flex flex-col gap-3 px-4 pt-4 pb-3">
+          <div className="wb-hero-prompt flex flex-col gap-3 px-4 pt-4 pb-3">
             <label htmlFor="discovery-message" className="sr-only">
               Tell Bea what you are craving
             </label>
@@ -110,7 +110,7 @@ export function DiscoverAsk({
                 value={draft.message}
                 rows={2}
                 onChange={(event) => onMessage(event.target.value)}
-                className="relative z-[1] w-full resize-none bg-transparent text-[17px] text-white outline-none"
+                className="wb-chat-field relative z-[1] w-full resize-none bg-transparent text-[17px] text-white outline-none"
               />
               {draft.message.length === 0
                 ? HERO_PLACEHOLDERS.map((prompt, index) => (

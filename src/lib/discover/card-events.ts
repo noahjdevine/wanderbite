@@ -1,9 +1,11 @@
 import { partnerDirections } from '@/lib/discover/directions';
 import {
   fallbackAlternativeMessage,
+  fallbackToneForAsk,
   discoverStreamReason,
   filterStepLabel,
   PARSE_STEP_LABEL,
+  type DiscoverAskTone,
   type DiscoverEvent,
   type PartnerLite,
 } from '@/lib/discover/events';
@@ -41,6 +43,12 @@ export type DiscoverCardInput = {
   selectionMode: 'ai' | 'random_fallback';
   fallbackReason: DiscoverFallbackReason | null;
   providerTimedOut: boolean;
+  /**
+   * Copy only. Surprise and another idea are suggestions. A request is an
+   * alternative when the pick was not chosen by the model. Omitted tones are
+   * inferred from the message and soft chips.
+   */
+  askTone?: DiscoverAskTone | null;
 };
 
 /**
@@ -96,10 +104,18 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
 
   const reason = args.fallbackReason ?? 'invalid_pick';
   const alternative = streamedPartner(args.chosen);
+  const tone = fallbackToneForAsk({
+    askTone: args.askTone ?? null,
+    message: args.message,
+    vibe: args.vibe,
+    timeOfDay: args.timeOfDay,
+    priceRange: args.priceRange,
+    preferredCuisine: args.preferredCuisine,
+  });
   events.push({
     type: 'fallback',
     reason: discoverStreamReason(reason, args.providerTimedOut),
-    message: fallbackAlternativeMessage(alternative.name),
+    message: fallbackAlternativeMessage(alternative.name, tone),
     alternative,
   });
   return events;

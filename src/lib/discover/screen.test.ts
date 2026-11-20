@@ -14,6 +14,7 @@ import {
   dietaryButtonLabel,
   directionsHref,
   draftToSpinBody,
+  followUpDiscoverDraft,
   foodForOutcome,
   messageForDiscoverStatus,
   outcomeFromEvents,
@@ -117,14 +118,14 @@ describe('discover screen reducer', () => {
     const fallback: DiscoverEvent = {
       type: 'fallback',
       reason: 'no_match',
-      message: 'Alternative: Noodle House. This is not a match for that request.',
+      message: 'Alternative: Noodle House. This is a different pick from that request.',
       alternative: partner,
     };
     const alternative = outcomeFromEvents([...steps, fallback]);
     expect(alternative.kind).toBe('fallback');
     if (alternative.kind === 'fallback') {
-      expect(alternative.event.message).toContain('not a match');
       expect(alternative.event.message).toContain('Alternative:');
+      expect(alternative.event.message.toLowerCase()).not.toContain('not a match');
     }
     expect(foodForOutcome(alternative)).toBe('generic');
     const match = outcomeFromEvents([...steps, pickEvent()]);
@@ -152,6 +153,17 @@ describe('discover screen reducer', () => {
     const surprise = applyQuickChip(baseDraft, { label: 'Surprise me', surprise: true });
     expect(surprise.message).toBe('spicy noodles');
     expect(draftToSpinBody(surprise).message).toBeUndefined();
+  });
+
+  it('replaces the message and clears surprise for a typed follow-up', () => {
+    const next = followUpDiscoverDraft(
+      { ...baseDraft, surprise: true },
+      'something spicy instead',
+    );
+    expect(next.message).toBe('something spicy instead');
+    expect(next.surprise).toBe(false);
+    expect(next.dietaryFlags).toEqual(['vegan']);
+    expect(draftToSpinBody(next).message).toBe('something spicy instead');
   });
 
   it('maps HTTP failures to the existing copy', () => {

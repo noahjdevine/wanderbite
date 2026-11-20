@@ -79,7 +79,7 @@ import {
   type DiscoverMemberType,
 } from '@/lib/discover/fallback-reason';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
-import type { DiscoverEvent } from '@/lib/discover/events';
+import { parseDiscoverAskTone, type DiscoverEvent } from '@/lib/discover/events';
 import {
   applyRestaurantExclusion,
   canonicalFilterWithExcludedRestaurants,
@@ -259,6 +259,8 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       preferredCuisine?: string;
       idempotencyKey?: string;
       message?: unknown;
+      /** Fallback copy only. Not a filter, a prompt line, or a log field. */
+      askTone?: unknown;
     };
     let body: RouletteBody;
     try {
@@ -311,6 +313,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
     const timeOfDay = (ROULETTE_TIMES as readonly string[]).includes(timeRaw)
       ? timeRaw
       : undefined;
+    const askTone = parseDiscoverAskTone(body.askTone);
 
     const clientUuid =
       parseIdempotencyUuid(request.headers.get('idempotency-key')) ??
@@ -498,6 +501,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
           selectionMode,
           fallbackReason,
           providerTimedOut,
+          askTone,
         }),
       });
     };

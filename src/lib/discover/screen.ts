@@ -248,6 +248,11 @@ export function refineDiscoverDraft(base: DiscoverDraft, refine: DiscoverRefine)
   return { ...base };
 }
 
+/** A typed follow-up replaces the ask. Surprise must clear or the message is omitted. */
+export function followUpDiscoverDraft(base: DiscoverDraft, message: string): DiscoverDraft {
+  return { ...base, message, surprise: false };
+}
+
 export function draftToSpinBody(draft: DiscoverDraft): RouletteSpinPayload {
   return buildRouletteSpinBody({
     vibe: draft.vibe,

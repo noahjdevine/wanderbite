@@ -1,5 +1,5 @@
 import type { RecipeQaAnswerView } from '@/components/recipes/recipe-qa-answer';
-import type { DiscoverEvent } from '@/lib/discover/events';
+import type { DiscoverAskTone, DiscoverEvent } from '@/lib/discover/events';
 import {
   DISCOVER_NETWORK_ERROR,
   DISCOVER_STREAM_BROKE,
@@ -11,6 +11,8 @@ import type { RouletteSpinPayload } from '@/lib/roulette-options';
 
 export type DiscoverAskPayload = RouletteSpinPayload & {
   excludeRestaurantIds?: readonly string[];
+  /** Fallback copy only. The turn still uses message, chips, and exclusions. */
+  askTone?: DiscoverAskTone;
 };
 
 export type DiscoverHttpResult =

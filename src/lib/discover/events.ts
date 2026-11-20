@@ -14,10 +14,26 @@ import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
  * - pick: only when `selectionMode` is `ai`. matched / unknown / unmet come from the
  *   parsed constraints and the chosen row. `isNewToMember` stays false because
  *   redemption history is not loaded.
- * - fallback: a random pick. `alternative` is that restaurant, labeled as an alternative.
- *   The spec's fallback object has no partner; `alternative` is how Phase 2.1c can
- *   render the same restaurant `/api/roulette` returns without calling it a match.
+ * - fallback: a random pick. `alternative` is that restaurant. A surprise or another
+ *   idea is a suggestion. A request with constraints is labeled as an alternative,
+ *   without calling it a match. The spec's fallback object has no partner;
+ *   `alternative` is how Phase 2.1c can render the same restaurant `/api/roulette`
+ *   returns.
  */
+
+export const DISCOVER_ASK_TONES = ['surprise', 'another', 'request'] as const;
+
+export type DiscoverAskTone = (typeof DISCOVER_ASK_TONES)[number];
+
+export type DiscoverFallbackTone = 'surprise' | 'another' | 'alternative';
+
+/** Closed copy tone. Unknown values are ignored so a bad body cannot invent a mode. */
+export function parseDiscoverAskTone(value: unknown): DiscoverAskTone | null {
+  if (typeof value !== 'string') return null;
+  return (DISCOVER_ASK_TONES as readonly string[]).includes(value)
+    ? (value as DiscoverAskTone)
+    : null;
+}
 
 export type ConstraintKey =
   | 'cuisine'
@@ -127,8 +143,44 @@ export function discoverStreamReason(
   return 'no_match';
 }
 
-export function fallbackAlternativeMessage(name: string): string {
-  return `Alternative: ${name}. This is not a match for that request.`;
+/**
+ * Surprise and another idea had nothing to miss. A constrained ask stays an
+ * alternative, in calm wording, and is never called a match.
+ */
+export function fallbackToneForAsk(args: {
+  askTone: DiscoverAskTone | null;
+  message: string;
+  vibe?: string;
+  timeOfDay?: string;
+  priceRange?: string;
+  preferredCuisine?: string;
+}): DiscoverFallbackTone {
+  if (args.askTone === 'another') return 'another';
+  if (args.askTone === 'surprise') return 'surprise';
+  if (args.askTone === 'request') return 'alternative';
+  const hasAsk =
+    args.message.trim().length > 0 ||
+    Boolean(args.vibe || args.timeOfDay || args.priceRange || args.preferredCuisine);
+  return hasAsk ? 'alternative' : 'surprise';
+}
+
+export function fallbackPresentation(message: string): DiscoverFallbackTone {
+  if (message.startsWith("Here's a surprise")) return 'surprise';
+  if (message.startsWith("Here's another idea")) return 'another';
+  return 'alternative';
+}
+
+export function fallbackAlternativeMessage(name: string, tone: DiscoverFallbackTone = 'alternative'): string {
+  const place = name.trim();
+  if (tone === 'surprise') {
+    return place ? `Here's a surprise: ${place}.` : "Here's a surprise.";
+  }
+  if (tone === 'another') {
+    return place ? `Here's another idea: ${place}.` : "Here's another idea.";
+  }
+  return place
+    ? `Alternative: ${place}. This is a different pick from that request.`
+    : 'Alternative: this is a different pick from that request.';
 }
 
 export function encodeDiscoverSse(events: readonly DiscoverEvent[]): string {

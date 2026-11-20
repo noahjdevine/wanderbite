@@ -229,8 +229,17 @@
   stroke-dasharray: 600;
   animation: wb-draw 6s ease-in-out infinite alternate;
 }
+/* The rounded box is the focus ring. The field itself must not draw a square inside it.
+   .wb-dark :focus-visible would otherwise win over the outline-none utility. */
+.wb-hero-prompt {
+  border-radius: inherit;
+}
 .wb-hero-prompt:focus-within {
   box-shadow: inset 0 0 0 2px var(--wb-blush);
+}
+.wb-dark .wb-hero-prompt .wb-chat-field:focus-visible {
+  outline: none;
+  outline-offset: 0;
 }
 
 /* Bea keyframes live with the Bea rules further down. */

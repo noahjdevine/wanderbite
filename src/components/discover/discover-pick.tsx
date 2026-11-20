@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Bea, BEA_DISPLAY_NAME } from '@/components/bea';
 import { Chip } from '@/components/wb/chip';
 import { DiscoverPhoto } from '@/components/discover/discover-photo';
-import type { DiscoverFood } from '@/lib/discover/events';
+import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
+import { fallbackPresentation, type DiscoverFood } from '@/lib/discover/events';
 import type { DiscoverStepEvent } from '@/lib/discover/screen';
 import {
   DISCOVER_ALLERGY_NOTICE,
+  DISCOVER_MESSAGE_TOO_LONG,
   closerChipIncluded,
   directionsHref,
   offerChipLabel,
@@ -32,6 +34,7 @@ export function DiscoverPick({
   onAnother,
   onCheaper,
   onNewVibe,
+  onFollowUp,
 }: {
   outcome: Extract<DiscoverOutcome, { kind: 'pick' | 'fallback' }>;
   food: DiscoverFood | 'generic';
@@ -42,9 +45,21 @@ export function DiscoverPick({
   onAnother: () => void;
   onCheaper: () => void;
   onNewVibe: () => void;
+  onFollowUp: (message: string) => void;
 }) {
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const [followUp, setFollowUp] = useState('');
   const alternative = outcome.kind === 'fallback';
+  const fallbackTone = alternative ? fallbackPresentation(outcome.event.message) : null;
+  const badge =
+    fallbackTone === 'surprise'
+      ? "Here's a surprise"
+      : fallbackTone === 'another'
+        ? "Here's another idea"
+        : fallbackTone === 'alternative'
+          ? 'An alternative'
+          : 'Picked for you';
+  const followUpTooLong = followUp.length > ROULETTE_MAX_MESSAGE_CHARS;
   const partner = alternative ? outcome.event.alternative : outcome.event.partner;
   const href = directionsHref(partner);
   const offer = !alternative && outcome.event.partner.offer ? outcome.event.partner.offer : null;
@@ -84,7 +99,7 @@ export function DiscoverPick({
           className="wb-glass-card wb-reveal -mt-10 flex flex-col gap-3 rounded-[28px] p-4 sm:p-5 lg:mt-6"
         >
           <p className="w-fit rounded-full bg-wb-blush px-3 py-1.5 text-xs font-semibold text-wb-blush-ink">
-            {alternative ? 'An alternative' : 'Picked for you'}
+            {badge}
           </p>
           <h1
             id="discover-pick-heading"
@@ -128,9 +143,7 @@ export function DiscoverPick({
                 </Chip>
               ))}
             </div>
-          ) : (
-            <p className="text-sm font-semibold text-amber-200">Not a match</p>
-          )}
+          ) : null}
 
           <button
             type="button"
@@ -179,6 +192,45 @@ export function DiscoverPick({
             <button type="button" className="wb-chip-glass h-9 min-h-0 px-3 text-[13px]" onClick={onNewVibe}>
               New vibe
             </button>
+          </div>
+
+          <div className="flex flex-col gap-1">
+            <form
+              className="overflow-hidden rounded-2xl border border-white/15 bg-white/[0.06]"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const message = followUp.trim();
+                if (!message || followUpTooLong) return;
+                onFollowUp(message);
+              }}
+            >
+              <div className="wb-hero-prompt flex items-end gap-2 px-3 py-2">
+                <label htmlFor="discover-follow-up" className="sr-only">
+                  Tell Bea something else
+                </label>
+                <textarea
+                  id="discover-follow-up"
+                  name="followUp"
+                  rows={2}
+                  value={followUp}
+                  placeholder="Tell Bea something else"
+                  onChange={(event) => setFollowUp(event.target.value)}
+                  className="wb-chat-field min-h-10 w-full flex-1 resize-none bg-transparent text-sm text-white outline-none placeholder:text-white/55"
+                />
+                <button
+                  type="submit"
+                  className="wb-cta h-9 min-h-9 shrink-0 px-3 text-sm"
+                  disabled={followUpTooLong}
+                >
+                  Ask
+                </button>
+              </div>
+            </form>
+            {followUpTooLong ? (
+              <p role="status" className="text-sm text-wb-blush">
+                {DISCOVER_MESSAGE_TOO_LONG}
+              </p>
+            ) : null}
           </div>
 
           <p className="text-sm text-white/75">{DISCOVER_ALLERGY_NOTICE}</p>
