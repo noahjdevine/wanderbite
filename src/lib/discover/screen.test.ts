@@ -20,6 +20,7 @@ import {
   foodForOutcome,
   messageForDiscoverStatus,
   discoverEnterSubmits,
+  discoverGreeting,
   outcomeFromEvents,
   refineDiscoverDraft,
   rememberShownRestaurant,
@@ -68,6 +69,16 @@ function pickEvent(): DiscoverEvent {
     food: 'dumpling',
   };
 }
+
+describe('discover greeting', () => {
+  it('keeps the free line for guests and the evening line for members', () => {
+    expect(discoverGreeting(null)).toBe('Free · no account needed');
+    expect(discoverGreeting(null, false)).toBe('Free · no account needed');
+    expect(discoverGreeting('Noah', true)).toBe('Good evening, Noah');
+    expect(discoverGreeting(null, true)).toBe('Good evening');
+    expect(discoverGreeting('  ', true)).toBe('Good evening');
+  });
+});
 
 describe('discover screen reducer', () => {
   afterEach(() => {

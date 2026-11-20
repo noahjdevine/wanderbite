@@ -1731,4 +1731,94 @@ describe('Discover stream route', () => {
       random.mockRestore();
     }
   });
+
+  it('keeps the memory line on a signed-in surprise', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    getUser.mockResolvedValue({ data: { user: { id: USER } } });
+    restaurantRows = [TACO];
+    redemptionRows = [];
+    fetchMock.mockImplementation(() => Promise.resolve(anthropicResponse(LINE)));
+    const events = parseDiscoverSse(
+      await (
+        await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))
+      ).text(),
+    );
+    expect(events.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You haven't been to Taco House yet.",
+    });
+    expect(events.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      isNewToMember: true,
+      partner: { id: TACO.id },
+      reason: LINE,
+    });
+
+    redemptionRows = [{ restaurant_id: TACO.id, status: 'verified' }];
+    const again = parseDiscoverSse(
+      await (
+        await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))
+      ).text(),
+    );
+    expect(again.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You've been here before.",
+    });
+    expect(again.find((event) => event.type === 'pick')).toMatchObject({
+      isNewToMember: false,
+    });
+  });
+
+  it('labels an unmatched cheap-tacos ask as a closest pick for members and guests', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [
+      { ...BBQ, name: 'Local Yocal', cuisine_tags: ['steak', 'wagyu'], price_range: '$$$' },
+    ];
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(anthropicResponse('Local Yocal is a bright steak room.')),
+    );
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      getUser.mockResolvedValue({ data: { user: { id: USER } } });
+      const member = parseDiscoverSse(
+        await (
+          await POST(post({ user: true, message: 'cheap tacos', body: { askTone: 'request' } }))
+        ).text(),
+      );
+      expect(member.find((event) => event.type === 'fallback')).toMatchObject({
+        tone: 'alternative',
+        message: "Closest I've got: Local Yocal. It may not match everything you asked for.",
+        alternative: { name: 'Local Yocal' },
+      });
+      expect(member.some((event) => event.type === 'pick')).toBe(false);
+      const sent = anthropicBody(fetchMock.mock.calls.at(-1));
+      expect(sent.messages[0]?.content).toContain('cheap tacos');
+      expect(sent.system).toContain('Do not invent an occasion');
+      expect(sent.system).toContain('inexpensive');
+
+      getUser.mockResolvedValue({ data: { user: null } });
+      const guest = parseDiscoverSse(
+        await (await POST(post({ message: 'cheap tacos', body: { askTone: 'request' } }))).text(),
+      );
+      expect(guest.find((event) => event.type === 'fallback')).toMatchObject({
+        tone: 'alternative',
+        message: "Closest I've got: Local Yocal. It may not match everything you asked for.",
+      });
+      expect(guest.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('rejects a stock occasion line and keeps the template', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO];
+    fetchMock.mockResolvedValue(
+      anthropicResponse('Taco House is perfect for special occasions.'),
+    );
+    const response = await roulettePost(post({ message: '' }));
+    const body = (await response.json()) as { reason: string; selectionMode: string; restaurantId: string };
+    expect(body.restaurantId).toBe(TACO.id);
+    expect(body.selectionMode).toBe('random_fallback');
+    expect(body.reason).toBe(discoveryCardSentence(TACO, LAUNCH_MARKET.displayName));
+    expect(body.reason).not.toContain('special occasions');
+  });
 });

@@ -17,6 +17,8 @@
  *
  * `line_rejected` is a code-pick sentence that failed validation. `lineCode`
  * is that closed code. The sentence itself is never logged.
+ * `unmet_preference` is a valid sentence for a restaurant that missed a
+ * stated cuisine or price. The card uses the closest-pick copy.
  */
 import {
   DISCOVER_LINE_REJECT_CODES,
@@ -33,6 +35,7 @@ export const DISCOVER_FALLBACK_REASONS = [
   'provider_error',
   'parse_failed',
   'line_rejected',
+  'unmet_preference',
   'invalid_pick',
   'replay_fallback',
   'missing_metadata',

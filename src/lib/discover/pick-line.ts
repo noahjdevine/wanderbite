@@ -15,6 +15,7 @@ export const DISCOVER_LINE_REJECT_CODES = [
   'price',
   'hours',
   'promo',
+  'stock_phrase',
   'other_restaurant',
   'multi_sentence',
 ] as const;
@@ -40,6 +41,9 @@ const PRICE =
 
 const PROMO =
   /\b(?:discount|discounts|promo|promotion|promotional|coupon|coupons|voucher|vouchers|bogo|deal|deals|sale|sales|complimentary)\b|\d+\s*%|\bpercent(?:age)?\s+off\b|\bhalf[\s-]?off\b/i;
+
+const STOCK_PHRASE =
+  /\bperfect for special occasions\b|\bcelebrations?\b|\bany occasion\b/i;
 
 const URL =
   /https?:\/\/|www\.|\b[a-z0-9-]+\.(?:com|net|org|io|co|us|restaurant)\b/i;
@@ -121,7 +125,12 @@ export function buildDiscoverLinePrompt(args: {
 
 The restaurant is already chosen. Do not name any other place.
 
-Return plain text only: one sentence, no quotes, no markdown, and no JSON.
+Describe what this place is known for, in plain words. Write one sentence only.
+Do not invent an occasion unless the user's request names one.
+Do not write "perfect for special occasions", "celebrations", or "any occasion".
+Do not contradict the request. If they asked for something inexpensive, do not call the place premium, upscale, or a splurge.
+
+Return plain text only: no quotes, no markdown, and no JSON.
 Do not include a URL, a phone number, a price, a dollar amount, hours, a day of the week, or a discount.
 Use only the fields you are given. Leave out anything unknown.`;
   const userPrompt = `Restaurant:
@@ -147,6 +156,7 @@ export function validateDiscoverLine(args: {
   if (PRICE.test(text)) return { ok: false, code: 'price' };
   if (DAY_OR_HOURS.test(text)) return { ok: false, code: 'hours' };
   if (PROMO.test(text)) return { ok: false, code: 'promo' };
+  if (STOCK_PHRASE.test(text)) return { ok: false, code: 'stock_phrase' };
   if (mentionsOtherRestaurant(text, args.otherRestaurantNames)) {
     return { ok: false, code: 'other_restaurant' };
   }

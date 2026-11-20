@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { rankDiscoverRestaurant, type CodePickRestaurant } from '@/lib/discover/code-pick';
+import {
+  mergeSoftAsk,
+  rankDiscoverRestaurant,
+  type CodePickRestaurant,
+} from '@/lib/discover/code-pick';
 import { discoverCodePickEnabled } from '@/lib/discover/flag';
 
 const TACO: CodePickRestaurant = {
@@ -50,7 +54,7 @@ describe('rankDiscoverRestaurant', () => {
       visitedRestaurantIds: new Set(['salsa']),
       random: () => 0.99,
     });
-    expect(pick?.id).toBe('taco');
+    expect(pick?.restaurant.id).toBe('taco');
   });
 
   it('stays in the matching pool when every match has been visited', () => {
@@ -61,14 +65,14 @@ describe('rankDiscoverRestaurant', () => {
       visitedRestaurantIds: new Set(['taco', 'salsa']),
       random: () => 0,
     });
-    expect(pick?.id).toBe('salsa');
+    expect(pick?.restaurant.id).toBe('salsa');
     const later = rankDiscoverRestaurant({
       pool,
       ...match,
       visitedRestaurantIds: new Set(['taco', 'salsa']),
       random: () => 0.99,
     });
-    expect(later?.id).toBe('taco');
+    expect(later?.restaurant.id).toBe('taco');
   });
 
   it('draws inside the top tier so a repeat can change', () => {
@@ -79,7 +83,7 @@ describe('rankDiscoverRestaurant', () => {
         ...match,
         visitedRestaurantIds: new Set(),
         random: () => 0,
-      })?.id,
+      })?.restaurant.id,
     ).toBe('taco');
     expect(
       rankDiscoverRestaurant({
@@ -87,7 +91,7 @@ describe('rankDiscoverRestaurant', () => {
         ...match,
         visitedRestaurantIds: new Set(),
         random: () => 0.99,
-      })?.id,
+      })?.restaurant.id,
     ).toBe('salsa');
   });
 
@@ -99,7 +103,7 @@ describe('rankDiscoverRestaurant', () => {
       visitedRestaurantIds: new Set(['fancy']),
       random: () => 0,
     });
-    expect(pick?.id).toBe('fancy');
+    expect(pick?.restaurant.id).toBe('fancy');
   });
 
   it('treats cuisine and price as equal when only one can match', () => {
@@ -109,14 +113,14 @@ describe('rankDiscoverRestaurant', () => {
       priceRange: '$',
       random: () => 0,
     });
-    expect(cuisineOnly?.id).toBe('fancy');
+    expect(cuisineOnly?.restaurant.id).toBe('fancy');
     const priceOnly = rankDiscoverRestaurant({
       pool: [FANCY, BBQ],
       preferredCuisine: 'japanese',
       priceRange: '$$',
       random: () => 0,
     });
-    expect(priceOnly?.id).toBe('bbq');
+    expect(priceOnly?.restaurant.id).toBe('bbq');
   });
 
   it('does not treat a longer price mark as the requested range', () => {
@@ -125,13 +129,13 @@ describe('rankDiscoverRestaurant', () => {
       priceRange: '$$',
       random: () => 0,
     });
-    expect(pick?.id).toBe('fancy');
+    expect(pick?.restaurant.id).toBe('fancy');
     expect(
       rankDiscoverRestaurant({
         pool: [{ id: 'exact', cuisine_tags: null, price_range: '$$' }, FANCY],
         priceRange: '$$',
         random: () => 0,
-      })?.id,
+      })?.restaurant.id,
     ).toBe('exact');
   });
 
@@ -142,7 +146,7 @@ describe('rankDiscoverRestaurant', () => {
       visitedRestaurantIds: null,
       random: () => 0,
     });
-    expect(pick?.id).toBe('salsa');
+    expect(pick?.restaurant.id).toBe('salsa');
   });
 
   it('prefers unvisited rows when no cuisine or price was asked', () => {
@@ -151,7 +155,7 @@ describe('rankDiscoverRestaurant', () => {
       visitedRestaurantIds: new Set(['salsa', 'taco']),
       random: () => 0.99,
     });
-    expect(pick?.id).toBe('bbq');
+    expect(pick?.restaurant.id).toBe('bbq');
   });
 
   it('matches a cuisine keyword on the tags', () => {
@@ -161,6 +165,41 @@ describe('rankDiscoverRestaurant', () => {
       priceRange: '$',
       random: () => 0,
     });
-    expect(pick?.id).toBe('stand');
+    expect(pick?.restaurant.id).toBe('stand');
+  });
+
+  it('treats a full soft match as met and a shortfall as unmet', () => {
+    const both = rankDiscoverRestaurant({
+      pool: [TACO, BBQ],
+      ...match,
+      random: () => 0,
+    });
+    expect(both?.preferencesMet).toBe(true);
+    const none = rankDiscoverRestaurant({
+      pool: [BBQ, FANCY],
+      ...match,
+      random: () => 0,
+    });
+    expect(none?.preferencesMet).toBe(false);
+    expect(none?.restaurant.id).toBe('fancy');
+    const open = rankDiscoverRestaurant({ pool: [BBQ], random: () => 0 });
+    expect(open?.preferencesMet).toBe(true);
+  });
+});
+
+describe('mergeSoftAsk', () => {
+  it('reads cheap tacos from the message and lets chips win', () => {
+    expect(mergeSoftAsk({ message: 'cheap tacos' })).toEqual({
+      preferredCuisine: 'mexican',
+      priceRange: '$',
+    });
+    expect(mergeSoftAsk({ message: 'a taco' })).toMatchObject({ preferredCuisine: 'mexican' });
+    expect(mergeSoftAsk({ message: '' })).toEqual({
+      preferredCuisine: undefined,
+      priceRange: undefined,
+    });
+    expect(
+      mergeSoftAsk({ message: 'cheap tacos', preferredCuisine: 'japanese', priceRange: '$$$' }),
+    ).toEqual({ preferredCuisine: 'japanese', priceRange: '$$$' });
   });
 });

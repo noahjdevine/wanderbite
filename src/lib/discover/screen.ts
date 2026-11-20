@@ -43,11 +43,14 @@ export const DISCOVER_FOUND_LINE = "Ooh, I've got one for you.";
 export type DiscoverViewer = {
   firstName: string | null;
   savedDietary: readonly RouletteDietaryFlag[];
+  /** False for a guest. A signed-in member stays true even when the name is blank. */
+  signedIn?: boolean;
 };
 
 export const EMPTY_DISCOVER_VIEWER: DiscoverViewer = {
   firstName: null,
   savedDietary: [],
+  signedIn: false,
 };
 
 export type DiscoverDraft = {
@@ -103,10 +106,11 @@ export type DiscoverOutcome =
   | { kind: 'error'; message: string }
   | { kind: 'empty' };
 
-export function discoverGreeting(firstName: string | null): string {
+export function discoverGreeting(firstName: string | null, signedIn = false): string {
   const name = firstName?.trim();
-  if (!name) return 'Free · no account needed';
-  return `Good evening, ${name}`;
+  if (name) return `Good evening, ${name}`;
+  if (signedIn) return 'Good evening';
+  return 'Free · no account needed';
 }
 
 export function dietaryFlagsForStatus(

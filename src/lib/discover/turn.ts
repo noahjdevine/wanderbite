@@ -83,7 +83,7 @@ import { briefingsEnabled, logBriefingsReadFailedOnce } from '@/lib/briefings/fl
 import { loadDiscoverBriefingFacts } from '@/lib/briefings/load';
 import type { RestaurantBriefings } from '@/lib/briefings/types';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
-import { rankDiscoverRestaurant } from '@/lib/discover/code-pick';
+import { mergeSoftAsk, rankDiscoverRestaurant } from '@/lib/discover/code-pick';
 import { discoverCodePickEnabled } from '@/lib/discover/flag';
 import { preferUnvisitedRestaurants } from '@/lib/discover/member-memory';
 import { buildDiscoverLinePrompt, validateDiscoverLine } from '@/lib/discover/pick-line';
@@ -532,15 +532,20 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
      * when Haiku's sentence is shown, and `random_fallback` when the card
      * uses the template sentence.
      */
-    const codePickRestaurant = discoverCodePickEnabled()
+    const codePick = discoverCodePickEnabled()
       ? rankDiscoverRestaurant({
           pool: restaurants,
-          preferredCuisine,
-          priceRange,
+          ...mergeSoftAsk({
+            message: acceptedMessage,
+            preferredCuisine,
+            priceRange,
+          }),
           visitedRestaurantIds,
           random: Math.random,
         })
       : null;
+    const codePickRestaurant = codePick?.restaurant ?? null;
+    const codePickPreferencesMet = codePick?.preferencesMet ?? true;
 
     const cardEvents = (
       chosen: RouletteRestaurant,
@@ -860,7 +865,8 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
         lineDecision = { ok: false, code: 'empty' };
       }
     }
-    const pickValid = codePickRestaurant ? lineDecision?.ok === true : modelPickValid;
+    const lineAccepted = lineDecision?.ok === true;
+    const pickValid = codePickRestaurant ? lineAccepted : modelPickValid;
     const modelReason = codePickRestaurant
       ? providerFailed
         ? modelPickFallbackReason({ providerFailed: true, parsedId: null, pickValid: false })
@@ -870,15 +876,16 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       !codePickRestaurant && modelPickValid && parsedId
         ? promptRows.find((row) => row.id === parsedId)
         : undefined;
+    const showHaikuLine = lineAccepted && codePickPreferencesMet;
     const selectionMode: RouletteSelectionMode = codePickRestaurant
-      ? pickValid
+      ? showHaikuLine
         ? 'ai'
         : 'random_fallback'
       : chosen
         ? 'ai'
         : 'random_fallback';
     const cardRestaurant = codePickRestaurant ?? chosen ?? pickRandom(fallbackPool());
-    const shownLine = lineDecision?.ok ? lineDecision.line : undefined;
+    const shownLine = showHaikuLine && lineDecision?.ok ? lineDecision.line : undefined;
 
     await accountForOutcome({
       requestId: reserved.request_id,
@@ -910,8 +917,13 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       });
       return cardEvents(cardRestaurant, 'ai', null, false, shownLine);
     }
-    const reason: DiscoverFallbackReason =
-      codePickRestaurant && !providerFailed ? 'line_rejected' : (modelReason ?? 'invalid_pick');
+    const reason: DiscoverFallbackReason = !codePickRestaurant
+      ? (modelReason ?? 'invalid_pick')
+      : providerFailed
+        ? (modelReason ?? 'provider_error')
+        : lineDecision?.ok
+          ? 'unmet_preference'
+          : 'line_rejected';
     logDiscoverFallback({
       reason,
       ...discoverBase(reserved.request_id),

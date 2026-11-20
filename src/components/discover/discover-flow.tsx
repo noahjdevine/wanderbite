@@ -256,6 +256,7 @@ export function DiscoverFlow({
         <DiscoverAsk
           draft={draft}
           greetingName={viewer.firstName}
+          signedIn={viewer.signedIn === true}
           dietaryLabelFlags={dietaryFlagsForStatus(viewer.savedDietary, draft.dietaryFlags)}
           refineOpen={refineOpen}
           exclusionsSummary={exclusionsSummary}
@@ -298,7 +299,8 @@ export function DiscoverFlow({
           outcome={outcome}
           food={foodForOutcome(outcome)}
           dietaryLabel={dietaryLabel}
-          steps={prefersReducedMotion() ? steps : []}
+          steps={steps}
+          listArrivedSteps={prefersReducedMotion()}
           onDietary={() => {
             setRefineOpen(true);
             backToAsk();

@@ -229,6 +229,16 @@ describe('DiscoverFlow', () => {
     expect(screen.getByText('Vegan')).toBeTruthy();
   });
 
+  it('shows the free line only when signed out', () => {
+    const { rerender } = render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [], signedIn: true }} />,
+    );
+    expect(screen.getByText('Good evening')).toBeTruthy();
+    expect(screen.queryByText('Free · no account needed')).toBeNull();
+    rerender(<DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />);
+    expect(screen.getByText('Free · no account needed')).toBeTruthy();
+  });
+
   it('resubmits Another idea and Cheaper with the original message', async () => {
     render(
       <DiscoverFlow initialMessage="spicy noodles" viewer={{ firstName: null, savedDietary: [] }} />,

@@ -84,6 +84,22 @@ describe('validateDiscoverLine', () => {
     expect(decide('{"restaurantId":"rest-salsa"}')).toEqual({ ok: false, code: 'not_plain' });
   });
 
+  it('rejects stock occasion phrases', () => {
+    expect(decide('Taco House is perfect for special occasions.')).toEqual({
+      ok: false,
+      code: 'stock_phrase',
+    });
+    expect(decide('Taco House is perfect for celebrations.')).toEqual({
+      ok: false,
+      code: 'stock_phrase',
+    });
+    expect(decide('Taco House works for any occasion.')).toEqual({
+      ok: false,
+      code: 'stock_phrase',
+    });
+    expect(decide('Taco House is a bright room for tacos.')).toMatchObject({ ok: true });
+  });
+
   it('keeps a year and does not treat it as a phone number', () => {
     expect(decide('Cooking here since 1998 and still going.')).toMatchObject({ ok: true });
   });
@@ -105,6 +121,8 @@ describe('buildDiscoverLinePrompt', () => {
     });
     expect(prompt.systemPrompt).toContain('one sentence');
     expect(prompt.systemPrompt).toContain('already chosen');
+    expect(prompt.systemPrompt).toContain('Do not invent an occasion');
+    expect(prompt.systemPrompt).toContain('perfect for special occasions');
     expect(prompt.userPrompt).toContain('Taco House');
     expect(prompt.userPrompt).toContain('mexican');
     expect(prompt.userPrompt).toContain('West');
