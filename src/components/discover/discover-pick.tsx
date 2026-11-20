@@ -5,7 +5,7 @@ import { Bea, BEA_DISPLAY_NAME } from '@/components/bea';
 import { Chip } from '@/components/wb/chip';
 import { DiscoverPhoto } from '@/components/discover/discover-photo';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
-import { briefingSourceLabel, formatBriefingChecked } from '@/lib/briefings/types';
+import { briefingSourceDisplay, formatBriefingChecked } from '@/lib/briefings/types';
 import {
   presentDiscoverCardFacts,
   type DiscoverCardFact,
@@ -25,14 +25,14 @@ import {
 function DiscoverFactList({ facts }: { facts: readonly DiscoverCardFact[] }) {
   if (facts.length === 0) return null;
   return (
-    <ul className="flex list-none flex-col gap-2 p-0">
+    <ul className="flex min-w-0 list-none flex-col gap-2 p-0">
       {facts.map((fact) => {
         const checked = formatBriefingChecked(fact.lastVerifiedAt);
         if (!checked) return null;
-        const sourceLabel = briefingSourceLabel(fact.sourceUrl);
+        const sourceLabel = briefingSourceDisplay(fact.sourceUrl);
         const googleMaps = sourceLabel === 'Google Maps';
         return (
-          <li key={fact.field}>
+          <li key={fact.field} className="min-w-0">
             <p className="text-sm text-white/90">
               <span className="font-semibold text-white">{fact.label}</span> {fact.text}
             </p>
@@ -41,9 +41,10 @@ function DiscoverFactList({ facts }: { facts: readonly DiscoverCardFact[] }) {
               target="_blank"
               rel="noopener noreferrer"
               translate={googleMaps ? 'no' : undefined}
-              className="text-xs font-medium text-white underline"
+              aria-label={`${sourceLabel} (opens in new tab)`}
+              className="inline-flex min-h-11 max-w-full min-w-0 items-center px-1 -mx-1 text-xs font-medium text-white underline"
             >
-              {sourceLabel}
+              <span className="min-w-0 truncate">{sourceLabel}</span>
             </a>
             <p className="text-xs text-white/70">Checked {checked}</p>
           </li>
