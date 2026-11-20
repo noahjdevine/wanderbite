@@ -1054,8 +1054,25 @@ const FUNCTION_WORDS = new Set([
   'your',
 ]);
 
-/** Short words that flip a claim. They stay required even when under four letters. */
-const POLARITY_WORDS = ['none', 'not', 'only', 'without'] as const;
+/**
+ * Short words that flip a claim. They stay required even when under four letters.
+ * "no" and "never" are included so a negative reservation claim cannot pass on a positive page.
+ */
+const POLARITY_WORDS = ['never', 'no', 'none', 'not', 'only', 'without'] as const;
+
+/** Claim words that must be on the page. "Available" does not support "recommended". */
+const STRICT_CLAIM_WORDS = ['recommended'] as const;
+
+/**
+ * Share of an item's content words that must sit in one passage. 3/4 is 75%.
+ * Proper nouns, numbers, polarity, and strict claim words are required on top of this.
+ */
+const ITEM_SUPPORT_NUMERATOR = 3;
+const ITEM_SUPPORT_DENOMINATOR = 4;
+/** Content words shorter than this are ignored, except polarity and strict claims. */
+const ITEM_CONTENT_MIN_LENGTH = 3;
+/** known_for, vibe, and good_for keep a trimmed list only when at least this many items remain. */
+const LIST_KEEP_MINIMUM = 2;
 
 type FactCue = { pattern: RegExp };
 
@@ -1063,12 +1080,22 @@ const GOOD_FOR_CUES: readonly FactCue[] = [
   { pattern: /\bdate[\s-]?nights?\b/i },
   { pattern: /\bgroups?\b/i },
   { pattern: /\bfamil(?:y|ies)\b/i },
-  { pattern: /\bkids?\b|\bchildren\b/i },
+  { pattern: /\bkids?\b|\bchildren\b|\bchild\b/i },
   { pattern: /\bsolo\b/i },
   { pattern: /\bsports?\b/i },
   { pattern: /\bbrunch\b/i },
   { pattern: /\bbusiness\b/i },
   { pattern: /\b(?:celebrations?|birthdays?|anniversar(?:y|ies))\b/i },
+  { pattern: /\bwedding(?:s)?\b/i },
+  { pattern: /\brehearsal\s+dinners?\b/i },
+  { pattern: /\b(?:corporate|work)\s+(?:events?|meetings?|dinners?)\b/i },
+  { pattern: /\bprivate\s+events?\b/i },
+  { pattern: /\bfriends?\b/i },
+  { pattern: /\blive\s+music\b/i },
+  { pattern: /\bdogs?\b|\bdog[\s-]?friendly\b/i },
+  { pattern: /\blunch(?:es)?\b/i },
+  { pattern: /\bhappy\s+hours?\b/i },
+  { pattern: /\bwatch(?:ing)?\s+(?:the\s+)?games?\b|\blawn\s+games?\b|\bgames?\b/i },
 ];
 
 const RESERVATION_CUES: readonly FactCue[] = [
@@ -1151,19 +1178,38 @@ const FIELD_SPECIFIC = new Set<BriefingField>(['vibe', 'known_for', 'good_for', 
 /** A review comment cannot be the only support for these. Listing amenities can. */
 const PHYSICAL_FEATURE_FIELDS = new Set<BriefingField>(['parking', 'arrival', 'accessibility', 'seating']);
 
-function wordPattern(word: string): RegExp {
-  return new RegExp(`(?:^|[^A-Za-z0-9])${escapeRegExp(word)}(?:[^A-Za-z0-9]|$)`, 'i');
-}
+const STEM_IRREGULAR: Record<string, string> = {
+  child: 'child',
+  children: 'child',
+  families: 'family',
+  family: 'family',
+  kid: 'child',
+  kids: 'child',
+};
 
-function wordsAtLeast(text: string, min: number, skip: ReadonlySet<string>): string[] {
-  const found = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
-  return [...new Set(found.filter((word) => word.length >= min && !skip.has(word)))];
-}
+type BlockCategory = 'phone' | 'email' | 'url' | 'price' | 'promo' | 'hours' | 'meta';
 
-function polarityPatterns(text: string): RegExp[] {
-  const words = new Set(text.toLowerCase().match(/[a-z0-9]+/g) ?? []);
-  return POLARITY_WORDS.filter((word) => words.has(word)).map((word) => wordPattern(word));
-}
+type RemovedBlock = { text: string; category: BlockCategory };
+
+const BLOCK_PRIORITY: readonly BlockCategory[] = ['phone', 'email', 'url', 'price', 'promo', 'hours', 'meta'];
+
+const PHONE_PATTERN = /(?:\+?1[\s.-]*)?(?:\(\s*\d{3}\s*\)|\b\d{3})[\s.-]\d{3}[\s.-]\d{4}\b/;
+const EMAIL_PATTERN = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/;
+const URL_PATTERN = /\b(?:https?:\/\/|www\.)\S+/i;
+const PRICE_PATTERN = /\$\s?\d|\b\d+(?:\.\d{1,2})?\s*(?:dollars|usd)\b/i;
+const PROMO_PATTERN =
+  /\b(?:discounts?|promos?|promotions?|coupons?|bogo|complimentary)\b|\b\d+\s*%\s*off\b|\bpercent off\b|\bspecial offer\b|\b(?:eat|drinks?)\s+free\b|\bfree\s+(?:with|on|appetizer|dessert|entr(?:e|é)e|drink|meal|item)s?\b/i;
+const META_PATTERN =
+  /\bnot mentioned\b|\b(?:is|are|was|were|isn'?t|aren'?t)\s+(?:not\s+)?mentioned\b|\bthe (?:website|site|page|source) (?:says|said|states|stated|mentions|mentioned|does not)\b|\baccording to\b|\bdoes not (?:say|mention|state)\b/i;
+const DAY_WORD =
+  '(?:mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?';
+const DAY_RANGE_SOURCE = `\\b${DAY_WORD}\\b\\s*(?:through|thru|to|–|—|-)\\s*\\b${DAY_WORD}\\b`;
+const PLURAL_DAY_SOURCE = '\\b(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\\b';
+const CLOCK_SOURCE =
+  '\\b(?:(?:after|before|until|till|from|at|between|by)\\s+)?(?:noon|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:a\\.?m\\.?|p\\.?m\\.?)|\\d{1,2}:\\d{2})(?:\\s*(?:to|through|until|–|—|-)\\s*(?:noon|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:a\\.?m\\.?|p\\.?m\\.?)?|\\d{1,2}:\\d{2}))?\\b';
+const DAY_RANGE_PATTERN = new RegExp(DAY_RANGE_SOURCE, 'i');
+const PLURAL_DAY_PATTERN = new RegExp(PLURAL_DAY_SOURCE, 'i');
+const CLOCK_PATTERN = new RegExp(CLOCK_SOURCE, 'i');
 
 function withoutCueHits(text: string, cues: readonly FactCue[]): string {
   let rest = text;
@@ -1171,53 +1217,346 @@ function withoutCueHits(text: string, cues: readonly FactCue[]): string {
   return rest;
 }
 
-/**
- * Short fields need more than the generic two-thirds share.
- * A cue field stays only when every stated cue, polarity word, and leftover
- * content word is in one passage. known_for and vibe require every content token.
- * Returns null when the fact names nothing those rules can check.
- */
-function fieldSupportPatterns(field: BriefingField, factText: string): RegExp[] | null {
-  if (field === 'known_for' || field === 'vibe') {
-    const skip = new Set([
-      ...FUNCTION_WORDS,
-      ...(field === 'known_for' ? KNOWN_FOR_FILLER : VIBE_FILLER),
-    ]);
-    const tokens = wordsAtLeast(factText, field === 'known_for' ? 3 : 4, skip);
-    const patterns = [...tokens.map((word) => wordPattern(word)), ...polarityPatterns(factText)];
-    return patterns.length > 0 ? patterns : null;
-  }
+function matchedCues(field: BriefingField, text: string): FactCue[] {
   const spec = CUE_FIELDS[field];
-  if (!spec) return null;
-  const matched = spec.cues.filter((cue) => cue.pattern.test(factText));
-  if (matched.length === 0) return null;
-  const skip = new Set([...FUNCTION_WORDS, ...spec.filler]);
-  const extra = wordsAtLeast(withoutCueHits(factText, matched), 4, skip);
-  return [
-    ...matched.map((cue) => cue.pattern),
-    ...extra.map((word) => wordPattern(word)),
-    ...polarityPatterns(factText),
-  ];
+  if (!spec) return [];
+  return spec.cues.filter((cue) => cue.pattern.test(text));
 }
 
-function findFieldSupportPassage(field: BriefingField, factText: string, pageText: string): string | null {
-  const patterns = fieldSupportPatterns(field, factText);
-  if (!patterns) return null;
-  const anchors = extractAnchors(factText);
+function fillerFor(field: BriefingField): ReadonlySet<string> {
+  if (field === 'known_for') return new Set([...FUNCTION_WORDS, ...KNOWN_FOR_FILLER]);
+  if (field === 'vibe') return new Set([...FUNCTION_WORDS, ...VIBE_FILLER]);
+  const spec = CUE_FIELDS[field];
+  return new Set([...FUNCTION_WORDS, ...(spec?.filler ?? [])]);
+}
+
+function factTokens(text: string): string[] {
+  return text.match(/[A-Za-z0-9\u00C0-\u024F]+(?:-[A-Za-z0-9\u00C0-\u024F]+)*/g) ?? [];
+}
+
+function stemToken(token: string): string {
+  const compact = token.toLowerCase().replace(/-/g, '');
+  const irregular = STEM_IRREGULAR[compact];
+  if (irregular) return irregular;
+  if (compact.length > 3 && compact.endsWith('ies')) return `${compact.slice(0, -3)}y`;
+  if (compact.length > 3 && compact.endsWith('s') && !compact.endsWith('ss')) return compact.slice(0, -1);
+  return compact;
+}
+
+function passageStems(passage: string): Set<string> {
+  const tokens = factTokens(passage).map((token) => token.toLowerCase());
+  const stems = new Set<string>();
+  for (const token of tokens) stems.add(stemToken(token));
+  for (let index = 0; index < tokens.length - 1; index += 1) {
+    stems.add(stemToken(`${tokens[index]}-${tokens[index + 1]}`));
+  }
+  return stems;
+}
+
+function contentStems(field: BriefingField, item: string): string[] {
+  const skip = fillerFor(field);
+  const cues = matchedCues(field, item);
+  const source = cues.length > 0 ? withoutCueHits(item, cues) : item;
+  const proper = new Set(extractAnchors(item).properNouns.map((word) => word.toLowerCase()));
+  const polarity = new Set<string>(POLARITY_WORDS);
+  const claims = new Set<string>(STRICT_CLAIM_WORDS);
+  const stems: string[] = [];
+  for (const token of factTokens(source)) {
+    const lower = token.toLowerCase();
+    if (proper.has(lower) || polarity.has(lower) || claims.has(lower) || skip.has(lower)) continue;
+    if (lower.replace(/-/g, '').length < ITEM_CONTENT_MIN_LENGTH) continue;
+    stems.push(stemToken(token));
+  }
+  return [...new Set(stems)];
+}
+
+function itemWords(item: string): Set<string> {
+  return new Set(factTokens(item).map((token) => token.toLowerCase()));
+}
+
+function strictItemHolds(field: BriefingField, item: string, passage: string): boolean {
+  if (!anchorsInPassage(extractAnchors(item), passage)) return false;
+  const words = itemWords(item);
+  for (const word of POLARITY_WORDS) {
+    if (words.has(word) && !hasWord(passage, word)) return false;
+  }
+  for (const word of STRICT_CLAIM_WORDS) {
+    if (words.has(word) && !hasWord(passage, word)) return false;
+  }
+  return matchedCues(field, item).every((cue) => cue.pattern.test(passage));
+}
+
+function shareMet(hits: number, total: number): boolean {
+  if (total === 0) return true;
+  return hits * ITEM_SUPPORT_DENOMINATOR >= total * ITEM_SUPPORT_NUMERATOR;
+}
+
+function itemHasAnchor(item: string): boolean {
+  const anchors = extractAnchors(item);
+  const words = itemWords(item);
+  if (anchors.numbers.length + anchors.properNouns.length + anchors.times.length + anchors.prices.length > 0) {
+    return true;
+  }
+  if (POLARITY_WORDS.some((word) => words.has(word))) return true;
+  return STRICT_CLAIM_WORDS.some((word) => words.has(word));
+}
+
+/** One passage that holds this item's cues, anchors, and a 75% share of its content words. */
+function findItemPassage(field: BriefingField, item: string, pageText: string): string | null {
+  const stems = contentStems(field, item);
+  const cues = matchedCues(field, item);
+  if (stems.length === 0 && cues.length === 0 && !itemHasAnchor(item)) return null;
   let best: string | null = null;
   for (const passage of passageWindows(pageText)) {
-    if (!anchorsInPassage(anchors, passage)) continue;
-    if (!patterns.every((pattern) => pattern.test(passage))) continue;
+    if (!strictItemHolds(field, item, passage)) continue;
+    if (stems.length > 0) {
+      const keys = passageStems(passage);
+      const hits = stems.filter((stem) => keys.has(stem)).length;
+      if (!shareMet(hits, stems.length)) continue;
+    }
     if (!best || passage.length < best.length) best = passage;
   }
   return best;
+}
+
+function splitSentences(text: string): string[] {
+  const saved: string[] = [];
+  const shielded = text.replace(
+    /\b(?:https?:\/\/|www\.)\S+|\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b|\d+\.\d+/gi,
+    (match) => {
+      const body = /^(?:https?:\/\/|www\.)/i.test(match) ? match.replace(/[.!?]+$/g, '') : match;
+      saved.push(body);
+      return `\u0000${saved.length - 1}\u0000${match.slice(body.length)}`;
+    },
+  );
+  return (shielded.match(/[^.!?]+(?:[.!?]+(?:\s|$)|$)/g) ?? [])
+    .map((part) =>
+      part
+        .trim()
+        .replace(/\u0000(\d+)\u0000/g, (_match, index: string) => saved[Number(index)] ?? '')
+        .trim(),
+    )
+    .filter((part) => part.length > 0);
+}
+
+function cleanPiece(text: string): string {
+  return text
+    .replace(/[.!?]+$/g, '')
+    .replace(/^(?:and|or)\s+/i, '')
+    .replace(/\s+(?:and|or)$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function splitListPieces(sentence: string): string[] {
+  return sentence
+    .split(/\s*;\s*|\s*,\s*|\s+\band\b\s+/i)
+    .map((part) => cleanPiece(part))
+    .filter((part) => part.length > 0);
+}
+
+function minimumSupportedItems(field: BriefingField, splitCount: number): number {
+  if (field === 'reservations' || field === 'seating') return 1;
+  if (splitCount <= 1) return 1;
+  return LIST_KEEP_MINIMUM;
+}
+
+function readsAsSentence(text: string): boolean {
+  const trimmed = text.trim();
+  if (!/^[A-Z]/.test(trimmed) || !/[.!?]$/.test(trimmed)) return false;
+  if (/^(?:and|or|but)\b/i.test(trimmed)) return false;
+  const words = trimmed.replace(/[.!?]+$/g, '').split(/\s+/).filter(Boolean);
+  return words.length >= 2;
+}
+
+function joinList(parts: readonly string[]): string {
+  const cleaned = parts.map((part) => cleanPiece(part)).filter((part) => part.length > 0);
+  let body = '';
+  if (cleaned.length === 1) body = cleaned[0] ?? '';
+  else if (cleaned.length === 2) body = `${cleaned[0]} and ${cleaned[1]}`;
+  else body = `${cleaned.slice(0, -1).join(', ')}, and ${cleaned[cleaned.length - 1]}`;
+  const sentence = `${body.charAt(0).toUpperCase()}${body.slice(1)}`;
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`;
+}
+
+type ItemPiece = { text: string; passage: string | null };
+
+function uniquePassages(passages: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const unique: string[] = [];
+  for (const passage of passages) {
+    if (seen.has(passage)) continue;
+    seen.add(passage);
+    unique.push(passage);
+  }
+  return unique;
+}
+
+function rebuildFieldText(
+  factText: string,
+  groups: readonly { sentence: string; pieces: readonly ItemPiece[] }[],
+): string | null {
+  const keptSentences: string[] = [];
+  for (const group of groups) {
+    const kept = group.pieces.filter((piece) => piece.passage);
+    if (kept.length === 0) continue;
+    if (kept.length === group.pieces.length) {
+      keptSentences.push(group.sentence.trim());
+      continue;
+    }
+    keptSentences.push(joinList(kept.map((piece) => piece.text)));
+  }
+  if (keptSentences.length === 0) return null;
+  const text = keptSentences.join(' ');
+  if (text === factText.trim()) return factText;
+  return readsAsSentence(text) ? text : null;
+}
+
+type GroundedField = { text: string; passage: string; trimmed: string[] };
+
+/**
+ * List items may sit in different passages of the same page.
+ * A trimmed list is kept when enough items remain and the result is still a sentence.
+ * Returns null when the cue gate fails or too little of the fact is on the page.
+ */
+function groundFieldFact(field: BriefingField, factText: string, pageText: string): GroundedField | null {
+  if (CUE_FIELDS[field] && matchedCues(field, factText).length === 0) return null;
+  const groups = splitSentences(factText).map((sentence) => ({
+    sentence,
+    pieces: splitListPieces(sentence).map((text) => ({
+      text,
+      passage: findItemPassage(field, text, pageText),
+    })),
+  }));
+  const pieces = groups.flatMap((group) => group.pieces);
+  if (pieces.length === 0) return null;
+  const supported = pieces.filter((piece) => piece.passage);
+  if (supported.length < minimumSupportedItems(field, pieces.length)) return null;
+  const trimmed = pieces.filter((piece) => !piece.passage).map((piece) => piece.text);
+  const text = trimmed.length === 0 ? factText : rebuildFieldText(factText, groups);
+  if (!text) return null;
+  const passages = uniquePassages(supported.flatMap((piece) => (piece.passage ? [piece.passage] : [])));
+  if (passages.length === 0) return null;
+  return {
+    text,
+    passage: passages.length === 1 ? (passages[0] ?? '') : passages.join(' … '),
+    trimmed,
+  };
+}
+
+function findFieldSupportPassage(field: BriefingField, factText: string, pageText: string): string | null {
+  const grounded = groundFieldFact(field, factText, pageText);
+  if (!grounded || grounded.trimmed.length > 0) return null;
+  return grounded.passage;
+}
+
+function blockCategory(text: string): BlockCategory | null {
+  if (PHONE_PATTERN.test(text)) return 'phone';
+  if (EMAIL_PATTERN.test(text)) return 'email';
+  if (URL_PATTERN.test(text)) return 'url';
+  if (PRICE_PATTERN.test(text)) return 'price';
+  if (PROMO_PATTERN.test(text)) return 'promo';
+  if (META_PATTERN.test(text)) return 'meta';
+  if (DAY_RANGE_PATTERN.test(text) || PLURAL_DAY_PATTERN.test(text) || CLOCK_PATTERN.test(text)) return 'hours';
+  return null;
+}
+
+function tidyClause(text: string): string {
+  return text
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\s+([,.;!?])/g, '$1')
+    .replace(/\(\s*\)/g, '')
+    .replace(/^(?:and|or|but)\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function exciseHours(clause: string): { text: string; phrases: string[] } {
+  const phrases: string[] = [];
+  let text = clause;
+  for (const source of [DAY_RANGE_SOURCE, PLURAL_DAY_SOURCE, CLOCK_SOURCE]) {
+    text = text.replace(new RegExp(source, 'gi'), (match) => {
+      phrases.push(match.trim());
+      return ' ';
+    });
+  }
+  return { text: tidyClause(text), phrases };
+}
+
+function clauseWordCount(text: string): number {
+  return tidyClause(text)
+    .replace(/[.!?]+$/g, '')
+    .split(/\s+/)
+    .filter((word) => /[A-Za-z]/.test(word)).length;
+}
+
+function splitClauses(sentence: string): string[] {
+  return sentence
+    .split(/\s*;\s*|\s*,\s*/)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+function primaryCategory(removed: readonly RemovedBlock[]): BlockCategory {
+  return BLOCK_PRIORITY.find((category) => removed.some((piece) => piece.category === category)) ?? 'meta';
+}
+
+function blockedDetailReason(removed: readonly RemovedBlock[]): string | null {
+  if (removed.length === 0) return null;
+  return `blocked detail (${primaryCategory(removed)})`;
+}
+
+function stripSentence(sentence: string): { text: string | null; removed: RemovedBlock[] } {
+  const removed: RemovedBlock[] = [];
+  const kept: string[] = [];
+  let changed = false;
+  for (const clause of splitClauses(sentence)) {
+    const category = blockCategory(clause);
+    if (!category) {
+      kept.push(clause);
+      continue;
+    }
+    changed = true;
+    if (category === 'hours') {
+      const excised = exciseHours(clause);
+      if (clauseWordCount(excised.text) >= 3 && !blockCategory(excised.text)) {
+        for (const phrase of excised.phrases) removed.push({ text: phrase, category: 'hours' });
+        kept.push(excised.text);
+        continue;
+      }
+    }
+    removed.push({ text: tidyClause(clause), category });
+  }
+  if (!changed) return { text: sentence.trim(), removed };
+  if (kept.length === 0) return { text: null, removed };
+  const joined = joinList(kept);
+  return readsAsSentence(joined) ? { text: joined, removed } : { text: null, removed };
+}
+
+/** Drop or cut phone, email, URL, price, promo, hours, and source commentary. */
+function stripBlockedDetails(fact: string): { text: string | null; removed: RemovedBlock[] } {
+  const removed: RemovedBlock[] = [];
+  const kept: string[] = [];
+  let changed = false;
+  for (const sentence of splitSentences(fact)) {
+    const stripped = stripSentence(sentence);
+    removed.push(...stripped.removed);
+    if (stripped.text !== sentence.trim()) changed = true;
+    if (stripped.text) kept.push(stripped.text);
+    else changed = true;
+  }
+  if (kept.length === 0) return { text: null, removed };
+  if (!changed) return { text: fact, removed };
+  const text = kept.join(' ');
+  return readsAsSentence(text) ? { text, removed } : { text: null, removed };
 }
 
 /**
  * A fact stays only when one passage of this page holds a two-thirds share of
  * its distinctive words and every number, time, price, and proper noun in it.
  * Generic words such as "parking" and "street" do not carry the fact.
- * vibe, known_for, good_for, seating, and reservations use field-specific rules.
+ * vibe, known_for, good_for, seating, and reservations match each list item on
+ * this page. Items may sit in different passages. A partial list is not a full match.
  */
 export function findSupportPassage(
   factText: string,
@@ -1378,17 +1717,31 @@ function supportDecision(
   field: BriefingField,
   factText: string,
   page: FetchedPage,
-): { passage: string } | { reason: string } {
-  const passage = findSupportPassage(factText, page.text, field);
-  if (!passage) {
-    return { reason: FIELD_SPECIFIC.has(field) ? 'failed field cue check' : 'no support passage' };
+): { passage: string; text: string; trimmed: string[] } | { reason: string } {
+  if (FIELD_SPECIFIC.has(field)) {
+    const grounded = groundFieldFact(field, factText, page.text);
+    if (!grounded) return { reason: 'failed field cue check' };
+    const withoutReviews = pageTextWithoutReviews(page);
+    if (
+      PHYSICAL_FEATURE_FIELDS.has(field) &&
+      withoutReviews != null &&
+      !groundFieldFact(field, grounded.text, withoutReviews)
+    ) {
+      return { reason: 'review-only source' };
+    }
+    return { passage: grounded.passage, text: grounded.text, trimmed: grounded.trimmed };
   }
-  if (!PHYSICAL_FEATURE_FIELDS.has(field)) return { passage };
+  const passage = findGenericSupportPassage(factText, page.text);
+  if (!passage) return { reason: 'no support passage' };
   const withoutReviews = pageTextWithoutReviews(page);
-  if (withoutReviews != null && !findSupportPassage(factText, withoutReviews, field)) {
+  if (
+    PHYSICAL_FEATURE_FIELDS.has(field) &&
+    withoutReviews != null &&
+    !findGenericSupportPassage(factText, withoutReviews)
+  ) {
     return { reason: 'review-only source' };
   }
-  return { passage };
+  return { passage, text: factText, trimmed: [] };
 }
 
 export function parseBriefingModelJson(text: string): unknown {
@@ -1484,21 +1837,50 @@ export function filterSupportedFacts(args: {
       });
       continue;
     }
-    const decision = supportDecision(field, body, page);
-    if ('reason' in decision) {
+    const blocked = stripBlockedDetails(body);
+    if (!blocked.text) {
       pushDropped(dropped, droppedFacts, {
         field,
         text: body,
+        sourceUrl,
+        reason:
+          blockedDetailReason(blocked.removed) ??
+          (FIELD_SPECIFIC.has(field) ? 'failed field cue check' : 'no support passage'),
+      });
+      continue;
+    }
+    for (const piece of blocked.removed) {
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: piece.text,
+        sourceUrl,
+        reason: `blocked detail (${piece.category})`,
+      });
+    }
+    const decision = supportDecision(field, blocked.text, page);
+    if ('reason' in decision) {
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: blocked.text,
         sourceUrl,
         reason: decision.reason,
       });
       continue;
     }
+    for (const item of decision.trimmed) {
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: item,
+        sourceUrl,
+        reason: 'item not on page',
+      });
+    }
     const supportPassage = decision.passage;
+    const keptText = decision.text;
     if (seen.has(field)) {
       pushDropped(dropped, droppedFacts, {
         field,
-        text: body,
+        text: keptText,
         sourceUrl,
         reason: 'duplicate',
       });
@@ -1508,8 +1890,8 @@ export function filterSupportedFacts(args: {
     const rawSummary = record.change_summary;
     const changeSummary = typeof rawSummary === 'string' && rawSummary.trim() ? rawSummary.trim() : undefined;
     kept.push(changeSummary
-      ? { field, text: body, sourceUrl, supportPassage, changeSummary }
-      : { field, text: body, sourceUrl, supportPassage });
+      ? { field, text: keptText, sourceUrl, supportPassage, changeSummary }
+      : { field, text: keptText, sourceUrl, supportPassage });
   }
   kept.sort((a, b) => BRIEFING_FIELDS.indexOf(a.field) - BRIEFING_FIELDS.indexOf(b.field));
   return { kept, dropped, droppedFacts };
@@ -1524,7 +1906,8 @@ export function briefingSystemPrompt(): string {
     'source_url must be copied exactly from the fetched URL list.',
     'Do not invent, guess, or use outside knowledge.',
     'Omit a field when the pages do not support it. An empty facts array is valid.',
-    'Do not include prices, offers, discounts, credits, or bookings.',
+    'Do not include phone numbers, email addresses, URLs, prices, dollar amounts, hours, day-of-week schedules, promos, discounts, credits, or bookings.',
+    'Do not write that something is not mentioned, and do not write "the website says" or "according to".',
     'Follow the research guide below. It is the field rules for this extraction.',
     restaurantFactsGuideForPrompt(RESTAURANT_FACTS_GUIDE),
   ].join('\n');
@@ -2273,10 +2656,29 @@ function mergePageAndPlacesFacts(
       });
       continue;
     }
+    const blocked = stripBlockedDetails(fact.text.trim());
+    const blockedReason = blockedDetailReason(blocked.removed);
+    if (!blocked.text) {
+      pushDropped(dropped, droppedFacts, {
+        field: fact.field,
+        text: fact.text,
+        sourceUrl,
+        reason: blockedReason ?? 'outside the fact checks',
+      });
+      continue;
+    }
+    for (const piece of blocked.removed) {
+      pushDropped(dropped, droppedFacts, {
+        field: fact.field,
+        text: piece.text,
+        sourceUrl,
+        reason: `blocked detail (${piece.category})`,
+      });
+    }
     seen.add(fact.field);
     kept.push({
       field: fact.field,
-      text: fact.text.trim(),
+      text: blocked.text,
       sourceUrl,
       supportPassage: fact.supportPassage,
     });
@@ -2633,6 +3035,25 @@ export function placesReportLine(units: ModelUsage): string {
   return `Places: ${parts.join('; ')}`;
 }
 
+function dropReasonCounts(run: BriefingRun): [string, number][] {
+  const counts = new Map<string, number>();
+  const add = (reason: string) => counts.set(reason, (counts.get(reason) ?? 0) + 1);
+  for (const restaurant of run.restaurants) {
+    const facts = restaurant.droppedFacts ?? [];
+    const summarized = new Set(facts.map((fact) => droppedFactSummary(fact)));
+    for (const fact of facts) add(fact.reason);
+    for (const line of restaurant.dropped) {
+      if (!summarized.has(line)) add(line);
+    }
+  }
+  return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+}
+
+function formatDropReasonLines(counts: readonly [string, number][]): string[] {
+  if (counts.length === 0) return ['Drop reasons: none'];
+  return ['Drop reasons:', ...counts.map(([reason, count]) => `- ${reason}: ${count}`)];
+}
+
 function formatSkippedTestLines(run: BriefingRun): string[] {
   if (!run.skippedTestRestaurants) return [];
   const suffix = run.includeTestRestaurants ? ' (--include-test)' : '';
@@ -2658,7 +3079,9 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
       droppedFacts: (restaurant.droppedFacts ?? []).map(publicDroppedFact),
     };
   });
-  const json = `${JSON.stringify({ schema: 'wanderbite.e06.briefing_research.v1', ...run, fieldCountTotals, restaurants }, null, 2)}\n`;
+  const reasonCounts = dropReasonCounts(run);
+  const dropReasonCountsJson = Object.fromEntries(reasonCounts);
+  const json = `${JSON.stringify({ schema: 'wanderbite.e06.briefing_research.v1', ...run, fieldCountTotals, dropReasonCounts: dropReasonCountsJson, restaurants }, null, 2)}\n`;
   const lines = [
     '# First-visit briefing research',
     '',
@@ -2673,6 +3096,8 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
     '',
     'Field counts:',
     ...formatFieldCountLines(fieldCountTotals),
+    '',
+    ...formatDropReasonLines(reasonCounts),
     '',
   ];
   for (const restaurant of restaurants) {

@@ -11,7 +11,10 @@ Use this guide to extract first-visit facts from the supplied page text. The ton
 
 - Use only what the supplied page text says.
 - Do not use outside knowledge.
-- Do not include prices, offers, discounts, credits, or bookings.
+- Do not include prices, offers, discounts, credits, bookings, dollar amounts, phone numbers, email addresses, or URLs.
+- Do not include hours of operation, clock times, or day-of-week schedules such as "Tuesday through Saturday" or "Sundays."
+- Do not include promos or free-deal offers such as "kids eat free."
+- Do not write source commentary such as "not mentioned," "the website says," or "according to." Say the fact, or omit the field.
 - Do not include reviewer names or quotes.
 - A single user review comment is not enough support for a physical feature (parking, arrival, accessibility, seating, or a patio). Structured details on a listing page count.
 - Paraphrase. Do not copy long passages.
@@ -95,8 +98,8 @@ Bad: The best lobster thermidor in Texas, and a must-order at $42.
 
 ### good_for
 
-What counts: An occasion or group the page states, such as date night, groups, families, kids, solo, or sports watching.
-What does not count: An occasion you think fits, or a crowd the page never mentions.
+What counts: An occasion or group the page states, such as date night, groups, families, kids, solo, sports, weddings, rehearsal dinners, corporate or work events, meetings, private events, friends, live music, dogs, lunch, happy hour, or watching games.
+What does not count: An occasion you think fits, a crowd the page never mentions, or a promo.
 Max length: 400 characters.
 Tone: plain, warm, and factual. No hype. No superlatives the source does not state.
 Good: Good for kids and for date night.
@@ -113,9 +116,9 @@ Bad: The stunning rooftop is the only place to sit, and it books out instantly.
 
 ### reservations
 
-What counts: Whether the page says they take reservations, walk-ins, or a waitlist.
-What does not count: A booking link, an offer, a phone number used as a pitch, or a policy you filled in.
+What counts: Whether the page says they take reservations, walk-ins, or a waitlist. A clear yes, no, walk-in, or recommended is fine when the page says that. Say recommended only when the page says recommended. Available does not mean recommended.
+What does not count: A booking link, an offer, a phone number, a policy you filled in, or a note that reservations are "not mentioned."
 Max length: 400 characters.
 Tone: plain, warm, and factual. No hype. No superlatives the source does not state.
 Good: Walk-ins are welcome. Reservations are not required.
-Bad: Book the exclusive chef's table now and save 20 percent.
+Bad: Reservations are recommended. Call (214) 555-0199. The website says walk-ins are not mentioned.
