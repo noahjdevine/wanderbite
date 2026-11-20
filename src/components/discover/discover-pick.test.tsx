@@ -328,4 +328,102 @@ describe('DiscoverPick directions', () => {
     expect(screen.queryByText('An alternative')).toBeNull();
     expect(screen.queryByText(/not a match/i)).toBeNull();
   });
+
+  it('shows a New to you chip with researched notes', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: {
+            ...pickEvent({ id: 'rest-1', name: 'Noodle House', cuisine: 'Noodles' }),
+            isNewToMember: true,
+            facts: [
+              {
+                field: 'known_for',
+                label: 'Known for',
+                text: 'Hand-pulled noodles.',
+                sourceUrl: 'https://example.com/known',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        steps={[
+          { type: 'step', id: 'memory', label: 'From your visits', line: "You haven't been to Noodle House yet." },
+        ]}
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText('New to you')).toBeTruthy();
+    expect(screen.getByText("You haven't been to Noodle House yet.")).toBeTruthy();
+    expect(screen.queryByText('New to your Passport')).toBeNull();
+    expect(
+      screen.getByText(
+        (_, node) => node?.tagName === 'P' && node.textContent === 'Known for Hand-pulled noodles.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Checked Nov 5, 2026')).toBeTruthy();
+    expect(screen.getByText('Picked for you')).toBeTruthy();
+  });
+
+  it('shows the chip without notes and hides it after a verified visit', () => {
+    const { rerender } = render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: { ...pickEvent({ id: 'rest-1', name: 'Noodle House' }), isNewToMember: true },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText('New to you')).toBeTruthy();
+    expect(screen.queryByText(/^Checked /)).toBeNull();
+
+    rerender(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: pickEvent({ id: 'rest-1', name: 'Noodle House' }),
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        steps={[
+          { type: 'step', id: 'memory', label: 'From your visits', line: "You've been here before." },
+        ]}
+        {...handlers}
+      />,
+    );
+    expect(screen.queryByText('New to you')).toBeNull();
+    expect(screen.getByText("You've been here before.")).toBeTruthy();
+    expect(screen.getByText('Picked for you')).toBeTruthy();
+  });
+
+  it('keeps the Closest pick badge when a fallback is new to the member', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'fallback',
+          event: {
+            type: 'fallback',
+            reason: 'no_match',
+            message: "Closest I've got: Noodle House. It may not match everything you asked for.",
+            tone: 'alternative',
+            alternative: { id: 'rest-1', name: 'Noodle House' },
+            isNewToMember: true,
+          },
+        }}
+        food="generic"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText('Closest pick')).toBeTruthy();
+    expect(screen.getByText('New to you')).toBeTruthy();
+    expect(screen.queryByText('Picked for you')).toBeNull();
+    expect(screen.queryByText(/not a match/i)).toBeNull();
+  });
 });

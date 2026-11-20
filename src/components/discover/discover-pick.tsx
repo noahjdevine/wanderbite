@@ -99,6 +99,9 @@ export function DiscoverPick({
   const showCloser = closerChipIncluded(partner);
   const meta = [partner.cuisine, partner.neighborhood].filter((part): part is string => Boolean(part));
   const facts = presentDiscoverCardFacts(outcome.event.facts);
+  const isNewToMember = alternative
+    ? outcome.event.isNewToMember === true
+    : outcome.event.isNewToMember;
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -109,7 +112,7 @@ export function DiscoverPick({
       {steps.length > 0 ? (
         <ol aria-live="polite" className="mb-3 list-none p-0 text-sm text-white/80">
           {steps.map((step) => (
-            <li key={step.id}>{step.label}</li>
+            <li key={step.id}>{step.id === 'memory' ? step.line : step.label}</li>
           ))}
         </ol>
       ) : null}
@@ -121,11 +124,6 @@ export function DiscoverPick({
             name={partner.name}
             priority
           />
-          {!alternative && outcome.event.isNewToMember ? (
-            <p className="wb-spin absolute top-4 right-4 flex h-20 w-20 items-center justify-center rounded-full bg-wb-blush text-center font-display text-lg text-wb-blush-ink">
-              New to your Passport
-            </p>
-          ) : null}
         </div>
 
         <section
@@ -145,6 +143,11 @@ export function DiscoverPick({
           </h1>
           <div className="flex flex-wrap items-center gap-2">
             {meta.length > 0 ? <span className="text-sm text-white/80">{meta.join(' · ')}</span> : null}
+            {isNewToMember ? (
+              <span className="inline-flex items-center rounded-full bg-wb-blush px-2 py-0.5 text-xs font-semibold text-wb-blush-ink">
+                New to you
+              </span>
+            ) : null}
             {offer ? (
               <span className="rounded-full bg-emerald-300 px-2 py-1 text-xs font-bold text-emerald-950">
                 {offerChipLabel(offer)}

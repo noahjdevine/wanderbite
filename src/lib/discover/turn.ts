@@ -82,6 +82,11 @@ import { logBriefingsReadFailedOnce } from '@/lib/briefings/flag';
 import { loadDiscoverBriefingFacts } from '@/lib/briefings/load';
 import type { RestaurantBriefings } from '@/lib/briefings/types';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
+import { preferUnvisitedRestaurants } from '@/lib/discover/member-memory';
+import {
+  loadMemberVisitedRestaurantIds,
+  logMemberVisitsReadFailedOnce,
+} from '@/lib/discover/member-visits';
 import {
   DISCOVER_FACT_PROMPT_NOTE,
   discoverCardFacts,
@@ -135,7 +140,7 @@ export type DiscoverTurnResult = {
   selectionMode: RouletteSelectionMode | null;
 };
 
-function pickRandom<T>(arr: T[]): T {
+function pickRandom<T>(arr: readonly T[]): T {
   return arr[Math.floor(Math.random() * arr.length)]!;
 }
 
@@ -483,14 +488,34 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
 
     restaurants = applyRestaurantExclusion(restaurants, excludeRestaurantIds);
 
-    let briefingFacts: RestaurantBriefings = { byRestaurantId: {} };
-    try {
-      briefingFacts = await loadDiscoverBriefingFacts({
-        restaurantIds: restaurants.map((row) => row.id),
-      });
-    } catch {
-      logBriefingsReadFailedOnce();
+    const restaurantIds = restaurants.map((row) => row.id);
+    async function readBriefingFacts(): Promise<RestaurantBriefings> {
+      try {
+        return await loadDiscoverBriefingFacts({ restaurantIds });
+      } catch {
+        logBriefingsReadFailedOnce();
+        return { byRestaurantId: {} };
+      }
     }
+    async function readVisitedRestaurants(): Promise<ReadonlySet<string> | null> {
+      if (!userId) return null;
+      try {
+        return await loadMemberVisitedRestaurantIds(admin, userId, restaurantIds);
+      } catch {
+        logMemberVisitsReadFailedOnce();
+        return null;
+      }
+    }
+    const [briefingFacts, visitedRestaurantIds] = await Promise.all([
+      readBriefingFacts(),
+      readVisitedRestaurants(),
+    ]);
+
+    // Fallback only. The prompt and the facts loader keep `restaurants`.
+    const fallbackPool = (): readonly RouletteRestaurant[] =>
+      visitedRestaurantIds == null
+        ? restaurants
+        : preferUnvisitedRestaurants(restaurants, visitedRestaurantIds);
 
     const byId = new Map(restaurants.map((r) => [r.id, r]));
     const poolIds = new Set(byId.keys());
@@ -520,6 +545,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
           providerTimedOut,
           askTone,
           facts: discoverCardFacts(briefingFacts.byRestaurantId[chosen.id] ?? []),
+          visitedRestaurantIds,
         }),
       });
     };
@@ -536,7 +562,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
         reason,
         ...discoverBase(requestId),
       });
-      const chosen = pickRandom(restaurants);
+      const chosen = pickRandom(fallbackPool());
       return cardEvents(chosen, 'random_fallback', reason, false);
     };
 
@@ -773,7 +799,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
     const modelReason = modelPickFallbackReason({ providerFailed, parsedId, pickValid });
     const chosen = pickValid && parsedId ? promptRows.find((row) => row.id === parsedId) : undefined;
     const selectionMode: RouletteSelectionMode = chosen ? 'ai' : 'random_fallback';
-    const cardRestaurant = chosen ?? pickRandom(restaurants);
+    const cardRestaurant = chosen ?? pickRandom(fallbackPool());
 
     await accountForOutcome({
       requestId: reserved.request_id,

@@ -9,17 +9,20 @@ import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
  *   Dietary constraints are required. Free text is not turned into extra chips.
  * - filter: active launch-market partners after the dietary and exclusion filters.
  *   `total` is that pool. `sample` is the first three, in query order.
- * - memory: omitted. This pipeline does not read verified visits, ratings, or notes.
+ * - memory: only when a signed-in member's verified-visit read succeeded.
+ *   The line uses that visit set and the restaurant name. It does not use
+ *   ratings or note text. Guests and a failed read omit the step.
  * - rank: omitted. The model returns one restaurant id, and a random fallback draws one.
  *   Nothing stores a runner-up, so there is no rank step and no runnerUp.
  * - pick: only when `selectionMode` is `ai`. matched / unknown / unmet come from the
- *   parsed constraints and the chosen row. `isNewToMember` stays false because
- *   redemption history is not loaded. Optional `facts` are up to two researched
- *   notes for the card. They are not chips.
+ *   parsed constraints and the chosen row. `isNewToMember` is true when that
+ *   visit read succeeded and the chosen restaurant is not in it. Optional
+ *   `facts` are up to two researched notes for the card. They are not chips.
  * - fallback: a random pick. `alternative` is that restaurant. A surprise or another
  *   idea is a suggestion. A request with constraints is a closest pick, and the
  *   copy never calls it a match. `tone` is the card label. Optional `facts` use
- *   the same card notes. The spec's fallback object has no partner; `alternative`
+ *   the same card notes. Optional `isNewToMember` uses the same visit read as
+ *   the pick. The spec's fallback object has no partner; `alternative`
  *   is how Phase 2.1c can render the same restaurant `/api/roulette` returns.
  */
 
@@ -133,10 +136,27 @@ export type DiscoverEvent =
       tone?: DiscoverFallbackTone;
       /** Omitted when the restaurant has no eligible card notes. */
       facts?: DiscoverCardFact[];
+      /**
+       * Present when the member's verified visits were read. True when this
+       * restaurant is not among them. Omitted for a guest or a failed read.
+       */
+      isNewToMember?: boolean;
     }
   | { type: 'error'; message: string };
 
 export const PARSE_STEP_LABEL = 'Reading your vibe';
+
+export const MEMORY_STEP_LABEL = 'From your visits';
+
+/**
+ * Copy for the memory step. A new restaurant names the place. A previous
+ * verified visit stays plain and does not mention a rating, a note, or a date.
+ */
+export function memoryStepLine(name: string, isNewToMember: boolean): string {
+  if (!isNewToMember) return "You've been here before.";
+  const place = name.trim();
+  return place.length > 0 ? `You haven't been to ${place} yet.` : "You haven't been here yet.";
+}
 
 export function filterStepLabel(total: number): string {
   return `Looking through ${total} local partners`;

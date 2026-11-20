@@ -54,6 +54,8 @@ import { GET, POST } from '@/app/api/discover/route';
 import { POST as roulettePost } from '@/app/api/roulette/route';
 import { ANTHROPIC_HAIKU_SNAPSHOT, ROULETTE_MAX_OUTPUT_TOKENS } from '@/lib/ai-budget/models';
 import { resetBriefingsLogs } from '@/lib/briefings/flag';
+import { DISCOVER_FALLBACK_LOG } from '@/lib/discover/fallback-reason';
+import { resetMemberVisitsReadLog } from '@/lib/discover/member-visits';
 import type { BriefingRecord } from '@/lib/briefings/types';
 import { DISCOVER_FACT_PROMPT_NOTE } from '@/lib/discover/briefing-facts';
 import { LAUNCH_MARKET } from '@/lib/launch-market';
@@ -119,6 +121,17 @@ type BriefingResult = { data: unknown; error: { code?: string; message?: string 
 
 let briefingResult: BriefingResult = { data: [], error: null };
 let briefingCalls: unknown[][] = [];
+
+type VisitRow = {
+  restaurant_id: string;
+  status: string;
+  verified_at?: string | null;
+};
+
+let redemptionRows: VisitRow[] | null = [];
+let redemptionError: { message: string } | null = null;
+let redemptionThrow = false;
+let redemptionQuery: unknown[][] = [];
 
 function briefingApi() {
   const api = {
@@ -248,8 +261,13 @@ describe('Discover stream route', () => {
     enableConfig();
     delete process.env.E06_BRIEFINGS_ENABLED;
     resetBriefingsLogs();
+    resetMemberVisitsReadLog();
     briefingResult = { data: [], error: null };
     briefingCalls = [];
+    redemptionRows = [];
+    redemptionError = null;
+    redemptionThrow = false;
+    redemptionQuery = [];
     serverFrom.mockReset();
     serverFrom.mockImplementation((table: string) => {
       briefingCalls.push(['from', table]);
@@ -268,9 +286,18 @@ describe('Discover stream route', () => {
     from.mockImplementation((table: string) => {
       tables.push(table);
       const api = {
-        select: () => api,
-        eq: () => api,
-        in: () => api,
+        select: (columns?: string) => {
+          if (table === 'redemptions') redemptionQuery.push(['select', columns]);
+          return api;
+        },
+        eq: (column?: string, value?: unknown) => {
+          if (table === 'redemptions') redemptionQuery.push(['eq', column, value]);
+          return api;
+        },
+        in: (column?: string, value?: unknown) => {
+          if (table === 'redemptions') redemptionQuery.push(['in', column, value]);
+          return api;
+        },
         maybeSingle: async () => {
           if (table === 'user_profiles') {
             return {
@@ -301,16 +328,22 @@ describe('Discover stream route', () => {
           return { data: null, error: null };
         },
         then: (
-          resolve: (value: { data: unknown; error: null }) => unknown,
+          resolve: (value: { data: unknown; error: { message: string } | null }) => unknown,
           reject?: (reason: unknown) => unknown,
-        ) =>
-          Promise.resolve(
+        ) => {
+          if (table === 'redemptions' && redemptionThrow) {
+            return Promise.reject(new Error('visits down')).then(resolve, reject);
+          }
+          const payload =
             table === 'restaurants'
               ? { data: restaurantRows, error: null }
               : table === 'admin_audit_log'
                 ? { data: offerAudits, error: null }
-                : { data: null, error: null },
-          ).then(resolve, reject),
+                : table === 'redemptions'
+                  ? { data: redemptionRows, error: redemptionError }
+                  : { data: null, error: null };
+          return Promise.resolve(payload).then(resolve, reject);
+        },
       };
       return api;
     });
@@ -397,14 +430,38 @@ describe('Discover stream route', () => {
     expect(tables).not.toEqual(expect.arrayContaining(['redemptions', 'bite_notes']));
   });
 
-  it('omits memory for a signed-in member with no history read', async () => {
+  it('labels a signed-in member with no verified visit as new', async () => {
     getUser.mockResolvedValue({ data: { user: { id: USER } } });
     const response = await POST(post({ user: true }));
     const events = parseDiscoverSse(await response.text());
-    expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+    expect(events.map((event) => (event.type === 'step' ? event.id : event.type))).toEqual([
+      'parse',
+      'filter',
+      'memory',
+      'pick',
+    ]);
+    expect(events.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You haven't been to Green Table yet.",
+    });
+    expect(events.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      isNewToMember: true,
+      partner: { id: VEGAN.id },
+    });
     expect(events.some((event) => event.type === 'step' && event.id === 'rank')).toBe(false);
-    expect(tables).toEqual(expect.arrayContaining(['user_profiles', 'user_preferences', 'restaurants']));
-    expect(tables).not.toEqual(expect.arrayContaining(['redemptions', 'bite_notes']));
+    expect(tables).toEqual(expect.arrayContaining(['user_profiles', 'user_preferences', 'restaurants', 'redemptions']));
+    expect(tables).not.toContain('bite_notes');
+    expect(redemptionQuery).toEqual([
+      ['select', 'restaurant_id, status'],
+      ['eq', 'user_id', USER],
+      ['eq', 'status', 'verified'],
+      ['in', 'restaurant_id', [VEGAN.id, BBQ.id]],
+    ]);
+    const sent = anthropicBody(fetchMock.mock.calls[0]);
+    expect(sent.system).toBe(expectedSystemPrompt());
+    expect(sent.max_tokens).toBe(ROULETTE_MAX_OUTPUT_TOKENS);
+    expect(sent.temperature).toBe(1);
+    expect(sent.messages[0]?.content ?? '').not.toContain("haven't been");
   });
 
   it('keeps every streamed partner inside a saved dietary filter, including fallback', async () => {
@@ -977,6 +1034,213 @@ describe('Discover stream route', () => {
       expect(serverFrom).toHaveBeenCalledTimes(1);
       const queried = briefingCalls.find((call) => call[0] === 'in');
       expect(queried?.[2]).toEqual(places.map((place) => place.id));
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('does not override an AI pick and still prefers an unvisited fallback', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: USER } } });
+    redemptionRows = [
+      { restaurant_id: VEGAN.id, status: 'verified', verified_at: '2020-03-08T02:30:00.000Z' },
+      { restaurant_id: VEGAN.id, status: 'issued', verified_at: null },
+    ];
+    const ai = await POST(post({ user: true }));
+    const aiEvents = parseDiscoverSse(await ai.text());
+    expect(aiEvents.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      isNewToMember: false,
+      partner: { id: VEGAN.id },
+    });
+    expect(aiEvents.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You've been here before.",
+    });
+    const prompt = anthropicBody(fetchMock.mock.calls[0]).messages[0]?.content ?? '';
+    expect(prompt).toContain(VEGAN.id);
+    expect(prompt).toContain(BBQ.id);
+    expect(prompt).not.toContain("You've been here before");
+    expect(prompt).not.toContain('verified');
+
+    vi.stubEnv('WANDERBITE_AI_DISABLED', 'true');
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const fallback = parseDiscoverSse(await (await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))).text());
+      expect(fallback.find((event) => event.type === 'fallback')).toMatchObject({
+        type: 'fallback',
+        tone: 'surprise',
+        isNewToMember: true,
+        alternative: { id: BBQ.id },
+      });
+      expect(fallback.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+        line: "You haven't been to Smokehouse yet.",
+      });
+      expect(
+        warn.mock.calls.some(
+          (call: unknown[]) =>
+            call[0] === DISCOVER_FALLBACK_LOG &&
+            (call[1] as { reason?: string; poolSize?: number; memberType?: string }).reason ===
+              'ai_disabled' &&
+            (call[1] as { poolSize?: number }).poolSize === 2 &&
+            (call[1] as { memberType?: string }).memberType === 'member',
+        ),
+      ).toBe(true);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('keeps facts when the visit read fails, and memory when the facts read fails', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: USER } } });
+    vi.stubEnv('E06_BRIEFINGS_ENABLED', 'true');
+    briefingResult = {
+      data: [factRow({ field: 'known_for', body: 'Known for hand-pulled noodles.', source_url: MAPS })],
+      error: null,
+    };
+    redemptionError = { message: 'visits down' };
+    const visitsDown = parseDiscoverSse(await (await POST(post({ user: true }))).text());
+    const visitsDownPick = visitsDown.find((event) => event.type === 'pick');
+    expect(visitsDownPick).toMatchObject({
+      type: 'pick',
+      isNewToMember: false,
+      partner: { id: VEGAN.id },
+      facts: [{ field: 'known_for', text: 'Known for hand-pulled noodles.' }],
+    });
+    expect(visitsDown.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+    expect(warn.mock.calls.filter((call: unknown[]) => call[0] === '[discover] member visits read failed')).toHaveLength(1);
+
+    redemptionError = null;
+    redemptionThrow = true;
+    const thrown = await POST(post({ user: true }));
+    expect(thrown.status).toBe(200);
+    expect(warn.mock.calls.filter((call: unknown[]) => call[0] === '[discover] member visits read failed')).toHaveLength(1);
+    expect(parseDiscoverSse(await thrown.text()).some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+
+    redemptionThrow = false;
+    redemptionRows = [
+      { restaurant_id: VEGAN.id, status: 'verified', verified_at: '2026-11-01T04:30:00.000Z' },
+    ];
+    serverFrom.mockImplementation(() => {
+      throw new Error('briefing down');
+    });
+    const factsDown = parseDiscoverSse(await (await POST(post({ user: true }))).text());
+    const factsDownPick = factsDown.find((event) => event.type === 'pick');
+    expect(factsDownPick).toMatchObject({
+      type: 'pick',
+      isNewToMember: false,
+      partner: { id: VEGAN.id },
+    });
+    expect(factsDownPick && factsDownPick.type === 'pick' ? Object.hasOwn(factsDownPick, 'facts') : true).toBe(false);
+    expect(factsDown.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You've been here before.",
+    });
+    expect(warn.mock.calls.some((call: unknown[]) => call[0] === '[briefings] read failed')).toBe(true);
+
+    const json = await roulettePost(post({ user: true }));
+    const body = (await json.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual([
+      'address',
+      'cuisine_tags',
+      'google_place_id',
+      'image_url',
+      'neighborhood',
+      'price_range',
+      'reason',
+      'restaurantId',
+      'restaurantName',
+      'selectionMode',
+    ]);
+    expect(JSON.stringify(body)).not.toContain('isNewToMember');
+    expect(JSON.stringify(body)).not.toContain("You've been here before");
+  });
+
+  it('prefers an unvisited partner and still honors session exclusions', async () => {
+    getUser.mockResolvedValue({ data: { user: { id: USER } } });
+    vi.stubEnv('WANDERBITE_AI_DISABLED', 'true');
+    redemptionRows = [
+      { restaurant_id: VEGAN.id, status: 'verified', verified_at: '2019-11-01T06:00:00.000Z' },
+      { restaurant_id: BBQ.id, status: 'expired', verified_at: '2026-11-20T23:00:00.000Z' },
+    ];
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const open = parseDiscoverSse(
+        await (await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))).text(),
+      );
+      expect(open.find((event) => event.type === 'fallback')).toMatchObject({
+        alternative: { id: BBQ.id },
+        isNewToMember: true,
+      });
+
+      redemptionQuery = [];
+      const another = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              user: true,
+              message: 'quiet sushi',
+              body: { askTone: 'another', excludeRestaurantIds: [BBQ.id] },
+            }),
+          )
+        ).text(),
+      );
+      expect(another.find((event) => event.type === 'fallback')).toMatchObject({
+        tone: 'another',
+        alternative: { id: VEGAN.id },
+        isNewToMember: false,
+        message: "Here's another idea: Green Table.",
+      });
+      expect(JSON.stringify(another)).not.toContain(BBQ.id);
+      const scoped = redemptionQuery.find((call) => call[0] === 'in');
+      expect(scoped?.[2]).toEqual([VEGAN.id]);
+
+      const exhausted = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              user: true,
+              message: '',
+              body: { askTone: 'surprise', excludeRestaurantIds: [VEGAN.id, BBQ.id] },
+            }),
+          )
+        ).text(),
+      );
+      expect(exhausted.find((event) => event.type === 'fallback')).toMatchObject({
+        alternative: { id: VEGAN.id },
+      });
+      expect(JSON.stringify(exhausted)).not.toContain(BBQ.id);
+
+      redemptionRows = [
+        { restaurant_id: VEGAN.id, status: 'verified', verified_at: '2026-01-01T00:00:00.000Z' },
+        { restaurant_id: BBQ.id, status: 'verified', verified_at: '2026-06-01T12:00:00.000Z' },
+      ];
+      const allVisited = parseDiscoverSse(
+        await (await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))).text(),
+      );
+      expect(allVisited.find((event) => event.type === 'fallback')).toMatchObject({
+        alternative: { id: VEGAN.id },
+        isNewToMember: false,
+      });
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('leaves a guest surprise unchanged when visits are not read', async () => {
+    vi.stubEnv('WANDERBITE_AI_DISABLED', 'true');
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const events = parseDiscoverSse(
+        await (await POST(post({ message: '', body: { askTone: 'surprise' } }))).text(),
+      );
+      expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+      const fallback = events.find((event) => event.type === 'fallback');
+      expect(fallback).toMatchObject({
+        tone: 'surprise',
+        alternative: { id: VEGAN.id },
+        message: "Here's a surprise: Green Table.",
+      });
+      expect(fallback && fallback.type === 'fallback' ? Object.hasOwn(fallback, 'isNewToMember') : true).toBe(false);
+      expect(tables).not.toContain('redemptions');
+      expect(tables).not.toContain('bite_notes');
     } finally {
       random.mockRestore();
     }
