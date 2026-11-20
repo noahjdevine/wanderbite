@@ -628,19 +628,7 @@ describe('loose list support and blocked details', () => {
     expect(url.droppedFacts[0]?.reason).toBe('blocked detail (url)');
   });
 
-  it('drops a dangling fragment left after a phone or a one-word sentence', () => {
-    const leadIn = filterField(
-      'reservations',
-      'Reservations are available. For parties of more than six guests.',
-      'Reservations are available most nights.',
-    );
-    expect(leadIn.kept.map((fact) => fact.text)).toEqual(['Reservations are available.']);
-    expect(leadIn.droppedFacts).toEqual([
-      expect.objectContaining({
-        reason: 'fragment after strip',
-        text: expect.stringContaining('For parties of more than six guests'),
-      }),
-    ]);
+  it('drops a dangling fragment only after a strip changes the sentence', () => {
     const phone = filterField(
       'reservations',
       'Reservations are available. For parties of seven or more guests, call (214) 726-0251.',
@@ -651,17 +639,36 @@ describe('loose list support and blocked details', () => {
       'blocked detail (phone)',
       'fragment after strip',
     ]);
-    const music = filterField(
+    const callForParking = filterField(
+      'parking',
+      'Call 555-123-4567 for parking.',
+      'Call 555-123-4567 for parking. Free parking in the rear lot.',
+    );
+    expect(callForParking.kept).toEqual([]);
+    expect(callForParking.droppedFacts[0]?.reason).toBe('blocked detail (phone)');
+    const unchanged = filterField(
       'vibe',
       "Music. Chef Dre's dining room on the second floor is elegant.",
-      "Chef Dre's dining room on the second floor is elegant.",
+      "Music plays in the dining room. Chef Dre's dining room on the second floor is elegant.",
     );
-    expect(music.kept.map((fact) => fact.text)).toEqual([
-      "Chef Dre's dining room on the second floor is elegant.",
+    expect(unchanged.kept.map((fact) => fact.text)).toEqual([
+      "Music. Chef Dre's dining room on the second floor is elegant.",
     ]);
-    expect(music.droppedFacts).toEqual([
-      expect.objectContaining({ reason: 'fragment after strip', text: 'Music.' }),
-    ]);
+    expect(unchanged.droppedFacts.map((fact) => fact.reason)).not.toContain('fragment after strip');
+  });
+
+  it('keeps verbless member facts when the page supports them', () => {
+    const cases: Array<{ field: string; text: string; page: string }> = [
+      { field: 'attire', text: 'Casual attire.', page: 'Dress code is casual attire.' },
+      { field: 'parking', text: 'Street parking only.', page: 'Street parking only, along the curb.' },
+      { field: 'duration', text: 'About 90 minutes.', page: 'Plan on about 90 minutes for dinner.' },
+      { field: 'parking', text: 'Free parking in the rear lot.', page: 'Free parking in the rear lot behind the kitchen.' },
+    ];
+    for (const sample of cases) {
+      const filtered = filterField(sample.field, sample.text, sample.page);
+      expect(filtered.kept.map((fact) => fact.text)).toEqual([sample.text]);
+      expect(filtered.droppedFacts.map((fact) => fact.reason)).not.toContain('fragment after strip');
+    }
   });
 
   it('keeps a paired dish name whole when the page has that phrase', () => {
@@ -1580,6 +1587,50 @@ describe('stored official site and Places facts', () => {
     expect(report.markdown).toContain('Label: Google Maps');
     expect(report.markdown).toContain('Place Details Enterprise + Atmosphere x1');
     expect(report.markdown).toContain('parkingOptions.freeParkingLot=true');
+  });
+
+  it('keeps a verbless Places attire fact', async () => {
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: '{"facts":[]}',
+      units: { input: 1, output: 1 },
+    }));
+    const fetchMock = vi.fn(async () =>
+      response(
+        JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'overloaded' } }),
+        529,
+        'application/json',
+      ),
+    ) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+      placesLookup: async () => ({
+        placeId: 'ChIJtestplace01',
+        placeIdToStore: null,
+        officialWebsite: null,
+        facts: [
+          {
+            field: 'attire',
+            text: 'Casual attire.',
+            sourceUrl: 'https://maps.google.com/?cid=99',
+            supportPassage: 'Casual attire.',
+          },
+        ],
+        units: { places_details_atmosphere: 1 },
+        notes: [],
+      }),
+    });
+    expect(result.facts).toEqual([
+      {
+        field: 'attire',
+        text: 'Casual attire.',
+        sourceUrl: 'https://maps.google.com/?cid=99',
+        supportPassage: 'Casual attire.',
+      },
+    ]);
+    expect(result.droppedFacts?.map((fact) => fact.reason) ?? []).not.toContain('fragment after strip');
   });
 
   it('counts Places spend toward the cost cap before the next restaurant', async () => {

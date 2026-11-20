@@ -1628,8 +1628,9 @@ type StrippedFact = { text: string | null; removed: RemovedBlock[]; fragments: s
 
 /**
  * Drop a whole clause that contains a phone, email, URL, price, promo, schedule,
- * or source commentary. A schedule word is not cut out of the clause. A kept
- * sentence still has to read as a sentence, not a one-word or preposition fragment.
+ * or source commentary. A schedule word is not cut out of the clause. The fragment
+ * check runs only on a sentence that lost one of those clauses. An unchanged
+ * sentence stays, including a verbless line in parking, arrival, duration, or attire.
  */
 function stripBlockedDetails(fact: string, field: BriefingField): StrippedFact {
   const removed: RemovedBlock[] = [];
@@ -1639,12 +1640,10 @@ function stripBlockedDetails(fact: string, field: BriefingField): StrippedFact {
   for (const sentence of splitSentences(fact)) {
     const stripped = stripSentence(sentence);
     removed.push(...stripped.removed);
-    if (stripped.text !== sentence.trim()) changed = true;
-    if (!stripped.text) {
-      changed = true;
-      continue;
-    }
-    if (isFragmentSentence(field, stripped.text)) {
+    const sentenceChanged = stripped.removed.length > 0;
+    if (sentenceChanged || stripped.text !== sentence.trim()) changed = true;
+    if (!stripped.text) continue;
+    if (sentenceChanged && isFragmentSentence(field, stripped.text)) {
       fragments.push(stripped.text);
       changed = true;
       continue;
@@ -1677,10 +1676,36 @@ export function findSupportPassage(
   return findGenericSupportPassage(factText, pageText);
 }
 
+function normalizedFactWording(factText: string): string {
+  return factText
+    .replace(/[.!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * A fact made only of generic or short words can still be the page's own sentence.
+ * Loose overlap of "parking" and "street" does not count. The wording has to sit
+ * in one passage, with every number and proper noun.
+ */
+function verbatimGenericPassage(factText: string, pageText: string, anchors: FactAnchors): string | null {
+  const needle = normalizedFactWording(factText);
+  const words = needle.split(' ').filter(Boolean);
+  if (words.length < 2) return null;
+  let best: string | null = null;
+  for (const passage of passageWindows(pageText)) {
+    if (!anchorsInPassage(anchors, passage)) continue;
+    if (!passage.toLowerCase().includes(needle)) continue;
+    if (!best || passage.length < best.length) best = passage;
+  }
+  return best;
+}
+
 function findGenericSupportPassage(factText: string, pageText: string): string | null {
   const distinctive = distinctiveWords(factText);
-  if (distinctive.length === 0) return null;
   const anchors = extractAnchors(factText);
+  if (distinctive.length === 0) return verbatimGenericPassage(factText, pageText, anchors);
   let best: { passage: string; hits: number } | null = null;
   for (const passage of passageWindows(pageText)) {
     if (!anchorsInPassage(anchors, passage)) continue;
