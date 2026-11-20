@@ -5,12 +5,14 @@ import {
   fallbackToneForAsk,
   discoverStreamReason,
   filterStepLabel,
+  MEMORY_STEP_LABEL,
   PARSE_STEP_LABEL,
   type DiscoverAskTone,
   type DiscoverEvent,
   type PartnerLite,
 } from '@/lib/discover/events';
 import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
+import { memberVisitMemory } from '@/lib/discover/member-memory';
 import {
   classifyPickConstraints,
   constraintsFromDiscoveryInput,
@@ -52,11 +54,17 @@ export type DiscoverCardInput = {
   askTone?: DiscoverAskTone | null;
   /** Already capped card notes for the chosen restaurant. Empty omits the key. */
   facts?: readonly DiscoverCardFact[];
+  /**
+   * Verified-visit restaurant ids for this member. Null or omitted means
+   * unknown: no memory step, and `isNewToMember` stays false. An empty set
+   * means none of this pool has a verified visit.
+   */
+  visitedRestaurantIds?: ReadonlySet<string> | null;
 };
 
 /**
- * Events for one finished card. Memory and rank are intentionally absent:
- * verified history is not read, and the picker never keeps a runner-up.
+ * Events for one finished card. Rank stays absent: the picker never keeps a
+ * runner-up. Memory is present only when `visitedRestaurantIds` was loaded.
  */
 export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] {
   const constraints = constraintsFromDiscoveryInput({
@@ -82,6 +90,15 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
   ];
 
   const facts = args.facts && args.facts.length > 0 ? [...args.facts] : undefined;
+  const memory = memberVisitMemory(args.chosen, args.visitedRestaurantIds);
+  if (memory) {
+    events.push({
+      type: 'step',
+      id: 'memory',
+      label: MEMORY_STEP_LABEL,
+      line: memory.line,
+    });
+  }
 
   if (args.selectionMode === 'ai') {
     const honesty = classifyPickConstraints({
@@ -97,7 +114,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
       matched: honesty.matched,
       unknown: honesty.unknown,
       unmet: honesty.unmet,
-      isNewToMember: false,
+      isNewToMember: memory?.isNewToMember ?? false,
       food: foodFromParsedCuisine({
         message: args.message,
         preferredCuisine: args.preferredCuisine,
@@ -125,6 +142,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     alternative,
     tone,
     ...(facts ? { facts } : {}),
+    ...(memory ? { isNewToMember: memory.isNewToMember } : {}),
   });
   return events;
 }

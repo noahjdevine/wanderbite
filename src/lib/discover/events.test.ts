@@ -5,6 +5,8 @@ import {
   fallbackBadgeLabel,
   fallbackPresentation,
   fallbackToneForAsk,
+  MEMORY_STEP_LABEL,
+  memoryStepLine,
   parseDiscoverAskTone,
   type DiscoverEvent,
 } from '@/lib/discover/events';
@@ -294,5 +296,73 @@ describe('eventsForDiscoverCard copy', () => {
     const fallback = surprise.find((event) => event.type === 'fallback');
     expect(fallback).toMatchObject({ tone: 'surprise' });
     expect(fallback && fallback.type === 'fallback' ? Object.hasOwn(fallback, 'facts') : true).toBe(false);
+  });
+
+  it('emits a memory step and isNewToMember without dropping tone or facts', () => {
+    const facts = [
+      {
+        field: 'known_for' as const,
+        label: 'Known for',
+        text: 'Known for brisket.',
+        sourceUrl: 'https://maps.google.com/x',
+        lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+      },
+    ];
+    const fresh = eventsForDiscoverCard({
+      message: 'quiet sushi',
+      dietary: ['vegan'],
+      excludedCuisineIds: [],
+      restaurants: [chosen],
+      chosen,
+      reason: 'Green Table is a partner.',
+      selectionMode: 'ai',
+      fallbackReason: null,
+      providerTimedOut: false,
+      askTone: 'request',
+      facts,
+      visitedRestaurantIds: new Set(),
+    });
+    expect(fresh.map((event) => (event.type === 'step' ? event.id : event.type))).toEqual([
+      'parse',
+      'filter',
+      'memory',
+      'pick',
+    ]);
+    expect(fresh.find((event) => event.type === 'step' && event.id === 'memory')).toEqual({
+      type: 'step',
+      id: 'memory',
+      label: MEMORY_STEP_LABEL,
+      line: memoryStepLine('Green Table', true),
+    });
+    expect(fresh.find((event) => event.type === 'pick')).toMatchObject({
+      isNewToMember: true,
+      reason: 'Green Table is a partner.',
+      facts,
+    });
+
+    const visited = eventsForDiscoverCard({
+      message: 'quiet sushi',
+      dietary: [],
+      excludedCuisineIds: [],
+      restaurants: [chosen],
+      chosen,
+      reason: 'Green Table is a partner.',
+      selectionMode: 'random_fallback',
+      fallbackReason: 'invalid_pick',
+      providerTimedOut: false,
+      askTone: 'another',
+      facts,
+      visitedRestaurantIds: new Set([chosen.id]),
+    });
+    expect(visited.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You've been here before.",
+    });
+    expect(visited.find((event) => event.type === 'fallback')).toMatchObject({
+      tone: 'another',
+      isNewToMember: false,
+      facts,
+      message: "Here's another idea: Green Table.",
+    });
+    expect(visited.some((event) => event.type === 'step' && event.id === 'rank')).toBe(false);
   });
 });
