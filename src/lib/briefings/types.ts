@@ -25,6 +25,14 @@ export const BRIEFING_FIELDS = [
 
 export type BriefingField = (typeof BRIEFING_FIELDS)[number];
 
+/**
+ * Researched notes Bea may read. The First visit card still uses
+ * MEMBER_BRIEFING_FIELDS only.
+ */
+export const DISCOVER_BRIEFING_FIELDS = ['vibe', 'known_for', 'good_for', 'seating'] as const;
+
+export type DiscoverBriefingField = (typeof DISCOVER_BRIEFING_FIELDS)[number];
+
 export const BRIEFING_FIELD_LABELS: Record<BriefingField, string> = {
   parking: 'Parking',
   arrival: 'Arrival',
@@ -81,6 +89,10 @@ export function isBriefingField(value: string): value is BriefingField {
 
 export function isMemberBriefingField(value: string): value is MemberBriefingField {
   return (MEMBER_BRIEFING_FIELDS as readonly string[]).includes(value);
+}
+
+export function isDiscoverBriefingField(value: string): value is DiscoverBriefingField {
+  return (DISCOVER_BRIEFING_FIELDS as readonly string[]).includes(value);
 }
 
 export function briefingFieldOrder(field: BriefingField): number {

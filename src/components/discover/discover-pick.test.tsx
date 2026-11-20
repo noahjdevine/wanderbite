@@ -194,4 +194,132 @@ describe('DiscoverPick directions', () => {
     expect(onFollowUp).toHaveBeenCalledTimes(2);
     expect(onFollowUp).toHaveBeenLastCalledWith('something spicy instead');
   });
+
+  it('shows two researched notes with a source and a Chicago checked date', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: {
+            ...pickEvent({ id: 'rest-1', name: 'Noodle House' }),
+            facts: [
+              {
+                field: 'good_for',
+                label: 'Good for',
+                text: 'Birthdays.',
+                sourceUrl: 'https://example.com/good-for',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+              {
+                field: 'vibe',
+                label: 'Vibe',
+                text: 'The room is cozy and candlelit.',
+                sourceUrl: 'https://example.com/vibe',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+              {
+                field: 'known_for',
+                label: 'Known for',
+                text: 'Hand-pulled noodles.',
+                sourceUrl: 'https://maps.google.com/maps/place/noodle',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(
+      screen.getByText(
+        (_, node) => node?.tagName === 'P' && node.textContent === 'Known for Hand-pulled noodles.',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        (_, node) =>
+          node?.tagName === 'P' && node.textContent === 'Vibe The room is cozy and candlelit.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Birthdays.')).toBeNull();
+    expect(screen.queryByText('Sample')).toBeNull();
+    expect(screen.queryByText('First visit')).toBeNull();
+    expect(screen.getAllByText('Checked Nov 5, 2026')).toHaveLength(2);
+    const maps = screen.getByRole('link', { name: 'Google Maps' });
+    expect(maps.getAttribute('href')).toBe('https://maps.google.com/maps/place/noodle');
+    expect(maps.getAttribute('target')).toBe('_blank');
+    const source = screen.getByRole('link', { name: 'Source' });
+    expect(source.getAttribute('href')).toBe('https://example.com/vibe');
+    expect(screen.getByText('“Hot noodles.”')).toBeTruthy();
+  });
+
+  it('leaves the card unchanged when the restaurant has no notes', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: pickEvent({ id: 'rest-1', name: 'Noodle House' }),
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.queryByText(/^Checked /)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Google Maps' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Source' })).toBeNull();
+    expect(screen.queryByText('Sample')).toBeNull();
+    expect(screen.queryByText('First visit')).toBeNull();
+    expect(screen.getByText('Picked for you')).toBeTruthy();
+    expect(screen.getByText('“Hot noodles.”')).toBeTruthy();
+  });
+
+  it('keeps a closest pick honest while showing its notes', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'fallback',
+          event: {
+            type: 'fallback',
+            reason: 'no_match',
+            message: "Closest I've got: Noodle House. It may not match everything you asked for.",
+            tone: 'alternative',
+            alternative: { id: 'rest-1', name: 'Noodle House' },
+            facts: [
+              {
+                field: 'known_for',
+                label: 'Known for',
+                text: 'Hand-pulled noodles.',
+                sourceUrl: 'https://example.com/known',
+                lastVerifiedAt: '2026-11-05T05:30:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="generic"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText('Closest pick')).toBeTruthy();
+    expect(
+      screen.getByText("Closest I've got: Noodle House. It may not match everything you asked for."),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        (_, node) => node?.tagName === 'P' && node.textContent === 'Known for Hand-pulled noodles.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Source' }).getAttribute('href')).toBe(
+      'https://example.com/known',
+    );
+    expect(screen.getByText('Checked Nov 4, 2026')).toBeTruthy();
+    expect(screen.queryByText('Sample')).toBeNull();
+    expect(screen.queryByText('First visit')).toBeNull();
+    expect(screen.queryByText('Picked for you')).toBeNull();
+    expect(screen.queryByText('An alternative')).toBeNull();
+    expect(screen.queryByText(/not a match/i)).toBeNull();
+  });
 });

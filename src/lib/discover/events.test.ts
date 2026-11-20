@@ -187,5 +187,112 @@ describe('eventsForDiscoverCard copy', () => {
     expect(events.some((event) => event.type === 'fallback')).toBe(false);
     expect(JSON.stringify(events)).not.toContain("Here's a surprise");
     expect(JSON.stringify(events)).not.toContain('not a match');
+    expect(pick && pick.type === 'pick' ? pick.isNewToMember : true).toBe(false);
+    expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+    expect(events.some((event) => event.type === 'step' && event.id === 'rank')).toBe(false);
+  });
+
+  it('attaches card facts on a pick and a fallback without changing the reason or tone', () => {
+    const facts = [
+      {
+        field: 'known_for' as const,
+        label: 'Known for',
+        text: 'Known for brisket.',
+        sourceUrl: 'https://maps.google.com/x',
+        lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+      },
+      {
+        field: 'vibe' as const,
+        label: 'Vibe',
+        text: 'The room is cozy.',
+        sourceUrl: 'https://example.com/vibe',
+        lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+      },
+    ];
+    const picked = eventsForDiscoverCard({
+      message: 'quiet sushi',
+      dietary: ['vegan'],
+      excludedCuisineIds: [],
+      restaurants: [chosen],
+      chosen,
+      reason: 'Green Table is a partner.',
+      selectionMode: 'ai',
+      fallbackReason: null,
+      providerTimedOut: false,
+      askTone: 'request',
+      facts,
+    });
+    const pick = picked.find((event) => event.type === 'pick');
+    expect(pick).toMatchObject({
+      type: 'pick',
+      reason: 'Green Table is a partner.',
+      isNewToMember: false,
+      facts,
+    });
+    if (pick?.type === 'pick') {
+      const chips = JSON.stringify({
+        matched: pick.matched,
+        unknown: pick.unknown,
+        unmet: pick.unmet,
+      });
+      expect(chips).not.toContain('brisket');
+      expect(chips).not.toContain('cozy');
+    }
+    expect(picked.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+
+    const fallback = eventsForDiscoverCard({
+      message: 'quiet sushi',
+      dietary: [],
+      excludedCuisineIds: [],
+      restaurants: [chosen],
+      chosen,
+      reason: 'Green Table is a partner.',
+      selectionMode: 'random_fallback',
+      fallbackReason: 'invalid_pick',
+      providerTimedOut: false,
+      askTone: 'request',
+      facts,
+    });
+    const card = fallback.find((event) => event.type === 'fallback');
+    expect(card).toMatchObject({
+      type: 'fallback',
+      tone: 'alternative',
+      facts,
+    });
+    expect(card && card.type === 'fallback' ? card.message : '').toContain("Closest I've got: Green Table.");
+    expect(card && card.type === 'fallback' ? card.message : '').not.toContain('brisket');
+    expect(fallback.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+  });
+
+  it('omits the facts key when the restaurant has none', () => {
+    const events = eventsForDiscoverCard({
+      message: '',
+      dietary: [],
+      excludedCuisineIds: [],
+      restaurants: [chosen],
+      chosen,
+      reason: 'Green Table is a partner.',
+      selectionMode: 'ai',
+      fallbackReason: null,
+      providerTimedOut: false,
+      facts: [],
+    });
+    const pick = events.find((event) => event.type === 'pick');
+    expect(pick && pick.type === 'pick' ? Object.hasOwn(pick, 'facts') : true).toBe(false);
+    const surprise = eventsForDiscoverCard({
+      message: '',
+      dietary: [],
+      excludedCuisineIds: [],
+      restaurants: [chosen],
+      chosen,
+      reason: 'Green Table is a partner.',
+      selectionMode: 'random_fallback',
+      fallbackReason: 'ai_disabled',
+      providerTimedOut: false,
+      askTone: 'surprise',
+    });
+    const fallback = surprise.find((event) => event.type === 'fallback');
+    expect(fallback).toMatchObject({ tone: 'surprise' });
+    expect(fallback && fallback.type === 'fallback' ? Object.hasOwn(fallback, 'facts') : true).toBe(false);
   });
 });

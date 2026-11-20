@@ -8,11 +8,12 @@ import {
 import { parseDiscoverSse } from '@/lib/discover/events';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
 
-const { allowBillableRoulette, getUser, from, fetchMock, rpcs } = vi.hoisted(() => ({
+const { allowBillableRoulette, getUser, from, fetchMock, rpcs, serverFrom } = vi.hoisted(() => ({
   allowBillableRoulette: vi.fn(),
   getUser: vi.fn(),
   from: vi.fn(),
   fetchMock: vi.fn(),
+  serverFrom: vi.fn(),
   rpcs: {
     rpcAiCurrentVersions: vi.fn(),
     rpcAiDispatch: vi.fn(),
@@ -37,6 +38,7 @@ vi.mock('@/lib/ai-budget/rpcs', () => rpcs);
 vi.mock('@/lib/supabase/server', () => ({
   createClient: async () => ({
     auth: { getUser: () => getUser() },
+    from: (table: string) => serverFrom(table),
   }),
 }));
 
@@ -50,6 +52,11 @@ vi.mock('@/lib/launch-market-server', () => ({
 
 import { GET, POST } from '@/app/api/discover/route';
 import { POST as roulettePost } from '@/app/api/roulette/route';
+import { ANTHROPIC_HAIKU_SNAPSHOT, ROULETTE_MAX_OUTPUT_TOKENS } from '@/lib/ai-budget/models';
+import { resetBriefingsLogs } from '@/lib/briefings/flag';
+import type { BriefingRecord } from '@/lib/briefings/types';
+import { DISCOVER_FACT_PROMPT_NOTE } from '@/lib/discover/briefing-facts';
+import { LAUNCH_MARKET } from '@/lib/launch-market';
 
 const USER = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const NOTE = 'note-body-private';
@@ -103,6 +110,83 @@ let offerVersion: Record<string, unknown> | null = null;
 let offerAudits: Record<string, unknown>[] = [];
 let warn: ReturnType<typeof vi.spyOn>;
 let errorLog: ReturnType<typeof vi.spyOn>;
+
+const CHECKED = '2026-11-05T06:00:00.000Z';
+const MAPS = 'https://maps.google.com/maps/place/wanderbite-fact';
+const FACT_SOURCE = 'https://example.com/wanderbite-fact';
+
+type BriefingResult = { data: unknown; error: { code?: string; message?: string } | null };
+
+let briefingResult: BriefingResult = { data: [], error: null };
+let briefingCalls: unknown[][] = [];
+
+function briefingApi() {
+  const api = {
+    select: () => api,
+    eq: (column: string, value: string) => {
+      briefingCalls.push(['eq', column, value]);
+      return api;
+    },
+    in: (column: string, value: readonly string[]) => {
+      briefingCalls.push(['in', column, value]);
+      return api;
+    },
+    then: (
+      resolve: (value: BriefingResult) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve(briefingResult).then(resolve, reject),
+  };
+  return api;
+}
+
+function factRow(overrides: Partial<BriefingRecord> = {}): BriefingRecord {
+  return {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    restaurant_id: VEGAN.id,
+    field: 'vibe',
+    body: 'The room is cozy and candlelit.',
+    source_url: FACT_SOURCE,
+    last_verified_at: CHECKED,
+    status: 'active',
+    is_sample: false,
+    version: 1,
+    ...overrides,
+  };
+}
+
+function promptRowsFrom(content: string): Array<Record<string, unknown>> {
+  const line = content.split('\n').find((item) => item.startsWith('['));
+  if (!line) throw new Error('prompt has no restaurant array');
+  return JSON.parse(line) as Array<Record<string, unknown>>;
+}
+
+function anthropicBody(call: unknown): {
+  model: string;
+  max_tokens: number;
+  temperature: number;
+  system: string;
+  messages: { content: string }[];
+} {
+  const init = (call as [unknown, { body?: string }])[1];
+  return JSON.parse(String(init?.body)) as {
+    model: string;
+    max_tokens: number;
+    temperature: number;
+    system: string;
+    messages: { content: string }[];
+  };
+}
+
+function expectedSystemPrompt(): string {
+  return `You choose one restaurant id for a discovery app in ${LAUNCH_MARKET.displayName}.
+
+Each request is independent. Do not default to the same restaurant. Choose exactly one id from the JSON array you receive.
+
+Return ONLY a single JSON object, no markdown fences, no commentary before or after.
+Required key: "restaurantId" (string id from the list). Do not include a reason, a vibe, or a dish.
+
+{"restaurantId":"..."}`;
+}
 
 function post(options?: {
   message?: string;
@@ -162,6 +246,15 @@ describe('Discover stream route', () => {
     vi.unstubAllEnvs();
     vi.unstubAllGlobals();
     enableConfig();
+    delete process.env.E06_BRIEFINGS_ENABLED;
+    resetBriefingsLogs();
+    briefingResult = { data: [], error: null };
+    briefingCalls = [];
+    serverFrom.mockReset();
+    serverFrom.mockImplementation((table: string) => {
+      briefingCalls.push(['from', table]);
+      return briefingApi();
+    });
     restaurantRows = [VEGAN, BBQ, ...HIDDEN];
     profileDietary = [];
     tables = [];
@@ -566,5 +659,326 @@ describe('Discover stream route', () => {
     const memberPick = member.find((event) => event.type === 'pick');
     if (memberPick?.type === 'pick') expect(memberPick.partner.offer).toBeUndefined();
     expect(tables).not.toContain('offer_versions');
+  });
+
+  it('leaves the prompt and the card unchanged when briefings are off', async () => {
+    const response = await POST(post());
+    expect(response.status).toBe(200);
+    const sent = anthropicBody(fetchMock.mock.calls[0]);
+    const content = sent.messages[0]?.content ?? '';
+    const rows = promptRowsFrom(content);
+    expect(serverFrom).not.toHaveBeenCalled();
+    expect(tables).not.toContain('restaurant_briefing_facts');
+    expect(content).not.toContain(DISCOVER_FACT_PROMPT_NOTE);
+    expect(content).not.toContain('"facts"');
+    expect(content).toContain(
+      'each has id, name, cuisine_tags, neighborhood, price_range',
+    );
+    for (const row of rows) {
+      expect(Object.keys(row).sort()).toEqual([
+        'cuisine_tags',
+        'id',
+        'name',
+        'neighborhood',
+        'price_range',
+      ]);
+    }
+    expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
+    expect(sent.max_tokens).toBe(ROULETTE_MAX_OUTPUT_TOKENS);
+    expect(sent.temperature).toBe(1);
+    expect(sent.system).toBe(expectedSystemPrompt());
+    const pick = parseDiscoverSse(await response.text()).find((event) => event.type === 'pick');
+    expect(pick && pick.type === 'pick' ? Object.hasOwn(pick, 'facts') : true).toBe(false);
+
+    vi.stubEnv('E06_BRIEFINGS_ENABLED', 'TRUE');
+    serverFrom.mockClear();
+    const wrong = await POST(post({ message: '', body: { askTone: 'surprise' } }));
+    expect(wrong.status).toBe(200);
+    expect(serverFrom).not.toHaveBeenCalled();
+  });
+
+  it('shows two card facts and capped prompt notes when the flag is on', async () => {
+    const longVibe = `${'p'.repeat(120)}UNIQUE_TAIL`;
+    briefingResult = {
+      data: [
+        factRow({
+          id: '11111111-1111-4111-8111-111111111111',
+          field: 'known_for',
+          body: 'Known for hand-pulled noodles.',
+          source_url: MAPS,
+        }),
+        factRow({
+          id: '22222222-2222-4222-8222-222222222222',
+          field: 'vibe',
+          body: longVibe,
+        }),
+        factRow({
+          id: '33333333-3333-4333-8333-333333333333',
+          field: 'good_for',
+          body: 'Good for a quiet date night.',
+        }),
+        factRow({
+          id: '44444444-4444-4444-8444-444444444444',
+          field: 'seating',
+          body: 'There is a covered patio out back.',
+        }),
+        factRow({
+          id: '55555555-5555-4555-8555-555555555555',
+          field: 'vibe',
+          body: 'A newer sample vibe that must stay hidden.',
+          is_sample: true,
+          version: 4,
+        }),
+        factRow({
+          id: '66666666-6666-4666-8666-666666666666',
+          field: 'parking',
+          body: 'The lot is behind the building.',
+        }),
+        factRow({
+          id: '77777777-7777-4777-8777-777777777777',
+          field: 'reservations',
+          body: 'Walk-ins are welcome.',
+        }),
+        factRow({
+          id: '88888888-8888-4888-8888-888888888888',
+          field: 'known_for',
+          body: 'A paused note that must stay hidden.',
+          status: 'paused',
+          version: 9,
+        }),
+      ],
+      error: null,
+    };
+    vi.stubEnv('E06_BRIEFINGS_ENABLED', 'true');
+    const response = await POST(post());
+    expect(response.status).toBe(200);
+    const events = parseDiscoverSse(await response.text());
+    const pick = events.find((event) => event.type === 'pick');
+    expect(pick).toMatchObject({
+      type: 'pick',
+      isNewToMember: false,
+      reason: discoveryCardSentence(VEGAN, LAUNCH_MARKET.displayName),
+      facts: [
+        {
+          field: 'known_for',
+          label: 'Known for',
+          text: 'Known for hand-pulled noodles.',
+          sourceUrl: MAPS,
+        },
+        {
+          field: 'vibe',
+          label: 'Vibe',
+          text: longVibe,
+        },
+      ],
+    });
+    if (pick?.type === 'pick') {
+      expect(pick.reason).not.toContain('hand-pulled');
+      expect(pick.reason).not.toContain('UNIQUE_TAIL');
+      const chips = JSON.stringify({
+        matched: pick.matched,
+        unknown: pick.unknown,
+        unmet: pick.unmet,
+      });
+      expect(chips).not.toContain('hand-pulled');
+      expect(chips).not.toContain('patio');
+      expect(chips).not.toContain('date night');
+    }
+    expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+    expect(events.some((event) => event.type === 'step' && event.id === 'rank')).toBe(false);
+    expect(JSON.stringify(events)).not.toContain('behind the building');
+    expect(JSON.stringify(events)).not.toContain('Walk-ins');
+    expect(JSON.stringify(events)).not.toContain('sample vibe');
+    expect(JSON.stringify(events)).not.toContain('paused note');
+    expect(JSON.stringify(events)).not.toContain('Sample');
+
+    const sent = anthropicBody(
+      fetchMock.mock.calls.find((call) => String(call[0]).includes('anthropic')),
+    );
+    expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
+    expect(ANTHROPIC_HAIKU_SNAPSHOT).toBe('claude-haiku-4-5-20251001');
+    expect(sent.max_tokens).toBe(300);
+    expect(ROULETTE_MAX_OUTPUT_TOKENS).toBe(300);
+    expect(sent.temperature).toBe(1);
+    expect(sent.system).toBe(expectedSystemPrompt());
+    const content = sent.messages[0]?.content ?? '';
+    expect(content).toContain(DISCOVER_FACT_PROMPT_NOTE);
+    expect(content).not.toContain(MAPS);
+    expect(content).not.toContain(FACT_SOURCE);
+    expect(content).not.toContain('UNIQUE_TAIL');
+    expect(content).toContain('p'.repeat(120));
+    const rows = promptRowsFrom(content);
+    const vegan = rows.find((row) => row.id === VEGAN.id);
+    const bbq = rows.find((row) => row.id === BBQ.id);
+    expect(vegan?.facts).toEqual({
+      vibe: 'p'.repeat(120),
+      known_for: 'Known for hand-pulled noodles.',
+      good_for: 'Good for a quiet date night.',
+      seating: 'There is a covered patio out back.',
+    });
+    expect(bbq && 'facts' in bbq).toBe(false);
+    expect(serverFrom).toHaveBeenCalledTimes(1);
+    expect(briefingCalls).toContainEqual(['from', 'restaurant_briefing_facts']);
+    expect(briefingCalls).toContainEqual(['eq', 'status', 'active']);
+    expect(tables).not.toContain('restaurant_briefing_facts');
+    const reserved = rpcs.rpcAiReserve.mock.calls.at(-1)?.[0] as {
+      modelId?: string;
+      usageUnits?: { input?: number; output?: number };
+    };
+    expect(reserved.modelId).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
+    expect(reserved.usageUnits?.output).toBe(300);
+
+    const jsonResponse = await roulettePost(post());
+    const body = (await jsonResponse.json()) as Record<string, unknown>;
+    expect(Object.keys(body).sort()).toEqual([
+      'address',
+      'cuisine_tags',
+      'google_place_id',
+      'image_url',
+      'neighborhood',
+      'price_range',
+      'reason',
+      'restaurantId',
+      'restaurantName',
+      'selectionMode',
+    ]);
+    expect(body.reason).toBe(discoveryCardSentence(VEGAN, LAUNCH_MARKET.displayName));
+    expect(JSON.stringify(body)).not.toContain('hand-pulled');
+    expect(JSON.stringify(body)).not.toContain('facts');
+  });
+
+  it('still picks when the briefing read fails or throws', async () => {
+    vi.stubEnv('E06_BRIEFINGS_ENABLED', 'true');
+    briefingResult = { data: null, error: { message: 'boom' } };
+    const failed = await POST(post());
+    expect(failed.status).toBe(200);
+    const failedPick = parseDiscoverSse(await failed.text()).find((event) => event.type === 'pick');
+    expect(failedPick).toMatchObject({ type: 'pick', partner: { id: VEGAN.id } });
+    expect(failedPick && failedPick.type === 'pick' ? Object.hasOwn(failedPick, 'facts') : true).toBe(
+      false,
+    );
+    expect(warn.mock.calls.some((call: unknown[]) => call[0] === '[briefings] read failed')).toBe(true);
+    const failedPrompt = anthropicBody(fetchMock.mock.calls[0]).messages[0]?.content ?? '';
+    expect(failedPrompt).not.toContain(DISCOVER_FACT_PROMPT_NOTE);
+    expect(failedPrompt).not.toContain('"facts"');
+
+    resetBriefingsLogs();
+    warn.mockClear();
+    serverFrom.mockImplementation(() => {
+      throw new Error('briefing down');
+    });
+    const thrown = await POST(post());
+    expect(thrown.status).toBe(200);
+    const thrownPick = parseDiscoverSse(await thrown.text()).find((event) => event.type === 'pick');
+    expect(thrownPick).toMatchObject({ type: 'pick', isNewToMember: false });
+    expect(thrownPick && thrownPick.type === 'pick' ? Object.hasOwn(thrownPick, 'facts') : true).toBe(
+      false,
+    );
+    expect(warn.mock.calls.some((call: unknown[]) => call[0] === '[briefings] read failed')).toBe(true);
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it('puts facts only on the current prompt rows and rebuilds them after the 80k shrink', async () => {
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const places = Array.from({ length: 51 }, (_, index) => ({
+        ...VEGAN,
+        id: `rest-${String(index).padStart(2, '0')}`,
+        name: `Place ${index}`,
+        neighborhood: index === 0 ? 'North' : 'N'.repeat(1800),
+        address: `${index} Main`,
+      }));
+      restaurantRows = places;
+      const longVibe = `${'p'.repeat(120)}UNIQUE_TAIL`;
+      briefingResult = {
+        data: places.flatMap((place, index) => {
+          if (index === 0) {
+            return [
+              factRow({
+                id: `fact-${place.id}-known`,
+                restaurant_id: place.id,
+                field: 'known_for',
+                body: 'CARD ONLY BRISKET',
+                source_url: MAPS,
+              }),
+              factRow({
+                id: `fact-${place.id}-vibe`,
+                restaurant_id: place.id,
+                field: 'vibe',
+                body: 'CARD ONLY ROOM',
+                source_url: FACT_SOURCE,
+              }),
+              factRow({
+                id: `fact-${place.id}-good`,
+                restaurant_id: place.id,
+                field: 'good_for',
+                body: 'CARD ONLY BIRTHDAY',
+              }),
+              factRow({
+                id: `fact-${place.id}-seat`,
+                restaurant_id: place.id,
+                field: 'seating',
+                body: 'CARD ONLY PATIO',
+              }),
+            ];
+          }
+          return [
+            factRow({
+              id: `fact-${place.id}-vibe`,
+              restaurant_id: place.id,
+              field: 'vibe',
+              body: index === 1 ? longVibe : `Shared note ${index}`,
+            }),
+          ];
+        }),
+        error: null,
+      };
+      vi.stubEnv('E06_BRIEFINGS_ENABLED', 'true');
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(anthropicResponse(JSON.stringify({ restaurantId: 'not-in-the-list' }))),
+      );
+      const response = await POST(post());
+      expect(response.status).toBe(200);
+      const events = parseDiscoverSse(await response.text());
+      const fallback = events.find((event) => event.type === 'fallback');
+      expect(fallback).toMatchObject({
+        type: 'fallback',
+        tone: 'alternative',
+        alternative: { id: 'rest-00' },
+        facts: [
+          { field: 'known_for', text: 'CARD ONLY BRISKET' },
+          { field: 'vibe', text: 'CARD ONLY ROOM' },
+        ],
+      });
+      expect(JSON.stringify(fallback)).not.toContain('CARD ONLY BIRTHDAY');
+      expect(JSON.stringify(fallback)).not.toContain('CARD ONLY PATIO');
+      expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+
+      const sent = anthropicBody(
+        fetchMock.mock.calls.find((call) => String(call[0]).includes('anthropic')),
+      );
+      expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
+      expect(sent.max_tokens).toBe(300);
+      expect(sent.temperature).toBe(1);
+      expect(sent.system).toBe(expectedSystemPrompt());
+      const content = sent.messages[0]?.content ?? '';
+      const rows = promptRowsFrom(content);
+      expect(rows).toHaveLength(25);
+      expect(rows.every((row) => row.facts && typeof row.facts === 'object')).toBe(true);
+      expect(rows.map((row) => row.id)).toContain('rest-01');
+      expect(rows.map((row) => row.id)).not.toContain('rest-00');
+      expect(rows.map((row) => row.id)).not.toContain('rest-26');
+      expect(content).toContain(DISCOVER_FACT_PROMPT_NOTE);
+      expect(content).toContain('p'.repeat(120));
+      expect(content).not.toContain('UNIQUE_TAIL');
+      expect(content).not.toContain('CARD ONLY');
+      expect(content).not.toContain(MAPS);
+      expect(content).not.toContain(FACT_SOURCE);
+      expect(serverFrom).toHaveBeenCalledTimes(1);
+      const queried = briefingCalls.find((call) => call[0] === 'in');
+      expect(queried?.[2]).toEqual(places.map((place) => place.id));
+    } finally {
+      random.mockRestore();
+    }
   });
 });

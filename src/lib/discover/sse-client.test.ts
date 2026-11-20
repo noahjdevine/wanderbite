@@ -85,4 +85,45 @@ describe('discover SSE client parser', () => {
     );
     expect(bad.error).toBeTruthy();
   });
+
+  it('keeps optional researched notes on a pick and a fallback', () => {
+    const withFacts: DiscoverEvent[] = [
+      {
+        type: 'pick',
+        partner: { id: 'rest-1', name: 'Noodle House' },
+        reason: 'Hot noodles.',
+        matched: [],
+        unknown: [],
+        unmet: [],
+        isNewToMember: false,
+        food: 'dumpling',
+        facts: [
+          {
+            field: 'known_for',
+            label: 'Known for',
+            text: 'Known for hand-pulled noodles.',
+            sourceUrl: 'https://maps.google.com/maps/place/noodle',
+            lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+          },
+        ],
+      },
+      {
+        type: 'fallback',
+        reason: 'no_match',
+        message: "Closest I've got: Noodle House. It may not match everything you asked for.",
+        tone: 'alternative',
+        alternative: { id: 'rest-1', name: 'Noodle House' },
+        facts: [
+          {
+            field: 'vibe',
+            label: 'Vibe',
+            text: 'The room is cozy and candlelit.',
+            sourceUrl: 'https://example.com/vibe',
+            lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+          },
+        ],
+      },
+    ];
+    expect(parseDiscoverSseStream(encodeDiscoverSse(withFacts)).events).toEqual(withFacts);
+  });
 });

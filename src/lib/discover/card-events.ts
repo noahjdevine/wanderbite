@@ -1,3 +1,4 @@
+import type { DiscoverCardFact } from '@/lib/discover/briefing-facts';
 import { partnerDirections } from '@/lib/discover/directions';
 import {
   fallbackAlternativeMessage,
@@ -49,6 +50,8 @@ export type DiscoverCardInput = {
    * it a match. Omitted tones are inferred from the message and soft chips.
    */
   askTone?: DiscoverAskTone | null;
+  /** Already capped card notes for the chosen restaurant. Empty omits the key. */
+  facts?: readonly DiscoverCardFact[];
 };
 
 /**
@@ -78,6 +81,8 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     },
   ];
 
+  const facts = args.facts && args.facts.length > 0 ? [...args.facts] : undefined;
+
   if (args.selectionMode === 'ai') {
     const honesty = classifyPickConstraints({
       constraints,
@@ -98,6 +103,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
         preferredCuisine: args.preferredCuisine,
         constraintLabels: constraints.map((constraint) => constraint.label),
       }),
+      ...(facts ? { facts } : {}),
     });
     return events;
   }
@@ -118,6 +124,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     message: fallbackAlternativeMessage(alternative.name, tone),
     alternative,
     tone,
+    ...(facts ? { facts } : {}),
   });
   return events;
 }
