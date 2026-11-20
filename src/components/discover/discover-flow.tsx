@@ -23,7 +23,10 @@ import {
   foodForOutcome,
   outcomeFromEvents,
   refineDiscoverDraft,
+  rememberShownRestaurant,
   scheduleDiscoverReveal,
+  shownRestaurantExclusions,
+  shownRestaurantId,
   thinkingSteps,
   type DiscoverDraft,
   type DiscoverRefine,
@@ -79,6 +82,8 @@ export function DiscoverFlow({
   const abortRef = useRef<AbortController | null>(null);
   const cancelReveal = useRef<(() => void) | null>(null);
   const inFlight = useRef(false);
+  /** Restaurant ids already shown this session, oldest first. Cleared on a fresh main-box ask. */
+  const shownIds = useRef<string[]>([]);
 
   const exclusionsSummary = useMemo(() => {
     if (excludedCuisines.length === 0) return null;
@@ -95,8 +100,13 @@ export function DiscoverFlow({
     async (
       next: DiscoverDraft,
       replaceOrigin: boolean,
-      excludeRestaurantIds?: readonly string[],
-      askTone?: DiscoverAskTone,
+      options?: {
+        /** A new ask from the main box. Another idea and follow-up keep the list. */
+        resetShown?: boolean;
+        /** Send the session list as excludeRestaurantIds. */
+        excludeShown?: boolean;
+        askTone?: DiscoverAskTone;
+      },
     ) => {
       if (inFlight.current) return;
       const withExclusions: DiscoverDraft = {
@@ -112,6 +122,11 @@ export function DiscoverFlow({
         setPhase('error');
         return;
       }
+
+      if (options?.resetShown) shownIds.current = [];
+      const excludeRestaurantIds = options?.excludeShown
+        ? shownRestaurantExclusions(shownIds.current)
+        : undefined;
 
       inFlight.current = true;
       const id = requestId.current + 1;
@@ -132,7 +147,7 @@ export function DiscoverFlow({
       try {
         const spin = draftToSpinBody(withExclusions);
         const tone: DiscoverAskTone =
-          askTone ?? (withExclusions.surprise ? 'surprise' : 'request');
+          options?.askTone ?? (withExclusions.surprise ? 'surprise' : 'request');
         const body = {
           ...spin,
           ...(excludeRestaurantIds && excludeRestaurantIds.length > 0
@@ -152,6 +167,8 @@ export function DiscoverFlow({
           setPhase('recipe');
           return;
         }
+        const shown = shownRestaurantId(result.events);
+        if (shown) shownIds.current = rememberShownRestaurant(shownIds.current, shown);
         setEvents(result.events);
       } catch {
         if (controller.signal.aborted || requestId.current !== id) return;
@@ -206,12 +223,12 @@ export function DiscoverFlow({
     setErrorMessage(null);
   }
 
-  function resubmit(refine: DiscoverRefine, excludeRestaurantId?: string) {
+  function resubmit(refine: DiscoverRefine) {
     const origin = originDraft ?? draft;
-    const excludeRestaurantIds =
-      refine === 'another' && excludeRestaurantId ? [excludeRestaurantId] : undefined;
-    const tone: DiscoverAskTone | undefined = refine === 'another' ? 'another' : undefined;
-    void run(refineDiscoverDraft(origin, refine), false, excludeRestaurantIds, tone);
+    void run(refineDiscoverDraft(origin, refine), false, {
+      excludeShown: refine === 'another',
+      askTone: refine === 'another' ? 'another' : undefined,
+    });
   }
 
   const outcome = outcomeFromEvents(events);
@@ -227,18 +244,10 @@ export function DiscoverFlow({
     const trimmed = message.trim();
     if (!trimmed || message.length > ROULETTE_MAX_MESSAGE_CHARS) return;
     const origin = originDraft ?? draft;
-    const shownId =
-      outcome.kind === 'fallback'
-        ? outcome.event.alternative.id
-        : outcome.kind === 'pick'
-          ? outcome.event.partner.id
-          : null;
-    void run(
-      followUpDiscoverDraft(origin, trimmed),
-      true,
-      shownId ? [shownId] : undefined,
-      'request',
-    );
+    void run(followUpDiscoverDraft(origin, trimmed), true, {
+      excludeShown: true,
+      askTone: 'request',
+    });
   }
 
   return (
@@ -260,7 +269,7 @@ export function DiscoverFlow({
             if (!chip) return;
             void run(applyQuickChip(draft, chip), true);
           }}
-          onSubmit={() => void run(draft, true)}
+          onSubmit={() => void run(draft, true, { resetShown: true })}
         />
       ) : null}
 
@@ -294,11 +303,7 @@ export function DiscoverFlow({
             setRefineOpen(true);
             backToAsk();
           }}
-          onAnother={() => {
-            const shownId =
-              outcome.kind === 'fallback' ? outcome.event.alternative.id : outcome.event.partner.id;
-            resubmit('another', shownId);
-          }}
+          onAnother={() => resubmit('another')}
           onCheaper={() => resubmit('cheaper')}
           onNewVibe={() => resubmit('new-vibe')}
           onFollowUp={followUp}

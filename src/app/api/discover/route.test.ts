@@ -332,9 +332,10 @@ describe('Discover stream route', () => {
       alternative: { id: VEGAN.id },
     });
     if (fallback?.type === 'fallback') {
-      expect(fallback.message).toContain('Alternative:');
-      expect(fallback.message.toLowerCase()).toContain('different pick');
+      expect(fallback.message).toContain("Closest I've got:");
+      expect(fallback.message.toLowerCase()).toContain('may not match everything');
       expect(fallback.message.toLowerCase()).not.toContain('not a match');
+      expect(fallback.tone).toBe('alternative');
     }
     expect(events.some((event) => event.type === 'pick')).toBe(false);
 
@@ -397,6 +398,49 @@ describe('Discover stream route', () => {
       type: 'pick',
       reason: body.reason,
       partner: { id: body.restaurantId, name: body.restaurantName },
+    });
+  });
+
+  it('excludes shown restaurants on the model path and the random path', async () => {
+    const response = await POST(post({ body: { excludeRestaurantIds: [BBQ.id] } }));
+    expect(response.status).toBe(200);
+    const picked = parseDiscoverSse(await response.text()).find((event) => event.type === 'pick');
+    expect(picked).toMatchObject({ type: 'pick', partner: { id: VEGAN.id } });
+    const promptCall = fetchMock.mock.calls.find((call) => String(call[0]).includes('anthropic'));
+    const sent = JSON.parse(String((promptCall?.[1] as RequestInit | undefined)?.body)) as {
+      messages?: { content?: string }[];
+    };
+    const prompt = sent.messages?.[0]?.content ?? '';
+    expect(prompt).toContain(VEGAN.id);
+    expect(prompt).not.toContain(BBQ.id);
+
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(anthropicResponse(JSON.stringify({ restaurantId: VEGAN.id }))),
+    );
+    const missed = await POST(post({ body: { excludeRestaurantIds: [VEGAN.id] } }));
+    expect(missed.status).toBe(200);
+    const missedEvents = parseDiscoverSse(await missed.text());
+    expect(missedEvents.some((event) => event.type === 'error')).toBe(false);
+    expect(missedEvents.find((event) => event.type === 'fallback')).toMatchObject({
+      type: 'fallback',
+      alternative: { id: BBQ.id },
+    });
+    const missedPrompt = fetchMock.mock.calls
+      .map((call) => String((call[1] as RequestInit | undefined)?.body ?? ''))
+      .find((body) => body.includes(BBQ.id));
+    expect(missedPrompt).toBeTruthy();
+    expect(missedPrompt).not.toContain(VEGAN.id);
+
+    vi.stubEnv('WANDERBITE_AI_DISABLED', 'true');
+    const exhausted = await POST(
+      post({ body: { excludeRestaurantIds: [VEGAN.id, BBQ.id, VEGAN.id] } }),
+    );
+    expect(exhausted.status).toBe(200);
+    const exhaustedEvents = parseDiscoverSse(await exhausted.text());
+    expect(exhaustedEvents.some((event) => event.type === 'error')).toBe(false);
+    expect(exhaustedEvents.find((event) => event.type === 'fallback')).toMatchObject({
+      type: 'fallback',
+      alternative: { id: VEGAN.id },
     });
   });
 

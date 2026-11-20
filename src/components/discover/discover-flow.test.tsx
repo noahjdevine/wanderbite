@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { StrictMode, act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -169,14 +171,15 @@ describe('DiscoverFlow', () => {
     expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toBe('/api/discover');
   });
 
-  it('labels a fallback restaurant as an alternative', async () => {
+  it('labels a fallback restaurant as a closest pick', async () => {
     vi.mocked(fetch).mockResolvedValue(
       sse([
         { type: 'step', id: 'parse', label: 'Reading your vibe', constraints: [] },
         {
           type: 'fallback',
           reason: 'no_match',
-          message: 'Alternative: Noodle House. This is a different pick from that request.',
+          message: "Closest I've got: Noodle House. It may not match everything you asked for.",
+          tone: 'alternative',
           alternative: partner,
         },
       ]),
@@ -187,8 +190,9 @@ describe('DiscoverFlow', () => {
     await act(async () => {
       await vi.advanceTimersByTimeAsync(700);
     });
-    expect(screen.getByText('An alternative')).toBeTruthy();
-    expect(screen.getByText(/different pick from that request/)).toBeTruthy();
+    expect(screen.getByText('Closest pick')).toBeTruthy();
+    expect(screen.getByText(/may not match everything you asked for/)).toBeTruthy();
+    expect(screen.queryByText('An alternative')).toBeNull();
     expect(screen.queryByText('Not a match')).toBeNull();
     expect(screen.queryByText(/not a match/i)).toBeNull();
     expect(screen.queryByText('Picked for you')).toBeNull();
@@ -254,6 +258,101 @@ describe('DiscoverFlow', () => {
     expect(bodies[2]?.priceRange).toBeUndefined();
     expect(bodies[2]?.askTone).toBe('another');
     expect(bodies[2]?.excludeRestaurantIds).toEqual(['rest-1']);
+  });
+
+  it('keeps shown restaurants out of Another idea and a follow-up, then clears them on a new ask', async () => {
+    const picks = [
+      { id: 'rest-a', name: "Rick's" },
+      { id: 'rest-b', name: 'Local Yocal' },
+      { id: 'rest-c', name: 'Third Place' },
+    ];
+    let call = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      const next = picks[Math.min(call, picks.length - 1)] ?? picks[0];
+      call += 1;
+      return sse([
+        { type: 'step', id: 'parse', label: 'Reading your vibe', constraints: [] },
+        {
+          type: 'pick',
+          partner: { ...partner, ...next },
+          reason: 'A place nearby.',
+          matched: [],
+          unknown: [],
+          unmet: [],
+          isNewToMember: false,
+          food: 'generic',
+        },
+      ]);
+    });
+    render(
+      <DiscoverFlow initialMessage="spicy noodles" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
+    await flush();
+    const bodies = postedBodies();
+    expect(bodies[0]?.excludeRestaurantIds).toBeUndefined();
+    expect(bodies[1]?.excludeRestaurantIds).toEqual(['rest-a']);
+    expect(bodies[1]?.askTone).toBe('another');
+    expect(bodies[2]?.excludeRestaurantIds).toEqual(['rest-a', 'rest-b']);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+
+    fireEvent.change(screen.getByLabelText('Tell Bea something else'), {
+      target: { value: 'something spicy instead' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    await flush();
+    expect(postedBodies()[3]?.excludeRestaurantIds).toEqual(['rest-a', 'rest-b', 'rest-c']);
+    expect(postedBodies()[3]?.askTone).toBe('request');
+    expect(postedBodies()[3]?.message).toBe('something spicy instead');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'quiet tacos' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    expect(postedBodies()[4]?.message).toBe('quiet tacos');
+    expect(postedBodies()[4]?.excludeRestaurantIds).toBeUndefined();
+  });
+
+  it('submits the main box on Enter and ignores an empty or composing Enter', async () => {
+    render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    const field = screen.getByLabelText('Tell Bea what you are craving');
+    const chips = screen.getByRole('button', { name: 'Surprise me' }).parentElement;
+    expect(chips?.className).toContain('flex-wrap');
+    expect(chips?.className).not.toContain('overflow-x');
+    expect(screen.getByRole('button', { name: 'Record' }).className).toContain('wb-voice-record');
+
+    fireEvent.keyDown(field, { key: 'Enter' });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    expect(fetch).not.toHaveBeenCalled();
+
+    fireEvent.change(field, { target: { value: '   ' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(fetch).not.toHaveBeenCalled();
+
+    fireEvent.change(field, { target: { value: 'spicy noodles' } });
+    fireEvent.keyDown(field, { key: 'Enter', shiftKey: true });
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await flush();
+    expect(postedBodies()[0]?.message).toBe('spicy noodles');
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('sends a follow-up as a new ask, clears surprise, and excludes the shown restaurant', async () => {
@@ -429,5 +528,46 @@ describe('DiscoverFlow', () => {
     expect(screen.getByText(/suggestion stream stopped/i)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Back to Ask' }));
     expect(screen.getByRole('heading', { name: /Where should we eat/ })).toBeTruthy();
+  });
+});
+
+function linear(channel: number) {
+  const value = channel / 255;
+  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+}
+
+function contrast(foreground: string, background: string) {
+  const lum = (hex: string) => {
+    const channels = [0, 1, 2].map((index) =>
+      linear(Number.parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16)),
+    );
+    const red = channels[0] ?? 0;
+    const green = channels[1] ?? 0;
+    const blue = channels[2] ?? 0;
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const lighter = Math.max(lum(foreground), lum(background));
+  const darker = Math.min(lum(foreground), lum(background));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+describe('Record contrast on the dark Discover page', () => {
+  it('keeps ink on white at AA and a blush focus ring against the night background', () => {
+    const css = readFileSync(
+      path.resolve(__dirname, '../../app/styles/wanderbite-theme.css'),
+      'utf8',
+    );
+    const root = css.slice(0, css.indexOf('/* ---------- Controls ----------'));
+    const ink = root.match(/--wb-ink:\s*(#[0-9a-fA-F]{6})/)?.[1];
+    const blush = root.match(/--wb-blush:\s*(#[0-9a-fA-F]{6})/)?.[1];
+    const night = root.match(/--wb-night:\s*(#[0-9a-fA-F]{6})/)?.[1];
+    if (!ink || !blush || !night) throw new Error('missing theme color');
+    const rule = css.slice(css.indexOf('.wb-dark .wb-voice-record'));
+    expect(rule.startsWith('.wb-dark .wb-voice-record')).toBe(true);
+    expect(rule).toContain('background: #fff;');
+    expect(rule).toContain('color: var(--wb-ink);');
+    expect(rule).toContain('outline: 2px solid var(--wb-blush);');
+    expect(contrast(ink, '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(blush, night)).toBeGreaterThanOrEqual(3);
   });
 });

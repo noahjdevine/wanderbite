@@ -1,25 +1,35 @@
 /**
  * Drops excluded restaurant ids before a pick.
- * An empty list, ids that match nothing, or a list that would remove every
- * remaining row leaves the pool as it was.
+ * An empty list, or ids that match nothing, leaves the pool as it was.
+ * Ids are oldest first. When that list would remove every remaining row,
+ * the oldest excluded id is allowed back, then the next oldest, until one
+ * row remains. The AI prompt and the random pick both use that pool, so a
+ * repeat is the oldest shown place and the ask does not error.
  */
 export function applyRestaurantExclusion<T extends { id: string }>(
   restaurants: readonly T[],
   excludeIds: readonly string[],
 ): T[] {
-  if (excludeIds.length === 0) return restaurants as T[];
-  const excluded = new Set(excludeIds);
-  let removed = 0;
-  const narrowed: T[] = [];
-  for (const row of restaurants) {
-    if (excluded.has(row.id)) {
-      removed += 1;
-      continue;
-    }
-    narrowed.push(row);
+  if (excludeIds.length === 0 || restaurants.length === 0) return restaurants as T[];
+  const excluded = new Set<string>();
+  const ordered: string[] = [];
+  for (const id of excludeIds) {
+    if (excluded.has(id)) continue;
+    excluded.add(id);
+    ordered.push(id);
   }
-  if (removed === 0 || narrowed.length === 0) return restaurants as T[];
-  return narrowed;
+  const narrowed = restaurants.filter((row) => !excluded.has(row.id));
+  if (narrowed.length === restaurants.length) return restaurants as T[];
+  if (narrowed.length > 0) return narrowed;
+
+  const pool = new Set(restaurants.map((row) => row.id));
+  const blocking = ordered.filter((id) => pool.has(id));
+  for (let drop = 1; drop <= blocking.length; drop += 1) {
+    const still = new Set(blocking.slice(drop));
+    const allowed = restaurants.filter((row) => !still.has(row.id));
+    if (allowed.length > 0) return allowed;
+  }
+  return restaurants as T[];
 }
 
 /**

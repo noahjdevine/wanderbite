@@ -5,13 +5,14 @@ import { Bea, BEA_DISPLAY_NAME } from '@/components/bea';
 import { Chip } from '@/components/wb/chip';
 import { DiscoverPhoto } from '@/components/discover/discover-photo';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
-import { fallbackPresentation, type DiscoverFood } from '@/lib/discover/events';
+import { fallbackBadgeLabel, fallbackPresentation, type DiscoverFood } from '@/lib/discover/events';
 import type { DiscoverStepEvent } from '@/lib/discover/screen';
 import {
   DISCOVER_ALLERGY_NOTICE,
   DISCOVER_MESSAGE_TOO_LONG,
   closerChipIncluded,
   directionsHref,
+  discoverEnterSubmits,
   offerChipLabel,
   type DiscoverOutcome,
 } from '@/lib/discover/screen';
@@ -50,15 +51,10 @@ export function DiscoverPick({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [followUp, setFollowUp] = useState('');
   const alternative = outcome.kind === 'fallback';
-  const fallbackTone = alternative ? fallbackPresentation(outcome.event.message) : null;
-  const badge =
-    fallbackTone === 'surprise'
-      ? "Here's a surprise"
-      : fallbackTone === 'another'
-        ? "Here's another idea"
-        : fallbackTone === 'alternative'
-          ? 'An alternative'
-          : 'Picked for you';
+  const fallbackTone = alternative
+    ? (outcome.event.tone ?? fallbackPresentation(outcome.event.message))
+    : null;
+  const badge = fallbackTone ? fallbackBadgeLabel(fallbackTone) : 'Picked for you';
   const followUpTooLong = followUp.length > ROULETTE_MAX_MESSAGE_CHARS;
   const partner = alternative ? outcome.event.alternative : outcome.event.partner;
   const href = directionsHref(partner);
@@ -215,6 +211,13 @@ export function DiscoverPick({
                   value={followUp}
                   placeholder="Tell Bea something else"
                   onChange={(event) => setFollowUp(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (!discoverEnterSubmits(event)) return;
+                    event.preventDefault();
+                    const message = followUp.trim();
+                    if (!message || followUpTooLong) return;
+                    onFollowUp(message);
+                  }}
                   className="wb-chat-field min-h-10 w-full flex-1 resize-none bg-transparent text-sm text-white outline-none placeholder:text-white/55"
                 />
                 <button

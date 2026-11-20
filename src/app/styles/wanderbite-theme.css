@@ -133,6 +133,17 @@
   border-color: var(--wb-blush);
   background: rgba(255, 255, 255, 0.16);
 }
+/* White outline Record button on the dark Discover page. Inherited text is white, which fails AA. */
+.wb-dark .wb-voice-record,
+.wb-dark .wb-voice-record:hover,
+.wb-dark .wb-voice-record:focus-visible {
+  background: #fff;
+  color: var(--wb-ink);
+}
+.wb-dark .wb-voice-record:focus-visible {
+  outline: 2px solid var(--wb-blush);
+  outline-offset: 2px;
+}
 .wb-orb { border-radius: 50%; background: var(--wb-orb-gradient); box-shadow: 0 0 24px rgba(167, 139, 250, 0.6); }
 
 /* Focus */
