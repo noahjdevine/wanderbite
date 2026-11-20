@@ -333,9 +333,32 @@ describe('Discover stream route', () => {
     });
     if (fallback?.type === 'fallback') {
       expect(fallback.message).toContain('Alternative:');
-      expect(fallback.message.toLowerCase()).toContain('not a match');
+      expect(fallback.message.toLowerCase()).toContain('different pick');
+      expect(fallback.message.toLowerCase()).not.toContain('not a match');
     }
     expect(events.some((event) => event.type === 'pick')).toBe(false);
+
+    const surprise = await POST(post({ message: '', body: { askTone: 'surprise' } }));
+    const surpriseFallback = parseDiscoverSse(await surprise.text()).find((event) => event.type === 'fallback');
+    expect(surpriseFallback && surpriseFallback.type === 'fallback' ? surpriseFallback.message : '').toContain(
+      "Here's a surprise",
+    );
+    expect(
+      surpriseFallback && surpriseFallback.type === 'fallback'
+        ? surpriseFallback.message.toLowerCase()
+        : '',
+    ).not.toContain('not a match');
+
+    const another = await POST(
+      post({ message: 'quiet sushi', body: { askTone: 'another', preferredCuisine: 'japanese' } }),
+    );
+    const anotherFallback = parseDiscoverSse(await another.text()).find((event) => event.type === 'fallback');
+    expect(anotherFallback && anotherFallback.type === 'fallback' ? anotherFallback.message : '').toContain(
+      "Here's another idea",
+    );
+    expect(
+      anotherFallback && anotherFallback.type === 'fallback' ? anotherFallback.message.toLowerCase() : '',
+    ).not.toContain('not a match');
     const filter = events.find((event) => event.type === 'step' && event.id === 'filter');
     if (filter?.type === 'step' && filter.id === 'filter') {
       expect(filter.total).toBe(1);

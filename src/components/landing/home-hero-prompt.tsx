@@ -72,7 +72,7 @@ export function HomeHeroPrompt() {
               autoComplete="off"
               enterKeyHint="search"
               onChange={(event) => setValue(event.target.value)}
-              className="absolute inset-0 w-full bg-transparent text-[17px] text-white outline-none"
+              className="wb-chat-field absolute inset-0 w-full bg-transparent text-[17px] text-white outline-none"
             />
             {value.length === 0
               ? HERO_NEED_PLACEHOLDERS.map((prompt, index) => (

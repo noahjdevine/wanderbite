@@ -83,6 +83,7 @@ function postedBodies(): {
   message?: string;
   priceRange?: string;
   vibe?: string;
+  askTone?: string;
   excludeRestaurantIds?: string[];
 }[] {
   return vi
@@ -93,6 +94,7 @@ function postedBodies(): {
         message?: string;
         priceRange?: string;
         vibe?: string;
+        askTone?: string;
         excludeRestaurantIds?: string[];
       };
     });
@@ -174,7 +176,7 @@ describe('DiscoverFlow', () => {
         {
           type: 'fallback',
           reason: 'no_match',
-          message: 'Alternative: Noodle House. This is not a match for that request.',
+          message: 'Alternative: Noodle House. This is a different pick from that request.',
           alternative: partner,
         },
       ]),
@@ -186,7 +188,9 @@ describe('DiscoverFlow', () => {
       await vi.advanceTimersByTimeAsync(700);
     });
     expect(screen.getByText('An alternative')).toBeTruthy();
-    expect(screen.getByText(/not a match/)).toBeTruthy();
+    expect(screen.getByText(/different pick from that request/)).toBeTruthy();
+    expect(screen.queryByText('Not a match')).toBeNull();
+    expect(screen.queryByText(/not a match/i)).toBeNull();
     expect(screen.queryByText('Picked for you')).toBeNull();
   });
 
@@ -248,7 +252,43 @@ describe('DiscoverFlow', () => {
     expect(bodies[1]?.excludeRestaurantIds).toBeUndefined();
     expect(bodies[2]?.message).toBe('spicy noodles');
     expect(bodies[2]?.priceRange).toBeUndefined();
+    expect(bodies[2]?.askTone).toBe('another');
     expect(bodies[2]?.excludeRestaurantIds).toEqual(['rest-1']);
+  });
+
+  it('sends a follow-up as a new ask, clears surprise, and excludes the shown restaurant', async () => {
+    render(
+      <DiscoverFlow initialMessage="spicy noodles" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    expect(screen.getByRole('heading', { name: 'Noodle House' })).toBeTruthy();
+    expect(postedBodies()[0]?.message).toBeUndefined();
+    expect(postedBodies()[0]?.askTone).toBe('surprise');
+
+    const field = screen.getByLabelText('Tell Bea something else');
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    fireEvent.change(field, { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(field, { target: { value: 'a'.repeat(501) } });
+    expect(screen.getByText(/too long/i)).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(field, { target: { value: 'something spicy instead' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    await flush();
+    expect(screen.getByText('Reading your vibe')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Noodle House' })).toBeNull();
+    const followUp = postedBodies()[1];
+    expect(followUp?.message).toBe('something spicy instead');
+    expect(followUp?.askTone).toBe('request');
+    expect(followUp?.excludeRestaurantIds).toEqual(['rest-1']);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('shows arrived steps immediately when reduced motion is on', async () => {
