@@ -105,8 +105,10 @@ describe('discover turn visit wiring', () => {
     const visits = readFileSync(path.join(ROOT, 'src/lib/discover/member-visits.ts'), 'utf8');
     const exclusion = turn.indexOf('applyRestaurantExclusion(restaurants, excludeRestaurantIds)');
     const parallel = turn.indexOf('loadMemberVisitedRestaurantIds(admin, userId, restaurantIds)');
-    const prompt = turn.indexOf('const systemPrompt');
-    const modelPick = turn.indexOf('const cardRestaurant = chosen ?? pickRandom(fallbackPool())');
+    const prompt = turn.indexOf('systemPrompt = `You choose one restaurant id');
+    const modelPick = turn.indexOf(
+      'const cardRestaurant = codePickRestaurant ?? chosen ?? pickRandom(fallbackPool())',
+    );
     expect(exclusion).toBeGreaterThan(0);
     expect(parallel).toBeGreaterThan(exclusion);
     expect(prompt).toBeGreaterThan(parallel);

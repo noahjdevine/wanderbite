@@ -68,7 +68,7 @@ export type DiscoveryProfileGate =
     };
 
 export type DiscoveryReplayDecision =
-  | { outcome: 'ai'; restaurantId: string }
+  | { outcome: 'ai'; restaurantId: string; line?: string }
   | { outcome: 'legacy'; restaurantId: string }
   | { outcome: 'legacy_discard' }
   | { outcome: 'mismatch' };
@@ -240,23 +240,36 @@ export function buildStoredDiscoveryPayload(args: {
   promptIds: readonly string[];
   messageMac: string;
   filterMac: string;
+  /** Code-pick sentence. Omitted for a template card and for older payloads. */
+  line?: string;
 }): Record<string, string | string[]> {
-  return {
+  const payload: Record<string, string | string[]> = {
     restaurantId: args.restaurantId,
     selectionMode: args.selectionMode,
     promptIds: [...args.promptIds],
     messageMac: args.messageMac,
     filterMac: args.filterMac,
   };
+  const line = args.line?.trim();
+  if (line) payload.line = line;
+  return payload;
 }
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === 'string');
 }
 
+function storedLine(stored: Record<string, unknown>): string | undefined {
+  if (typeof stored.line !== 'string') return undefined;
+  const trimmed = stored.line.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
 /**
  * `ai` only when the stored payload proves the id was sent and this request matches.
  * A MAC mismatch is the only 409. Missing MAC fields are legacy and never `ai`.
+ * Optional `line` is returned only for that `ai` outcome. Older payloads and a
+ * legacy `reason` string stay accepted and do not become the card sentence.
  */
 export function decideReplay(args: {
   payload: unknown;
@@ -297,7 +310,8 @@ export function decideReplay(args: {
     promptIds.includes(restaurantId) &&
     args.poolIds.has(restaurantId)
   ) {
-    return { outcome: 'ai', restaurantId };
+    const line = storedLine(stored);
+    return line ? { outcome: 'ai', restaurantId, line } : { outcome: 'ai', restaurantId };
   }
   if (stored.selectionMode === 'ai') return { outcome: 'legacy_discard' };
   return args.poolIds.has(restaurantId)
