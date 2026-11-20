@@ -68,8 +68,12 @@ export type MessageSoftAsk = {
   priceRange?: string;
 };
 
+/**
+ * The cue sits immediately before the cuisine. Longer cues are listed first
+ * so "not feeling" and "so over" win over "not" and "over".
+ */
 const NEGATION_BEFORE =
-  /(?:(?:anything|something|everything)\s+but|not\s+in\s+the\s+mood\s+for|except|without|avoid|no|not)(?:\s+(?:a|an|the|any|some|more|just))*\s*$/i;
+  /(?:^|[^a-z])(?:not\s+in\s+the\s+mood\s+for|not\s+feeling|(?:i'?m|i\s+am|im)\s+so\s+over|so\s+over|sick\s+of|tired\s+of|(?:anything|something|everything)\s+but|except|without|avoid|skip(?:\s+the)?|had|over|no|not)(?:\s+(?:a|an|the|any|some|more|just))*\s*$/i;
 
 type CuisineHit = { id: CuisineId; index: number; end: number };
 

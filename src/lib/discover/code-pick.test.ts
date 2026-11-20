@@ -237,6 +237,27 @@ describe('mergeSoftAsk', () => {
     expect(mergeSoftAsk({ message: 'avoid pizza' }).excludedCuisines).toEqual(['pizza']);
     expect(mergeSoftAsk({ message: 'without thai' }).excludedCuisines).toEqual(['thai']);
     expect(mergeSoftAsk({ message: 'except sushi' }).excludedCuisines).toEqual(['japanese']);
+    expect(mergeSoftAsk({ message: "I'm so over sushi" })).toMatchObject({
+      preferredCuisines: [],
+      excludedCuisines: ['japanese'],
+    });
+    expect(mergeSoftAsk({ message: 'so over sushi' }).excludedCuisines).toEqual(['japanese']);
+    expect(mergeSoftAsk({ message: 'over sushi' }).excludedCuisines).toEqual(['japanese']);
+    expect(mergeSoftAsk({ message: 'sick of thai' }).excludedCuisines).toEqual(['thai']);
+    expect(mergeSoftAsk({ message: 'tired of pizza' }).excludedCuisines).toEqual(['pizza']);
+    expect(mergeSoftAsk({ message: 'had sushi last night' }).excludedCuisines).toEqual(['japanese']);
+    expect(mergeSoftAsk({ message: 'had tacos yesterday' }).excludedCuisines).toEqual(['mexican']);
+    expect(mergeSoftAsk({ message: 'skip the sushi' }).excludedCuisines).toEqual(['japanese']);
+    expect(mergeSoftAsk({ message: 'skip sushi' }).excludedCuisines).toEqual(['japanese']);
+    expect(mergeSoftAsk({ message: 'not feeling pizza' }).excludedCuisines).toEqual(['pizza']);
+    expect(mergeSoftAsk({ message: 'sushi' })).toMatchObject({
+      preferredCuisines: ['japanese'],
+      excludedCuisines: [],
+    });
+    expect(mergeSoftAsk({ message: 'craving sushi' })).toMatchObject({
+      preferredCuisines: ['japanese'],
+      excludedCuisines: [],
+    });
   });
 });
 
@@ -297,6 +318,19 @@ describe('negated cuisines stay out of the pick', () => {
       random: () => 0.99,
     });
     expect(pick?.restaurant.id).toBe('tacos');
+    expect(pick?.preferencesMet).toBe(true);
+  });
+
+  it('treats a sushi match for sushi or thai as met', () => {
+    const ask = mergeSoftAsk({ message: 'sushi or thai' });
+    const shun = { id: 'shun', cuisine_tags: ['sushi'], price_range: '$$' };
+    const pick = rankDiscoverRestaurant({
+      pool: [shun, { id: 'steak', cuisine_tags: ['steak'], price_range: '$$$' }],
+      preferredCuisines: ask.preferredCuisines,
+      excludedCuisines: ask.excludedCuisines,
+      random: () => 0,
+    });
+    expect(pick?.restaurant.id).toBe('shun');
     expect(pick?.preferencesMet).toBe(true);
   });
 });

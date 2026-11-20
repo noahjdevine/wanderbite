@@ -1443,7 +1443,7 @@ describe('Discover stream route', () => {
         };
         expect(body).toMatchObject({
           restaurantId: TACO.id,
-          selectionMode: 'random_fallback',
+          selectionMode: 'ai',
           reason: template,
         });
         expect(body.reason).not.toContain('secret-line');
@@ -1474,7 +1474,7 @@ describe('Discover stream route', () => {
       );
       await expect(disabled.json()).resolves.toMatchObject({
         restaurantId: TACO.id,
-        selectionMode: 'random_fallback',
+        selectionMode: 'ai',
         reason: template,
       });
       expect(fetchMock).not.toHaveBeenCalled();
@@ -1488,7 +1488,7 @@ describe('Discover stream route', () => {
       );
       await expect(limited.json()).resolves.toMatchObject({
         restaurantId: TACO.id,
-        selectionMode: 'random_fallback',
+        selectionMode: 'ai',
         reason: template,
       });
       expect(fetchMock).not.toHaveBeenCalled();
@@ -1504,7 +1504,7 @@ describe('Discover stream route', () => {
       );
       await expect(denied.json()).resolves.toMatchObject({
         restaurantId: TACO.id,
-        selectionMode: 'random_fallback',
+        selectionMode: 'ai',
         reason: template,
       });
       expect(fetchMock).not.toHaveBeenCalled();
@@ -1519,7 +1519,7 @@ describe('Discover stream route', () => {
       );
       await expect(errored.json()).resolves.toMatchObject({
         restaurantId: TACO.id,
-        selectionMode: 'random_fallback',
+        selectionMode: 'ai',
         reason: template,
       });
       expect(rpcs.rpcAiSettle).not.toHaveBeenCalled();
@@ -1553,7 +1553,7 @@ describe('Discover stream route', () => {
       const timedOut = await pending;
       await expect(timedOut.json()).resolves.toMatchObject({
         restaurantId: TACO.id,
-        selectionMode: 'random_fallback',
+        selectionMode: 'ai',
         reason: template,
       });
       expect(rpcs.rpcAiSettle).not.toHaveBeenCalled();
@@ -1578,15 +1578,13 @@ describe('Discover stream route', () => {
       );
       expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
       expect(tables).not.toContain('redemptions');
-      const fallback = events.find((event) => event.type === 'fallback');
-      expect(fallback).toMatchObject({
-        tone: 'alternative',
-        alternative: { id: TACO.id },
-        message: "Closest I've got: Taco House. It may not match everything you asked for.",
+      expect(events.find((event) => event.type === 'pick')).toMatchObject({
+        type: 'pick',
+        isNewToMember: false,
+        reason: discoveryCardSentence(TACO, LAUNCH_MARKET.displayName),
+        partner: { id: TACO.id },
       });
-      expect(fallback && fallback.type === 'fallback' ? Object.hasOwn(fallback, 'isNewToMember') : false).toBe(
-        false,
-      );
+      expect(events.some((event) => event.type === 'fallback')).toBe(false);
     } finally {
       random.mockRestore();
     }
@@ -1747,12 +1745,15 @@ describe('Discover stream route', () => {
     expect(events.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
       line: "You haven't been to Taco House yet.",
     });
+    expect(fetchMock).toHaveBeenCalled();
+    expect(rpcs.rpcAiReserve).toHaveBeenCalled();
     expect(events.find((event) => event.type === 'pick')).toMatchObject({
       type: 'pick',
       isNewToMember: true,
       partner: { id: TACO.id },
       reason: LINE,
     });
+    expect(events.some((event) => event.type === 'fallback')).toBe(false);
 
     redemptionRows = [{ restaurant_id: TACO.id, status: 'verified' }];
     const again = parseDiscoverSse(
@@ -1836,6 +1837,10 @@ describe('Discover stream route', () => {
       expect(body.restaurantId).toBe(thai.id);
       expect(body.restaurantName).not.toBe('Kimiya');
 
+      const over = await roulettePost(post({ message: "I'm so over sushi" }));
+      const overBody = (await over.json()) as { restaurantId: string };
+      expect(overBody.restaurantId).toBe(thai.id);
+
       restaurantRows = [sushi];
       fetchMock.mockClear();
       const empty = await roulettePost(post({ message: 'anything but sushi tonight' }));
@@ -1845,5 +1850,47 @@ describe('Discover stream route', () => {
     } finally {
       random.mockRestore();
     }
+  });
+
+  it('calls Haiku for a surprise with no soft preference and keeps a sushi-or-thai match', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO];
+    fetchMock.mockImplementation(() => Promise.resolve(anthropicResponse(LINE)));
+    const surprise = parseDiscoverSse(
+      await (await POST(post({ message: '', body: { askTone: 'surprise' } }))).text(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(surprise.some((event) => event.type === 'fallback')).toBe(false);
+    expect(surprise.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      reason: LINE,
+      partner: { id: TACO.id },
+    });
+
+    const sushi = { ...BBQ, id: 'rest-sushi', name: 'Shun by Yama Sushi', cuisine_tags: ['sushi'] };
+    const steak = { ...BBQ, id: 'rest-steak', name: 'Local Yocal', cuisine_tags: ['steak'], price_range: '$$$' };
+    restaurantRows = [steak, sushi];
+    fetchMock.mockClear();
+    rpcs.rpcAiReserve.mockClear();
+    const matched = parseDiscoverSse(
+      await (await POST(post({ message: 'sushi or thai', body: { askTone: 'request' } }))).text(),
+    );
+    expect(fetchMock).toHaveBeenCalled();
+    expect(matched.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      partner: { id: sushi.id, name: sushi.name },
+    });
+    expect(matched.some((event) => event.type === 'fallback')).toBe(false);
+
+    fetchMock.mockResolvedValue(anthropicResponse('Shun by Yama Sushi is perfect for special occasions.'));
+    const templated = parseDiscoverSse(
+      await (await POST(post({ message: 'sushi or thai', body: { askTone: 'request' } }))).text(),
+    );
+    expect(templated.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      reason: discoveryCardSentence(sushi, LAUNCH_MARKET.displayName),
+      partner: { id: sushi.id },
+    });
+    expect(templated.some((event) => event.type === 'fallback')).toBe(false);
   });
 });

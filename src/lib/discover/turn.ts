@@ -612,12 +612,21 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       dietaryFilterCount: dietaryFlags.length,
     });
 
+    const matchesNamedCuisine = (row: RouletteRestaurant) =>
+      messageAsk !== null &&
+      messageAsk.preferredCuisines.some((id) =>
+        restaurantMatchesPreferredCuisine(row.cuisine_tags, id),
+      );
+
     const randomFallback = (reason: DiscoverFallbackReason, requestId: string = clientUuid) => {
       logDiscoverFallback({
         reason,
         ...discoverBase(requestId),
       });
       const chosen = codePickRestaurant ?? pickRandom(fallbackPool());
+      if (reason !== 'unmet_preference' && codePickPreferencesMet && matchesNamedCuisine(chosen)) {
+        return cardEvents(chosen, 'ai', null, false);
+      }
       return cardEvents(chosen, 'random_fallback', reason, false);
     };
 
@@ -917,6 +926,23 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
         : 'random_fallback';
     const cardRestaurant = codePickRestaurant ?? chosen ?? pickRandom(fallbackPool());
     const shownLine = showHaikuLine && lineDecision?.ok ? lineDecision.line : undefined;
+    const fallbackReason: DiscoverFallbackReason | null =
+      selectionMode === 'ai'
+        ? null
+        : !codePickRestaurant
+          ? (modelReason ?? 'invalid_pick')
+          : providerFailed
+            ? (modelReason ?? 'provider_error')
+            : lineDecision?.ok
+              ? 'unmet_preference'
+              : 'line_rejected';
+    const presentMatchedCuisine =
+      fallbackReason !== null &&
+      fallbackReason !== 'unmet_preference' &&
+      codePickPreferencesMet &&
+      matchesNamedCuisine(cardRestaurant);
+    const presentedMode: RouletteSelectionMode =
+      selectionMode === 'ai' || presentMatchedCuisine ? 'ai' : 'random_fallback';
 
     await accountForOutcome({
       requestId: reserved.request_id,
@@ -930,7 +956,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
         reserved.request_id,
         buildStoredDiscoveryPayload({
           restaurantId: cardRestaurant.id,
-          selectionMode,
+          selectionMode: presentedMode,
           promptIds,
           messageMac,
           filterMac,
@@ -941,20 +967,14 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       // Replay can still fall back if the payload does not persist.
     }
     // Log only with the card that is returned. A ledger throw is a 500, not a pick.
-    if (selectionMode === 'ai') {
+    if (presentedMode === 'ai' && selectionMode === 'ai') {
       logDiscoverAiPick({
         requestId: reserved.request_id,
         poolSize: restaurants.length,
       });
       return cardEvents(cardRestaurant, 'ai', null, false, shownLine);
     }
-    const reason: DiscoverFallbackReason = !codePickRestaurant
-      ? (modelReason ?? 'invalid_pick')
-      : providerFailed
-        ? (modelReason ?? 'provider_error')
-        : lineDecision?.ok
-          ? 'unmet_preference'
-          : 'line_rejected';
+    const reason = fallbackReason ?? 'invalid_pick';
     logDiscoverFallback({
       reason,
       ...discoverBase(reserved.request_id),
@@ -963,6 +983,9 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
         ? { lineCode: lineDecision.code }
         : {}),
     });
+    if (presentMatchedCuisine) {
+      return cardEvents(cardRestaurant, 'ai', null, false);
+    }
     return cardEvents(cardRestaurant, 'random_fallback', reason, providerTimedOut);
   } catch (err) {
     console.error('[roulette] unhandled:', err);
