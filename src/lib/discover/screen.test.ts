@@ -13,6 +13,8 @@ import {
   closerChipIncluded,
   dietaryButtonLabel,
   directionsHref,
+  EMPTY_DISCOVER_DRAFT,
+  discoverDraftHasSelection,
   draftToSpinBody,
   followUpDiscoverDraft,
   foodForOutcome,
@@ -184,6 +186,21 @@ describe('discover screen reducer', () => {
     const surprise = applyQuickChip(baseDraft, { label: 'Surprise me', surprise: true });
     expect(surprise.message).toBe('spicy noodles');
     expect(draftToSpinBody(surprise).message).toBeUndefined();
+  });
+
+  it('treats a refine or dietary field as an ask when the message is blank', () => {
+    expect(discoverDraftHasSelection(EMPTY_DISCOVER_DRAFT)).toBe(false);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, message: '   ', surprise: true })).toBe(
+      false,
+    );
+    expect(discoverDraftHasSelection({ ...baseDraft, message: '' })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, timeOfDay: 'Dinner' })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, priceRange: '$' })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, preferredCuisine: 'japanese' })).toBe(
+      true,
+    );
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, dietaryFlags: ['vegan'] })).toBe(true);
+    expect(discoverDraftHasSelection({ ...EMPTY_DISCOVER_DRAFT, excludedCuisines: ['thai'] })).toBe(true);
   });
 
   it('replaces the message and clears surprise for a typed follow-up', () => {

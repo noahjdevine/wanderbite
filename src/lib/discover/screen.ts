@@ -312,6 +312,21 @@ export function draftToSpinBody(draft: DiscoverDraft): RouletteSpinPayload {
   });
 }
 
+/**
+ * Fields `draftToSpinBody` sends besides the message. A blank box still asks
+ * when any of these is set. Surprise alone is a chip, not a Refine selection.
+ */
+export function discoverDraftHasSelection(draft: DiscoverDraft): boolean {
+  return (
+    draft.vibe !== null ||
+    draft.timeOfDay !== null ||
+    draft.priceRange !== null ||
+    draft.preferredCuisine !== null ||
+    draft.dietaryFlags.length > 0 ||
+    draft.excludedCuisines.length > 0
+  );
+}
+
 export function offerChipLabel(offer: DiscoverOffer): string {
   return `${formatCents(offer.amountOff)} off ${formatCents(offer.minSpend)}+`;
 }

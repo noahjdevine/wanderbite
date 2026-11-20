@@ -267,7 +267,7 @@ export function DiscoverFlow({
           onQuickChip={(index) => {
             const chip = DISCOVER_QUICK_CHIPS[index];
             if (!chip) return;
-            void run(applyQuickChip(draft, chip), true);
+            void run(applyQuickChip(draft, chip), true, { resetShown: true });
           }}
           onSubmit={() => void run(draft, true, { resetShown: true })}
         />

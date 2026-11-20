@@ -337,8 +337,10 @@ describe('DiscoverFlow', () => {
     expect(chips?.className).not.toContain('overflow-x');
     expect(screen.getByRole('button', { name: 'Record' }).className).toContain('wb-voice-record');
 
+    const ask = screen.getByRole('button', { name: 'Ask Bea' });
+    expect(ask).toHaveProperty('disabled', true);
     fireEvent.keyDown(field, { key: 'Enter' });
-    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    fireEvent.click(ask);
     expect(fetch).not.toHaveBeenCalled();
 
     fireEvent.change(field, { target: { value: '   ' } });
@@ -349,10 +351,85 @@ describe('DiscoverFlow', () => {
     fireEvent.keyDown(field, { key: 'Enter', shiftKey: true });
     fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
     expect(fetch).not.toHaveBeenCalled();
+    fireEvent.change(field, { target: { value: 'a'.repeat(501) } });
+    expect(screen.getByRole('button', { name: 'Ask Bea' })).toHaveProperty('disabled', true);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(fetch).not.toHaveBeenCalled();
+
+    fireEvent.change(field, { target: { value: 'spicy noodles' } });
+    expect(screen.getByRole('button', { name: 'Ask Bea' })).toHaveProperty('disabled', false);
+    fireEvent.keyDown(field, { key: 'Enter', shiftKey: true });
+    fireEvent.keyDown(field, { key: 'Enter', isComposing: true });
+    expect(fetch).not.toHaveBeenCalled();
     fireEvent.keyDown(field, { key: 'Enter' });
     await flush();
     expect(postedBodies()[0]?.message).toBe('spicy noodles');
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends a refine-only ask from the arrow and from Enter', async () => {
+    render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    const field = screen.getByLabelText('Tell Bea what you are craving');
+    fireEvent.click(screen.getByRole('button', { name: 'Refine' }));
+    fireEvent.click(screen.getByRole('button', { name: '$' }));
+    expect(screen.getByRole('button', { name: 'Ask Bea' })).toHaveProperty('disabled', false);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    await flush();
+    expect(postedBodies()[0]?.priceRange).toBe('$');
+    expect(postedBodies()[0]?.message).toBeUndefined();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: '$' }));
+    fireEvent.click(screen.getByRole('button', { name: '🥂 Date Night' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    expect(postedBodies()[1]?.vibe).toBe('Date Night');
+    expect(postedBodies()[1]?.priceRange).toBeUndefined();
+    expect(postedBodies()[1]?.message).toBeUndefined();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts a chip ask with a fresh shown list', async () => {
+    const picks = [
+      { id: 'rest-a', name: "Rick's" },
+      { id: 'rest-b', name: 'Local Yocal' },
+    ];
+    let call = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      const next = picks[Math.min(call, picks.length - 1)] ?? picks[0];
+      call += 1;
+      return sse([
+        { type: 'step', id: 'parse', label: 'Reading your vibe', constraints: [] },
+        {
+          type: 'pick',
+          partner: { ...partner, ...next },
+          reason: 'A place nearby.',
+          matched: [],
+          unknown: [],
+          unmet: [],
+          isNewToMember: false,
+          food: 'generic',
+        },
+      ]);
+    });
+    render(
+      <DiscoverFlow initialMessage="spicy noodles" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
+    await flush();
+    expect(postedBodies()[1]?.excludeRestaurantIds).toBeUndefined();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
+    await flush();
+    expect(postedBodies()[2]?.excludeRestaurantIds).toEqual(['rest-b']);
+    expect(postedBodies()[2]?.askTone).toBe('another');
   });
 
   it('sends a follow-up as a new ask, clears surprise, and excludes the shown restaurant', async () => {

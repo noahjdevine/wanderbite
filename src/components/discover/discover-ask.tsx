@@ -14,6 +14,7 @@ import {
   DISCOVER_MESSAGE_TOO_LONG,
   DISCOVER_QUICK_CHIPS,
   dietaryButtonLabel,
+  discoverDraftHasSelection,
   discoverEnterSubmits,
   discoverGreeting,
   type DiscoverDraft,
@@ -62,10 +63,11 @@ export function DiscoverAsk({
   onSubmit: () => void;
 }) {
   const tooLong = draft.message.length > ROULETTE_MAX_MESSAGE_CHARS;
-  const empty = draft.message.trim().length === 0;
+  const blank = draft.message.trim().length === 0;
+  const canSubmit = !tooLong && (!blank || discoverDraftHasSelection(draft));
 
   function submitAsk() {
-    if (tooLong || empty) return;
+    if (!canSubmit) return;
     onSubmit();
   }
   const selections: RouletteSelections = {
@@ -157,7 +159,7 @@ export function DiscoverAsk({
                 type="button"
                 className="wb-cta h-11 w-11 min-h-11 px-0"
                 aria-label="Ask Bea"
-                disabled={tooLong}
+                disabled={!canSubmit}
                 onClick={submitAsk}
               >
                 <ArrowIcon />
