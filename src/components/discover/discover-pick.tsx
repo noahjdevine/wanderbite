@@ -5,6 +5,11 @@ import { Bea, BEA_DISPLAY_NAME } from '@/components/bea';
 import { Chip } from '@/components/wb/chip';
 import { DiscoverPhoto } from '@/components/discover/discover-photo';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
+import { briefingSourceLabel, formatBriefingChecked } from '@/lib/briefings/types';
+import {
+  presentDiscoverCardFacts,
+  type DiscoverCardFact,
+} from '@/lib/discover/briefing-facts';
 import { fallbackBadgeLabel, fallbackPresentation, type DiscoverFood } from '@/lib/discover/events';
 import type { DiscoverStepEvent } from '@/lib/discover/screen';
 import {
@@ -16,6 +21,37 @@ import {
   offerChipLabel,
   type DiscoverOutcome,
 } from '@/lib/discover/screen';
+
+function DiscoverFactList({ facts }: { facts: readonly DiscoverCardFact[] }) {
+  if (facts.length === 0) return null;
+  return (
+    <ul className="flex list-none flex-col gap-2 p-0">
+      {facts.map((fact) => {
+        const checked = formatBriefingChecked(fact.lastVerifiedAt);
+        if (!checked) return null;
+        const sourceLabel = briefingSourceLabel(fact.sourceUrl);
+        const googleMaps = sourceLabel === 'Google Maps';
+        return (
+          <li key={fact.field}>
+            <p className="text-sm text-white/90">
+              <span className="font-semibold text-white">{fact.label}</span> {fact.text}
+            </p>
+            <a
+              href={fact.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              translate={googleMaps ? 'no' : undefined}
+              className="text-xs font-medium text-white underline"
+            >
+              {sourceLabel}
+            </a>
+            <p className="text-xs text-white/70">Checked {checked}</p>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 function Arrow() {
   return (
@@ -61,6 +97,7 @@ export function DiscoverPick({
   const offer = !alternative && outcome.event.partner.offer ? outcome.event.partner.offer : null;
   const showCloser = closerChipIncluded(partner);
   const meta = [partner.cuisine, partner.neighborhood].filter((part): part is string => Boolean(part));
+  const facts = presentDiscoverCardFacts(outcome.event.facts);
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -120,6 +157,8 @@ export function DiscoverPick({
               {alternative ? outcome.event.message : `“${outcome.event.reason}”`}
             </p>
           </div>
+
+          <DiscoverFactList facts={facts} />
 
           {!alternative ? (
             <div className="flex flex-wrap gap-1.5">

@@ -1,3 +1,4 @@
+import type { DiscoverCardFact } from '@/lib/discover/briefing-facts';
 import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
 
 /**
@@ -13,12 +14,13 @@ import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
  *   Nothing stores a runner-up, so there is no rank step and no runnerUp.
  * - pick: only when `selectionMode` is `ai`. matched / unknown / unmet come from the
  *   parsed constraints and the chosen row. `isNewToMember` stays false because
- *   redemption history is not loaded.
+ *   redemption history is not loaded. Optional `facts` are up to two researched
+ *   notes for the card. They are not chips.
  * - fallback: a random pick. `alternative` is that restaurant. A surprise or another
  *   idea is a suggestion. A request with constraints is a closest pick, and the
- *   copy never calls it a match. `tone` is the card label. The spec's fallback
- *   object has no partner; `alternative` is how Phase 2.1c can render the same
- *   restaurant `/api/roulette` returns.
+ *   copy never calls it a match. `tone` is the card label. Optional `facts` use
+ *   the same card notes. The spec's fallback object has no partner; `alternative`
+ *   is how Phase 2.1c can render the same restaurant `/api/roulette` returns.
  */
 
 export const DISCOVER_ASK_TONES = ['surprise', 'another', 'request'] as const;
@@ -115,6 +117,8 @@ export type DiscoverEvent =
       unmet: string[];
       isNewToMember: boolean;
       food: DiscoverFood;
+      /** Omitted when the restaurant has no eligible card notes. */
+      facts?: DiscoverCardFact[];
     }
   | {
       type: 'fallback';
@@ -127,6 +131,8 @@ export type DiscoverEvent =
        * the client reads the message prefix.
        */
       tone?: DiscoverFallbackTone;
+      /** Omitted when the restaurant has no eligible card notes. */
+      facts?: DiscoverCardFact[];
     }
   | { type: 'error'; message: string };
 

@@ -78,7 +78,15 @@ import {
   type DiscoverFallbackReason,
   type DiscoverMemberType,
 } from '@/lib/discover/fallback-reason';
+import { logBriefingsReadFailedOnce } from '@/lib/briefings/flag';
+import { loadDiscoverBriefingFacts } from '@/lib/briefings/load';
+import type { RestaurantBriefings } from '@/lib/briefings/types';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
+import {
+  DISCOVER_FACT_PROMPT_NOTE,
+  discoverCardFacts,
+  discoverPromptFacts,
+} from '@/lib/discover/briefing-facts';
 import { parseDiscoverAskTone, type DiscoverEvent } from '@/lib/discover/events';
 import {
   applyRestaurantExclusion,
@@ -475,6 +483,15 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
 
     restaurants = applyRestaurantExclusion(restaurants, excludeRestaurantIds);
 
+    let briefingFacts: RestaurantBriefings = { byRestaurantId: {} };
+    try {
+      briefingFacts = await loadDiscoverBriefingFacts({
+        restaurantIds: restaurants.map((row) => row.id),
+      });
+    } catch {
+      logBriefingsReadFailedOnce();
+    }
+
     const byId = new Map(restaurants.map((r) => [r.id, r]));
     const poolIds = new Set(byId.keys());
 
@@ -502,6 +519,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
           fallbackReason,
           providerTimedOut,
           askTone,
+          facts: discoverCardFacts(briefingFacts.byRestaurantId[chosen.id] ?? []),
         }),
       });
     };
@@ -593,21 +611,27 @@ Required key: "restaurantId" (string id from the list). Do not include a reason,
 {"restaurantId":"..."}`;
 
     const buildUserPrompt = (list: RouletteRestaurant[]) => {
-      const listJson = JSON.stringify(
-        list.map((r) => ({
+      const rows = list.map((r) => {
+        const row = {
           id: r.id,
           name: clipChars(r.name, ROULETTE_MAX_NAME_CHARS),
           cuisine_tags: r.cuisine_tags,
           neighborhood: r.neighborhood,
           price_range: r.price_range,
-        })),
-      );
+        };
+        const facts = discoverPromptFacts(briefingFacts.byRestaurantId[r.id] ?? []);
+        return facts ? { ...row, facts } : row;
+      });
+      const factsNote = rows.some((row) => 'facts' in row)
+        ? `${DISCOVER_FACT_PROMPT_NOTE}\n\n`
+        : '';
+      const listJson = JSON.stringify(rows);
       return `Request id: ${requestNonce}
 
 Here is the JSON array of eligible partner restaurants (each has id, name, cuisine_tags, neighborhood, price_range):
 ${listJson}
 
-User preferences (each line may be absent):
+${factsNote}User preferences (each line may be absent):
 ${userPrefs || '(No specific preferences — pick a varied standout for a night out.)'}`;
     };
 
