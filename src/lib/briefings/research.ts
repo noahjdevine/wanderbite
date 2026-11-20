@@ -132,18 +132,19 @@ const LISTING_HOSTS = [
 ];
 
 /**
- * Thin auto-generated restaurant directories. Checked on the hostname only.
- * A match is skipped before fetch: no page slot, and it does not by itself
- * start another web search.
+ * Thin auto-generated restaurant directories. Checked on the hostname:
+ * a registrable-domain suffix, a host label, or a hey-rest* label prefix.
+ * A match is skipped before fetch and dropped from search ranking. A fact
+ * whose source URL is on one of these hosts is not kept. No page slot, and
+ * it does not by itself start another web search.
  *
- * - hey-rest: generated directory pages. One of these stated a multi-storey car park.
+ * - hey-rest: generated directory pages, including hey-restaurants.com and
+ *   any *.hey-restaurants.* host. hey-restaurant (no s) is a different token.
  * - restaurantji.com: one templated page per restaurant from scraped fragments.
  * - sluurp.com: the same kind of thin generated restaurant page.
- *
- * `hey-rest` must not match a longer token such as hey-restaurant.
  */
 export const WEAK_AGGREGATOR_HOSTS: readonly { id: string; host: RegExp }[] = [
-  { id: 'hey-rest', host: /hey-rest(?:[^a-z0-9]|$)/i },
+  { id: 'hey-rest', host: /(?:^|\.)hey-restaurants(?:\.|$)|(?:^|\.)hey-rest(?:\.|$)|(?:^|\.)hey-rest-/i },
   { id: 'restaurantji.com', host: /(?:^|\.)restaurantji\.com$/i },
   { id: 'sluurp.com', host: /(?:^|\.)sluurp\.com$/i },
 ];
@@ -497,10 +498,41 @@ export function parseBriefingArgs(argv: readonly string[]): {
   return { help, write, includeTest, restaurantCap, costCapMicrodollars };
 }
 
+function hostHasSuffix(host: string, suffix: string): boolean {
+  return host === suffix || host.endsWith(`.${suffix}`);
+}
+
+/** hey-rest, hey-rest-*, hey-restaurants*, and other hey-rest* labels. Not hey-restaurant. */
+function labelIsHeyRest(label: string): boolean {
+  if (label === 'hey-rest' || label.startsWith('hey-rest-') || label.startsWith('hey-restaurants')) return true;
+  return label.startsWith('hey-rest') && !label.startsWith('hey-restaurant');
+}
+
 export function weakAggregatorLabel(hostname: string): string | null {
   const host = hostname.toLowerCase().replace(/\.+$/, '');
+  if (!host) return null;
+  const labels = host.split('.').filter(Boolean);
+  if (labels.some((label) => labelIsHeyRest(label)) || host.includes('.hey-restaurants.')) return 'hey-rest';
+  if (hostHasSuffix(host, 'restaurantji.com')) return 'restaurantji.com';
+  if (hostHasSuffix(host, 'sluurp.com')) return 'sluurp.com';
   const hit = WEAK_AGGREGATOR_HOSTS.find((entry) => entry.host.test(host));
-  return hit?.id ?? null;
+  if (!hit) return null;
+  if (
+    hit.id === 'hey-rest' &&
+    labels.some((label) => label.startsWith('hey-restaurant') && !label.startsWith('hey-restaurants'))
+  ) {
+    return null;
+  }
+  return hit.id;
+}
+
+function weakAggregatorReason(sourceUrl: string): string | null {
+  try {
+    const label = weakAggregatorLabel(new URL(sourceUrl).hostname);
+    return label ? `skipped weak aggregator host (${label})` : null;
+  } catch {
+    return null;
+  }
 }
 
 function markedTestLabel(value: string | null | undefined): boolean {
@@ -775,6 +807,7 @@ export function rankBriefingUrls(
     const normalized = normalizeHttpsUrl(raw);
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
+    if (weakAggregatorLabel(new URL(normalized).hostname)) continue;
     const kind = classifyUrl(normalized, restaurantName, officialHosts, address);
     if (kind === 'official') official.push(normalized);
     else if (kind === 'listing') listings.push(normalized);
@@ -1076,14 +1109,14 @@ const LIST_KEEP_MINIMUM = 2;
 
 type FactCue = { pattern: RegExp };
 
-const GOOD_FOR_CUES: readonly FactCue[] = [
+/** Occasion or audience. A meal period by itself does not open the good_for gate. */
+const GOOD_FOR_OCCASION_CUES: readonly FactCue[] = [
   { pattern: /\bdate[\s-]?nights?\b/i },
   { pattern: /\bgroups?\b/i },
   { pattern: /\bfamil(?:y|ies)\b/i },
   { pattern: /\bkids?\b|\bchildren\b|\bchild\b/i },
   { pattern: /\bsolo\b/i },
   { pattern: /\bsports?\b/i },
-  { pattern: /\bbrunch\b/i },
   { pattern: /\bbusiness\b/i },
   { pattern: /\b(?:celebrations?|birthdays?|anniversar(?:y|ies))\b/i },
   { pattern: /\bwedding(?:s)?\b/i },
@@ -1093,10 +1126,20 @@ const GOOD_FOR_CUES: readonly FactCue[] = [
   { pattern: /\bfriends?\b/i },
   { pattern: /\blive\s+music\b/i },
   { pattern: /\bdogs?\b|\bdog[\s-]?friendly\b/i },
-  { pattern: /\blunch(?:es)?\b/i },
   { pattern: /\bhappy\s+hours?\b/i },
   { pattern: /\bwatch(?:ing)?\s+(?:the\s+)?games?\b|\blawn\s+games?\b|\bgames?\b/i },
 ];
+
+/** Meal words may accompany an occasion. They do not count as the occasion. */
+const MEAL_PERIOD_CUES: readonly FactCue[] = [
+  { pattern: /\bbreakfasts?\b/i },
+  { pattern: /\bbrunch(?:es)?\b/i },
+  { pattern: /\blunch(?:es)?\b/i },
+  { pattern: /\bdinners?\b/i },
+  { pattern: /\bsuppers?\b/i },
+];
+
+const GOOD_FOR_CUES: readonly FactCue[] = [...GOOD_FOR_OCCASION_CUES, ...MEAL_PERIOD_CUES];
 
 const RESERVATION_CUES: readonly FactCue[] = [
   { pattern: /\breserv(?:e|ed|ation|ations|able)\b/i },
@@ -1204,11 +1247,14 @@ const META_PATTERN =
 const DAY_WORD =
   '(?:mon(?:day)?|tue(?:s|sday)?|wed(?:nesday)?|thu(?:rs|rsday)?|fri(?:day)?|sat(?:urday)?|sun(?:day)?)s?';
 const DAY_RANGE_SOURCE = `\\b${DAY_WORD}\\b\\s*(?:through|thru|to|–|—|-)\\s*\\b${DAY_WORD}\\b`;
-const PLURAL_DAY_SOURCE = '\\b(?:mondays|tuesdays|wednesdays|thursdays|fridays|saturdays|sundays)\\b';
+const NAMED_DAY_SOURCE =
+  '\\b(?:mondays?|tuesdays?|wednesdays?|thursdays?|fridays?|saturdays?|sundays?)\\b';
+const WEEKPART_SOURCE = '\\b(?:weekends?|weekdays?)\\b';
 const CLOCK_SOURCE =
   '\\b(?:(?:after|before|until|till|from|at|between|by)\\s+)?(?:noon|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:a\\.?m\\.?|p\\.?m\\.?)|\\d{1,2}:\\d{2})(?:\\s*(?:to|through|until|–|—|-)\\s*(?:noon|midnight|\\d{1,2}(?::\\d{2})?\\s*(?:a\\.?m\\.?|p\\.?m\\.?)?|\\d{1,2}:\\d{2}))?\\b';
 const DAY_RANGE_PATTERN = new RegExp(DAY_RANGE_SOURCE, 'i');
-const PLURAL_DAY_PATTERN = new RegExp(PLURAL_DAY_SOURCE, 'i');
+const NAMED_DAY_PATTERN = new RegExp(NAMED_DAY_SOURCE, 'i');
+const WEEKPART_PATTERN = new RegExp(WEEKPART_SOURCE, 'i');
 const CLOCK_PATTERN = new RegExp(CLOCK_SOURCE, 'i');
 
 function withoutCueHits(text: string, cues: readonly FactCue[]): string {
@@ -1348,10 +1394,38 @@ function cleanPiece(text: string): string {
     .trim();
 }
 
+/** Dish names whose "and" is part of the name, not a list break. */
+const PAIRED_DISHES = [
+  'mac and cheese',
+  'fish and chips',
+  'chips and salsa',
+  'biscuits and gravy',
+  'shrimp and grits',
+] as const;
+
+function shieldPairedDishes(text: string): { text: string; saved: string[] } {
+  const saved: string[] = [];
+  let next = text;
+  for (const dish of PAIRED_DISHES) {
+    const pattern = new RegExp(`\\b${dish.replace(/ /g, '\\s+')}\\b`, 'gi');
+    next = next.replace(pattern, (match) => {
+      const token = `\u0001${saved.length}\u0001`;
+      saved.push(match);
+      return token;
+    });
+  }
+  return { text: next, saved };
+}
+
+function restorePairedDishes(text: string, saved: readonly string[]): string {
+  return text.replace(/\u0001(\d+)\u0001/g, (_match, index: string) => saved[Number(index)] ?? '');
+}
+
 function splitListPieces(sentence: string): string[] {
-  return sentence
+  const shielded = shieldPairedDishes(sentence);
+  return shielded.text
     .split(/\s*;\s*|\s*,\s*|\s+\band\b\s+/i)
-    .map((part) => cleanPiece(part))
+    .map((part) => restorePairedDishes(cleanPiece(part), shielded.saved))
     .filter((part) => part.length > 0);
 }
 
@@ -1419,8 +1493,14 @@ type GroundedField = { text: string; passage: string; trimmed: string[] };
  * A trimmed list is kept when enough items remain and the result is still a sentence.
  * Returns null when the cue gate fails or too little of the fact is on the page.
  */
+function passesFieldCueGate(field: BriefingField, factText: string): boolean {
+  if (field === 'good_for') return GOOD_FOR_OCCASION_CUES.some((cue) => cue.pattern.test(factText));
+  if (!CUE_FIELDS[field]) return true;
+  return matchedCues(field, factText).length > 0;
+}
+
 function groundFieldFact(field: BriefingField, factText: string, pageText: string): GroundedField | null {
-  if (CUE_FIELDS[field] && matchedCues(field, factText).length === 0) return null;
+  if (!passesFieldCueGate(field, factText)) return null;
   const groups = splitSentences(factText).map((sentence) => ({
     sentence,
     pieces: splitListPieces(sentence).map((text) => ({
@@ -1457,7 +1537,14 @@ function blockCategory(text: string): BlockCategory | null {
   if (PRICE_PATTERN.test(text)) return 'price';
   if (PROMO_PATTERN.test(text)) return 'promo';
   if (META_PATTERN.test(text)) return 'meta';
-  if (DAY_RANGE_PATTERN.test(text) || PLURAL_DAY_PATTERN.test(text) || CLOCK_PATTERN.test(text)) return 'hours';
+  if (
+    DAY_RANGE_PATTERN.test(text) ||
+    NAMED_DAY_PATTERN.test(text) ||
+    WEEKPART_PATTERN.test(text) ||
+    CLOCK_PATTERN.test(text)
+  ) {
+    return 'hours';
+  }
   return null;
 }
 
@@ -1469,25 +1556,6 @@ function tidyClause(text: string): string {
     .replace(/^(?:and|or|but)\s+/i, '')
     .replace(/\s+/g, ' ')
     .trim();
-}
-
-function exciseHours(clause: string): { text: string; phrases: string[] } {
-  const phrases: string[] = [];
-  let text = clause;
-  for (const source of [DAY_RANGE_SOURCE, PLURAL_DAY_SOURCE, CLOCK_SOURCE]) {
-    text = text.replace(new RegExp(source, 'gi'), (match) => {
-      phrases.push(match.trim());
-      return ' ';
-    });
-  }
-  return { text: tidyClause(text), phrases };
-}
-
-function clauseWordCount(text: string): number {
-  return tidyClause(text)
-    .replace(/[.!?]+$/g, '')
-    .split(/\s+/)
-    .filter((word) => /[A-Za-z]/.test(word)).length;
 }
 
 function splitClauses(sentence: string): string[] {
@@ -1506,6 +1574,37 @@ function blockedDetailReason(removed: readonly RemovedBlock[]): string | null {
   return `blocked detail (${primaryCategory(removed)})`;
 }
 
+const PHRASE_FIELDS = new Set<BriefingField>(['vibe', 'known_for', 'good_for', 'seating', 'reservations']);
+const LEADING_PREPOSITION = /^(?:for|on|at|with)\b/i;
+const MAIN_VERB =
+  /\b(?:am|is|are|was|were|be|been|being|isn'?t|aren'?t|wasn'?t|weren'?t|has|have|had|do|does|did|can|could|may|might|must|should|will|would|sits?|offers?|serves?|served|serving|welcomes?|requires?|required|takes?|taken|includes?|features?|provides?|lasts?|seats?|plays?|holds?|books?|booked|accepts?|accepted|recommends?|recommended|allows?|uses?|used|checks?|orders?|smokes?|smoked|comes?|brings?|fills?|keeps?|shows?|works?|lists?|listed|opens?|opened|closes?|starts?|makes?|made|gets?|goes?|sees?|calls?|enjoys?|shares?|gathers?|feels?|looks?|stays?|runs?|hosts?|means?|needs?|wants?|prefers?|suggests?|finds?|found|lets?|helps?|plans?|planned|rolls?|rolled|walks?|waits?|parks?|asks?|enters?|follows?|turns?|expects?|heads?|arrives?|leaves?)\b/i;
+
+function sentenceWords(sentence: string): string[] {
+  return sentence
+    .replace(/[.!?]+$/g, '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+function isRecognizablePhrase(field: BriefingField, body: string, words: readonly string[]): boolean {
+  if (!PHRASE_FIELDS.has(field)) return false;
+  if (LEADING_PREPOSITION.test(body)) return false;
+  if (words.length < 2 || words.length > 18) return false;
+  if (/,|;|\band\b/i.test(body)) return true;
+  return words.length <= 12;
+}
+
+/** A leftover after stripping: one word, or a preposition with no main clause, or no verb and no list phrase. */
+function isFragmentSentence(field: BriefingField, sentence: string): boolean {
+  const body = sentence.replace(/[.!?]+$/g, '').trim();
+  const words = sentenceWords(sentence);
+  if (words.length <= 1) return true;
+  if (MAIN_VERB.test(body)) return false;
+  if (LEADING_PREPOSITION.test(body)) return true;
+  return !isRecognizablePhrase(field, body, words);
+}
+
 function stripSentence(sentence: string): { text: string | null; removed: RemovedBlock[] } {
   const removed: RemovedBlock[] = [];
   const kept: string[] = [];
@@ -1517,14 +1616,6 @@ function stripSentence(sentence: string): { text: string | null; removed: Remove
       continue;
     }
     changed = true;
-    if (category === 'hours') {
-      const excised = exciseHours(clause);
-      if (clauseWordCount(excised.text) >= 3 && !blockCategory(excised.text)) {
-        for (const phrase of excised.phrases) removed.push({ text: phrase, category: 'hours' });
-        kept.push(excised.text);
-        continue;
-      }
-    }
     removed.push({ text: tidyClause(clause), category });
   }
   if (!changed) return { text: sentence.trim(), removed };
@@ -1533,22 +1624,40 @@ function stripSentence(sentence: string): { text: string | null; removed: Remove
   return readsAsSentence(joined) ? { text: joined, removed } : { text: null, removed };
 }
 
-/** Drop or cut phone, email, URL, price, promo, hours, and source commentary. */
-function stripBlockedDetails(fact: string): { text: string | null; removed: RemovedBlock[] } {
+type StrippedFact = { text: string | null; removed: RemovedBlock[]; fragments: string[] };
+
+/**
+ * Drop a whole clause that contains a phone, email, URL, price, promo, schedule,
+ * or source commentary. A schedule word is not cut out of the clause. The fragment
+ * check runs only on a sentence that lost one of those clauses. An unchanged
+ * sentence stays, including a verbless line in parking, arrival, duration, or attire.
+ */
+function stripBlockedDetails(fact: string, field: BriefingField): StrippedFact {
   const removed: RemovedBlock[] = [];
+  const fragments: string[] = [];
   const kept: string[] = [];
   let changed = false;
   for (const sentence of splitSentences(fact)) {
     const stripped = stripSentence(sentence);
     removed.push(...stripped.removed);
-    if (stripped.text !== sentence.trim()) changed = true;
-    if (stripped.text) kept.push(stripped.text);
-    else changed = true;
+    const sentenceChanged = stripped.removed.length > 0;
+    if (sentenceChanged || stripped.text !== sentence.trim()) changed = true;
+    if (!stripped.text) continue;
+    if (sentenceChanged && isFragmentSentence(field, stripped.text)) {
+      fragments.push(stripped.text);
+      changed = true;
+      continue;
+    }
+    kept.push(stripped.text);
   }
-  if (kept.length === 0) return { text: null, removed };
-  if (!changed) return { text: fact, removed };
+  if (kept.length === 0) return { text: null, removed, fragments };
+  if (!changed) return { text: fact, removed, fragments };
   const text = kept.join(' ');
-  return readsAsSentence(text) ? { text, removed } : { text: null, removed };
+  return readsAsSentence(text) ? { text, removed, fragments } : { text: null, removed, fragments };
+}
+
+function droppedStripReason(blocked: StrippedFact, emptyReason: string): string {
+  return blockedDetailReason(blocked.removed) ?? (blocked.fragments.length > 0 ? 'fragment after strip' : emptyReason);
 }
 
 /**
@@ -1567,10 +1676,36 @@ export function findSupportPassage(
   return findGenericSupportPassage(factText, pageText);
 }
 
+function normalizedFactWording(factText: string): string {
+  return factText
+    .replace(/[.!?]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * A fact made only of generic or short words can still be the page's own sentence.
+ * Loose overlap of "parking" and "street" does not count. The wording has to sit
+ * in one passage, with every number and proper noun.
+ */
+function verbatimGenericPassage(factText: string, pageText: string, anchors: FactAnchors): string | null {
+  const needle = normalizedFactWording(factText);
+  const words = needle.split(' ').filter(Boolean);
+  if (words.length < 2) return null;
+  let best: string | null = null;
+  for (const passage of passageWindows(pageText)) {
+    if (!anchorsInPassage(anchors, passage)) continue;
+    if (!passage.toLowerCase().includes(needle)) continue;
+    if (!best || passage.length < best.length) best = passage;
+  }
+  return best;
+}
+
 function findGenericSupportPassage(factText: string, pageText: string): string | null {
   const distinctive = distinctiveWords(factText);
-  if (distinctive.length === 0) return null;
   const anchors = extractAnchors(factText);
+  if (distinctive.length === 0) return verbatimGenericPassage(factText, pageText, anchors);
   let best: { passage: string; hits: number } | null = null;
   for (const passage of passageWindows(pageText)) {
     if (!anchorsInPassage(anchors, passage)) continue;
@@ -1827,6 +1962,16 @@ export function filterSupportedFacts(args: {
       });
       continue;
     }
+    const aggregatorReason = weakAggregatorReason(sourceUrl);
+    if (aggregatorReason) {
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: body,
+        sourceUrl,
+        reason: aggregatorReason,
+      });
+      continue;
+    }
     const page = pages.get(sourceUrl);
     if (!page) {
       pushDropped(dropped, droppedFacts, {
@@ -1837,15 +1982,16 @@ export function filterSupportedFacts(args: {
       });
       continue;
     }
-    const blocked = stripBlockedDetails(body);
+    const blocked = stripBlockedDetails(body, field);
     if (!blocked.text) {
       pushDropped(dropped, droppedFacts, {
         field,
         text: body,
         sourceUrl,
-        reason:
-          blockedDetailReason(blocked.removed) ??
-          (FIELD_SPECIFIC.has(field) ? 'failed field cue check' : 'no support passage'),
+        reason: droppedStripReason(
+          blocked,
+          FIELD_SPECIFIC.has(field) ? 'failed field cue check' : 'no support passage',
+        ),
       });
       continue;
     }
@@ -1855,6 +2001,14 @@ export function filterSupportedFacts(args: {
         text: piece.text,
         sourceUrl,
         reason: `blocked detail (${piece.category})`,
+      });
+    }
+    for (const fragment of blocked.fragments) {
+      pushDropped(dropped, droppedFacts, {
+        field,
+        text: fragment,
+        sourceUrl,
+        reason: 'fragment after strip',
       });
     }
     const decision = supportDecision(field, blocked.text, page);
@@ -2310,6 +2464,13 @@ async function takeBriefingPages(args: {
       continue;
     }
     const finalUrl = normalizeHttpsUrl(fetched.url) ?? fetched.url;
+    const landedAggregator = weakAggregatorLabel(new URL(finalUrl).hostname);
+    if (landedAggregator) {
+      pushNote(args.notes, `${finalUrl}: skipped weak aggregator host (${landedAggregator})`);
+      args.seen.add(normalized);
+      args.seen.add(finalUrl);
+      continue;
+    }
     if (args.officialUrl && !sameOfficialHost(args.officialUrl, finalUrl)) {
       pushNote(args.notes, `${normalized}: left the official host`);
       args.seen.add(normalized);
@@ -2656,14 +2817,23 @@ function mergePageAndPlacesFacts(
       });
       continue;
     }
-    const blocked = stripBlockedDetails(fact.text.trim());
-    const blockedReason = blockedDetailReason(blocked.removed);
+    const aggregatorReason = weakAggregatorReason(sourceUrl);
+    if (aggregatorReason) {
+      pushDropped(dropped, droppedFacts, {
+        field: fact.field,
+        text: fact.text,
+        sourceUrl,
+        reason: aggregatorReason,
+      });
+      continue;
+    }
+    const blocked = stripBlockedDetails(fact.text.trim(), fact.field);
     if (!blocked.text) {
       pushDropped(dropped, droppedFacts, {
         field: fact.field,
         text: fact.text,
         sourceUrl,
-        reason: blockedReason ?? 'outside the fact checks',
+        reason: droppedStripReason(blocked, 'outside the fact checks'),
       });
       continue;
     }
@@ -2673,6 +2843,14 @@ function mergePageAndPlacesFacts(
         text: piece.text,
         sourceUrl,
         reason: `blocked detail (${piece.category})`,
+      });
+    }
+    for (const fragment of blocked.fragments) {
+      pushDropped(dropped, droppedFacts, {
+        field: fact.field,
+        text: fragment,
+        sourceUrl,
+        reason: 'fragment after strip',
       });
     }
     seen.add(fact.field);

@@ -257,16 +257,16 @@ describe('support passage', () => {
     const fact = 'Valet parking sits beside the front door after 5 pm.';
     const passage = findSupportPassage(fact, page);
     expect(passage).toBe('Valet parking is available beside the front door after 5 pm.');
+    if (!passage) throw new Error('missing support passage');
     const filtered = filterSupportedFacts({
       raw: {
         facts: [{ field: 'parking', text: fact, source_url: OFFICIAL }],
       },
       pages: [{ url: OFFICIAL, text: page }],
     });
-    expect(filtered.kept).toHaveLength(1);
-    expect(filtered.kept[0]?.text).toBe('Valet parking sits beside the front door.');
-    expect(filtered.kept[0]?.supportPassage).toBe(passage);
+    expect(filtered.kept).toEqual([]);
     expect(filtered.droppedFacts[0]?.reason).toBe('blocked detail (hours)');
+    expect(filtered.droppedFacts[0]?.text).toBe(fact);
     const report = formatBriefingReport({
       verifiedAt: '2026-11-05T17:00:00.000Z',
       restaurants: [
@@ -274,7 +274,14 @@ describe('support passage', () => {
           restaurantId: RESTAURANT.id,
           restaurantName: RESTAURANT.name,
           fetchedUrls: [OFFICIAL],
-          facts: filtered.kept,
+          facts: [
+            {
+              field: 'parking',
+              text: 'Valet parking sits beside the front door.',
+              sourceUrl: OFFICIAL,
+              supportPassage: passage,
+            },
+          ],
           dropped: [],
           units: { input: 10, output: 4 },
           estimatedMicrodollars: 30,
@@ -539,6 +546,48 @@ describe('loose list support and blocked details', () => {
     expect(dashed.droppedFacts[0]?.reason).toBe('blocked detail (phone)');
   });
 
+  it('drops a whole clause that states a clock time or a day schedule', () => {
+    const required = filterField(
+      'reservations',
+      'Reservations are required after 5 pm.',
+      'Reservations are required after 5 pm.',
+    );
+    expect(required.kept).toEqual([]);
+    expect(required.droppedFacts[0]?.reason).toBe('blocked detail (hours)');
+    const mixed = filterField(
+      'reservations',
+      'Walk-ins welcome, reservations required on Fridays.',
+      'Walk-ins welcome any evening.',
+    );
+    expect(mixed.kept.map((fact) => fact.text)).toEqual(['Walk-ins welcome.']);
+    expect(mixed.droppedFacts).toEqual([
+      expect.objectContaining({
+        reason: 'blocked detail (hours)',
+        text: expect.stringContaining('Fridays'),
+      }),
+    ]);
+    const patio = filterField('seating', 'Patio seating on Saturdays.', 'Patio seating on Saturdays.');
+    expect(patio.kept).toEqual([]);
+    expect(patio.droppedFacts[0]?.reason).toBe('blocked detail (hours)');
+    const weekend = filterField(
+      'seating',
+      'The patio is dog-friendly. Closed on weekends.',
+      'Dogs are welcome on the patio.',
+    );
+    expect(weekend.kept.map((fact) => fact.text)).toEqual(['The patio is dog-friendly.']);
+    expect(weekend.droppedFacts[0]?.reason).toBe('blocked detail (hours)');
+    const daily = filterField('seating', 'The patio is open daily.', 'The patio is open daily.');
+    expect(daily.kept.map((fact) => fact.text)).toEqual(['The patio is open daily.']);
+    const minutes = filterField(
+      'duration',
+      'Most dinners last about 90 minutes.',
+      'Most dinners last about 90 minutes.',
+    );
+    expect(minutes.kept.map((fact) => fact.text)).toEqual(['Most dinners last about 90 minutes.']);
+    const parking = filterField('parking', 'A free parking lot is listed.', 'A free parking lot is listed.');
+    expect(parking.kept.map((fact) => fact.text)).toEqual(['A free parking lot is listed.']);
+  });
+
   it('strips a day schedule and drops a fact that is only a schedule', () => {
     const stripped = filterField(
       'seating',
@@ -577,6 +626,92 @@ describe('loose list support and blocked details', () => {
     const url = filterField('known_for', 'See https://hutchinsbbq.com/menu.', 'Brisket is smoked daily.');
     expect(url.kept).toEqual([]);
     expect(url.droppedFacts[0]?.reason).toBe('blocked detail (url)');
+  });
+
+  it('drops a dangling fragment only after a strip changes the sentence', () => {
+    const phone = filterField(
+      'reservations',
+      'Reservations are available. For parties of seven or more guests, call (214) 726-0251.',
+      'Reservations are available most nights.',
+    );
+    expect(phone.kept.map((fact) => fact.text)).toEqual(['Reservations are available.']);
+    expect(phone.droppedFacts.map((fact) => fact.reason)).toEqual([
+      'blocked detail (phone)',
+      'fragment after strip',
+    ]);
+    const callForParking = filterField(
+      'parking',
+      'Call 555-123-4567 for parking.',
+      'Call 555-123-4567 for parking. Free parking in the rear lot.',
+    );
+    expect(callForParking.kept).toEqual([]);
+    expect(callForParking.droppedFacts[0]?.reason).toBe('blocked detail (phone)');
+    const unchanged = filterField(
+      'vibe',
+      "Music. Chef Dre's dining room on the second floor is elegant.",
+      "Music plays in the dining room. Chef Dre's dining room on the second floor is elegant.",
+    );
+    expect(unchanged.kept.map((fact) => fact.text)).toEqual([
+      "Music. Chef Dre's dining room on the second floor is elegant.",
+    ]);
+    expect(unchanged.droppedFacts.map((fact) => fact.reason)).not.toContain('fragment after strip');
+  });
+
+  it('keeps verbless member facts when the page supports them', () => {
+    const cases: Array<{ field: string; text: string; page: string }> = [
+      { field: 'attire', text: 'Casual attire.', page: 'Dress code is casual attire.' },
+      { field: 'parking', text: 'Street parking only.', page: 'Street parking only, along the curb.' },
+      { field: 'duration', text: 'About 90 minutes.', page: 'Plan on about 90 minutes for dinner.' },
+      { field: 'parking', text: 'Free parking in the rear lot.', page: 'Free parking in the rear lot behind the kitchen.' },
+    ];
+    for (const sample of cases) {
+      const filtered = filterField(sample.field, sample.text, sample.page);
+      expect(filtered.kept.map((fact) => fact.text)).toEqual([sample.text]);
+      expect(filtered.droppedFacts.map((fact) => fact.reason)).not.toContain('fragment after strip');
+    }
+  });
+
+  it('keeps a paired dish name whole when the page has that phrase', () => {
+    const whole = filterField(
+      'known_for',
+      'Known for mac and cheese.',
+      'The kitchen is known for mac and cheese.',
+    );
+    expect(whole.kept.map((fact) => fact.text)).toEqual(['Known for mac and cheese.']);
+  });
+
+  it.each([
+    'mac and cheese',
+    'fish and chips',
+    'chips and salsa',
+    'biscuits and gravy',
+    'shrimp and grits',
+  ])('keeps %s together when another known_for item is trimmed', (dish) => {
+    const filtered = filterField(
+      'known_for',
+      `Brisket, ${dish}, and lobster thermidor.`,
+      spread(['The pit smokes brisket all day.', `The kitchen serves ${dish}.`]),
+    );
+    expect(filtered.kept.map((fact) => fact.text)).toEqual([`Brisket and ${dish}.`]);
+    expect(filtered.droppedFacts).toEqual([
+      expect.objectContaining({ text: 'lobster thermidor', reason: 'item not on page' }),
+    ]);
+  });
+
+  it('drops a good_for fact that is only meal periods', () => {
+    const meals = filterField(
+      'good_for',
+      'Lunch, brunch, and dinner.',
+      'Lunch, brunch, and dinner are served.',
+    );
+    expect(meals.kept).toEqual([]);
+    expect(meals.droppedFacts[0]?.reason).toBe('failed field cue check');
+    const withOccasion = filterField(
+      'good_for',
+      'Good for families and brunch.',
+      'Families gather for brunch on the lawn.',
+    );
+    expect(withOccasion.kept.map((fact) => fact.text)).toEqual(['Good for families and brunch.']);
   });
 
   it('drops a vibe fact whose adjectives are not on the page', () => {
@@ -1454,6 +1589,50 @@ describe('stored official site and Places facts', () => {
     expect(report.markdown).toContain('parkingOptions.freeParkingLot=true');
   });
 
+  it('keeps a verbless Places attire fact', async () => {
+    const callModel: BriefingModelCaller = vi.fn(async () => ({
+      text: '{"facts":[]}',
+      units: { input: 1, output: 1 },
+    }));
+    const fetchMock = vi.fn(async () =>
+      response(
+        JSON.stringify({ type: 'error', error: { type: 'api_error', message: 'overloaded' } }),
+        529,
+        'application/json',
+      ),
+    ) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl: fetchMock,
+      callModel,
+      apiKey: API_KEY,
+      placesLookup: async () => ({
+        placeId: 'ChIJtestplace01',
+        placeIdToStore: null,
+        officialWebsite: null,
+        facts: [
+          {
+            field: 'attire',
+            text: 'Casual attire.',
+            sourceUrl: 'https://maps.google.com/?cid=99',
+            supportPassage: 'Casual attire.',
+          },
+        ],
+        units: { places_details_atmosphere: 1 },
+        notes: [],
+      }),
+    });
+    expect(result.facts).toEqual([
+      {
+        field: 'attire',
+        text: 'Casual attire.',
+        sourceUrl: 'https://maps.google.com/?cid=99',
+        supportPassage: 'Casual attire.',
+      },
+    ]);
+    expect(result.droppedFacts?.map((fact) => fact.reason) ?? []).not.toContain('fragment after strip');
+  });
+
   it('counts Places spend toward the cost cap before the next restaurant', async () => {
     const callModel: BriefingModelCaller = vi.fn(async () => ({
       text: '{"facts":[]}',
@@ -2052,10 +2231,16 @@ describe('dropped facts in the dry-run report', () => {
 describe('weak aggregator hosts', () => {
   it('matches hey-rest style hosts and the other thin directories', () => {
     expect(weakAggregatorLabel('urban-grill-and-wine-bar-mckinney.hey-rest.com')).toBe('hey-rest');
+    expect(weakAggregatorLabel('urban-grill-and-wine-bar-mckinney.hey-restaurants.com')).toBe('hey-rest');
+    expect(weakAggregatorLabel('hey-restaurants.com')).toBe('hey-rest');
+    expect(weakAggregatorLabel('menu.hey-restaurants.co.uk')).toBe('hey-rest');
+    expect(weakAggregatorLabel('cdn.hey-rest.io')).toBe('hey-rest');
     expect(weakAggregatorLabel('www.restaurantji.com')).toBe('restaurantji.com');
     expect(weakAggregatorLabel('sluurp.com')).toBe('sluurp.com');
     expect(weakAggregatorLabel('hey-restaurant.com')).toBeNull();
     expect(weakAggregatorLabel('www.yelp.com')).toBeNull();
+    const heyRestaurants = 'https://urban-grill-and-wine-bar-mckinney.hey-restaurants.com/place';
+    expect(rankBriefingUrls([heyRestaurants, OFFICIAL], 'Hutchins BBQ')).toEqual([OFFICIAL]);
     expect(WEAK_AGGREGATOR_HOSTS.map((entry) => entry.id)).toEqual([
       'hey-rest',
       'restaurantji.com',
@@ -2146,6 +2331,52 @@ describe('weak aggregator hosts', () => {
     expect(result.notes).toContain(`${hey}: skipped weak aggregator host (hey-rest)`);
     expect(calls.some((url) => url.includes('hey-rest'))).toBe(false);
     expect(result.fetchedUrls).toContain(OFFICIAL);
+  });
+
+  it('skips a hey-restaurants.com search result and drops a fact that cites it', async () => {
+    const hey = 'https://urban-grill-and-wine-bar-mckinney.hey-restaurants.com/place';
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === 'https://api.anthropic.com/v1/messages') {
+        return response(searchBody([hey, OFFICIAL]), 200, 'application/json');
+      }
+      if (url.endsWith('/robots.txt')) return response('missing', 404, 'text/plain');
+      return response(PAGE);
+    }) as typeof fetch;
+    const result = await researchOneRestaurant({
+      restaurant: RESTAURANT,
+      fetchImpl,
+      callModel: async () => ({
+        text: JSON.stringify({
+          facts: [
+            {
+              field: 'parking',
+              text: 'Valet parking is available beside the front door.',
+              source_url: hey,
+            },
+            {
+              field: 'parking',
+              text: 'Valet parking is available beside the front door.',
+              source_url: OFFICIAL,
+            },
+          ],
+        }),
+        units: { input: 1, output: 1 },
+      }),
+      apiKey: API_KEY,
+    });
+    expect(result.notes).toContain(`${hey}: skipped weak aggregator host (hey-rest)`);
+    expect(calls.some((url) => url.includes('hey-restaurants.com'))).toBe(false);
+    expect(result.fetchedUrls).toContain(OFFICIAL);
+    expect(result.facts.map((fact) => fact.sourceUrl)).toEqual([OFFICIAL]);
+    expect(result.droppedFacts).toEqual([
+      expect.objectContaining({
+        sourceUrl: hey,
+        reason: 'skipped weak aggregator host (hey-rest)',
+      }),
+    ]);
   });
 });
 
