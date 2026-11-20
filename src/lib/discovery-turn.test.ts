@@ -195,6 +195,7 @@ describe('discovery replay HMAC', () => {
     });
     expect(stored).not.toHaveProperty('message');
     expect(stored).not.toHaveProperty('reason');
+    expect(stored).not.toHaveProperty('line');
     expect(stored).not.toHaveProperty('vibeMatch');
     expect(stored).not.toHaveProperty('suggestedDish');
 
@@ -208,9 +209,44 @@ describe('discovery replay HMAC', () => {
 
     const legacy = { restaurantId: 'r1', selectionMode: 'ai', reason: 'old prose' };
     expect(
-      decideReplay({ payload: legacy, messageMac: messageMac!, filterMac: filterMac!, poolIds: pool })
-        .outcome,
-    ).toBe('legacy');
+      decideReplay({ payload: legacy, messageMac: messageMac!, filterMac: filterMac!, poolIds: pool }),
+    ).toEqual({ outcome: 'legacy', restaurantId: 'r1' });
+
+    const withLine = buildStoredDiscoveryPayload({
+      restaurantId: 'r1',
+      selectionMode: 'ai',
+      promptIds: ['r1', 'r2'],
+      messageMac: messageMac!,
+      filterMac: filterMac!,
+      line: '  Taco House is a bright room.  ',
+    });
+    expect(withLine.line).toBe('Taco House is a bright room.');
+    expect(
+      decideReplay({
+        payload: withLine,
+        messageMac: messageMac!,
+        filterMac: filterMac!,
+        poolIds: pool,
+      }),
+    ).toEqual({
+      outcome: 'ai',
+      restaurantId: 'r1',
+      line: 'Taco House is a bright room.',
+    });
+    const legacyLine = {
+      restaurantId: 'r1',
+      selectionMode: 'ai',
+      reason: 'old prose',
+      line: 'should not show',
+    };
+    expect(
+      decideReplay({
+        payload: legacyLine,
+        messageMac: messageMac!,
+        filterMac: filterMac!,
+        poolIds: pool,
+      }),
+    ).toEqual({ outcome: 'legacy', restaurantId: 'r1' });
 
     const outsidePrompt = buildStoredDiscoveryPayload({
       restaurantId: 'r2',

@@ -28,13 +28,13 @@ export async function loadDiscoverViewer(): Promise<DiscoverViewer> {
       .select('full_name, dietary_flags')
       .eq('id', user.id)
       .maybeSingle();
-    if (error || !data) return EMPTY_DISCOVER_VIEWER;
+    if (error || !data) return { ...EMPTY_DISCOVER_VIEWER, signedIn: true };
 
     const row = data as ProfileNameRow;
     const label = memberHeaderLabel(row.full_name);
     const firstName = label === NEUTRAL_MEMBER_HEADER ? null : label;
     const savedDietary = (row.dietary_flags ?? []).filter(isRouletteDietaryFlag);
-    return { firstName, savedDietary };
+    return { firstName, savedDietary, signedIn: true };
   } catch {
     return EMPTY_DISCOVER_VIEWER;
   }

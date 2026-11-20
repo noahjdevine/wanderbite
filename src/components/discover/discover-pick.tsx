@@ -68,6 +68,7 @@ export function DiscoverPick({
   food,
   dietaryLabel,
   steps = [],
+  listArrivedSteps = false,
   onDietary,
   onAnother,
   onCheaper,
@@ -77,8 +78,10 @@ export function DiscoverPick({
   outcome: Extract<DiscoverOutcome, { kind: 'pick' | 'fallback' }>;
   food: DiscoverFood | 'generic';
   dietaryLabel: string;
-  /** Arrived thinking steps, kept on the pick when motion is reduced. */
+  /** Arrived thinking steps. The memory line is shown on the card. */
   steps?: readonly DiscoverStepEvent[];
+  /** Reduced motion keeps the whole arrived list. Otherwise only the memory line stays. */
+  listArrivedSteps?: boolean;
   onDietary: () => void;
   onAnother: () => void;
   onCheaper: () => void;
@@ -97,7 +100,11 @@ export function DiscoverPick({
   const href = directionsHref(partner);
   const offer = !alternative && outcome.event.partner.offer ? outcome.event.partner.offer : null;
   const showCloser = closerChipIncluded(partner);
-  const meta = [partner.cuisine, partner.neighborhood].filter((part): part is string => Boolean(part));
+  const meta = [partner.cuisine, partner.neighborhood]
+    .map((part) => (typeof part === 'string' ? part.trim() : ''))
+    .filter((part) => part.length > 0);
+  const memoryStep = steps.find((step) => step.id === 'memory');
+  const showStepList = listArrivedSteps && steps.length > 0;
   const facts = presentDiscoverCardFacts(outcome.event.facts);
   const isNewToMember = alternative
     ? outcome.event.isNewToMember === true
@@ -109,7 +116,7 @@ export function DiscoverPick({
 
   return (
     <div data-screen="pick" className="mx-auto w-full max-w-5xl px-3 pt-3 pb-16 lg:px-6">
-      {steps.length > 0 ? (
+      {showStepList ? (
         <ol aria-live="polite" className="mb-3 list-none p-0 text-sm text-white/80">
           {steps.map((step) => (
             <li key={step.id}>{step.id === 'memory' ? step.line : step.label}</li>
@@ -142,7 +149,11 @@ export function DiscoverPick({
             {partner.name}
           </h1>
           <div className="flex flex-wrap items-center gap-2">
-            {meta.length > 0 ? <span className="text-sm text-white/80">{meta.join(' · ')}</span> : null}
+            {meta.length > 0 ? (
+              <span className="text-sm text-white/80" data-discover-subtitle="">
+                {meta.join(' · ')}
+              </span>
+            ) : null}
             {isNewToMember ? (
               <span className="inline-flex items-center rounded-full bg-wb-blush px-2 py-0.5 text-xs font-semibold text-wb-blush-ink">
                 New to you
@@ -154,6 +165,9 @@ export function DiscoverPick({
               </span>
             ) : null}
           </div>
+          {!showStepList && memoryStep && memoryStep.id === 'memory' ? (
+            <p className="text-sm text-white/80">{memoryStep.line}</p>
+          ) : null}
 
           <div className="flex items-start gap-2.5">
             <Bea state="found" food={food} size={32} label={BEA_DISPLAY_NAME} />

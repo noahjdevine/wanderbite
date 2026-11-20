@@ -42,6 +42,7 @@ function CheckIcon() {
 export function DiscoverAsk({
   draft,
   greetingName,
+  signedIn = false,
   dietaryLabelFlags,
   refineOpen,
   exclusionsSummary,
@@ -53,6 +54,7 @@ export function DiscoverAsk({
 }: {
   draft: DiscoverDraft;
   greetingName: string | null;
+  signedIn?: boolean;
   dietaryLabelFlags: DiscoverDraft['dietaryFlags'];
   refineOpen: boolean;
   exclusionsSummary: string | null;
@@ -84,7 +86,7 @@ export function DiscoverAsk({
         <DiscoverPhoto photoUrl={null} name="" decorative priority />
         <div className="absolute inset-0 bg-gradient-to-b from-wb-night/55 via-transparent to-wb-night" />
         <div className="absolute inset-x-0 bottom-0 flex flex-col gap-3 p-5 sm:p-8">
-          <p className="wb-pill-label">{discoverGreeting(greetingName)}</p>
+          <p className="wb-pill-label">{discoverGreeting(greetingName, signedIn)}</p>
           <h1 className="font-display text-[42px] leading-[0.95] text-white sm:text-[58px]">
             Where should we eat <em className="wb-accent">tonight?</em>
           </h1>

@@ -426,4 +426,85 @@ describe('DiscoverPick directions', () => {
     expect(screen.queryByText('Picked for you')).toBeNull();
     expect(screen.queryByText(/not a match/i)).toBeNull();
   });
+
+  it('keeps the memory line on a closest pick', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'fallback',
+          event: {
+            type: 'fallback',
+            reason: 'no_match',
+            message: "Closest I've got: The Common Table. It may not match everything you asked for.",
+            tone: 'alternative',
+            alternative: { id: 'common', name: 'The Common Table' },
+            isNewToMember: true,
+          },
+        }}
+        food="generic"
+        dietaryLabel="Dietary: none set"
+        steps={[
+          {
+            type: 'step',
+            id: 'memory',
+            label: 'From your visits',
+            line: "You haven't been to The Common Table yet.",
+          },
+        ]}
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText('Closest pick')).toBeTruthy();
+    expect(screen.getByText('New to you')).toBeTruthy();
+    expect(screen.getByText("You haven't been to The Common Table yet.")).toBeTruthy();
+  });
+
+  it('renders no subtitle when cuisine and neighborhood are blank', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'fallback',
+          event: {
+            type: 'fallback',
+            reason: 'no_match',
+            message: "Here's another idea: The Common Table.",
+            tone: 'another',
+            alternative: {
+              id: 'common',
+              name: 'The Common Table',
+              cuisine: '   ',
+              neighborhood: '',
+            },
+          },
+        }}
+        food="generic"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'The Common Table' })).toBeTruthy();
+    expect(screen.getByText("Here's another idea: The Common Table.")).toBeTruthy();
+    expect(document.querySelector('[data-discover-subtitle]')).toBeNull();
+  });
+
+  it('shows a neighborhood subtitle without a dangling separator', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'fallback',
+          event: {
+            type: 'fallback',
+            reason: 'no_match',
+            message: "Here's another idea: The Common Table.",
+            tone: 'another',
+            alternative: { id: 'common', name: 'The Common Table', neighborhood: ' Historic ' },
+          },
+        }}
+        food="generic"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(document.querySelector('[data-discover-subtitle]')?.textContent).toBe('Historic');
+  });
 });

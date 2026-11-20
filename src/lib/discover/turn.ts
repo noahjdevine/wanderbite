@@ -37,6 +37,7 @@ import { classifyRouletteAccounting } from '@/lib/ai-budget/accounting';
 import {
   ANTHROPIC_HAIKU_SNAPSHOT,
   ANTHROPIC_PROVIDER,
+  DISCOVER_LINE_MAX_OUTPUT_TOKENS,
   ROULETTE_MAX_OUTPUT_TOKENS,
 } from '@/lib/ai-budget/models';
 import { rouletteQuoteUsageUnits } from '@/lib/ai-budget/quote';
@@ -78,11 +79,18 @@ import {
   type DiscoverFallbackReason,
   type DiscoverMemberType,
 } from '@/lib/discover/fallback-reason';
-import { logBriefingsReadFailedOnce } from '@/lib/briefings/flag';
+import { briefingsEnabled, logBriefingsReadFailedOnce } from '@/lib/briefings/flag';
 import { loadDiscoverBriefingFacts } from '@/lib/briefings/load';
 import type { RestaurantBriefings } from '@/lib/briefings/types';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
+import {
+  MESSAGE_EXCLUSION_EMPTY,
+  mergeSoftAsk,
+  rankDiscoverRestaurant,
+} from '@/lib/discover/code-pick';
+import { discoverCodePickEnabled } from '@/lib/discover/flag';
 import { preferUnvisitedRestaurants } from '@/lib/discover/member-memory';
+import { buildDiscoverLinePrompt, validateDiscoverLine } from '@/lib/discover/pick-line';
 import {
   loadMemberVisitedRestaurantIds,
   logMemberVisitsReadFailedOnce,
@@ -97,7 +105,11 @@ import {
   applyRestaurantExclusion,
   canonicalFilterWithExcludedRestaurants,
 } from '@/lib/discover/exclude-restaurants';
-import { listedDiscoverRestaurants, type DiscoverRestaurant } from '@/lib/discover/stages';
+import {
+  listedDiscoverRestaurants,
+  restaurantMatchesPreferredCuisine,
+  type DiscoverRestaurant,
+} from '@/lib/discover/stages';
 import { recipeQaEnabled } from '@/lib/recipes/flag';
 import { discoveryRecipeQaIntent } from '@/lib/recipes/qa-intent';
 import { loadVisitCatalogNames, runRecipeQaTurn } from '@/lib/recipes/qa-turn';
@@ -160,14 +172,15 @@ function extractAnthropicText(raw: string): string {
 function toRouletteJson(
   chosen: RouletteRestaurant,
   selectionMode: RouletteSelectionMode,
+  line?: string,
 ): RouletteJson {
+  const sentence = line?.trim()
+    ? line.trim()
+    : discoveryCardSentence(chosen, LAUNCH_MARKET.displayName);
   return {
     restaurantId: chosen.id,
     restaurantName: chosen.name,
-    reason: clipChars(
-      discoveryCardSentence(chosen, LAUNCH_MARKET.displayName),
-      ROULETTE_MAX_RESULT_REASON_CHARS,
-    ),
+    reason: clipChars(sentence, ROULETTE_MAX_RESULT_REASON_CHARS),
     cuisine_tags: chosen.cuisine_tags,
     neighborhood: chosen.neighborhood,
     address: chosen.address,
@@ -520,19 +533,61 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
     const byId = new Map(restaurants.map((r) => [r.id, r]));
     const poolIds = new Set(byId.keys());
 
+    /**
+     * Null unless DISCOVER_CODE_PICK_ENABLED is exactly "true".
+     * The model still chooses the id on the flag-off path below.
+     * On this path the ranker chooses the id. selectionMode is `ai` only
+     * when Haiku's sentence is shown, and `random_fallback` when the card
+     * uses the template sentence.
+     */
+    const messageAsk = discoverCodePickEnabled()
+      ? mergeSoftAsk({
+          message: acceptedMessage,
+          preferredCuisine,
+          priceRange,
+        })
+      : null;
+    if (messageAsk && messageAsk.excludedCuisines.length > 0) {
+      const kept = restaurants.filter(
+        (row) =>
+          !messageAsk.excludedCuisines.some((id) =>
+            restaurantMatchesPreferredCuisine(row.cuisine_tags, id),
+          ),
+      );
+      if (kept.length === 0) {
+        return errorResponse(MESSAGE_EXCLUSION_EMPTY, 404);
+      }
+      restaurants = kept;
+    }
+    const codePick = messageAsk
+      ? rankDiscoverRestaurant({
+          pool: restaurants,
+          preferredCuisines: messageAsk.preferredCuisines,
+          excludedCuisines: messageAsk.excludedCuisines,
+          priceRange: messageAsk.priceRange,
+          visitedRestaurantIds,
+          random: Math.random,
+        })
+      : null;
+    const codePickRestaurant = codePick?.restaurant ?? null;
+    const codePickPreferencesMet = codePick?.preferencesMet ?? true;
+
     const cardEvents = (
       chosen: RouletteRestaurant,
       selectionMode: RouletteSelectionMode,
       fallbackReason: DiscoverFallbackReason | null,
       providerTimedOut: boolean,
+      line?: string,
     ) => {
-      const payload = toRouletteJson(chosen, selectionMode);
+      const payload = toRouletteJson(chosen, selectionMode, line);
       return finish(200, payload, {
         selectionMode,
         events: eventsForDiscoverCard({
           message: acceptedMessage,
           dietary: dietaryFlags,
-          excludedCuisineIds: excludedCuisines,
+          excludedCuisineIds: messageAsk
+            ? [...excludedCuisines, ...messageAsk.excludedCuisines]
+            : excludedCuisines,
           vibe,
           timeOfDay,
           priceRange,
@@ -557,12 +612,21 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       dietaryFilterCount: dietaryFlags.length,
     });
 
+    const matchesNamedCuisine = (row: RouletteRestaurant) =>
+      messageAsk !== null &&
+      messageAsk.preferredCuisines.some((id) =>
+        restaurantMatchesPreferredCuisine(row.cuisine_tags, id),
+      );
+
     const randomFallback = (reason: DiscoverFallbackReason, requestId: string = clientUuid) => {
       logDiscoverFallback({
         reason,
         ...discoverBase(requestId),
       });
-      const chosen = pickRandom(fallbackPool());
+      const chosen = codePickRestaurant ?? pickRandom(fallbackPool());
+      if (reason !== 'unmet_preference' && codePickPreferencesMet && matchesNamedCuisine(chosen)) {
+        return cardEvents(chosen, 'ai', null, false);
+      }
       return cardEvents(chosen, 'random_fallback', reason, false);
     };
 
@@ -577,6 +641,10 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       hasIpHash: Boolean(ipHash),
       hasSubject: userId !== null || guestId !== null,
     });
+
+    if (codePickRestaurant && !codePickPreferencesMet) {
+      return randomFallback('unmet_preference');
+    }
 
     if (prerequisiteReason || !ipHash) {
       return randomFallback(prerequisiteReason ?? 'missing_identity');
@@ -593,8 +661,6 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       // Recovery is best-effort; a lock skip must not block this ask.
     }
 
-    let promptRows = shuffleArray(restaurants).slice(0, ROULETTE_MAX_RESTAURANTS_IN_PROMPT);
-    const requestNonce = randomUUID();
     const filterCanonical = canonicalFilterWithExcludedRestaurants(
       canonicalFilterString({
         dietary: dietaryFlags,
@@ -627,7 +693,29 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       .filter(Boolean)
       .join('\n');
 
-    const systemPrompt = `You choose one restaurant id for a discovery app in ${LAUNCH_MARKET.displayName}.
+    let systemPrompt: string;
+    let userPrompt: string;
+    let promptRows: RouletteRestaurant[];
+    let maxOutputTokens: number;
+
+    if (codePickRestaurant) {
+      const facts = briefingsEnabled()
+        ? discoverPromptFacts(briefingFacts.byRestaurantId[codePickRestaurant.id] ?? [])
+        : undefined;
+      const linePrompt = buildDiscoverLinePrompt({
+        marketDisplayName: LAUNCH_MARKET.displayName,
+        restaurant: codePickRestaurant,
+        preferenceLines: userPrefs,
+        facts,
+      });
+      systemPrompt = linePrompt.systemPrompt;
+      userPrompt = linePrompt.userPrompt;
+      promptRows = [codePickRestaurant];
+      maxOutputTokens = DISCOVER_LINE_MAX_OUTPUT_TOKENS;
+    } else {
+      promptRows = shuffleArray(restaurants).slice(0, ROULETTE_MAX_RESTAURANTS_IN_PROMPT);
+      const requestNonce = randomUUID();
+      systemPrompt = `You choose one restaurant id for a discovery app in ${LAUNCH_MARKET.displayName}.
 
 Each request is independent. Do not default to the same restaurant. Choose exactly one id from the JSON array you receive.
 
@@ -636,39 +724,41 @@ Required key: "restaurantId" (string id from the list). Do not include a reason,
 
 {"restaurantId":"..."}`;
 
-    const buildUserPrompt = (list: RouletteRestaurant[]) => {
-      const rows = list.map((r) => {
-        const row = {
-          id: r.id,
-          name: clipChars(r.name, ROULETTE_MAX_NAME_CHARS),
-          cuisine_tags: r.cuisine_tags,
-          neighborhood: r.neighborhood,
-          price_range: r.price_range,
-        };
-        const facts = discoverPromptFacts(briefingFacts.byRestaurantId[r.id] ?? []);
-        return facts ? { ...row, facts } : row;
-      });
-      const factsNote = rows.some((row) => 'facts' in row)
-        ? `${DISCOVER_FACT_PROMPT_NOTE}\n\n`
-        : '';
-      const listJson = JSON.stringify(rows);
-      return `Request id: ${requestNonce}
+      const buildUserPrompt = (list: RouletteRestaurant[]) => {
+        const rows = list.map((r) => {
+          const row = {
+            id: r.id,
+            name: clipChars(r.name, ROULETTE_MAX_NAME_CHARS),
+            cuisine_tags: r.cuisine_tags,
+            neighborhood: r.neighborhood,
+            price_range: r.price_range,
+          };
+          const facts = discoverPromptFacts(briefingFacts.byRestaurantId[r.id] ?? []);
+          return facts ? { ...row, facts } : row;
+        });
+        const factsNote = rows.some((row) => 'facts' in row)
+          ? `${DISCOVER_FACT_PROMPT_NOTE}\n\n`
+          : '';
+        const listJson = JSON.stringify(rows);
+        return `Request id: ${requestNonce}
 
 Here is the JSON array of eligible partner restaurants (each has id, name, cuisine_tags, neighborhood, price_range):
 ${listJson}
 
 ${factsNote}User preferences (each line may be absent):
 ${userPrefs || '(No specific preferences — pick a varied standout for a night out.)'}`;
-    };
+      };
 
-    let userPrompt = buildUserPrompt(promptRows);
-    while (
-      Buffer.byteLength(systemPrompt, 'utf8') + Buffer.byteLength(userPrompt, 'utf8') >
-        ROULETTE_MAX_PROMPT_BYTES &&
-      promptRows.length > 8
-    ) {
-      promptRows = promptRows.slice(0, Math.ceil(promptRows.length / 2));
       userPrompt = buildUserPrompt(promptRows);
+      while (
+        Buffer.byteLength(systemPrompt, 'utf8') + Buffer.byteLength(userPrompt, 'utf8') >
+          ROULETTE_MAX_PROMPT_BYTES &&
+        promptRows.length > 8
+      ) {
+        promptRows = promptRows.slice(0, Math.ceil(promptRows.length / 2));
+        userPrompt = buildUserPrompt(promptRows);
+      }
+      maxOutputTokens = ROULETTE_MAX_OUTPUT_TOKENS;
     }
     const promptIds = promptRows.map((row) => row.id);
 
@@ -678,7 +768,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       return randomFallback('missing_config');
     }
 
-    const usageUnits = rouletteQuoteUsageUnits(systemPrompt, userPrompt);
+    const usageUnits = rouletteQuoteUsageUnits(systemPrompt, userPrompt, maxOutputTokens);
     const versions = await rpcAiCurrentVersions();
     const idempotencyKey = rouletteIdempotencyKey(subjectKey, clientUuid);
 
@@ -715,7 +805,13 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
               requestId: reserved.request_id,
               poolSize: restaurants.length,
             });
-            return cardEvents(replayRestaurant, 'ai', null, false);
+            return cardEvents(
+              replayRestaurant,
+              'ai',
+              null,
+              false,
+              decision.outcome === 'ai' ? decision.line : undefined,
+            );
           }
           logDiscoverFallback({
             reason: 'replay_fallback',
@@ -760,7 +856,7 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
         },
         body: JSON.stringify({
           model: ANTHROPIC_HAIKU_SNAPSHOT,
-          max_tokens: ROULETTE_MAX_OUTPUT_TOKENS,
+          max_tokens: maxOutputTokens,
           temperature: 1,
           system: systemPrompt,
           messages: [{ role: 'user', content: userPrompt }],
@@ -794,12 +890,66 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
       clearTimeout(anthropicTimeout);
     }
 
-    const parsedId = claudeText ? parseModelRestaurantId(claudeText) : null;
-    const pickValid = isIdInPromptRows(parsedId, promptIds);
-    const modelReason = modelPickFallbackReason({ providerFailed, parsedId, pickValid });
-    const chosen = pickValid && parsedId ? promptRows.find((row) => row.id === parsedId) : undefined;
-    const selectionMode: RouletteSelectionMode = chosen ? 'ai' : 'random_fallback';
-    const cardRestaurant = chosen ?? pickRandom(fallbackPool());
+    const parsedId = !codePickRestaurant && claudeText ? parseModelRestaurantId(claudeText) : null;
+    const modelPickValid = isIdInPromptRows(parsedId, promptIds);
+    let lineDecision: ReturnType<typeof validateDiscoverLine> | null = null;
+    if (codePickRestaurant && !providerFailed) {
+      try {
+        const lineFacts = briefingsEnabled()
+          ? discoverPromptFacts(briefingFacts.byRestaurantId[codePickRestaurant.id] ?? [])
+          : undefined;
+        const sourceText = [codePickRestaurant.name, ...Object.values(lineFacts ?? {})]
+          .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
+          .join('\n');
+        lineDecision = validateDiscoverLine({
+          text: claudeText,
+          otherRestaurantNames: restaurants
+            .filter((row) => row.id !== codePickRestaurant.id)
+            .map((row) => row.name),
+          sourceText,
+        });
+      } catch {
+        lineDecision = { ok: false, code: 'empty' };
+      }
+    }
+    const lineAccepted = lineDecision?.ok === true;
+    const pickValid = codePickRestaurant ? lineAccepted : modelPickValid;
+    const modelReason = codePickRestaurant
+      ? providerFailed
+        ? modelPickFallbackReason({ providerFailed: true, parsedId: null, pickValid: false })
+        : null
+      : modelPickFallbackReason({ providerFailed, parsedId, pickValid: modelPickValid });
+    const chosen =
+      !codePickRestaurant && modelPickValid && parsedId
+        ? promptRows.find((row) => row.id === parsedId)
+        : undefined;
+    const showHaikuLine = lineAccepted && codePickPreferencesMet;
+    const selectionMode: RouletteSelectionMode = codePickRestaurant
+      ? showHaikuLine
+        ? 'ai'
+        : 'random_fallback'
+      : chosen
+        ? 'ai'
+        : 'random_fallback';
+    const cardRestaurant = codePickRestaurant ?? chosen ?? pickRandom(fallbackPool());
+    const shownLine = showHaikuLine && lineDecision?.ok ? lineDecision.line : undefined;
+    const fallbackReason: DiscoverFallbackReason | null =
+      selectionMode === 'ai'
+        ? null
+        : !codePickRestaurant
+          ? (modelReason ?? 'invalid_pick')
+          : providerFailed
+            ? (modelReason ?? 'provider_error')
+            : lineDecision?.ok
+              ? 'unmet_preference'
+              : 'line_rejected';
+    const presentMatchedCuisine =
+      fallbackReason !== null &&
+      fallbackReason !== 'unmet_preference' &&
+      codePickPreferencesMet &&
+      matchesNamedCuisine(cardRestaurant);
+    const presentedMode: RouletteSelectionMode =
+      selectionMode === 'ai' || presentMatchedCuisine ? 'ai' : 'random_fallback';
 
     await accountForOutcome({
       requestId: reserved.request_id,
@@ -813,29 +963,36 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
         reserved.request_id,
         buildStoredDiscoveryPayload({
           restaurantId: cardRestaurant.id,
-          selectionMode,
+          selectionMode: presentedMode,
           promptIds,
           messageMac,
           filterMac,
+          line: shownLine,
         }),
       );
     } catch {
       // Replay can still fall back if the payload does not persist.
     }
     // Log only with the card that is returned. A ledger throw is a 500, not a pick.
-    if (selectionMode === 'ai') {
+    if (presentedMode === 'ai' && selectionMode === 'ai') {
       logDiscoverAiPick({
         requestId: reserved.request_id,
         poolSize: restaurants.length,
       });
-      return cardEvents(cardRestaurant, 'ai', null, false);
+      return cardEvents(cardRestaurant, 'ai', null, false, shownLine);
     }
-    const reason = modelReason ?? 'invalid_pick';
+    const reason = fallbackReason ?? 'invalid_pick';
     logDiscoverFallback({
       reason,
       ...discoverBase(reserved.request_id),
       ...(reason === 'provider_error' && providerStatus !== undefined ? { providerStatus } : {}),
+      ...(reason === 'line_rejected' && lineDecision && !lineDecision.ok
+        ? { lineCode: lineDecision.code }
+        : {}),
     });
+    if (presentMatchedCuisine) {
+      return cardEvents(cardRestaurant, 'ai', null, false);
+    }
     return cardEvents(cardRestaurant, 'random_fallback', reason, providerTimedOut);
   } catch (err) {
     console.error('[roulette] unhandled:', err);

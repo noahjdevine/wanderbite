@@ -12,6 +12,7 @@ describe('G13-A2 conservative quote', () => {
     expect(conservative).toBeGreaterThan(naive);
     expect(conservative).toBeGreaterThan(4096);
     expect(rouletteQuoteUsageUnits(system, user).output).toBe(300);
+    expect(rouletteQuoteUsageUnits(system, user, 80).output).toBe(80);
   });
 });
 

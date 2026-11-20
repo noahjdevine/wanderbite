@@ -52,9 +52,14 @@ vi.mock('@/lib/launch-market-server', () => ({
 
 import { GET, POST } from '@/app/api/discover/route';
 import { POST as roulettePost } from '@/app/api/roulette/route';
-import { ANTHROPIC_HAIKU_SNAPSHOT, ROULETTE_MAX_OUTPUT_TOKENS } from '@/lib/ai-budget/models';
+import {
+  ANTHROPIC_HAIKU_SNAPSHOT,
+  DISCOVER_LINE_MAX_OUTPUT_TOKENS,
+  ROULETTE_MAX_OUTPUT_TOKENS,
+} from '@/lib/ai-budget/models';
 import { resetBriefingsLogs } from '@/lib/briefings/flag';
-import { DISCOVER_FALLBACK_LOG } from '@/lib/discover/fallback-reason';
+import { MESSAGE_EXCLUSION_EMPTY } from '@/lib/discover/code-pick';
+import { DISCOVER_AI_PICK_LOG, DISCOVER_FALLBACK_LOG } from '@/lib/discover/fallback-reason';
 import { resetMemberVisitsReadLog } from '@/lib/discover/member-visits';
 import type { BriefingRecord } from '@/lib/briefings/types';
 import { DISCOVER_FACT_PROMPT_NOTE } from '@/lib/discover/briefing-facts';
@@ -96,6 +101,38 @@ const BBQ = {
   is_halal: false,
   status: 'active',
 };
+
+const TACO = {
+  id: 'rest-taco',
+  name: 'Taco House',
+  cuisine_tags: ['mexican', 'tacos'],
+  neighborhood: 'West',
+  address: '3 Main',
+  price_range: '$',
+  image_url: null,
+  google_place_id: null,
+  is_dairy_free: false,
+  is_vegan: false,
+  is_halal: false,
+  status: 'active',
+};
+
+const SALSA = {
+  id: 'rest-salsa',
+  name: 'Salsa Room',
+  cuisine_tags: ['mexican'],
+  neighborhood: 'East',
+  address: '4 Main',
+  price_range: '$',
+  image_url: null,
+  google_place_id: null,
+  is_dairy_free: false,
+  is_vegan: false,
+  is_halal: false,
+  status: 'active',
+};
+
+const LINE = 'Taco House is a bright West room for tacos.';
 
 const HIDDEN = [
   { ...BBQ, id: 'paused-row', name: 'Paused Grill', status: 'paused' },
@@ -260,6 +297,7 @@ describe('Discover stream route', () => {
     vi.unstubAllGlobals();
     enableConfig();
     delete process.env.E06_BRIEFINGS_ENABLED;
+    delete process.env.DISCOVER_CODE_PICK_ENABLED;
     resetBriefingsLogs();
     resetMemberVisitsReadLog();
     briefingResult = { data: [], error: null };
@@ -1244,5 +1282,629 @@ describe('Discover stream route', () => {
     } finally {
       random.mockRestore();
     }
+  });
+
+  it('keeps the model prompt, cap, and pick when code pick is not exactly true', async () => {
+    restaurantRows = [SALSA, VEGAN];
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const preference = { preferredCuisine: 'mexican', priceRange: '$' };
+    const stripNonce = (content: string) => content.replace(/Request id: .+/g, 'Request id: NONCE');
+    try {
+      const sent: string[] = [];
+      const ids: string[] = [];
+      for (const flag of [undefined, '', 'TRUE', ' true'] as const) {
+        fetchMock.mockClear();
+        if (flag === undefined) delete process.env.DISCOVER_CODE_PICK_ENABLED;
+        else vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', flag);
+        const response = await roulettePost(post({ body: preference }));
+        const body = (await response.json()) as { restaurantId: string; reason: string; selectionMode: string };
+        const call = anthropicBody(fetchMock.mock.calls[0]);
+        sent.push(stripNonce(call.messages[0]?.content ?? ''));
+        ids.push(body.restaurantId);
+        expect(call.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
+        expect(call.max_tokens).toBe(ROULETTE_MAX_OUTPUT_TOKENS);
+        expect(call.max_tokens).toBe(300);
+        expect(call.temperature).toBe(1);
+        expect(call.system).toBe(expectedSystemPrompt());
+        expect(body).toMatchObject({
+          restaurantId: VEGAN.id,
+          selectionMode: 'ai',
+          reason: discoveryCardSentence(VEGAN, LAUNCH_MARKET.displayName),
+        });
+      }
+      expect(new Set(sent).size).toBe(1);
+      expect(new Set(ids)).toEqual(new Set([VEGAN.id]));
+      expect(sent[0]).toContain('"id"');
+      expect(sent[0]).not.toContain('already chosen');
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('ranks a matching unvisited partner and shows a valid Haiku line', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    getUser.mockResolvedValue({ data: { user: { id: USER } } });
+    restaurantRows = [SALSA, TACO];
+    redemptionRows = [{ restaurant_id: SALSA.id, status: 'verified' }];
+    fetchMock.mockResolvedValue(anthropicResponse(LINE));
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+    try {
+      const response = await POST(
+        post({
+          user: true,
+          body: { preferredCuisine: 'mexican', priceRange: '$', idempotencyKey: USER },
+        }),
+      );
+      const events = parseDiscoverSse(await response.text());
+      expect(events.map((event) => (event.type === 'step' ? event.id : event.type))).toEqual([
+        'parse',
+        'filter',
+        'memory',
+        'pick',
+      ]);
+      expect(events.some((event) => event.type === 'step' && event.id === 'rank')).toBe(false);
+      const pick = events.find((event) => event.type === 'pick');
+      expect(pick).toMatchObject({
+        type: 'pick',
+        reason: LINE,
+        isNewToMember: true,
+        partner: { id: TACO.id, name: TACO.name },
+      });
+      expect(events.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+        line: "You haven't been to Taco House yet.",
+      });
+      const sent = anthropicBody(fetchMock.mock.calls[0]);
+      expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
+      expect(sent.max_tokens).toBe(DISCOVER_LINE_MAX_OUTPUT_TOKENS);
+      expect(sent.max_tokens).toBe(80);
+      expect(sent.temperature).toBe(1);
+      expect(sent.system).toContain('already chosen');
+      expect(sent.messages[0]?.content).toContain('Taco House');
+      expect(sent.messages[0]?.content).not.toContain(SALSA.name);
+      expect(sent.messages[0]?.content).not.toContain('"id"');
+      const reserved = rpcs.rpcAiReserve.mock.calls.at(-1)?.[0] as {
+        modelId?: string;
+        featureClass?: string;
+        usageUnits?: { output?: number };
+      };
+      expect(reserved.modelId).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
+      expect(reserved.featureClass).toBe('optional');
+      expect(reserved.usageUnits?.output).toBe(sent.max_tokens);
+      expect(rpcs.rpcAiSettle).toHaveBeenCalled();
+      expect(rpcs.rpcAiReconcile).not.toHaveBeenCalled();
+      const stored = rpcs.rpcAiStoreResultPayload.mock.calls.at(-1)?.[1] as {
+        restaurantId?: string;
+        line?: string;
+        selectionMode?: string;
+      };
+      expect(stored).toMatchObject({
+        restaurantId: TACO.id,
+        selectionMode: 'ai',
+        line: LINE,
+      });
+      expect(stored).not.toHaveProperty('reason');
+      expect(warn.mock.calls.some((call: unknown[]) => call[0] === DISCOVER_AI_PICK_LOG)).toBe(true);
+      expect(warn.mock.calls.some((call: unknown[]) => call[0] === DISCOVER_FALLBACK_LOG)).toBe(false);
+
+      fetchMock.mockClear();
+      redemptionRows = [];
+      random.mockReturnValue(0);
+      rpcs.rpcAiReserve.mockResolvedValue({ ...ledgerRow(false), deny_reason: '' });
+      rpcs.rpcAiLoadResultPayload.mockResolvedValue({
+        result_payload: stored,
+        deny_reason: '',
+      });
+      const replay = await roulettePost(
+        post({
+          user: true,
+          body: { preferredCuisine: 'mexican', priceRange: '$', idempotencyKey: USER },
+        }),
+      );
+      await expect(replay.json()).resolves.toMatchObject({
+        restaurantId: TACO.id,
+        selectionMode: 'ai',
+        reason: LINE,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('keeps the code pick and the template when the line is rejected', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO, SALSA];
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    const template = discoveryCardSentence(TACO, LAUNCH_MARKET.displayName);
+    const cases = [
+      ['See https://evil.example/secret-line before you go.', 'url'],
+      ['Call 555-123-4567 for a table.', 'phone'],
+      ['It is only $15.', 'price'],
+      ['Closed Mondays.', 'hours'],
+      ['Ask about the discount.', 'promo'],
+      ['Salsa Room is louder than this one.', 'other_restaurant'],
+      ['', 'empty'],
+      ['Taco House is bright. The room is loud.', 'multi_sentence'],
+    ] as const;
+    try {
+      for (const [text, code] of cases) {
+        fetchMock.mockResolvedValue(anthropicResponse(text));
+        warn.mockClear();
+        rpcs.rpcAiSettle.mockClear();
+        rpcs.rpcAiReconcile.mockClear();
+        rpcs.rpcAiMarkAssumedSpent.mockClear();
+        const response = await roulettePost(
+          post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }),
+        );
+        const body = (await response.json()) as {
+          restaurantId: string;
+          reason: string;
+          selectionMode: string;
+        };
+        expect(body).toMatchObject({
+          restaurantId: TACO.id,
+          selectionMode: 'ai',
+          reason: template,
+        });
+        expect(body.reason).not.toContain('secret-line');
+        expect(body.restaurantId).not.toBe(SALSA.id);
+        const logged = warn.mock.calls.filter((call: unknown[]) => call[0] === DISCOVER_FALLBACK_LOG);
+        expect(logged).toHaveLength(1);
+        expect(logged[0]?.[1]).toMatchObject({ reason: 'line_rejected', lineCode: code });
+        if (text) expect(JSON.stringify(logged)).not.toContain(text);
+        expect(JSON.stringify(logged)).not.toContain('secret-line');
+        expect(rpcs.rpcAiSettle).not.toHaveBeenCalled();
+        expect(rpcs.rpcAiMarkAssumedSpent).toHaveBeenCalled();
+        expect(rpcs.rpcAiReconcile).toHaveBeenCalled();
+      }
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('returns the code pick with the template when AI cannot write the line', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO, SALSA];
+    const template = discoveryCardSentence(TACO, LAUNCH_MARKET.displayName);
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      vi.stubEnv('WANDERBITE_AI_DISABLED', 'true');
+      const disabled = await roulettePost(
+        post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }),
+      );
+      await expect(disabled.json()).resolves.toMatchObject({
+        restaurantId: TACO.id,
+        selectionMode: 'ai',
+        reason: template,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiReserve).not.toHaveBeenCalled();
+
+      vi.stubEnv('WANDERBITE_AI_DISABLED', '');
+      fetchMock.mockClear();
+      allowBillableRoulette.mockResolvedValueOnce(false);
+      const limited = await roulettePost(
+        post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }),
+      );
+      await expect(limited.json()).resolves.toMatchObject({
+        restaurantId: TACO.id,
+        selectionMode: 'ai',
+        reason: template,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiReserve).not.toHaveBeenCalled();
+
+      allowBillableRoulette.mockResolvedValue(true);
+      rpcs.rpcAiReserve.mockResolvedValue({
+        ...ledgerRow(false),
+        deny_reason: 'insufficient_budget',
+      });
+      const denied = await roulettePost(
+        post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }),
+      );
+      await expect(denied.json()).resolves.toMatchObject({
+        restaurantId: TACO.id,
+        selectionMode: 'ai',
+        reason: template,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiDispatch).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiSettle).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiMarkAssumedSpent).not.toHaveBeenCalled();
+
+      rpcs.rpcAiReserve.mockResolvedValue(ledgerRow(true));
+      fetchMock.mockResolvedValue(new Response('nope', { status: 503 }));
+      const errored = await roulettePost(
+        post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }),
+      );
+      await expect(errored.json()).resolves.toMatchObject({
+        restaurantId: TACO.id,
+        selectionMode: 'ai',
+        reason: template,
+      });
+      expect(rpcs.rpcAiSettle).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiMarkAssumedSpent).toHaveBeenCalled();
+      expect(rpcs.rpcAiReleaseCustomerAllowance).toHaveBeenCalled();
+      const errorLog = warn.mock.calls.filter((call: unknown[]) => call[0] === DISCOVER_FALLBACK_LOG).at(-1);
+      expect(errorLog?.[1]).toMatchObject({ reason: 'provider_error', providerStatus: 503 });
+
+      rpcs.rpcAiMarkAssumedSpent.mockClear();
+      rpcs.rpcAiReleaseCustomerAllowance.mockClear();
+      rpcs.rpcAiReconcile.mockClear();
+      vi.useFakeTimers();
+      fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
+        return new Promise((_resolve, reject) => {
+          const fail = () => {
+            const error = new Error('The operation was aborted');
+            error.name = 'AbortError';
+            reject(error);
+          };
+          if (init?.signal?.aborted) {
+            fail();
+            return;
+          }
+          init?.signal?.addEventListener('abort', fail);
+        });
+      });
+      const pending = roulettePost(
+        post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }),
+      );
+      await vi.advanceTimersByTimeAsync(7_000);
+      const timedOut = await pending;
+      await expect(timedOut.json()).resolves.toMatchObject({
+        restaurantId: TACO.id,
+        selectionMode: 'ai',
+        reason: template,
+      });
+      expect(rpcs.rpcAiSettle).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiReconcile).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiMarkAssumedSpent).toHaveBeenCalled();
+      expect(rpcs.rpcAiReleaseCustomerAllowance).toHaveBeenCalled();
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('ranks without a visit read for a guest and keeps the closest-pick copy', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO, SALSA];
+    fetchMock.mockResolvedValue(anthropicResponse('Salsa Room is the one to skip.'));
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const events = parseDiscoverSse(
+        await (
+          await POST(post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }))
+        ).text(),
+      );
+      expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+      expect(tables).not.toContain('redemptions');
+      expect(events.find((event) => event.type === 'pick')).toMatchObject({
+        type: 'pick',
+        isNewToMember: false,
+        reason: discoveryCardSentence(TACO, LAUNCH_MARKET.displayName),
+        partner: { id: TACO.id },
+      });
+      expect(events.some((event) => event.type === 'fallback')).toBe(false);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('picks from the matching pool when every match was visited', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    getUser.mockResolvedValue({ data: { user: { id: USER } } });
+    restaurantRows = [TACO, SALSA];
+    redemptionRows = [
+      { restaurant_id: TACO.id, status: 'verified' },
+      { restaurant_id: SALSA.id, status: 'verified' },
+    ];
+    fetchMock.mockResolvedValue(anthropicResponse(LINE));
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const events = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              user: true,
+              body: { preferredCuisine: 'mexican', priceRange: '$' },
+            }),
+          )
+        ).text(),
+      );
+      expect(events.find((event) => event.type === 'pick')).toMatchObject({
+        reason: LINE,
+        isNewToMember: false,
+        partner: { id: TACO.id },
+      });
+      expect(events.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+        line: "You've been here before.",
+      });
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('drops a dietary miss before the ranker and still excludes session ids', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    vi.stubEnv('WANDERBITE_AI_DISABLED', 'true');
+    restaurantRows = [TACO, VEGAN];
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const dietary = await roulettePost(
+        post({
+          body: { dietaryQuick: ['vegan'], preferredCuisine: 'mexican', priceRange: '$' },
+        }),
+      );
+      await expect(dietary.json()).resolves.toMatchObject({
+        restaurantId: VEGAN.id,
+        selectionMode: 'random_fallback',
+      });
+
+      vi.stubEnv('WANDERBITE_AI_DISABLED', '');
+      restaurantRows = [TACO, SALSA];
+      const excluded = await roulettePost(
+        post({
+          body: {
+            preferredCuisine: 'mexican',
+            priceRange: '$',
+            excludeRestaurantIds: [TACO.id],
+          },
+        }),
+      );
+      await expect(excluded.json()).resolves.toMatchObject({ restaurantId: SALSA.id });
+
+      const readmit = await roulettePost(
+        post({
+          body: {
+            preferredCuisine: 'mexican',
+            priceRange: '$',
+            excludeRestaurantIds: [TACO.id, SALSA.id],
+          },
+        }),
+      );
+      await expect(readmit.json()).resolves.toMatchObject({ restaurantId: TACO.id });
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('omits briefing facts from the line prompt unless the flag is exactly true', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO, SALSA];
+    fetchMock.mockImplementation(() => Promise.resolve(anthropicResponse(LINE)));
+    briefingResult = {
+      data: [
+        factRow({
+          id: '11111111-1111-4111-8111-111111111111',
+          restaurant_id: TACO.id,
+          field: 'known_for',
+          body: 'TACO_FACT_ONLY',
+          source_url: MAPS,
+        }),
+        factRow({
+          id: '22222222-2222-4222-8222-222222222222',
+          restaurant_id: SALSA.id,
+          field: 'vibe',
+          body: 'SALSA_FACT_HIDDEN',
+        }),
+      ],
+      error: null,
+    };
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const off = await POST(post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }));
+      expect(off.status).toBe(200);
+      const offPrompt = anthropicBody(fetchMock.mock.calls[0]).messages[0]?.content ?? '';
+      expect(offPrompt).not.toContain('TACO_FACT_ONLY');
+      expect(offPrompt).not.toContain('SALSA_FACT_HIDDEN');
+      expect(offPrompt).not.toContain('"facts"');
+      expect(serverFrom).not.toHaveBeenCalled();
+
+      fetchMock.mockClear();
+      serverFrom.mockClear();
+      vi.stubEnv('E06_BRIEFINGS_ENABLED', 'TRUE');
+      const wrong = await POST(post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }));
+      expect(wrong.status).toBe(200);
+      const wrongPrompt = anthropicBody(fetchMock.mock.calls[0]).messages[0]?.content ?? '';
+      expect(wrongPrompt).not.toContain('TACO_FACT_ONLY');
+      expect(serverFrom).not.toHaveBeenCalled();
+
+      fetchMock.mockClear();
+      vi.stubEnv('E06_BRIEFINGS_ENABLED', 'true');
+      const on = await POST(post({ body: { preferredCuisine: 'mexican', priceRange: '$' } }));
+      const sent = anthropicBody(fetchMock.mock.calls[0]);
+      const content = sent.messages[0]?.content ?? '';
+      expect(content).toContain('TACO_FACT_ONLY');
+      expect(content).not.toContain('SALSA_FACT_HIDDEN');
+      expect(content).not.toContain(MAPS);
+      expect(sent.max_tokens).toBe(DISCOVER_LINE_MAX_OUTPUT_TOKENS);
+      const events = parseDiscoverSse(await on.text());
+      const pick = events.find((event) => event.type === 'pick');
+      expect(pick).toMatchObject({
+        type: 'pick',
+        reason: LINE,
+        partner: { id: TACO.id },
+        facts: [{ field: 'known_for', text: 'TACO_FACT_ONLY' }],
+      });
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('keeps the memory line on a signed-in surprise', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    getUser.mockResolvedValue({ data: { user: { id: USER } } });
+    restaurantRows = [TACO];
+    redemptionRows = [];
+    fetchMock.mockImplementation(() => Promise.resolve(anthropicResponse(LINE)));
+    const events = parseDiscoverSse(
+      await (
+        await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))
+      ).text(),
+    );
+    expect(events.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You haven't been to Taco House yet.",
+    });
+    expect(fetchMock).toHaveBeenCalled();
+    expect(rpcs.rpcAiReserve).toHaveBeenCalled();
+    expect(events.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      isNewToMember: true,
+      partner: { id: TACO.id },
+      reason: LINE,
+    });
+    expect(events.some((event) => event.type === 'fallback')).toBe(false);
+
+    redemptionRows = [{ restaurant_id: TACO.id, status: 'verified' }];
+    const again = parseDiscoverSse(
+      await (
+        await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))
+      ).text(),
+    );
+    expect(again.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
+      line: "You've been here before.",
+    });
+    expect(again.find((event) => event.type === 'pick')).toMatchObject({
+      isNewToMember: false,
+    });
+  });
+
+  it('labels an unmatched cheap-tacos ask as a closest pick for members and guests', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [
+      { ...BBQ, name: 'Local Yocal', cuisine_tags: ['steak', 'wagyu'], price_range: '$$$' },
+    ];
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(anthropicResponse('Local Yocal is a bright steak room.')),
+    );
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      getUser.mockResolvedValue({ data: { user: { id: USER } } });
+      const member = parseDiscoverSse(
+        await (
+          await POST(post({ user: true, message: 'cheap tacos', body: { askTone: 'request' } }))
+        ).text(),
+      );
+      expect(member.find((event) => event.type === 'fallback')).toMatchObject({
+        tone: 'alternative',
+        message: "Closest I've got: Local Yocal. It may not match everything you asked for.",
+        alternative: { name: 'Local Yocal' },
+      });
+      expect(member.some((event) => event.type === 'pick')).toBe(false);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiReserve).not.toHaveBeenCalled();
+
+      getUser.mockResolvedValue({ data: { user: null } });
+      const guest = parseDiscoverSse(
+        await (await POST(post({ message: 'cheap tacos', body: { askTone: 'request' } }))).text(),
+      );
+      expect(guest.find((event) => event.type === 'fallback')).toMatchObject({
+        tone: 'alternative',
+        message: "Closest I've got: Local Yocal. It may not match everything you asked for.",
+      });
+      expect(guest.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('rejects unsourced quality praise and keeps the template', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO];
+    fetchMock.mockResolvedValue(
+      anthropicResponse('Taco House offers premium gourmet tacos and a curated wine selection.'),
+    );
+    const response = await roulettePost(post({ message: '' }));
+    const body = (await response.json()) as { reason: string; selectionMode: string; restaurantId: string };
+    expect(body.restaurantId).toBe(TACO.id);
+    expect(body.selectionMode).toBe('random_fallback');
+    expect(body.reason).toBe(discoveryCardSentence(TACO, LAUNCH_MARKET.displayName));
+    expect(body.reason).not.toContain('premium');
+  });
+
+  it('rejects a stock occasion line and keeps the template', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO];
+    fetchMock.mockResolvedValue(
+      anthropicResponse('Taco House is perfect for special occasions.'),
+    );
+    const response = await roulettePost(post({ message: '' }));
+    const body = (await response.json()) as { reason: string; selectionMode: string; restaurantId: string };
+    expect(body.restaurantId).toBe(TACO.id);
+    expect(body.selectionMode).toBe('random_fallback');
+    expect(body.reason).toBe(discoveryCardSentence(TACO, LAUNCH_MARKET.displayName));
+    expect(body.reason).not.toContain('special occasions');
+  });
+
+  it('excludes a negated cuisine and does not pick it when nothing else is left', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    const sushi = { ...BBQ, id: 'rest-sushi', name: 'Kimiya', cuisine_tags: ['sushi'] };
+    const thai = { ...BBQ, id: 'rest-thai', name: 'Thai Room', cuisine_tags: ['thai'] };
+    restaurantRows = [sushi, thai];
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(anthropicResponse('Thai Room is a bright room for noodles.')),
+    );
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const response = await roulettePost(post({ message: 'anything but sushi tonight' }));
+      const body = (await response.json()) as { restaurantId: string; restaurantName: string };
+      expect(body.restaurantId).toBe(thai.id);
+      expect(body.restaurantName).not.toBe('Kimiya');
+
+      const over = await roulettePost(post({ message: "I'm so over sushi" }));
+      const overBody = (await over.json()) as { restaurantId: string };
+      expect(overBody.restaurantId).toBe(thai.id);
+
+      restaurantRows = [sushi];
+      fetchMock.mockClear();
+      const empty = await roulettePost(post({ message: 'anything but sushi tonight' }));
+      expect(empty.status).toBe(404);
+      await expect(empty.json()).resolves.toEqual({ error: MESSAGE_EXCLUSION_EMPTY });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('calls Haiku for a surprise with no soft preference and keeps a sushi-or-thai match', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    restaurantRows = [TACO];
+    fetchMock.mockImplementation(() => Promise.resolve(anthropicResponse(LINE)));
+    const surprise = parseDiscoverSse(
+      await (await POST(post({ message: '', body: { askTone: 'surprise' } }))).text(),
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(surprise.some((event) => event.type === 'fallback')).toBe(false);
+    expect(surprise.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      reason: LINE,
+      partner: { id: TACO.id },
+    });
+
+    const sushi = { ...BBQ, id: 'rest-sushi', name: 'Shun by Yama Sushi', cuisine_tags: ['sushi'] };
+    const steak = { ...BBQ, id: 'rest-steak', name: 'Local Yocal', cuisine_tags: ['steak'], price_range: '$$$' };
+    restaurantRows = [steak, sushi];
+    fetchMock.mockClear();
+    rpcs.rpcAiReserve.mockClear();
+    const matched = parseDiscoverSse(
+      await (await POST(post({ message: 'sushi or thai', body: { askTone: 'request' } }))).text(),
+    );
+    expect(fetchMock).toHaveBeenCalled();
+    expect(matched.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      partner: { id: sushi.id, name: sushi.name },
+    });
+    expect(matched.some((event) => event.type === 'fallback')).toBe(false);
+
+    fetchMock.mockResolvedValue(anthropicResponse('Shun by Yama Sushi is perfect for special occasions.'));
+    const templated = parseDiscoverSse(
+      await (await POST(post({ message: 'sushi or thai', body: { askTone: 'request' } }))).text(),
+    );
+    expect(templated.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      reason: discoveryCardSentence(sushi, LAUNCH_MARKET.displayName),
+      partner: { id: sushi.id },
+    });
+    expect(templated.some((event) => event.type === 'fallback')).toBe(false);
   });
 });

@@ -219,7 +219,7 @@ describe('DiscoverFlow', () => {
       <DiscoverFlow initialMessage="noodles" viewer={{ firstName: 'Noah', savedDietary: saved }} />,
     );
     expect(screen.getByRole('button', { name: 'Dietary: Vegan' })).toBeTruthy();
-    expect(screen.getByText('Good evening, Noah')).toBeTruthy();
+    expect(screen.getByText(/^Good (morning|afternoon|evening), Noah$/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
     await flush();
     await act(async () => {
@@ -227,6 +227,16 @@ describe('DiscoverFlow', () => {
     });
     expect(screen.getByRole('button', { name: 'Dietary: Vegan' })).toBeTruthy();
     expect(screen.getByText('Vegan')).toBeTruthy();
+  });
+
+  it('shows the free line only when signed out', () => {
+    const { rerender } = render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [], signedIn: true }} />,
+    );
+    expect(screen.getByText(/^Good (morning|afternoon|evening)$/)).toBeTruthy();
+    expect(screen.queryByText('Free · no account needed')).toBeNull();
+    rerender(<DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />);
+    expect(screen.getByText('Free · no account needed')).toBeTruthy();
   });
 
   it('resubmits Another idea and Cheaper with the original message', async () => {

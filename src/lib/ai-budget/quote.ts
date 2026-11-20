@@ -15,12 +15,17 @@ export function conservativeInputUnits(systemPrompt: string, userPrompt: string)
   return Math.ceil(bytes / 2) + ROULETTE_QUOTE_FRAMING_TOKENS + ROULETTE_QUOTE_MARGIN_TOKENS;
 }
 
+/**
+ * Output units are the max_tokens value that will be sent.
+ * Omit the cap to keep the roulette ceiling.
+ */
 export function rouletteQuoteUsageUnits(
   systemPrompt: string,
   userPrompt: string,
+  outputTokens: number = ROULETTE_MAX_OUTPUT_TOKENS,
 ): Record<string, number> {
   return {
     input: conservativeInputUnits(systemPrompt, userPrompt),
-    output: ROULETTE_MAX_OUTPUT_TOKENS,
+    output: outputTokens,
   };
 }

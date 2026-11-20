@@ -20,6 +20,9 @@ import {
   foodForOutcome,
   messageForDiscoverStatus,
   discoverEnterSubmits,
+  chicagoHour,
+  discoverDayPart,
+  discoverGreeting,
   outcomeFromEvents,
   refineDiscoverDraft,
   rememberShownRestaurant,
@@ -68,6 +71,49 @@ function pickEvent(): DiscoverEvent {
     food: 'dumpling',
   };
 }
+
+describe('discover greeting', () => {
+  it('keeps the free line for guests and uses Chicago time for members', () => {
+    const morning = new Date('2026-11-20T17:25:00.000Z');
+    const afternoon = new Date('2026-11-20T18:00:00.000Z');
+    const evening = new Date('2026-11-20T23:00:00.000Z');
+    expect(chicagoHour(morning)).toBe(11);
+    expect(discoverDayPart(morning)).toBe('morning');
+    expect(discoverGreeting(null)).toBe('Free · no account needed');
+    expect(discoverGreeting(null, false, morning)).toBe('Free · no account needed');
+    expect(discoverGreeting('Noah', true, morning)).toBe('Good morning, Noah');
+    expect(discoverGreeting(null, true, morning)).toBe('Good morning');
+    expect(discoverGreeting('  ', true, afternoon)).toBe('Good afternoon');
+    expect(discoverGreeting('Noah', true, evening)).toBe('Good evening, Noah');
+  });
+
+  it('changes the greeting on the Chicago hour boundaries, in winter and summer', () => {
+    const winter = [
+      ['2026-11-20T10:59:00.000Z', 4, 'evening'],
+      ['2026-11-20T11:00:00.000Z', 5, 'morning'],
+      ['2026-11-20T17:59:00.000Z', 11, 'morning'],
+      ['2026-11-20T18:00:00.000Z', 12, 'afternoon'],
+      ['2026-11-20T22:59:00.000Z', 16, 'afternoon'],
+      ['2026-11-20T23:00:00.000Z', 17, 'evening'],
+    ] as const;
+    const summer = [
+      ['2026-07-15T09:59:00.000Z', 4, 'evening'],
+      ['2026-07-15T10:00:00.000Z', 5, 'morning'],
+      ['2026-07-15T16:25:00.000Z', 11, 'morning'],
+      ['2026-07-15T17:00:00.000Z', 12, 'afternoon'],
+      ['2026-07-15T21:59:00.000Z', 16, 'afternoon'],
+      ['2026-07-15T22:00:00.000Z', 17, 'evening'],
+    ] as const;
+    for (const [iso, hour, part] of [...winter, ...summer]) {
+      const now = new Date(iso);
+      expect(chicagoHour(now), iso).toBe(hour);
+      expect(discoverDayPart(now), iso).toBe(part);
+    }
+    expect(discoverGreeting('Noah', true, new Date('2026-11-20T17:25:00.000Z'))).toBe(
+      'Good morning, Noah',
+    );
+  });
+});
 
 describe('discover screen reducer', () => {
   afterEach(() => {

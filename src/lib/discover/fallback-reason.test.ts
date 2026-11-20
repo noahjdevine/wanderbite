@@ -149,6 +149,41 @@ describe('discover log lines', () => {
     expect(warn.mock.calls[0]?.[1]).toMatchObject({ providerStatus: 503 });
   });
 
+  it('logs a line rejection code and never the sentence', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const secret = 'https://evil.example/secret-line';
+    logDiscoverFallback({
+      reason: 'line_rejected',
+      requestId: 'req-1',
+      memberType: 'member',
+      poolSize: 3,
+      dietaryFilterCount: 0,
+      lineCode: 'url',
+    });
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[1]).toEqual({
+      reason: 'line_rejected',
+      requestId: 'req-1',
+      memberType: 'member',
+      poolSize: 3,
+      dietaryFilterCount: 0,
+      lineCode: 'url',
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(secret);
+
+    warn.mockClear();
+    logDiscoverFallback({
+      reason: 'line_rejected',
+      requestId: 'req-1',
+      memberType: 'member',
+      poolSize: 3,
+      dietaryFilterCount: 0,
+      lineCode: secret as 'url',
+    });
+    expect(warn.mock.calls[0]?.[1]).not.toHaveProperty('lineCode');
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(secret);
+  });
+
   it('writes the AI success line with requestId and poolSize only', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     logDiscoverAiPick({ requestId: 'req-1', poolSize: 8 });
