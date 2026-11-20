@@ -15,6 +15,7 @@ import {
   isStorableOfficialWebsite,
   normalizeHttpsUrl,
   parseBriefingArgs,
+  partitionBriefingRestaurants,
   placesReportLine,
   researchCatalog,
   type BriefingRestaurant,
@@ -28,17 +29,24 @@ const HELP = `Operator-only first-visit briefing research.
 Default is a dry-run. It reads active restaurants. When official_website is
 set, that https URL is fetched first. A redirect from that URL may land on
 another domain, and that page is the official page. Other page fetches do not
-follow a redirect onto another domain. It asks Claude Haiku
+follow a redirect onto another domain. www and a trailing slash stay on the
+same site. One fetch follows at most 10 redirects, keeps Set-Cookie for that
+fetch only, and reports a repeated URL as a redirect loop. It asks Claude Haiku
 (claude-haiku-4-5-20251001) to search with Anthropic's server-side web_search
 tool (web_search_20260318, at most 5 searches, McKinney TX). It asks for the
 official site and for menu, about, and FAQ pages. It then fetches
 those public https pages itself. The official site is first. Up to four
 same-host subpages (menu, about, faq, visit, location, contact, hours,
 reservations, parking, private-dining) are fetched from that site. A reputable
-listing is next. robots.txt is respected. A disallowed listing host does not
-use a page slot or another web search. HTML is kept up to 1.5 MB and the text
-is capped. HTTP 403 skips that URL only. It asks Haiku for facts the page text
-supports.
+listing is next. A matching robots.txt Disallow is respected. robots.txt 4xx,
+HTML, or an unreadable non-200 success counts as no rules, so the page is
+allowed. robots.txt 5xx or a network failure skips that host. The report names
+which case applied. A disallowed listing host does not use a page slot or
+another web search. Weak aggregator hosts (hey-rest, restaurantji.com,
+sluurp.com) are skipped before fetch and do not use a page slot or a search.
+HTML is kept up to 1.5 MB and the text is capped. HTTP 403 on a page skips
+that URL only. It asks Haiku for facts the page text supports. A single user
+review is not enough support for a physical feature.
 
 When GOOGLE_PLACES_API_KEY is set, it also calls Places API (New): Text Search
 Essentials (IDs Only) with the name and address, then one Place Details
@@ -48,11 +56,17 @@ stored only on --write, and only when google_place_id is null. List prices
 count toward the USD cap. The free monthly Places cap is not subtracted.
 
 It writes a JSON and markdown report under .briefings/. The report counts kept
-and dropped facts for each field. It does not write the database unless
---write is set.
+and dropped facts for each field, and lists each dropped candidate with its
+text, source URL, and reason. It does not write the database unless --write
+is set.
+
+Restaurants whose name contains "(not real)", or starts with "QA " or "Test ",
+or whose market or partner name is marked test, are skipped unless
+--include-test is set. Skipped names are listed in the report header.
 
   npm run research:briefings
   npm run research:briefings -- --limit 5
+  npm run research:briefings -- --include-test
   npm run research:briefings -- --write
 
 --write inserts rows with status paused and is_sample false. An operator flips
@@ -110,7 +124,7 @@ async function loadActiveRestaurants(
 ): Promise<BriefingRestaurant[]> {
   const { data, error } = await supabase
     .from('restaurants')
-    .select('id, name, address, status, official_website, google_place_id, lat, lon')
+    .select('id, name, address, status, official_website, google_place_id, lat, lon, markets(name, slug), restaurant_orgs(name)')
     .eq('status', 'active')
     .order('name', { ascending: true });
   if (error) {
@@ -121,15 +135,27 @@ async function loadActiveRestaurants(
     }
     fail(`restaurant read failed: ${error.message}`);
   }
-  return (data ?? []).map((row) => ({
-    id: row.id,
-    name: row.name,
-    address: row.address,
-    officialWebsite: row.official_website,
-    googlePlaceId: row.google_place_id,
-    lat: row.lat,
-    lon: row.lon,
-  }));
+  return (data ?? []).map((row) => {
+    const market = embedded(row.markets);
+    const org = embedded(row.restaurant_orgs);
+    return {
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      officialWebsite: row.official_website,
+      googlePlaceId: row.google_place_id,
+      lat: row.lat,
+      lon: row.lon,
+      marketName: market?.name ?? null,
+      marketSlug: market?.slug ?? null,
+      orgName: org?.name ?? null,
+    };
+  });
+}
+
+function embedded<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
 }
 
 async function main(): Promise<void> {
@@ -148,11 +174,12 @@ async function main(): Promise<void> {
     const allowed = briefingResearchAllowed(process.env.NEXT_PUBLIC_SUPABASE_URL ?? '');
     if (!allowed.ok) fail(allowed.reason);
   }
-  const restaurants = await loadActiveRestaurants(supabase);
+  const loaded = await loadActiveRestaurants(supabase);
+  const partitioned = partitionBriefingRestaurants(loaded, parsed.includeTest);
   const placesKey = process.env.GOOGLE_PLACES_API_KEY?.trim() ?? '';
   const now = new Date();
   const run = await researchCatalog({
-    restaurants,
+    restaurants: partitioned.selected,
     fetchImpl: fetch,
     callModel: (input) => callBriefingModel({ ...input, apiKey }),
     apiKey,
@@ -207,7 +234,11 @@ async function main(): Promise<void> {
   const stamp = now.toISOString().replace(/[:.]/g, '-');
   const dir = path.join(process.cwd(), BRIEFING_OUTPUT_DIR);
   mkdirSync(dir, { recursive: true });
-  const report = formatBriefingReport(run);
+  const report = formatBriefingReport({
+    ...run,
+    skippedTestRestaurants: partitioned.skippedTestRestaurants,
+    includeTestRestaurants: parsed.includeTest,
+  });
   const jsonPath = path.join(dir, `run-${stamp}.json`);
   const mdPath = path.join(dir, `run-${stamp}.md`);
   writeFileSync(jsonPath, report.json, { encoding: 'utf8', mode: 0o600 });

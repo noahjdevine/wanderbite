@@ -13,6 +13,7 @@ Use this guide to extract first-visit facts from the supplied page text. The ton
 - Do not use outside knowledge.
 - Do not include prices, offers, discounts, credits, or bookings.
 - Do not include reviewer names or quotes.
+- A single user review comment is not enough support for a physical feature (parking, arrival, accessibility, seating, or a patio). Structured details on a listing page count.
 - Paraphrase. Do not copy long passages.
 - Empty is fine. Omit a field when the pages do not support it.
 - Copy `source_url` exactly from the fetched URL list.
