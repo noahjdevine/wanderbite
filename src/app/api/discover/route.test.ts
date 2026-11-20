@@ -58,6 +58,7 @@ import {
   ROULETTE_MAX_OUTPUT_TOKENS,
 } from '@/lib/ai-budget/models';
 import { resetBriefingsLogs } from '@/lib/briefings/flag';
+import { MESSAGE_EXCLUSION_EMPTY } from '@/lib/discover/code-pick';
 import { DISCOVER_AI_PICK_LOG, DISCOVER_FALLBACK_LOG } from '@/lib/discover/fallback-reason';
 import { resetMemberVisitsReadLog } from '@/lib/discover/member-visits';
 import type { BriefingRecord } from '@/lib/briefings/types';
@@ -1789,10 +1790,8 @@ describe('Discover stream route', () => {
         alternative: { name: 'Local Yocal' },
       });
       expect(member.some((event) => event.type === 'pick')).toBe(false);
-      const sent = anthropicBody(fetchMock.mock.calls.at(-1));
-      expect(sent.messages[0]?.content).toContain('cheap tacos');
-      expect(sent.system).toContain('Do not invent an occasion');
-      expect(sent.system).toContain('inexpensive');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(rpcs.rpcAiReserve).not.toHaveBeenCalled();
 
       getUser.mockResolvedValue({ data: { user: null } });
       const guest = parseDiscoverSse(
@@ -1820,5 +1819,31 @@ describe('Discover stream route', () => {
     expect(body.selectionMode).toBe('random_fallback');
     expect(body.reason).toBe(discoveryCardSentence(TACO, LAUNCH_MARKET.displayName));
     expect(body.reason).not.toContain('special occasions');
+  });
+
+  it('excludes a negated cuisine and does not pick it when nothing else is left', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    const sushi = { ...BBQ, id: 'rest-sushi', name: 'Kimiya', cuisine_tags: ['sushi'] };
+    const thai = { ...BBQ, id: 'rest-thai', name: 'Thai Room', cuisine_tags: ['thai'] };
+    restaurantRows = [sushi, thai];
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(anthropicResponse('Thai Room is a bright room for noodles.')),
+    );
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const response = await roulettePost(post({ message: 'anything but sushi tonight' }));
+      const body = (await response.json()) as { restaurantId: string; restaurantName: string };
+      expect(body.restaurantId).toBe(thai.id);
+      expect(body.restaurantName).not.toBe('Kimiya');
+
+      restaurantRows = [sushi];
+      fetchMock.mockClear();
+      const empty = await roulettePost(post({ message: 'anything but sushi tonight' }));
+      expect(empty.status).toBe(404);
+      await expect(empty.json()).resolves.toEqual({ error: MESSAGE_EXCLUSION_EMPTY });
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      random.mockRestore();
+    }
   });
 });

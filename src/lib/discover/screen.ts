@@ -106,11 +106,41 @@ export type DiscoverOutcome =
   | { kind: 'error'; message: string }
   | { kind: 'empty' };
 
-export function discoverGreeting(firstName: string | null, signedIn = false): string {
+const CHICAGO_HOUR = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/Chicago',
+  hour: 'numeric',
+  hourCycle: 'h23',
+});
+
+/** Hour 0–23 in America/Chicago. Independent of the process time zone. */
+export function chicagoHour(now: Date): number {
+  const value = CHICAGO_HOUR.formatToParts(now).find((part) => part.type === 'hour')?.value;
+  const hour = Number(value);
+  return Number.isFinite(hour) ? hour : 0;
+}
+
+/**
+ * 05:00–11:59 morning, 12:00–16:59 afternoon, otherwise evening.
+ * 04:59 is still evening. 17:00 is evening.
+ */
+export function discoverDayPart(now: Date): 'morning' | 'afternoon' | 'evening' {
+  const hour = chicagoHour(now);
+  if (hour >= 5 && hour < 12) return 'morning';
+  if (hour >= 12 && hour < 17) return 'afternoon';
+  return 'evening';
+}
+
+export function discoverGreeting(
+  firstName: string | null,
+  signedIn = false,
+  now: Date = new Date(),
+): string {
   const name = firstName?.trim();
-  if (name) return `Good evening, ${name}`;
-  if (signedIn) return 'Good evening';
-  return 'Free · no account needed';
+  if (!signedIn && !name) return 'Free · no account needed';
+  const part = discoverDayPart(now);
+  const hello =
+    part === 'morning' ? 'Good morning' : part === 'afternoon' ? 'Good afternoon' : 'Good evening';
+  return name ? `${hello}, ${name}` : hello;
 }
 
 export function dietaryFlagsForStatus(

@@ -83,7 +83,11 @@ import { briefingsEnabled, logBriefingsReadFailedOnce } from '@/lib/briefings/fl
 import { loadDiscoverBriefingFacts } from '@/lib/briefings/load';
 import type { RestaurantBriefings } from '@/lib/briefings/types';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
-import { mergeSoftAsk, rankDiscoverRestaurant } from '@/lib/discover/code-pick';
+import {
+  MESSAGE_EXCLUSION_EMPTY,
+  mergeSoftAsk,
+  rankDiscoverRestaurant,
+} from '@/lib/discover/code-pick';
 import { discoverCodePickEnabled } from '@/lib/discover/flag';
 import { preferUnvisitedRestaurants } from '@/lib/discover/member-memory';
 import { buildDiscoverLinePrompt, validateDiscoverLine } from '@/lib/discover/pick-line';
@@ -101,7 +105,11 @@ import {
   applyRestaurantExclusion,
   canonicalFilterWithExcludedRestaurants,
 } from '@/lib/discover/exclude-restaurants';
-import { listedDiscoverRestaurants, type DiscoverRestaurant } from '@/lib/discover/stages';
+import {
+  listedDiscoverRestaurants,
+  restaurantMatchesPreferredCuisine,
+  type DiscoverRestaurant,
+} from '@/lib/discover/stages';
 import { recipeQaEnabled } from '@/lib/recipes/flag';
 import { discoveryRecipeQaIntent } from '@/lib/recipes/qa-intent';
 import { loadVisitCatalogNames, runRecipeQaTurn } from '@/lib/recipes/qa-turn';
@@ -532,14 +540,31 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
      * when Haiku's sentence is shown, and `random_fallback` when the card
      * uses the template sentence.
      */
-    const codePick = discoverCodePickEnabled()
+    const messageAsk = discoverCodePickEnabled()
+      ? mergeSoftAsk({
+          message: acceptedMessage,
+          preferredCuisine,
+          priceRange,
+        })
+      : null;
+    if (messageAsk && messageAsk.excludedCuisines.length > 0) {
+      const kept = restaurants.filter(
+        (row) =>
+          !messageAsk.excludedCuisines.some((id) =>
+            restaurantMatchesPreferredCuisine(row.cuisine_tags, id),
+          ),
+      );
+      if (kept.length === 0) {
+        return errorResponse(MESSAGE_EXCLUSION_EMPTY, 404);
+      }
+      restaurants = kept;
+    }
+    const codePick = messageAsk
       ? rankDiscoverRestaurant({
           pool: restaurants,
-          ...mergeSoftAsk({
-            message: acceptedMessage,
-            preferredCuisine,
-            priceRange,
-          }),
+          preferredCuisines: messageAsk.preferredCuisines,
+          excludedCuisines: messageAsk.excludedCuisines,
+          priceRange: messageAsk.priceRange,
           visitedRestaurantIds,
           random: Math.random,
         })
@@ -560,7 +585,9 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
         events: eventsForDiscoverCard({
           message: acceptedMessage,
           dietary: dietaryFlags,
-          excludedCuisineIds: excludedCuisines,
+          excludedCuisineIds: messageAsk
+            ? [...excludedCuisines, ...messageAsk.excludedCuisines]
+            : excludedCuisines,
           vibe,
           timeOfDay,
           priceRange,
@@ -605,6 +632,10 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       hasIpHash: Boolean(ipHash),
       hasSubject: userId !== null || guestId !== null,
     });
+
+    if (codePickRestaurant && !codePickPreferencesMet) {
+      return randomFallback('unmet_preference');
+    }
 
     if (prerequisiteReason || !ipHash) {
       return randomFallback(prerequisiteReason ?? 'missing_identity');

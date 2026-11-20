@@ -1,4 +1,4 @@
-import { CUISINES, type CuisineId } from '@/lib/cuisines';
+import { CUISINES, isCuisineId, type CuisineId } from '@/lib/cuisines';
 import { preferUnvisitedRestaurants } from '@/lib/discover/member-memory';
 import { restaurantMatchesPreferredCuisine } from '@/lib/discover/stages';
 
@@ -19,16 +19,20 @@ export type CodePickRestaurant = {
 
 export type CodePickRandom = () => number;
 
+function matchesAnyCuisine(
+  tags: string[] | null | undefined,
+  cuisineIds: readonly string[],
+): boolean {
+  return cuisineIds.some((id) => restaurantMatchesPreferredCuisine(tags, id));
+}
+
 function softScore(
   row: CodePickRestaurant,
-  preferredCuisine: string | undefined,
+  preferredCuisines: readonly string[],
   priceRange: string | undefined,
 ): number {
   let score = 0;
-  if (
-    preferredCuisine &&
-    restaurantMatchesPreferredCuisine(row.cuisine_tags, preferredCuisine)
-  ) {
+  if (preferredCuisines.length > 0 && matchesAnyCuisine(row.cuisine_tags, preferredCuisines)) {
     score += 1;
   }
   const wanted = priceRange?.trim() ?? '';
@@ -50,61 +54,155 @@ export type CodePickResult<T extends CodePickRestaurant> = {
   /**
    * True when the member stated no soft cuisine or price, or the chosen
    * tier matches every stated one. A shortfall is a closest pick.
+   * A negated cuisine is an exclusion, not an unmet preference.
    */
   preferencesMet: boolean;
 };
 
-function keywordInMessage(text: string, keyword: string): boolean {
+export const MESSAGE_EXCLUSION_EMPTY =
+  'Nothing left after skipping that. Try a different ask, or we may still be tagging partners — check back soon.';
+
+export type MessageSoftAsk = {
+  preferredCuisines: CuisineId[];
+  excludedCuisines: CuisineId[];
+  priceRange?: string;
+};
+
+const NEGATION_BEFORE =
+  /(?:(?:anything|something|everything)\s+but|not\s+in\s+the\s+mood\s+for|except|without|avoid|no|not)(?:\s+(?:a|an|the|any|some|more|just))*\s*$/i;
+
+type CuisineHit = { id: CuisineId; index: number; end: number };
+
+function keywordPattern(keyword: string): RegExp {
   const body = keyword.trim().toLowerCase();
-  if (!body) return false;
   const escaped = body.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/s$/, 's?');
-  return new RegExp(`(?:^|[^a-z0-9])${escaped}(?:$|[^a-z0-9])`, 'i').test(text);
+  return new RegExp(`(?:^|[^a-z0-9])(${escaped})(?=$|[^a-z0-9])`, 'gi');
 }
 
-/** Chips win. A message can fill a missing cuisine or price, and never overrides a chip. */
+function cuisineHits(text: string): CuisineHit[] {
+  const hits: CuisineHit[] = [];
+  const occupied: Array<[number, number]> = [];
+  const keywords = CUISINES.flatMap((cuisine) =>
+    cuisine.keywords.map((keyword) => ({ id: cuisine.id, keyword: keyword.toLowerCase() })),
+  ).sort((a, b) => b.keyword.length - a.keyword.length);
+  for (const { id, keyword } of keywords) {
+    for (const match of text.matchAll(keywordPattern(keyword))) {
+      const token = match[1] ?? '';
+      const index = (match.index ?? 0) + match[0].length - token.length;
+      const end = index + token.length;
+      if (occupied.some(([start, stop]) => index < stop && end > start)) continue;
+      occupied.push([index, end]);
+      hits.push({ id, index, end });
+    }
+  }
+  hits.sort((a, b) => a.index - b.index);
+  return hits;
+}
+
+function clauseStart(text: string, index: number): number {
+  const prior = text.slice(0, index);
+  const breakAt = Math.max(
+    prior.lastIndexOf('.'),
+    prior.lastIndexOf('!'),
+    prior.lastIndexOf('?'),
+    prior.lastIndexOf(';'),
+  );
+  return breakAt + 1;
+}
+
+function continuesNegation(between: string): boolean {
+  return /^(?:\s*(?:,|\bor\b|\band\b)\s*)+$/i.test(between);
+}
+
+function parseMessageCuisines(message: string): {
+  preferredCuisines: CuisineId[];
+  excludedCuisines: CuisineId[];
+} {
+  const text = message.toLowerCase();
+  const hits = cuisineHits(text);
+  const negated = new Set<number>();
+  hits.forEach((hit, index) => {
+    const before = text.slice(clauseStart(text, hit.index), hit.index);
+    const free = /^\s*-?free\b/i.test(text.slice(hit.end));
+    const previous = index > 0 ? hits[index - 1] : undefined;
+    const carried =
+      previous !== undefined &&
+      negated.has(index - 1) &&
+      continuesNegation(text.slice(previous.end, hit.index));
+    if (free || carried || NEGATION_BEFORE.test(before)) negated.add(index);
+  });
+  const preferred: CuisineId[] = [];
+  const excluded: CuisineId[] = [];
+  hits.forEach((hit, index) => {
+    if (negated.has(index)) {
+      if (!excluded.includes(hit.id) && !preferred.includes(hit.id)) excluded.push(hit.id);
+      return;
+    }
+    if (!preferred.includes(hit.id)) preferred.push(hit.id);
+    const drop = excluded.indexOf(hit.id);
+    if (drop !== -1) excluded.splice(drop, 1);
+  });
+  return { preferredCuisines: preferred, excludedCuisines: excluded };
+}
+
+/**
+ * A cuisine chip replaces positive cuisines from the message.
+ * A negated cuisine in the message is always an exclusion, including when a chip names it.
+ * A price chip replaces a price read from the message.
+ */
 export function mergeSoftAsk(args: {
   message: string;
   preferredCuisine?: string;
   priceRange?: string;
-}): { preferredCuisine?: string; priceRange?: string } {
-  const text = args.message.toLowerCase();
-  let fromMessage: CuisineId | undefined;
-  if (!args.preferredCuisine) {
-    for (const cuisine of CUISINES) {
-      if (cuisine.keywords.some((keyword) => keywordInMessage(text, keyword))) {
-        fromMessage = cuisine.id;
-        break;
-      }
-    }
+}): MessageSoftAsk {
+  const parsed = parseMessageCuisines(args.message);
+  const chip = args.preferredCuisine && isCuisineId(args.preferredCuisine) ? args.preferredCuisine : undefined;
+  const preferredCuisines =
+    chip && parsed.excludedCuisines.includes(chip)
+      ? parsed.preferredCuisines.filter((id) => id !== chip)
+      : chip
+        ? [chip]
+        : parsed.preferredCuisines;
+  const excludedCuisines = parsed.excludedCuisines.filter((id) => !preferredCuisines.includes(id));
+  let priceRange = args.priceRange;
+  if (!priceRange) {
+    const text = args.message.toLowerCase();
+    if (/\b(?:cheap|cheaper|inexpensive|budget)\b/i.test(text)) priceRange = '$';
+    else if (/\bmoderate\b/i.test(text)) priceRange = '$$';
+    else if (/\b(?:upscale|expensive|splurge|fancy|premium)\b/i.test(text)) priceRange = '$$$';
   }
-  let fromPrice: string | undefined;
-  if (!args.priceRange) {
-    if (/\b(?:cheap|cheaper|inexpensive|budget)\b/i.test(text)) fromPrice = '$';
-    else if (/\bmoderate\b/i.test(text)) fromPrice = '$$';
-    else if (/\b(?:upscale|expensive|splurge|fancy|premium)\b/i.test(text)) fromPrice = '$$$';
-  }
-  return {
-    preferredCuisine: args.preferredCuisine || fromMessage,
-    priceRange: args.priceRange || fromPrice,
-  };
+  return { preferredCuisines, excludedCuisines, priceRange };
 }
 
 export function rankDiscoverRestaurant<T extends CodePickRestaurant>(args: {
   pool: readonly T[];
   preferredCuisine?: string;
+  preferredCuisines?: readonly string[];
+  excludedCuisines?: readonly string[];
   priceRange?: string;
   /** Null or omitted means visits are unknown, so unvisited preference is skipped. */
   visitedRestaurantIds?: ReadonlySet<string> | null;
   random?: CodePickRandom;
 }): CodePickResult<T> | null {
-  if (args.pool.length === 0) return null;
-  const scored = args.pool.map((row) => ({
+  const preferred = (
+    args.preferredCuisines?.length
+      ? args.preferredCuisines
+      : args.preferredCuisine
+        ? [args.preferredCuisine]
+        : []
+  ).filter((id) => !(args.excludedCuisines ?? []).includes(id));
+  const excluded = args.excludedCuisines ?? [];
+  const pool =
+    excluded.length === 0
+      ? args.pool
+      : args.pool.filter((row) => !matchesAnyCuisine(row.cuisine_tags, excluded));
+  if (pool.length === 0) return null;
+  const scored = pool.map((row) => ({
     row,
-    score: softScore(row, args.preferredCuisine, args.priceRange),
+    score: softScore(row, preferred, args.priceRange),
   }));
   const best = scored.reduce((max, item) => Math.max(max, item.score), 0);
-  const stated =
-    (args.preferredCuisine ? 1 : 0) + ((args.priceRange?.trim() ?? '') ? 1 : 0);
+  const stated = (preferred.length > 0 ? 1 : 0) + ((args.priceRange?.trim() ?? '') ? 1 : 0);
   const tier = scored.filter((item) => item.score === best).map((item) => item.row);
   const ranked =
     args.visitedRestaurantIds == null

@@ -188,18 +188,115 @@ describe('rankDiscoverRestaurant', () => {
 });
 
 describe('mergeSoftAsk', () => {
-  it('reads cheap tacos from the message and lets chips win', () => {
+  it('reads cheap tacos from the message and lets a chip replace the positive cuisine', () => {
     expect(mergeSoftAsk({ message: 'cheap tacos' })).toEqual({
-      preferredCuisine: 'mexican',
+      preferredCuisines: ['mexican'],
+      excludedCuisines: [],
       priceRange: '$',
     });
-    expect(mergeSoftAsk({ message: 'a taco' })).toMatchObject({ preferredCuisine: 'mexican' });
+    expect(mergeSoftAsk({ message: 'a taco' }).preferredCuisines).toEqual(['mexican']);
     expect(mergeSoftAsk({ message: '' })).toEqual({
-      preferredCuisine: undefined,
+      preferredCuisines: [],
+      excludedCuisines: [],
       priceRange: undefined,
     });
     expect(
       mergeSoftAsk({ message: 'cheap tacos', preferredCuisine: 'japanese', priceRange: '$$$' }),
-    ).toEqual({ preferredCuisine: 'japanese', priceRange: '$$$' });
+    ).toEqual({
+      preferredCuisines: ['japanese'],
+      excludedCuisines: [],
+      priceRange: '$$$',
+    });
+  });
+
+  it('treats a negated cuisine as an exclusion and keeps every positive cuisine', () => {
+    expect(mergeSoftAsk({ message: 'anything but sushi' })).toEqual({
+      preferredCuisines: [],
+      excludedCuisines: ['japanese'],
+      priceRange: undefined,
+    });
+    expect(mergeSoftAsk({ message: 'anything but sushi tonight' }).excludedCuisines).toEqual([
+      'japanese',
+    ]);
+    expect(mergeSoftAsk({ message: 'no thai' }).excludedCuisines).toEqual(['thai']);
+    expect(mergeSoftAsk({ message: 'not pizza tonight' })).toMatchObject({
+      preferredCuisines: [],
+      excludedCuisines: ['pizza'],
+    });
+    expect(mergeSoftAsk({ message: 'sushi or thai' }).preferredCuisines).toEqual([
+      'japanese',
+      'thai',
+    ]);
+    expect(mergeSoftAsk({ message: 'no sushi, maybe tacos' })).toEqual({
+      preferredCuisines: ['mexican'],
+      excludedCuisines: ['japanese'],
+      priceRange: undefined,
+    });
+    expect(mergeSoftAsk({ message: 'not in the mood for thai' }).excludedCuisines).toEqual(['thai']);
+    expect(mergeSoftAsk({ message: 'sushi-free' }).excludedCuisines).toEqual(['japanese']);
+    expect(mergeSoftAsk({ message: 'avoid pizza' }).excludedCuisines).toEqual(['pizza']);
+    expect(mergeSoftAsk({ message: 'without thai' }).excludedCuisines).toEqual(['thai']);
+    expect(mergeSoftAsk({ message: 'except sushi' }).excludedCuisines).toEqual(['japanese']);
+  });
+});
+
+describe('negated cuisines stay out of the pick', () => {
+  const sushi = { id: 'sushi', cuisine_tags: ['sushi'], price_range: '$$' };
+  const thai = { id: 'thai', cuisine_tags: ['thai'], price_range: '$$' };
+  const tacos = { id: 'tacos', cuisine_tags: ['tacos'], price_range: '$' };
+
+  it('never picks an excluded cuisine, and does not call that an unmet preference', () => {
+    const ask = mergeSoftAsk({ message: 'anything but sushi tonight' });
+    const pick = rankDiscoverRestaurant({
+      pool: [sushi, thai],
+      preferredCuisines: ask.preferredCuisines,
+      excludedCuisines: ask.excludedCuisines,
+      random: () => 0,
+    });
+    expect(pick?.restaurant.id).toBe('thai');
+    expect(pick?.preferencesMet).toBe(true);
+  });
+
+  it('returns nothing when the exclusion removes every partner', () => {
+    const ask = mergeSoftAsk({ message: 'no sushi' });
+    expect(
+      rankDiscoverRestaurant({
+        pool: [sushi],
+        preferredCuisines: ask.preferredCuisines,
+        excludedCuisines: ask.excludedCuisines,
+        random: () => 0,
+      }),
+    ).toBeNull();
+  });
+
+  it('picks among every positive cuisine, not only the first catalog id', () => {
+    const ask = mergeSoftAsk({ message: 'sushi or thai' });
+    expect(
+      rankDiscoverRestaurant({
+        pool: [sushi, thai],
+        preferredCuisines: ask.preferredCuisines,
+        random: () => 0,
+      })?.restaurant.id,
+    ).toBe('sushi');
+    expect(
+      rankDiscoverRestaurant({
+        pool: [sushi, thai],
+        preferredCuisines: ask.preferredCuisines,
+        random: () => 0.99,
+      })?.restaurant.id,
+    ).toBe('thai');
+  });
+
+  it('skips sushi and prefers tacos', () => {
+    const ask = mergeSoftAsk({ message: 'no sushi, maybe tacos' });
+    const pick = rankDiscoverRestaurant({
+      pool: [sushi, thai, tacos],
+      preferredCuisines: ask.preferredCuisines,
+      excludedCuisines: ask.excludedCuisines,
+      priceRange: ask.priceRange,
+      random: () => 0.99,
+    });
+    expect(pick?.restaurant.id).toBe('tacos');
+    expect(pick?.preferencesMet).toBe(true);
   });
 });
