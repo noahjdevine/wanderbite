@@ -560,7 +560,8 @@ describe('Progress page', () => {
   });
 
   it('shows an empty visit list without sample restaurants', () => {
-    render(<ProgressView model={readyModel({ xp: 0 })} />);
+    render(<ProgressView model={readyModel({ xp: 0, verifiedVisits: 4 })} />);
+    expect(screen.getByText('all-time verified visits')).toBeTruthy();
     expect(screen.getByText('No visits yet. A verified visit will show up here.')).toBeTruthy();
     expect(screen.queryByText('The Common Table')).toBeNull();
     expect(screen.getAllByText('0').length).toBeGreaterThan(0);
@@ -638,6 +639,7 @@ describe('Progress page', () => {
       '/challenges/show/red-zen',
     );
     expect(screen.getByText('Code issued · expires in 15 min')).toBeTruthy();
+    expect(screen.getByText(/all-time verified visits/)).toBeTruthy();
     expect(screen.queryByText(/days left/)).toBeNull();
     expect(screen.getByText(/\+1 pending/)).toBeTruthy();
     const visits = screen.getAllByText('0');
@@ -673,6 +675,48 @@ describe('Progress page', () => {
       expect(href).toContain('/journal/notes/33333333-3333-4333-8333-333333333333');
       expect(decodeURIComponent(href)).toContain('return=/journey');
     }
+  });
+
+  it('keeps visit rows free of a per-visit amount, including a settled Boost visit', () => {
+    const model = buildProgressModel({
+      progress: baseProgress({
+        xp: 400,
+        verifiedVisits: 4,
+        savings: { amount: 40, isEstimate: false, corrected: false },
+      }),
+      headerLabel: 'Noah',
+      now: NOW,
+      activity: {
+        ok: true,
+        hasPair: true,
+        noPair: GENERATE,
+        adventures: [
+          adventure({
+            id: '33333333-3333-4333-8333-333333333333',
+            redemptionId: '33333333-3333-4333-8333-333333333333',
+            visitStatus: 'verified',
+            restaurantName: 'Boost Kitchen',
+            occurredAt: '2026-11-04T18:00:00.000Z',
+            verifiedAt: '2026-11-04T18:00:00.000Z',
+          }),
+          adventure({
+            id: '44444444-4444-4444-8444-444444444444',
+            redemptionId: '44444444-4444-4444-8444-444444444444',
+            visitStatus: 'note_added',
+            restaurantName: 'Plain Kitchen',
+            occurredAt: '2026-10-04T18:00:00.000Z',
+            verifiedAt: '2026-10-04T18:00:00.000Z',
+          }),
+        ],
+      },
+    });
+    render(<ProgressView model={model} />);
+    const recent = screen.getByRole('region', { name: 'Recent adventures' });
+    expect(recent.textContent).toContain('Boost Kitchen');
+    expect(recent.textContent).toContain('Plain Kitchen');
+    expect(recent.textContent).not.toMatch(/\$\d/);
+    expect(screen.getByText('all-time verified visits')).toBeTruthy();
+    expect(screen.getByText('$40')).toBeTruthy();
   });
 });
 

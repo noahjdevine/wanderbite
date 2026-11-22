@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
   belowMinimumQuoteCopy,
+  boostWindowLabel,
   challengeBoostLine,
+  challengeBoostLockedCopy,
+  challengeBoostOfferCopy,
   challengeTicketOffer,
   challengeVisitSavings,
   partnerVerifiedOfferLine,
   redeemSettlementLines,
+  memberLockedBoostNote,
+  memberSettledSummary,
   qrLabelForView,
   redeemSavingsCopy,
   verifyBoostFields,
@@ -173,6 +178,56 @@ describe('boost savings copy', () => {
     expect(challengeBoostLine(500)).toBe('+$5 Boost');
     expect(challengeBoostLine(0)).toBeNull();
     expect(challengeBoostLine(null)).toBeNull();
+    expect(challengeBoostOfferCopy(500, 'Fri 10 PM–1 AM')).toBe(
+      '+$5 Boost if you check in Fri 10 PM–1 AM. Lock it at the restaurant.',
+    );
+    expect(challengeBoostOfferCopy(500, null)).toBe(
+      '+$5 Boost if you check in during Boost hours. Lock it at the restaurant.',
+    );
+    expect(challengeBoostOfferCopy(500, '  ')).toBe(
+      '+$5 Boost if you check in during Boost hours. Lock it at the restaurant.',
+    );
+    expect(challengeBoostLockedCopy(500)).toBe('+$5 Boost locked');
+    expect(challengeBoostLockedCopy(null)).toBe('Boost locked');
+    expect(memberLockedBoostNote(500)).toBe(
+      '+$5 Boost locked. It will apply once the restaurant confirms the bill.',
+    );
+    expect(memberLockedBoostNote(null)).toBe(
+      'Boost is locked. It will apply once the restaurant confirms the bill.',
+    );
+    expect(
+      memberSettledSummary({
+        totalDiscountCents: 1500,
+        baseDiscountCents: 1000,
+        boostDiscountCents: 500,
+      }),
+    ).toBe('You saved $15 ($10 off + $5 Boost)');
+    expect(memberSettledSummary({ totalDiscountCents: 1500, baseDiscountCents: 1000 })).toBeNull();
+    expect(
+      boostWindowLabel(
+        [
+          {
+            id: 'boost-5',
+            kind: 'weekly',
+            startIsodow: 5,
+            startMinute: 22 * 60,
+            endMinute: 60,
+            bonusCents: 500,
+          },
+          {
+            id: 'other',
+            kind: 'weekly',
+            startIsodow: 6,
+            startMinute: 17 * 60,
+            endMinute: 20 * 60,
+            bonusCents: 300,
+          },
+        ],
+        500,
+        'America/Chicago',
+      ),
+    ).toBe('Fri 10 PM–1 AM');
+    expect(boostWindowLabel([], 500, 'America/Chicago')).toBeNull();
     expect(
       belowMinimumQuoteCopy({ belowMinimum: true, totalDiscountCents: 0, minSpendCents: 4000 }),
     ).toBe(

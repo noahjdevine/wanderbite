@@ -12,7 +12,12 @@ import {
   type PartnerBillUploadResult,
 } from '@/app/actions/partner-bill-scan';
 import { logoutPartner } from '@/app/actions/partner-auth';
-import { parseEligibleSubtotalDollars } from '@/lib/boost/subtotal-input';
+import {
+  ELIGIBLE_SUBTOTAL_HELP,
+  ELIGIBLE_SUBTOTAL_INVALID,
+  ELIGIBLE_SUBTOTAL_PLACEHOLDER,
+  parseEligibleSubtotalDollars,
+} from '@/lib/boost/subtotal-input';
 import { formatCents } from '@/lib/offers/sealed-base';
 import { RECEIPT_MAX_BYTES } from '@/lib/boost/receipt-limits';
 import { toast } from 'sonner';
@@ -70,7 +75,7 @@ function uploadMessage(code: string): string {
 function confirmMessage(code: string): string {
   switch (code) {
     case 'invalid_subtotal':
-      return 'Enter the eligible subtotal in dollars, such as 82.00.';
+      return ELIGIBLE_SUBTOTAL_INVALID;
     case 'past_deadline':
       return 'The visit window has closed.';
     case 'session_closed':
@@ -345,7 +350,7 @@ export function PartnerArrivalClient({ restaurantName, slug }: PartnerArrivalCli
                       event.preventDefault();
                       const cents = parseEligibleSubtotalDollars(amounts[sessionId] ?? '');
                       if (cents == null) {
-                        setMessage('Enter the eligible subtotal in dollars, such as 82.00.');
+                        setMessage(ELIGIBLE_SUBTOTAL_INVALID);
                         return;
                       }
                       void handleConfirm(sessionId, cents, scan?.proposalId ?? null);
@@ -360,13 +365,17 @@ export function PartnerArrivalClient({ restaurantName, slug }: PartnerArrivalCli
                         type="text"
                         inputMode="decimal"
                         autoComplete="off"
-                        placeholder="82.00"
+                        placeholder={ELIGIBLE_SUBTOTAL_PLACEHOLDER}
+                        aria-describedby={`amount-help-${item.challengeItemId}`}
                         className="wb-partner-field"
                         value={amounts[sessionId] ?? ''}
                         onChange={(event) =>
                           setAmounts((current) => ({ ...current, [sessionId]: event.target.value }))
                         }
                       />
+                      <p id={`amount-help-${item.challengeItemId}`} className="wb-partner-section-copy">
+                        {ELIGIBLE_SUBTOTAL_HELP}
+                      </p>
                     </div>
                     <button type="submit" className="wb-cta-secondary wb-cta-secondary-cream wb-partner-secondary" disabled={pending === `confirm:${sessionId}`}>
                       {pending === `confirm:${sessionId}` ? 'Confirming…' : 'Confirm entered amount'}

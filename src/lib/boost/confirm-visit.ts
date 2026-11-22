@@ -21,10 +21,12 @@ import {
   type PersistBoostSettlementResult,
   type SettlementStorePort,
 } from '@/lib/boost/settlement-store';
-import { formatCents, type SealedBase } from '@/lib/offers/sealed-base';
+import type { SealedBase } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
-  BOOST_LOCK_PENDING_NOTE,
+  memberLockedBoostLabel,
+  memberLockedBoostNote,
+  memberSettledSummary,
   qrLabelForView,
   type BoostSavingsView,
   type ConfirmedQuoteSavings,
@@ -37,6 +39,8 @@ export type VisitConfirmationLoad = {
   redemptionId: string;
   now: Date;
   sealedBase: SealedBase | null;
+  /** Sealed boosts for the locked amount. Omitted when the flag is off. */
+  sealedBoosts?: readonly { id: string; bonusCents: number }[] | null;
   arrival?: ArrivalRead;
   settlement?: SettlementStorePort;
 };
@@ -175,36 +179,78 @@ export async function loadVisitPlan(input: VisitConfirmationLoad): Promise<Boost
   return detail?.plan ?? null;
 }
 
-/** Code-screen sentence for a locked Boost. Null when there is nothing to mention. */
+function sealedBonusCents(
+  boosts: VisitConfirmationLoad['sealedBoosts'],
+  lockedBoostId: string | null,
+): number | null {
+  if (!boosts || !lockedBoostId) return null;
+  const match = boosts.find((boost) => boost.id === lockedBoostId);
+  if (!match || !Number.isInteger(match.bonusCents) || match.bonusCents <= 0) return null;
+  return match.bonusCents;
+}
+
+export type MemberBoostPresentation = {
+  discountLabel: string | null;
+  lockNote: string | null;
+  /** Stored settlement sentence. Null until the visit is settled. */
+  settledSummary: string | null;
+};
+
+/**
+ * Code-screen sentence for a locked Boost that is not settled yet.
+ * A stored settlement does not stay "locked".
+ */
 export function memberBoostLockCopy(input: {
   lockedBoostId: string | null;
   view: BoostSavingsView;
+  sealedBonusCents?: number | null;
+  settled?: boolean;
 }): string | null {
-  if (!input.lockedBoostId) return null;
-  if (input.view.kind === 'needs_subtotal') return BOOST_LOCK_PENDING_NOTE;
+  if (input.settled || !input.lockedBoostId) return null;
+  if (input.view.kind === 'needs_subtotal') return memberLockedBoostNote(input.sealedBonusCents);
   if (input.view.kind === 'quote' && input.view.savings.boostDiscountCents > 0) {
-    return `Boost locked: ${formatCents(input.view.savings.boostDiscountCents)}`;
+    return memberLockedBoostLabel(input.view.savings.boostDiscountCents);
   }
   return null;
 }
 
 /**
- * Member code screen. One load for the confirmed total and the lock note.
- * Flag off, a missing visit, and a read failure stay blank.
+ * Member code screen. One load for the confirmed total, the lock note, and
+ * a settled summary. Flag off, a missing visit, and a read failure stay blank.
+ * The summary uses stored settlement cents and does not recompute a quote.
  */
-export async function memberCodeBoostPresentation(input: VisitConfirmationLoad): Promise<{
-  discountLabel: string | null;
-  lockNote: string | null;
-}> {
+export async function memberCodeBoostPresentation(
+  input: VisitConfirmationLoad,
+): Promise<MemberBoostPresentation> {
   try {
     const detail = await loadVisitDetail(input);
-    const view = savingsViewFromPlan(detail?.plan ?? null);
+    const plan = detail?.plan ?? null;
+    const view = savingsViewFromPlan(plan);
+    const settledQuote =
+      plan?.ok && plan.kind === 'already_settled' && plan.snapshot && 'quote_id' in plan.snapshot
+        ? plan.snapshot
+        : null;
+    const settledSummary = settledQuote
+      ? memberSettledSummary({
+          totalDiscountCents: settledQuote.total_discount_cents,
+          baseDiscountCents: settledQuote.base_discount_cents,
+          boostDiscountCents: settledQuote.boost_discount_cents,
+        })
+      : null;
     return {
       discountLabel: qrLabelForView(view),
-      lockNote: detail ? memberBoostLockCopy({ lockedBoostId: detail.lockedBoostId, view }) : null,
+      lockNote: detail
+        ? memberBoostLockCopy({
+            lockedBoostId: detail.lockedBoostId,
+            view,
+            sealedBonusCents: sealedBonusCents(input.sealedBoosts, detail.lockedBoostId),
+            settled: settledSummary != null,
+          })
+        : null,
+      settledSummary,
     };
   } catch {
-    return { discountLabel: null, lockNote: null };
+    return { discountLabel: null, lockNote: null, settledSummary: null };
   }
 }
 

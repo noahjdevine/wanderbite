@@ -4,10 +4,9 @@ import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { checkInMemberBoost } from '@/app/actions/member-boost-arrival';
 import { CtaButton } from '@/components/wb/cta-button';
+import { memberLockedBoostNote } from '@/lib/boost/savings-copy';
 
 export const BOOST_CHECK_IN_LABEL = "I'm here — lock Boost";
-export const BOOST_CHECK_IN_LOCKED =
-  'Boost is locked for this visit. It will apply once the restaurant confirms the bill.';
 export const BOOST_CHECK_IN_LOCATION_OFF =
   'Location is off, so Boost stays unlocked. Your usual discount still works.';
 export const BOOST_CHECK_IN_LOCATION_FAILED =
@@ -17,6 +16,10 @@ type BoostCheckInProps = {
   /** Exact E07_ARRIVAL_SESSIONS_ENABLED, plus an assigned bound item with a pin. */
   enabled: boolean;
   challengeItemId: string;
+  /** Open session already locked a Boost. The button stays hidden. */
+  alreadyLocked?: boolean;
+  /** Sealed bonus, so the locked state can show the amount. */
+  bonusCents?: number | null;
 };
 
 function noteFor(code: string): string {
@@ -47,10 +50,17 @@ function memberKey(challengeItemId: string): string {
  * Boost check-in beside the redemption code. Geolocation runs on tap, not on load.
  * While the flag is off this renders nothing and does not touch the browser location.
  */
-export function BoostCheckIn({ enabled, challengeItemId }: BoostCheckInProps) {
+export function BoostCheckIn({
+  enabled,
+  challengeItemId,
+  alreadyLocked = false,
+  bonusCents = null,
+}: BoostCheckInProps) {
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
-  const [locked, setLocked] = useState(false);
+  const [lockedLocally, setLockedLocally] = useState(false);
+  const locked = lockedLocally || alreadyLocked;
+  const lockedNote = memberLockedBoostNote(bonusCents);
 
   if (!enabled) return null;
 
@@ -76,9 +86,9 @@ export function BoostCheckIn({ enabled, challengeItemId }: BoostCheckInProps) {
           },
         })
           .then((result) => {
-            if (result.ok) {
-              setLocked(true);
-              setNote(BOOST_CHECK_IN_LOCKED);
+            if (result.ok || (!result.ok && result.code === 'session_open')) {
+              setLockedLocally(true);
+              setNote(lockedNote);
               return;
             }
             setNote(noteFor(result.code));
@@ -98,13 +108,21 @@ export function BoostCheckIn({ enabled, challengeItemId }: BoostCheckInProps) {
     );
   }
 
+  if (locked) {
+    return (
+      <p role="status" data-boost-locked="" className="m-0 text-sm font-semibold text-wb-ink">
+        {note ?? lockedNote}
+      </p>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-2">
       <CtaButton
         variant="secondary-cream"
         creamStyle="outline"
         className="min-h-[52px] w-full"
-        disabled={pending || locked}
+        disabled={pending}
         type="button"
         onClick={() => {
           void shareLocation();

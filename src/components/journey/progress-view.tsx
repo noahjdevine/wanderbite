@@ -102,11 +102,11 @@ export function ProgressView({ model, savedRecipes, progression }: ProgressViewP
               label={
                 model.pendingVisits > 0 ? (
                   <>
-                    verified visits
+                    all-time verified visits
                     <br />+{model.pendingVisits} pending
                   </>
                 ) : (
-                  'verified visits'
+                  'all-time verified visits'
                 )
               }
             />

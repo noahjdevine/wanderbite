@@ -37,7 +37,7 @@ describe('adventure header', () => {
       swapsRemaining: swapsRemainingForHeader(0, null),
     });
     expect(withPair).toEqual([
-      { id: 'verified', value: '0', suffix: '/2', label: 'verified' },
+      { id: 'verified', value: '0', suffix: '/2', label: 'verified this month' },
       { id: 'codes', value: '1', suffix: undefined, label: 'code issued' },
       { id: 'swaps', value: '1', suffix: undefined, label: 'swap left' },
     ]);

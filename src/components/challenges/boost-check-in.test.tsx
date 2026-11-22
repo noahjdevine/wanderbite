@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { AdventureTicket } from '@/components/challenges/adventure-ticket';
-import { BOOST_CHECK_IN_LABEL, BOOST_CHECK_IN_LOCKED, BoostCheckIn } from '@/components/challenges/boost-check-in';
+import { BOOST_CHECK_IN_LABEL, BoostCheckIn } from '@/components/challenges/boost-check-in';
 
 const checkInMemberBoost = vi.fn();
 const getCurrentPosition = vi.fn();
@@ -180,8 +180,19 @@ describe('Boost check-in on the challenge ticket', () => {
   it('shows +$5 Boost on the offer and tells the member the restaurant confirms the bill', async () => {
     const withBoost = item();
     withBoost.boostBonusCents = 500;
+    withBoost.boostWindowLabel = 'Fri 10 PM–1 AM';
     const offer = await render(ticket(true, withBoost));
-    expect(offer.querySelector('[data-boost-offer]')?.textContent).toBe('+$5 Boost');
+    expect(offer.querySelector('[data-boost-offer]')?.textContent).toBe(
+      '+$5 Boost if you check in Fri 10 PM–1 AM. Lock it at the restaurant.',
+    );
+    expect(offer.textContent).toContain(BOOST_CHECK_IN_LABEL);
+
+    const hoursOnly = item();
+    hoursOnly.boostBonusCents = 500;
+    const fallback = await render(ticket(true, hoursOnly));
+    expect(fallback.querySelector('[data-boost-offer]')?.textContent).toBe(
+      '+$5 Boost if you check in during Boost hours. Lock it at the restaurant.',
+    );
 
     const saved = item({ status: 'redeemed' });
     saved.visitStatus = 'verified';
@@ -190,6 +201,16 @@ describe('Boost check-in on the challenge ticket', () => {
     const settled = await render(ticket(true, saved));
     expect(settled.textContent).toContain('Saved $25');
     expect(settled.textContent).not.toContain('+$5 Boost');
+
+    const held = item();
+    held.boostBonusCents = 500;
+    held.boostLocked = true;
+    const heldView = await render(ticket(true, held));
+    expect(heldView.querySelector('[data-boost-offer]')?.textContent).toBe('+$5 Boost locked');
+    expect(heldView.querySelector('[data-boost-locked]')?.textContent).toContain(
+      '+$5 Boost locked. It will apply once the restaurant confirms the bill.',
+    );
+    expect(heldView.textContent).not.toContain(BOOST_CHECK_IN_LABEL);
 
     checkInMemberBoost.mockResolvedValue({ ok: true });
     getCurrentPosition.mockImplementation((success: (position: GeolocationPosition) => void) => {
@@ -213,7 +234,11 @@ describe('Boost check-in on the challenge ticket', () => {
       });
     });
     const locked = await render(
-      <BoostCheckIn enabled challengeItemId="44444444-4444-4444-8444-444444444444" />,
+      <BoostCheckIn
+        enabled
+        bonusCents={500}
+        challengeItemId="44444444-4444-4444-8444-444444444444"
+      />,
     );
     const button = Array.from(locked.querySelectorAll('button')).find((node) =>
       node.textContent?.includes(BOOST_CHECK_IN_LABEL),
@@ -221,7 +246,21 @@ describe('Boost check-in on the challenge ticket', () => {
     await act(async () => {
       button?.click();
     });
-    expect(locked.textContent).toContain(BOOST_CHECK_IN_LOCKED);
-    expect(BOOST_CHECK_IN_LOCKED).toContain('once the restaurant confirms the bill');
+    expect(locked.querySelector('[data-boost-locked]')?.textContent).toBe(
+      '+$5 Boost locked. It will apply once the restaurant confirms the bill.',
+    );
+    expect(locked.textContent).not.toContain(BOOST_CHECK_IN_LABEL);
+
+    const already = await render(
+      <BoostCheckIn
+        enabled
+        alreadyLocked
+        bonusCents={500}
+        challengeItemId="44444444-4444-4444-8444-444444444444"
+      />,
+    );
+    expect(already.querySelector('[data-boost-locked]')?.textContent).toContain('+$5 Boost locked');
+    expect(already.textContent).not.toContain(BOOST_CHECK_IN_LABEL);
+    expect(getCurrentPosition).toHaveBeenCalledTimes(1);
   });
 });

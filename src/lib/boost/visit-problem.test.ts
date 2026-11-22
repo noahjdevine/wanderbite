@@ -574,7 +574,9 @@ describe('visit problem boundaries', () => {
     );
     const challenges = readFileSync(path.join(root, 'src/app/(site)/challenges/page.tsx'), 'utf8');
     const generate = readFileSync(path.join(root, 'src/lib/challenges/generate.ts'), 'utf8');
-    const savingsLoad = generate.slice(generate.indexOf('const [noteResult, storedSavings, corrections]'));
+    const savingsLoad = generate.slice(
+      generate.indexOf('const [noteResult, storedSavings, corrections, lockedBoostItems]'),
+    );
     expect(savingsLoad.indexOf('visitProblemsEnabled()')).toBeGreaterThan(-1);
     expect(savingsLoad.indexOf('visitProblemsEnabled()')).toBeLessThan(
       savingsLoad.indexOf('loadMemberSavingsCorrections'),

@@ -108,16 +108,18 @@ export function ChallengeTicket({
           {area ? <span className="text-sm text-wb-muted">{area}</span> : null}
         </div>
         {offerAmount ? (
-          <div className="flex items-center justify-between rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-3.5 py-3">
-            <span className="flex flex-col gap-1">
+          <div className="rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-3.5 py-3">
+            <div className="flex items-center justify-between gap-3">
               <span className="font-display text-[26px] leading-none text-wb-plum">{offerAmount}</span>
-              {offerBoost ? (
-                <span className="font-display text-[20px] leading-none text-wb-plum" data-boost-offer="">
-                  {offerBoost}
-                </span>
+              {offerRequirement ? (
+                <span className="text-right text-[13px] text-wb-muted"> {offerRequirement}</span>
               ) : null}
-            </span>
-            {offerRequirement ? <span className="text-[13px] text-wb-muted"> {offerRequirement}</span> : null}
+            </div>
+            {offerBoost ? (
+              <p className="m-0 mt-2 text-sm leading-snug text-wb-ink" data-boost-offer="">
+                {offerBoost}
+              </p>
+            ) : null}
           </div>
         ) : null}
         {offerNote ? <p className="m-0 text-center text-xs text-wb-muted">{offerNote}</p> : null}

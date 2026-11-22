@@ -12,13 +12,17 @@ import {
   quoteStillNeedsSubtotal,
   redeemSettlementLines,
 } from '@/lib/boost/savings-copy';
-import { parseEligibleSubtotalDollars } from '@/lib/boost/subtotal-input';
+import {
+  ELIGIBLE_SUBTOTAL_HELP,
+  ELIGIBLE_SUBTOTAL_INVALID,
+  ELIGIBLE_SUBTOTAL_PLACEHOLDER,
+  parseEligibleSubtotalDollars,
+} from '@/lib/boost/subtotal-input';
 import { formatCents } from '@/lib/offers/sealed-base';
 
 type Verified = Extract<VerifyRedemptionResult, { success: true }>;
 
 type PartnerBoostBillProps = {
-  slug: string;
   code: string;
   sessionId: string;
   minSpendCents: number | null;
@@ -37,7 +41,7 @@ type QuoteView = {
 function confirmFailure(code: string): string {
   switch (code) {
     case 'invalid_subtotal':
-      return 'Enter the eligible subtotal in dollars, such as 82.00.';
+      return ELIGIBLE_SUBTOTAL_INVALID;
     case 'past_deadline':
       return 'The visit window has closed.';
     case 'session_closed':
@@ -52,7 +56,6 @@ function confirmFailure(code: string): string {
  * The quote helper decides the cents. This screen does not reprice the offer.
  */
 export function PartnerBoostBill({
-  slug,
   code,
   sessionId,
   minSpendCents,
@@ -83,7 +86,7 @@ export function PartnerBoostBill({
     const cents = parseEligibleSubtotalDollars(amount);
     if (cents == null || cents <= 0) {
       setQuote(null);
-      setMessage('Enter the eligible subtotal in dollars, such as 82.00.');
+      setMessage(ELIGIBLE_SUBTOTAL_INVALID);
       return;
     }
     setPending('confirm');
@@ -143,30 +146,9 @@ export function PartnerBoostBill({
 
   return (
     <div className="wb-partner-alert wb-partner-follow" role="status" aria-live="polite">
-      <p className="wb-partner-alert-title">Boost needs the bill</p>
+      <p className="wb-partner-alert-title">Confirm the bill</p>
       <p>{BOOST_BILL_BEFORE_VERIFY_MESSAGE}</p>
       {minSpendCents != null ? <p>Offer minimum {formatCents(minSpendCents)}.</p> : null}
-      <form onSubmit={confirmBill} className="wb-partner-form wb-partner-follow">
-        <div>
-          <label htmlFor="partner-boost-subtotal" className="wb-partner-label">
-            Eligible subtotal
-          </label>
-          <input
-            id="partner-boost-subtotal"
-            type="text"
-            inputMode="decimal"
-            autoComplete="off"
-            placeholder="82.00"
-            className="wb-partner-field"
-            value={amount}
-            disabled={pending != null}
-            onChange={(event) => setAmount(event.target.value)}
-          />
-        </div>
-        <button type="submit" className="wb-cta wb-partner-cta" disabled={pending != null || !amount.trim()}>
-          {pending === 'confirm' ? 'Confirming…' : 'Confirm bill'}
-        </button>
-      </form>
       {quote && lines ? (
         <div className="wb-partner-follow" data-boost-quote="">
           {belowCopy ? <p>{belowCopy}</p> : null}
@@ -181,19 +163,52 @@ export function PartnerBoostBill({
               void verifyCode();
             }}
           >
-            {pending === 'verify' ? 'Verifying…' : quote.belowMinimum ? 'Verify visit' : 'Verify code'}
+            {pending === 'verify' ? 'Verifying…' : 'Verify'}
+          </button>
+          <button
+            type="button"
+            className="wb-partner-text-button"
+            disabled={pending != null}
+            onClick={() => {
+              setQuote(null);
+              setMessage(null);
+            }}
+          >
+            Change amount
           </button>
         </div>
-      ) : null}
+      ) : (
+        <form onSubmit={confirmBill} className="wb-partner-form wb-partner-follow">
+          <div>
+            <label htmlFor="partner-boost-subtotal" className="wb-partner-label">
+              Eligible subtotal
+            </label>
+            <input
+              id="partner-boost-subtotal"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder={ELIGIBLE_SUBTOTAL_PLACEHOLDER}
+              aria-describedby="partner-boost-subtotal-help"
+              className="wb-partner-field"
+              value={amount}
+              disabled={pending != null}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+            <p id="partner-boost-subtotal-help" className="wb-partner-section-copy">
+              {ELIGIBLE_SUBTOTAL_HELP}
+            </p>
+          </div>
+          <button type="submit" className="wb-cta wb-partner-cta" disabled={pending != null || !amount.trim()}>
+            {pending === 'confirm' ? 'Confirming…' : 'Confirm bill'}
+          </button>
+        </form>
+      )}
       {message ? (
         <p className="wb-partner-follow" role="alert">
           {message}
         </p>
       ) : null}
-      <p className="wb-partner-section-copy wb-partner-follow">
-        <a href={`/partner/${slug}/arrival`}>Open arrival check-in</a>
-        {' '}and come back here to verify this code.
-      </p>
       <button type="button" className="wb-partner-text-button" onClick={onCancel} disabled={pending != null}>
         Enter a different code
       </button>

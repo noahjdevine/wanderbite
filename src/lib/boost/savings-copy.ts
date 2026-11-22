@@ -1,3 +1,4 @@
+import type { DatedBoost, OfferBoost, WeeklyBoost } from '@/lib/offers/calculator';
 import { formatCents } from '@/lib/offers/sealed-base';
 import { SAVINGS_CORRECTION_NOTE } from '@/lib/progress/savings-cents';
 import { visitStatusCountsAsVisit, type VisitStatus } from '@/lib/visits/visit-status';
@@ -122,6 +123,122 @@ export function challengeBoostLine(bonusCents: number | null | undefined): strin
   const bonus = wholeSavingsCents(bonusCents);
   if (bonus == null || bonus <= 0) return null;
   return `+${formatCents(bonus)} Boost`;
+}
+
+const BOOST_WEEKDAYS = ['', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
+
+function formatClock(minute: number): string | null {
+  if (!Number.isInteger(minute) || minute < 0) return null;
+  const normalized = minute % (24 * 60);
+  const hour24 = Math.floor(normalized / 60);
+  const minutePart = normalized % 60;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 === 0 ? 12 : hour24 % 12;
+  if (minutePart === 0) return `${hour12} ${suffix}`;
+  return `${hour12}:${String(minutePart).padStart(2, '0')} ${suffix}`;
+}
+
+function formatWeeklyWindow(boost: WeeklyBoost): string | null {
+  if (boost.startIsodow < 1 || boost.startIsodow > 7) return null;
+  const start = formatClock(boost.startMinute);
+  const end = formatClock(boost.endMinute);
+  const day = BOOST_WEEKDAYS[boost.startIsodow];
+  if (!start || !end || !day) return null;
+  return `${day} ${start}–${end}`;
+}
+
+function formatDatedWindow(boost: DatedBoost, timeZone: string): string | null {
+  const start = new Date(boost.start);
+  const end = new Date(boost.end);
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
+  try {
+    const fmt = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'short',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+    return `${fmt.format(start)}–${fmt.format(end)}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Short window for the sealed bonus the ticket advertises.
+ * Only windows that carry that bonus are included. A long or unreadable
+ * list falls back to null so the ticket can say "during Boost hours".
+ */
+export function boostWindowLabel(
+  boosts: readonly OfferBoost[],
+  bonusCents: number,
+  timeZone: string,
+): string | null {
+  const bonus = wholeSavingsCents(bonusCents);
+  if (bonus == null || bonus <= 0) return null;
+  const labels = [
+    ...new Set(
+      boosts.flatMap((boost) => {
+        if (boost.bonusCents !== bonus) return [];
+        const label = boost.kind === 'weekly' ? formatWeeklyWindow(boost) : formatDatedWindow(boost, timeZone);
+        return label ? [label] : [];
+      }),
+    ),
+  ];
+  if (labels.length === 0) return null;
+  const joined = labels.join(' or ');
+  if (joined.length > 64) return null;
+  return joined;
+}
+
+/**
+ * Conditional ticket sentence. The bonus is not part of the base offer.
+ * A missing window still says the check-in has to fall during Boost hours,
+ * and that the member locks it at the restaurant.
+ */
+export function challengeBoostOfferCopy(
+  bonusCents: number | null | undefined,
+  windowLabel: string | null | undefined,
+): string | null {
+  const line = challengeBoostLine(bonusCents);
+  if (!line) return null;
+  const when = windowLabel?.trim() ? windowLabel.trim() : 'during Boost hours';
+  return `${line} if you check in ${when}. Lock it at the restaurant.`;
+}
+
+/** Amount the server can read after a lock, before the bill is settled. */
+export function memberLockedBoostLabel(bonusCents: number | null | undefined): string | null {
+  const line = challengeBoostLine(bonusCents);
+  if (!line) return null;
+  return `${line} locked`;
+}
+
+/** Locked ticket and code-screen sentence. No amount is invented. */
+export function memberLockedBoostNote(bonusCents: number | null | undefined): string {
+  const label = memberLockedBoostLabel(bonusCents);
+  if (!label) return BOOST_LOCK_PENDING_NOTE;
+  return `${label}. It will apply once the restaurant confirms the bill.`;
+}
+
+/** Locked card line. Null bonus still says the visit is locked. */
+export function challengeBoostLockedCopy(bonusCents: number | null | undefined): string {
+  return memberLockedBoostLabel(bonusCents) ?? 'Boost locked';
+}
+
+/**
+ * Settled member sentence from stored settlement cents.
+ * Null when any part is missing. This does not recompute a quote.
+ */
+export function memberSettledSummary(input: {
+  totalDiscountCents?: number | null;
+  baseDiscountCents?: number | null;
+  boostDiscountCents?: number | null;
+}): string | null {
+  const total = wholeSavingsCents(input.totalDiscountCents);
+  const base = wholeSavingsCents(input.baseDiscountCents);
+  const boost = wholeSavingsCents(input.boostDiscountCents);
+  if (total == null || base == null || boost == null) return null;
+  return `You saved ${formatCents(total)} (${formatCents(base)} off + ${formatCents(boost)} Boost)`;
 }
 
 /**

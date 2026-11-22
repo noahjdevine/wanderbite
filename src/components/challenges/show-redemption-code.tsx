@@ -91,6 +91,7 @@ function openingAnnouncement(
   itemStatus: string | null,
   hasNote: boolean,
   nowMs: number,
+  settledSummary: string | null,
 ): string {
   const derived = liveVisitStatus({
     phase: status,
@@ -107,7 +108,7 @@ function openingAnnouncement(
     return remaining <= ONE_MINUTE_MS ? ONE_MINUTE_LEFT : visitStatusLabel('code_issued');
   }
   if (derived === 'code_expired' || derived === 'expired') return visitStatusLabel(derived);
-  if (derived === 'verified' || derived === 'note_added') return 'Already verified';
+  if (derived === 'verified' || derived === 'note_added') return settledSummary ?? 'Already verified';
   return '';
 }
 
@@ -126,6 +127,11 @@ type ShowRedemptionCodeProps = {
   confirmedDiscountLabel?: string | null;
   /** Locked Boost sentence. Omitted when this visit has no Boost lock to mention. */
   boostLockNote?: string | null;
+  /**
+   * Stored settlement sentence. When set, the screen shows this instead of
+   * the sealed offer and does not say the Boost is still locked.
+   */
+  settledSummary?: string | null;
   status: 'issued' | 'verified' | 'expired';
   verifiedAt?: string | null;
   /** ISO `verified_at`. The display string above is not used for the slam. */
@@ -153,6 +159,7 @@ export function ShowRedemptionCode({
   minSpendLabel,
   confirmedDiscountLabel = null,
   boostLockNote = null,
+  settledSummary = null,
   status,
   verifiedAt,
   verifiedAtIso = null,
@@ -175,7 +182,15 @@ export function ShowRedemptionCode({
   const [reissuing, setReissuing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState(() =>
-    openingAnnouncement(status, expiresAt, redemptionDeadline, itemStatus, hasNote, Date.now()),
+    openingAnnouncement(
+      status,
+      expiresAt,
+      redemptionDeadline,
+      itemStatus,
+      hasNote,
+      Date.now(),
+      settledSummary,
+    ),
   );
   const [liveVerifiedAt, setLiveVerifiedAt] = useState<string | null>(verifiedAt ?? null);
   const [liveVerifiedAtIso, setLiveVerifiedAtIso] = useState<string | null>(verifiedAtIso);
@@ -243,7 +258,7 @@ export function ShowRedemptionCode({
         setLiveVerifiedAt(clock.label);
         setPhase('verified');
         setError(null);
-        setAnnouncement('Already verified');
+        setAnnouncement(settledSummary ?? 'Already verified');
         scheduleVerifiedLevelRefresh(redemptionId, () => {
           router.refresh();
         });
@@ -272,7 +287,7 @@ export function ShowRedemptionCode({
     } finally {
       refreshing.current = false;
     }
-  }, [hasNote, itemStatus, liveVerifiedAt, noteReissue, redemptionDeadline, redemptionId, router]);
+  }, [hasNote, itemStatus, liveVerifiedAt, noteReissue, redemptionDeadline, redemptionId, router, settledSummary]);
 
   useEffect(() => {
     if (displayPhase === 'verified') return;
@@ -381,7 +396,7 @@ export function ShowRedemptionCode({
   return (
     <div className="wb-sheet mx-auto flex min-h-[calc(100dvh-3.5rem)] w-full max-w-lg flex-col items-center justify-center px-5 py-8">
       <p className="sr-only" aria-live="polite">
-        {announcement}
+        {displayPhase === 'verified' && settledSummary ? settledSummary : announcement}
       </p>
       <div className="text-center">
         <p className="text-sm font-semibold tracking-wide text-wb-muted uppercase">Show your server</p>
@@ -392,18 +407,28 @@ export function ShowRedemptionCode({
       </div>
 
       <div className="mt-4 w-full rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-4 py-3 text-center">
-        <p className="font-display text-[28px] leading-none text-wb-plum">{discountLabel}</p>
-        {minSpendLabel ? <p className="mt-1 text-sm text-wb-muted">{minSpendLabel}</p> : null}
-        {boostLockNote ? (
-          <p className="mt-2 text-sm text-wb-ink" data-boost-lock="">
-            {boostLockNote}
+        {settledSummary ? (
+          <p className="font-display text-[28px] leading-none text-wb-plum" data-settled-summary="">
+            {settledSummary}
           </p>
-        ) : null}
+        ) : (
+          <>
+            <p className="font-display text-[28px] leading-none text-wb-plum">{discountLabel}</p>
+            {minSpendLabel ? <p className="mt-1 text-sm text-wb-muted">{minSpendLabel}</p> : null}
+            {boostLockNote ? (
+              <p className="mt-2 text-sm text-wb-ink" data-boost-lock="">
+                {boostLockNote}
+              </p>
+            ) : null}
+          </>
+        )}
       </div>
 
       {displayPhase === 'verified' ? (
         <div className="mt-8 w-full rounded-[28px] border border-[#86efac] bg-[#f0fdf4] p-6 text-center">
-          <p className="font-display text-[32px] leading-none text-[#14532d]">Already verified</p>
+          <p className="font-display text-[32px] leading-none text-[#14532d]">
+            {settledSummary ? 'Verified' : 'Already verified'}
+          </p>
           {(liveVerifiedAt ?? verifiedAt) ? (
             <p className="mt-2 text-sm text-[#14532d]">{liveVerifiedAt ?? verifiedAt}</p>
           ) : null}
