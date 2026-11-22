@@ -85,6 +85,7 @@ import type { RestaurantBriefings } from '@/lib/briefings/types';
 import { eventsForDiscoverCard } from '@/lib/discover/card-events';
 import {
   MESSAGE_EXCLUSION_EMPTY,
+  listingTagsFromMessage,
   mergeSoftAsk,
   rankDiscoverRestaurant,
 } from '@/lib/discover/code-pick';
@@ -104,7 +105,9 @@ import { parseDiscoverAskTone, type DiscoverEvent } from '@/lib/discover/events'
 import {
   applyRestaurantExclusion,
   canonicalFilterWithExcludedRestaurants,
+  exclusionEmptiesPool,
 } from '@/lib/discover/exclude-restaurants';
+import { cheaperChoiceLanded, type DiscoverRefineKind } from '@/lib/discover/voice';
 import {
   listedDiscoverRestaurants,
   restaurantMatchesPreferredCuisine,
@@ -287,6 +290,14 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       message?: unknown;
       /** Fallback copy only. Not a filter, a prompt line, or a log field. */
       askTone?: unknown;
+      /** Cheaper or New vibe. Copy and a cheaper tie-break. Not a log field. */
+      refine?: unknown;
+      /** Another idea or a tweak while the session is still Surprise me. */
+      surpriseSession?: unknown;
+      /** Round-robin slot for the surprise lines. */
+      lineIndex?: unknown;
+      /** Price on the ask before Cheaper. Null means there was no price yet. */
+      previousPrice?: unknown;
     };
     let body: RouletteBody;
     try {
@@ -340,6 +351,17 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       ? timeRaw
       : undefined;
     const askTone = parseDiscoverAskTone(body.askTone);
+    const refine: DiscoverRefineKind | null =
+      body.refine === 'cheaper' || body.refine === 'new-vibe' ? body.refine : null;
+    const surpriseSession = body.surpriseSession === true;
+    const lineIndex =
+      typeof body.lineIndex === 'number' && Number.isFinite(body.lineIndex)
+        ? Math.trunc(body.lineIndex)
+        : 0;
+    const previousPrice =
+      typeof body.previousPrice === 'string' && isRoulettePriceRange(body.previousPrice)
+        ? body.previousPrice
+        : null;
 
     const clientUuid =
       parseIdempotencyUuid(request.headers.get('idempotency-key')) ??
@@ -499,7 +521,10 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       }
     }
 
-    restaurants = applyRestaurantExclusion(restaurants, excludeRestaurantIds);
+    const poolRestarted = exclusionEmptiesPool(restaurants, excludeRestaurantIds);
+    if (!poolRestarted) {
+      restaurants = applyRestaurantExclusion(restaurants, excludeRestaurantIds);
+    }
 
     const restaurantIds = restaurants.map((row) => row.id);
     async function readBriefingFacts(): Promise<RestaurantBriefings> {
@@ -559,12 +584,20 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       }
       restaurants = kept;
     }
+    const requireAllCuisines =
+      messageAsk !== null &&
+      messageAsk.preferredCuisines.length > 1 &&
+      !/\bor\b/i.test(acceptedMessage);
     const codePick = messageAsk
       ? rankDiscoverRestaurant({
           pool: restaurants,
           preferredCuisines: messageAsk.preferredCuisines,
           excludedCuisines: messageAsk.excludedCuisines,
           priceRange: messageAsk.priceRange,
+          vibe,
+          preferredTags: listingTagsFromMessage(acceptedMessage),
+          preferCheaper: refine === 'cheaper',
+          requireAllCuisines,
           visitedRestaurantIds,
           random: Math.random,
         })
@@ -599,6 +632,12 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
           fallbackReason,
           providerTimedOut,
           askTone,
+          surpriseSession,
+          refine,
+          lineIndex,
+          poolRestarted,
+          cheaperLanded: refine === 'cheaper' && cheaperChoiceLanded(chosen.price_range, previousPrice),
+          vibeChanged: refine === 'new-vibe' && !excludeRestaurantIds.includes(chosen.id),
           facts: discoverCardFacts(briefingFacts.byRestaurantId[chosen.id] ?? []),
           visitedRestaurantIds,
         }),

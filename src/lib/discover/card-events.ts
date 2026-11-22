@@ -1,8 +1,6 @@
 import type { DiscoverCardFact } from '@/lib/discover/briefing-facts';
 import { partnerDirections } from '@/lib/discover/directions';
 import {
-  fallbackAlternativeMessage,
-  fallbackToneForAsk,
   discoverStreamReason,
   filterStepLabel,
   MEMORY_STEP_LABEL,
@@ -13,6 +11,7 @@ import {
 } from '@/lib/discover/events';
 import type { DiscoverFallbackReason } from '@/lib/discover/fallback-reason';
 import { memberVisitMemory } from '@/lib/discover/member-memory';
+import { selectMemberVoice, type DiscoverRefineKind } from '@/lib/discover/voice';
 import {
   classifyPickConstraints,
   constraintsFromDiscoveryInput,
@@ -52,6 +51,18 @@ export type DiscoverCardInput = {
    * it a match. Omitted tones are inferred from the message and soft chips.
    */
   askTone?: DiscoverAskTone | null;
+  /** Another idea while the session is still Surprise me. */
+  surpriseSession?: boolean;
+  /** Cheaper or New vibe. Copy only. Ranking still uses price and vibe. */
+  refine?: DiscoverRefineKind | null;
+  /** Round-robin slot for the three surprise lines. */
+  lineIndex?: number;
+  /** Every fitting partner was already shown, so this pick starts the pool over. */
+  poolRestarted?: boolean;
+  /** Cheaper found a lower listed price than the previous ask. */
+  cheaperLanded?: boolean;
+  /** New vibe returned a restaurant that was not just shown. */
+  vibeChanged?: boolean;
   /** Already capped card notes for the chosen restaurant. Empty omits the key. */
   facts?: readonly DiscoverCardFact[];
   /**
@@ -100,7 +111,27 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     });
   }
 
-  if (args.selectionMode === 'ai') {
+  const partner = streamedPartner(args.chosen);
+  const voice = selectMemberVoice({
+    name: partner.name,
+    message: args.message,
+    askTone: args.askTone ?? null,
+    surpriseSession: args.surpriseSession,
+    refine: args.refine,
+    lineIndex: args.lineIndex,
+    poolRestarted: args.poolRestarted,
+    cheaperLanded: args.cheaperLanded,
+    vibeChanged: args.vibeChanged,
+    restaurantTags: args.chosen.cuisine_tags,
+    preferredCuisine: args.preferredCuisine,
+    priceRange: args.priceRange,
+    cuisine: partner.cuisine,
+    neighborhood: partner.neighborhood,
+    descriptive: args.reason,
+  });
+  const restarted = args.poolRestarted === true ? { poolRestarted: true as const } : {};
+
+  if (voice.card === 'pick') {
     const honesty = classifyPickConstraints({
       constraints,
       restaurant: args.chosen,
@@ -109,10 +140,11 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     });
     events.push({
       type: 'pick',
-      partner: streamedPartner(args.chosen),
-      reason: args.reason,
+      partner,
+      reason: voice.line,
+      badge: voice.badge,
       matched: honesty.matched,
-      unknown: honesty.unknown,
+      unknown: honesty.unknown.filter((item) => !/can'?t confirm/i.test(item.note)),
       unmet: honesty.unmet,
       isNewToMember: memory?.isNewToMember ?? false,
       food: foodFromParsedCuisine({
@@ -121,28 +153,22 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
         constraintLabels: constraints.map((constraint) => constraint.label),
       }),
       ...(facts ? { facts } : {}),
+      ...restarted,
     });
     return events;
   }
 
   const reason = args.fallbackReason ?? 'invalid_pick';
-  const alternative = streamedPartner(args.chosen);
-  const tone = fallbackToneForAsk({
-    askTone: args.askTone ?? null,
-    message: args.message,
-    vibe: args.vibe,
-    timeOfDay: args.timeOfDay,
-    priceRange: args.priceRange,
-    preferredCuisine: args.preferredCuisine,
-  });
   events.push({
     type: 'fallback',
     reason: discoverStreamReason(reason, args.providerTimedOut),
-    message: fallbackAlternativeMessage(alternative.name, tone),
-    alternative,
-    tone,
+    message: voice.line,
+    alternative: partner,
+    tone: 'alternative',
+    badge: voice.badge,
     ...(facts ? { facts } : {}),
     ...(memory ? { isNewToMember: memory.isNewToMember } : {}),
+    ...restarted,
   });
   return events;
 }

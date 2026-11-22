@@ -40,19 +40,21 @@ function selectedClass(variant: Variant, selected: boolean): string {
 function PillGroup<T extends string>({
   variant,
   label,
+  labelClassName,
   options,
   value,
   onChange,
 }: {
   variant: Variant;
   label: string;
+  labelClassName: string;
   options: readonly T[];
   value: T | null;
   onChange: (next: T | null) => void;
 }) {
   return (
     <div className="space-y-2">
-      <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <p className={labelClassName}>
         {label}
       </p>
       <div className="flex flex-wrap justify-center gap-2">
@@ -82,32 +84,53 @@ export function RouletteOptionsFields({
   selections,
   onChange,
   exclusionsSummary,
+  appearance = 'light',
+  accountHref = '/account',
 }: {
   variant: Variant;
   selections: RouletteSelections;
   onChange: (patch: Partial<RouletteSelections>) => void;
   exclusionsSummary: string | null;
+  /** Discover sits on night glass. Light is the cream roulette page. */
+  appearance?: 'light' | 'dark';
+  /** Null hides the account link. Signed-out Discover passes null. */
+  accountHref?: string | null;
 }) {
   const { vibe, timeOfDay, dietaryFlags, priceRange, preferredCuisine } =
     selections;
+  const labelClassName =
+    appearance === 'dark'
+      ? 'text-center text-xs font-semibold uppercase tracking-wide text-white/90'
+      : 'text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground';
 
   return (
     <div className="w-full space-y-8">
       {exclusionsSummary ? (
-        <p className="text-center text-sm text-muted-foreground">
+        <p
+          className={
+            appearance === 'dark'
+              ? 'text-center text-sm font-medium text-white'
+              : 'text-center text-sm text-muted-foreground'
+          }
+        >
           Honoring your cuisine exclusions:{' '}
-          <span className="font-medium text-foreground">{exclusionsSummary}</span>.{' '}
-          <Link
-            href="/account"
-            className="font-medium text-primary underline-offset-2 hover:underline"
-          >
-            Edit
-          </Link>
+          <span className={appearance === 'dark' ? 'font-semibold text-white' : 'font-medium text-foreground'}>
+            {exclusionsSummary}
+          </span>
+          .{' '}
+          {accountHref ? (
+            <Link
+              href={accountHref}
+              className="font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Edit
+            </Link>
+          ) : null}
         </p>
       ) : null}
 
       <div className="space-y-2">
-        <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className={labelClassName}>
           Vibe (optional)
         </p>
         <div className="flex flex-wrap justify-center gap-2">
@@ -135,13 +158,14 @@ export function RouletteOptionsFields({
       <PillGroup
         variant={variant}
         label="Time (optional)"
+        labelClassName={labelClassName}
         options={ROULETTE_TIMES}
         value={timeOfDay}
         onChange={(timeOfDay) => onChange({ timeOfDay })}
       />
 
       <div className="space-y-2">
-        <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className={labelClassName}>
           Dietary &amp; religion (optional, multi-select)
         </p>
         <div className="flex flex-wrap justify-center gap-2">
@@ -172,7 +196,7 @@ export function RouletteOptionsFields({
       </div>
 
       <div className="space-y-2">
-        <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className={labelClassName}>
           Cuisine (optional)
         </p>
         <div className="flex flex-wrap justify-center gap-2">
@@ -201,7 +225,7 @@ export function RouletteOptionsFields({
       </div>
 
       <div className="space-y-2">
-        <p className="text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <p className={labelClassName}>
           Price (optional)
         </p>
         <div className="flex flex-wrap justify-center gap-2">

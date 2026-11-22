@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { DiscoverAsk } from '@/components/discover/discover-ask';
+import { DiscoverAsk, DiscoverDietaryPanel } from '@/components/discover/discover-ask';
 import { DiscoverPick } from '@/components/discover/discover-pick';
 import { DiscoverThinking } from '@/components/discover/discover-thinking';
 import { useDiscoverAutoStart } from '@/components/discover/use-discover-auto-start';
@@ -40,6 +40,8 @@ import {
 } from '@/lib/excluded-cuisines-store';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
 import type { RouletteSelections } from '@/components/roulette/roulette-options-fields';
+import type { DiscoverRefineKind } from '@/lib/discover/voice';
+import type { RoulettePriceRange } from '@/lib/roulette-options';
 
 type Phase = 'ask' | 'thinking' | 'pick' | 'error' | 'recipe';
 
@@ -77,6 +79,8 @@ export function DiscoverFlow({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [recipeQa, setRecipeQa] = useState<RecipeQaAnswerView | null>(null);
   const [originDraft, setOriginDraft] = useState<DiscoverDraft | null>(null);
+  const [dietaryOpen, setDietaryOpen] = useState(false);
+  const [dietaryDraft, setDietaryDraft] = useState<DiscoverDraft | null>(null);
 
   const requestId = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -84,6 +88,8 @@ export function DiscoverFlow({
   const inFlight = useRef(false);
   /** Restaurant ids already shown this session, oldest first. Cleared on a fresh main-box ask. */
   const shownIds = useRef<string[]>([]);
+  /** Round-robin slot for Surprise me, including another idea after surprise. */
+  const surpriseIndex = useRef(0);
 
   const exclusionsSummary = useMemo(() => {
     if (excludedCuisines.length === 0) return null;
@@ -106,6 +112,9 @@ export function DiscoverFlow({
         /** Send the session list as excludeRestaurantIds. */
         excludeShown?: boolean;
         askTone?: DiscoverAskTone;
+        refine?: DiscoverRefineKind;
+        surpriseSession?: boolean;
+        previousPrice?: RoulettePriceRange | null;
       },
     ) => {
       if (inFlight.current) return;
@@ -148,12 +157,20 @@ export function DiscoverFlow({
         const spin = draftToSpinBody(withExclusions);
         const tone: DiscoverAskTone =
           options?.askTone ?? (withExclusions.surprise ? 'surprise' : 'request');
+        const surpriseFramed =
+          tone === 'surprise' || (tone === 'another' && options?.surpriseSession === true);
+        const lineIndex = surpriseFramed ? surpriseIndex.current : undefined;
+        if (surpriseFramed) surpriseIndex.current += 1;
         const body = {
           ...spin,
           ...(excludeRestaurantIds && excludeRestaurantIds.length > 0
             ? { excludeRestaurantIds: [...excludeRestaurantIds] }
             : {}),
           askTone: tone,
+          ...(options?.refine ? { refine: options.refine } : {}),
+          ...(options?.surpriseSession ? { surpriseSession: true } : {}),
+          ...(lineIndex !== undefined ? { lineIndex } : {}),
+          ...(options?.previousPrice ? { previousPrice: options.previousPrice } : {}),
         };
         const result = await postDiscoverAsk(body, crypto.randomUUID(), controller.signal);
         if (requestId.current !== id) return;
@@ -168,7 +185,13 @@ export function DiscoverFlow({
           return;
         }
         const shown = shownRestaurantId(result.events);
-        if (shown) shownIds.current = rememberShownRestaurant(shownIds.current, shown);
+        const restarted = result.events.some(
+          (event) =>
+            (event.type === 'pick' || event.type === 'fallback') && event.poolRestarted === true,
+        );
+        if (restarted) shownIds.current = shown ? [shown] : [];
+        else if (shown) shownIds.current = rememberShownRestaurant(shownIds.current, shown);
+        setDietaryOpen(false);
         setEvents(result.events);
       } catch {
         if (controller.signal.aborted || requestId.current !== id) return;
@@ -225,10 +248,20 @@ export function DiscoverFlow({
 
   function resubmit(refine: DiscoverRefine) {
     const origin = originDraft ?? draft;
+    const tweak = refine === 'cheaper' || refine === 'new-vibe' ? refine : undefined;
     void run(refineDiscoverDraft(origin, refine), false, {
-      excludeShown: refine === 'another',
-      askTone: refine === 'another' ? 'another' : undefined,
+      excludeShown: true,
+      askTone: refine === 'another' ? 'another' : 'request',
+      refine: tweak,
+      surpriseSession: origin.surprise === true,
+      previousPrice: refine === 'cheaper' ? origin.priceRange : undefined,
     });
+  }
+
+  function openDietary() {
+    const source = draft;
+    setDietaryDraft(source.surprise ? { ...source, message: '' } : { ...source });
+    setDietaryOpen(true);
   }
 
   const outcome = outcomeFromEvents(events);
@@ -268,7 +301,7 @@ export function DiscoverFlow({
           onQuickChip={(index) => {
             const chip = DISCOVER_QUICK_CHIPS[index];
             if (!chip) return;
-            void run(applyQuickChip(draft, chip), true, { resetShown: true });
+            void run(applyQuickChip(draft, chip), true, { excludeShown: true });
           }}
           onSubmit={() => void run(draft, true, { resetShown: true })}
         />
@@ -301,14 +334,35 @@ export function DiscoverFlow({
           dietaryLabel={dietaryLabel}
           steps={steps}
           listArrivedSteps={prefersReducedMotion()}
-          onDietary={() => {
-            setRefineOpen(true);
-            backToAsk();
-          }}
+          onDietary={openDietary}
           onAnother={() => resubmit('another')}
           onCheaper={() => resubmit('cheaper')}
           onNewVibe={() => resubmit('new-vibe')}
           onFollowUp={followUp}
+        />
+      ) : null}
+
+      {showPick && dietaryOpen && dietaryDraft ? (
+        <DiscoverDietaryPanel
+          draft={dietaryDraft}
+          signedIn={viewer.signedIn === true}
+          exclusionsSummary={exclusionsSummary}
+          onClose={() => setDietaryOpen(false)}
+          onMessage={(message) =>
+            setDietaryDraft((prev) => (prev ? { ...prev, message, surprise: false } : prev))
+          }
+          onSelections={(patch) =>
+            setDietaryDraft((prev) => (prev ? { ...prev, ...patch, surprise: false } : prev))
+          }
+          onApply={() => {
+            if (!dietaryDraft) return;
+            const next = dietaryDraft;
+            setDietaryOpen(false);
+            void run(next, true, {
+              excludeShown: true,
+              askTone: next.surprise ? 'surprise' : 'request',
+            });
+          }}
         />
       ) : null}
 

@@ -12,11 +12,11 @@ import {
 } from '@/lib/discover/events';
 import type { DiscoverRestaurant } from '@/lib/discover/stages';
 
-function restaurant(name = 'Green Table'): DiscoverRestaurant {
+function restaurant(name = 'Green Table', tags: string[] = ['vegan', 'noodles', 'sushi']): DiscoverRestaurant {
   return {
     id: 'rest-vegan',
     name,
-    cuisine_tags: ['vegan', 'noodles'],
+    cuisine_tags: tags,
     neighborhood: 'Downtown',
     address: '1 Main',
     price_range: '$$',
@@ -108,9 +108,15 @@ describe('eventsForDiscoverCard copy', () => {
       providerTimedOut: false,
       askTone: 'surprise',
     });
-    expect(fallbackMessage(events)).toBe("Here's a surprise: Green Table.");
-    expect(events.find((event) => event.type === 'fallback')).toMatchObject({ tone: 'surprise' });
-    expect(fallbackMessage(events).toLowerCase()).not.toContain('not a match');
+    const surprise = events.find((event) => event.type === 'pick');
+    expect(surprise).toMatchObject({
+      type: 'pick',
+      badge: 'Surprise',
+      reason: "Bea's wild card: Green Table. Trust me on this one.",
+    });
+    expect(events.some((event) => event.type === 'fallback')).toBe(false);
+    expect(JSON.stringify(events)).not.toContain("Closest I've got");
+    expect(JSON.stringify(events).toLowerCase()).not.toContain('not a match');
     const parse = events.find((event) => event.type === 'step' && event.id === 'parse');
     expect(parse && parse.type === 'step' && parse.id === 'parse' ? parse.constraints : []).toEqual([
       expect.objectContaining({ key: 'dietary', label: 'Vegan', required: true }),
@@ -132,9 +138,14 @@ describe('eventsForDiscoverCard copy', () => {
       providerTimedOut: false,
       askTone: 'another',
     });
-    expect(fallbackMessage(events)).toBe("Here's another idea: Green Table.");
-    expect(events.find((event) => event.type === 'fallback')).toMatchObject({ tone: 'another' });
-    expect(fallbackMessage(events).toLowerCase()).not.toContain('not a match');
+    const another = events.find((event) => event.type === 'pick');
+    expect(another).toMatchObject({
+      type: 'pick',
+      badge: "Here's another idea",
+      reason: "Here's another idea: Green Table.",
+    });
+    expect(events.some((event) => event.type === 'fallback')).toBe(false);
+    expect(JSON.stringify(events).toLowerCase()).not.toContain('not a match');
     expect(JSON.stringify(events)).not.toContain('different pick');
   });
 
@@ -145,15 +156,15 @@ describe('eventsForDiscoverCard copy', () => {
       excludedCuisineIds: ['thai'],
       preferredCuisine: 'japanese',
       restaurants: [chosen],
-      chosen,
+      chosen: restaurant('Green Table', ['vegan', 'noodles']),
       reason: 'Green Table is a partner.',
       selectionMode: 'random_fallback',
       fallbackReason: 'budget_exceeded',
       providerTimedOut: false,
       askTone: 'request',
     });
+    expect(fallbackMessage(events)).toBe("Closest I've got: Green Table. I couldn't match sushi.");
     expect(fallbackMessage(events)).toContain("Closest I've got: Green Table.");
-    expect(fallbackMessage(events)).toContain('may not match everything you asked for');
     expect(fallbackMessage(events).toLowerCase()).not.toContain('not a match');
     expect(fallbackMessage(events).toLowerCase()).not.toContain('matched');
     expect(events.find((event) => event.type === 'fallback')).toMatchObject({ tone: 'alternative' });
@@ -242,12 +253,13 @@ describe('eventsForDiscoverCard copy', () => {
     }
     expect(picked.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
 
+    const unmatched = restaurant('Green Table', ['bbq']);
     const fallback = eventsForDiscoverCard({
       message: 'quiet sushi',
       dietary: [],
       excludedCuisineIds: [],
-      restaurants: [chosen],
-      chosen,
+      restaurants: [unmatched],
+      chosen: unmatched,
       reason: 'Green Table is a partner.',
       selectionMode: 'random_fallback',
       fallbackReason: 'invalid_pick',
@@ -293,9 +305,13 @@ describe('eventsForDiscoverCard copy', () => {
       providerTimedOut: false,
       askTone: 'surprise',
     });
-    const fallback = surprise.find((event) => event.type === 'fallback');
-    expect(fallback).toMatchObject({ tone: 'surprise' });
-    expect(fallback && fallback.type === 'fallback' ? Object.hasOwn(fallback, 'facts') : true).toBe(false);
+    const surprisePick = surprise.find((event) => event.type === 'pick');
+    expect(surprisePick).toMatchObject({
+      badge: 'Surprise',
+      reason: "Bea's wild card: Green Table. Trust me on this one.",
+    });
+    expect(surprisePick && surprisePick.type === 'pick' ? Object.hasOwn(surprisePick, 'facts') : true).toBe(false);
+    expect(surprise.some((event) => event.type === 'fallback')).toBe(false);
   });
 
   it('emits a memory step and isNewToMember without dropping tone or facts', () => {
@@ -357,11 +373,11 @@ describe('eventsForDiscoverCard copy', () => {
     expect(visited.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
       line: "You've been here before.",
     });
-    expect(visited.find((event) => event.type === 'fallback')).toMatchObject({
-      tone: 'another',
+    expect(visited.find((event) => event.type === 'pick')).toMatchObject({
+      badge: "Here's another idea",
       isNewToMember: false,
       facts,
-      message: "Here's another idea: Green Table.",
+      reason: "Here's another idea: Green Table.",
     });
     expect(visited.some((event) => event.type === 'step' && event.id === 'rank')).toBe(false);
   });

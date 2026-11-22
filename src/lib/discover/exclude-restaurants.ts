@@ -1,4 +1,17 @@
 /**
+ * True when every remaining row is already in the exclusion list.
+ * The caller then starts the fitting pool over instead of erroring.
+ */
+export function exclusionEmptiesPool<T extends { id: string }>(
+  restaurants: readonly T[],
+  excludeIds: readonly string[],
+): boolean {
+  if (restaurants.length === 0 || excludeIds.length === 0) return false;
+  const excluded = new Set(excludeIds);
+  return restaurants.every((row) => excluded.has(row.id));
+}
+
+/**
  * Drops excluded restaurant ids before a pick.
  * An empty list, or ids that match nothing, leaves the pool as it was.
  * Ids are oldest first. When that list would remove every remaining row,

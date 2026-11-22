@@ -461,7 +461,8 @@ describe('Discover stream route', () => {
     });
     if (pick?.type === 'pick') {
       expect(pick.partner.offer).toBeUndefined();
-      expect(pick.reason).toBe(discoveryCardSentence(VEGAN, 'McKinney, Texas'));
+      expect(pick.reason).toBe('Green Table is a Vegetarian-Forward spot in Downtown.');
+      expect(pick.reason.toLowerCase()).not.toContain('tagged');
     }
     expect(JSON.stringify(events)).not.toContain(NOTE);
     expect(JSON.stringify(warn.mock.calls)).not.toContain(NOTE);
@@ -513,41 +514,40 @@ describe('Discover stream route', () => {
     expect(blob).not.toContain('paused-row');
     expect(blob).not.toContain('hidden-row');
     expect(blob).not.toContain('test-row');
-    const fallback = events.find((event) => event.type === 'fallback');
+    const fallback = events.find((event) => event.type === 'pick');
     expect(fallback).toMatchObject({
-      type: 'fallback',
-      reason: 'no_match',
-      alternative: { id: VEGAN.id },
+      type: 'pick',
+      badge: 'Picked for you',
+      partner: { id: VEGAN.id },
     });
-    if (fallback?.type === 'fallback') {
-      expect(fallback.message).toContain("Closest I've got:");
-      expect(fallback.message.toLowerCase()).toContain('may not match everything');
-      expect(fallback.message.toLowerCase()).not.toContain('not a match');
-      expect(fallback.tone).toBe('alternative');
+    if (fallback?.type === 'pick') {
+      expect(fallback.reason).not.toContain("Closest I've got");
+      expect(fallback.reason.toLowerCase()).not.toContain('tagged');
+      expect(fallback.reason.toLowerCase()).not.toContain("can't confirm");
+      expect(fallback.reason.toLowerCase()).not.toContain('not a match');
     }
-    expect(events.some((event) => event.type === 'pick')).toBe(false);
+    expect(events.some((event) => event.type === 'fallback')).toBe(false);
 
     const surprise = await POST(post({ message: '', body: { askTone: 'surprise' } }));
-    const surpriseFallback = parseDiscoverSse(await surprise.text()).find((event) => event.type === 'fallback');
-    expect(surpriseFallback && surpriseFallback.type === 'fallback' ? surpriseFallback.message : '').toContain(
-      "Here's a surprise",
+    const surprisePick = parseDiscoverSse(await surprise.text()).find((event) => event.type === 'pick');
+    expect(surprisePick && surprisePick.type === 'pick' ? surprisePick.reason : '').toBe(
+      "Bea's wild card: Green Table. Trust me on this one.",
     );
+    expect(surprisePick && surprisePick.type === 'pick' ? surprisePick.badge : '').toBe('Surprise');
     expect(
-      surpriseFallback && surpriseFallback.type === 'fallback'
-        ? surpriseFallback.message.toLowerCase()
-        : '',
+      surprisePick && surprisePick.type === 'pick' ? surprisePick.reason.toLowerCase() : '',
     ).not.toContain('not a match');
 
     const another = await POST(
       post({ message: 'quiet sushi', body: { askTone: 'another', preferredCuisine: 'japanese' } }),
     );
-    const anotherFallback = parseDiscoverSse(await another.text()).find((event) => event.type === 'fallback');
-    expect(anotherFallback && anotherFallback.type === 'fallback' ? anotherFallback.message : '').toContain(
+    const anotherPick = parseDiscoverSse(await another.text()).find((event) => event.type === 'pick');
+    expect(anotherPick && anotherPick.type === 'pick' ? anotherPick.reason : '').toBe(
+      "Here's another idea: Green Table.",
+    );
+    expect(anotherPick && anotherPick.type === 'pick' ? anotherPick.badge : '').toBe(
       "Here's another idea",
     );
-    expect(
-      anotherFallback && anotherFallback.type === 'fallback' ? anotherFallback.message.toLowerCase() : '',
-    ).not.toContain('not a match');
     const filter = events.find((event) => event.type === 'step' && event.id === 'filter');
     if (filter?.type === 'step' && filter.id === 'filter') {
       expect(filter.total).toBe(1);
@@ -580,13 +580,15 @@ describe('Discover stream route', () => {
       reason: string;
       selectionMode: string;
     };
-    const pick = events.find((event) => event.type === 'pick');
+    const card = events.find((event) => event.type === 'fallback');
     expect(body.selectionMode).toBe('ai');
-    expect(pick).toMatchObject({
-      type: 'pick',
-      reason: body.reason,
-      partner: { id: body.restaurantId, name: body.restaurantName },
+    expect(card).toMatchObject({
+      type: 'fallback',
+      badge: 'Closest pick',
+      alternative: { id: body.restaurantId, name: body.restaurantName },
     });
+    expect(card && card.type === 'fallback' ? card.message : '').toContain("couldn't match");
+    expect(card && card.type === 'fallback' ? card.message : '').not.toBe(body.reason);
   });
 
   it('excludes shown restaurants on the model path and the random path', async () => {
@@ -609,9 +611,9 @@ describe('Discover stream route', () => {
     expect(missed.status).toBe(200);
     const missedEvents = parseDiscoverSse(await missed.text());
     expect(missedEvents.some((event) => event.type === 'error')).toBe(false);
-    expect(missedEvents.find((event) => event.type === 'fallback')).toMatchObject({
-      type: 'fallback',
-      alternative: { id: BBQ.id },
+    expect(missedEvents.find((event) => event.type === 'pick')).toMatchObject({
+      type: 'pick',
+      partner: { id: BBQ.id },
     });
     const missedPrompt = fetchMock.mock.calls
       .map((call) => String((call[1] as RequestInit | undefined)?.body ?? ''))
@@ -626,10 +628,16 @@ describe('Discover stream route', () => {
     expect(exhausted.status).toBe(200);
     const exhaustedEvents = parseDiscoverSse(await exhausted.text());
     expect(exhaustedEvents.some((event) => event.type === 'error')).toBe(false);
-    expect(exhaustedEvents.find((event) => event.type === 'fallback')).toMatchObject({
-      type: 'fallback',
-      alternative: { id: VEGAN.id },
+    const restarted = exhaustedEvents.find((event) => event.type === 'pick');
+    expect(restarted).toMatchObject({
+      type: 'pick',
+      badge: 'Starting over',
+      poolRestarted: true,
+      reason: "That's everything I've got that fits. Starting over.",
     });
+    if (restarted?.type === 'pick') {
+      expect([VEGAN.id, BBQ.id]).toContain(restarted.partner.id);
+    }
   });
 
   it('emits provider_error and timeout fallbacks instead of crashing', async () => {
@@ -641,10 +649,10 @@ describe('Discover stream route', () => {
     expect(errored.status).toBe(200);
     const errorEvents = parseDiscoverSse(await errored.text());
     expect(errorEvents.at(-1)).toMatchObject({
-      type: 'fallback',
-      reason: 'provider_error',
-      alternative: { id: VEGAN.id },
+      type: 'pick',
+      partner: { id: VEGAN.id },
     });
+    expect(JSON.stringify(errorEvents).toLowerCase()).not.toContain('tagged');
 
     vi.useFakeTimers();
     fetchMock.mockImplementation((_url: string, init?: RequestInit) => {
@@ -666,7 +674,7 @@ describe('Discover stream route', () => {
     const timedOut = await pending;
     expect(timedOut.status).toBe(200);
     const timeoutEvents = parseDiscoverSse(await timedOut.text());
-    expect(timeoutEvents.at(-1)).toMatchObject({ type: 'fallback', reason: 'timeout' });
+    expect(timeoutEvents.at(-1)).toMatchObject({ type: 'pick', partner: { id: VEGAN.id } });
     expect(
       warn.mock.calls.some(
         (call: unknown[]) => call[0] === '[roulette] anthropic timeout — using template fallback',
@@ -730,7 +738,8 @@ describe('Discover stream route', () => {
 
     vi.stubEnv('WANDERBITE_AI_DISABLED', 'true');
     const fallback = parseDiscoverSse(await (await POST(post({ user: true }))).text());
-    expect(fallback.some((event) => event.type === 'pick')).toBe(false);
+    const templatePick = fallback.find((event) => event.type === 'pick');
+    if (templatePick?.type === 'pick') expect(templatePick.partner.offer).toBeUndefined();
     expect(JSON.stringify(fallback)).not.toContain('amountOff');
   });
 
@@ -852,7 +861,7 @@ describe('Discover stream route', () => {
     expect(pick).toMatchObject({
       type: 'pick',
       isNewToMember: false,
-      reason: discoveryCardSentence(VEGAN, LAUNCH_MARKET.displayName),
+      reason: 'Green Table is a Vegetarian-Forward spot in Downtown.',
       facts: [
         {
           field: 'known_for',
@@ -1035,11 +1044,10 @@ describe('Discover stream route', () => {
       const response = await POST(post());
       expect(response.status).toBe(200);
       const events = parseDiscoverSse(await response.text());
-      const fallback = events.find((event) => event.type === 'fallback');
+      const fallback = events.find((event) => event.type === 'pick');
       expect(fallback).toMatchObject({
-        type: 'fallback',
-        tone: 'alternative',
-        alternative: { id: 'rest-00' },
+        type: 'pick',
+        partner: { id: 'rest-00' },
         facts: [
           { field: 'known_for', text: 'CARD ONLY BRISKET' },
           { field: 'vibe', text: 'CARD ONLY ROOM' },
@@ -1103,11 +1111,12 @@ describe('Discover stream route', () => {
     const random = vi.spyOn(Math, 'random').mockReturnValue(0);
     try {
       const fallback = parseDiscoverSse(await (await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))).text());
-      expect(fallback.find((event) => event.type === 'fallback')).toMatchObject({
-        type: 'fallback',
-        tone: 'surprise',
+      expect(fallback.find((event) => event.type === 'pick')).toMatchObject({
+        type: 'pick',
+        badge: 'Surprise',
+        reason: "Bea's wild card: Smokehouse. Trust me on this one.",
         isNewToMember: true,
-        alternative: { id: BBQ.id },
+        partner: { id: BBQ.id },
       });
       expect(fallback.find((event) => event.type === 'step' && event.id === 'memory')).toMatchObject({
         line: "You haven't been to Smokehouse yet.",
@@ -1203,8 +1212,9 @@ describe('Discover stream route', () => {
       const open = parseDiscoverSse(
         await (await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))).text(),
       );
-      expect(open.find((event) => event.type === 'fallback')).toMatchObject({
-        alternative: { id: BBQ.id },
+      expect(open.find((event) => event.type === 'pick')).toMatchObject({
+        badge: 'Surprise',
+        partner: { id: BBQ.id },
         isNewToMember: true,
       });
 
@@ -1220,11 +1230,11 @@ describe('Discover stream route', () => {
           )
         ).text(),
       );
-      expect(another.find((event) => event.type === 'fallback')).toMatchObject({
-        tone: 'another',
-        alternative: { id: VEGAN.id },
+      expect(another.find((event) => event.type === 'pick')).toMatchObject({
+        badge: "Here's another idea",
+        partner: { id: VEGAN.id },
         isNewToMember: false,
-        message: "Here's another idea: Green Table.",
+        reason: "Here's another idea: Green Table.",
       });
       expect(JSON.stringify(another)).not.toContain(BBQ.id);
       const scoped = redemptionQuery.find((call) => call[0] === 'in');
@@ -1241,10 +1251,12 @@ describe('Discover stream route', () => {
           )
         ).text(),
       );
-      expect(exhausted.find((event) => event.type === 'fallback')).toMatchObject({
-        alternative: { id: VEGAN.id },
+      expect(exhausted.find((event) => event.type === 'pick')).toMatchObject({
+        badge: 'Starting over',
+        reason: "That's everything I've got that fits. Starting over.",
+        poolRestarted: true,
+        partner: { id: BBQ.id },
       });
-      expect(JSON.stringify(exhausted)).not.toContain(BBQ.id);
 
       redemptionRows = [
         { restaurant_id: VEGAN.id, status: 'verified', verified_at: '2026-01-01T00:00:00.000Z' },
@@ -1253,8 +1265,9 @@ describe('Discover stream route', () => {
       const allVisited = parseDiscoverSse(
         await (await POST(post({ user: true, message: '', body: { askTone: 'surprise' } }))).text(),
       );
-      expect(allVisited.find((event) => event.type === 'fallback')).toMatchObject({
-        alternative: { id: VEGAN.id },
+      expect(allVisited.find((event) => event.type === 'pick')).toMatchObject({
+        badge: 'Surprise',
+        partner: { id: VEGAN.id },
         isNewToMember: false,
       });
     } finally {
@@ -1270,13 +1283,13 @@ describe('Discover stream route', () => {
         await (await POST(post({ message: '', body: { askTone: 'surprise' } }))).text(),
       );
       expect(events.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
-      const fallback = events.find((event) => event.type === 'fallback');
+      const fallback = events.find((event) => event.type === 'pick');
       expect(fallback).toMatchObject({
-        tone: 'surprise',
-        alternative: { id: VEGAN.id },
-        message: "Here's a surprise: Green Table.",
+        badge: 'Surprise',
+        partner: { id: VEGAN.id },
+        reason: "Bea's wild card: Green Table. Trust me on this one.",
       });
-      expect(fallback && fallback.type === 'fallback' ? Object.hasOwn(fallback, 'isNewToMember') : true).toBe(false);
+      expect(events.some((event) => event.type === 'fallback')).toBe(false);
       expect(tables).not.toContain('redemptions');
       expect(tables).not.toContain('bite_notes');
     } finally {
@@ -1581,7 +1594,7 @@ describe('Discover stream route', () => {
       expect(events.find((event) => event.type === 'pick')).toMatchObject({
         type: 'pick',
         isNewToMember: false,
-        reason: discoveryCardSentence(TACO, LAUNCH_MARKET.displayName),
+        reason: 'Taco House is a Mexican spot in West.',
         partner: { id: TACO.id },
       });
       expect(events.some((event) => event.type === 'fallback')).toBe(false);
@@ -1749,9 +1762,10 @@ describe('Discover stream route', () => {
     expect(rpcs.rpcAiReserve).toHaveBeenCalled();
     expect(events.find((event) => event.type === 'pick')).toMatchObject({
       type: 'pick',
+      badge: 'Surprise',
       isNewToMember: true,
       partner: { id: TACO.id },
-      reason: LINE,
+      reason: "Bea's wild card: Taco House. Trust me on this one.",
     });
     expect(events.some((event) => event.type === 'fallback')).toBe(false);
 
@@ -1787,7 +1801,8 @@ describe('Discover stream route', () => {
       );
       expect(member.find((event) => event.type === 'fallback')).toMatchObject({
         tone: 'alternative',
-        message: "Closest I've got: Local Yocal. It may not match everything you asked for.",
+        badge: 'Closest pick',
+        message: "Closest I've got: Local Yocal. I couldn't match tacos.",
         alternative: { name: 'Local Yocal' },
       });
       expect(member.some((event) => event.type === 'pick')).toBe(false);
@@ -1800,7 +1815,8 @@ describe('Discover stream route', () => {
       );
       expect(guest.find((event) => event.type === 'fallback')).toMatchObject({
         tone: 'alternative',
-        message: "Closest I've got: Local Yocal. It may not match everything you asked for.",
+        badge: 'Closest pick',
+        message: "Closest I've got: Local Yocal. I couldn't match tacos.",
       });
       expect(guest.some((event) => event.type === 'step' && event.id === 'memory')).toBe(false);
     } finally {
@@ -1877,7 +1893,8 @@ describe('Discover stream route', () => {
     expect(surprise.some((event) => event.type === 'fallback')).toBe(false);
     expect(surprise.find((event) => event.type === 'pick')).toMatchObject({
       type: 'pick',
-      reason: LINE,
+      badge: 'Surprise',
+      reason: "Bea's wild card: Taco House. Trust me on this one.",
       partner: { id: TACO.id },
     });
 
@@ -1900,11 +1917,18 @@ describe('Discover stream route', () => {
     const templated = parseDiscoverSse(
       await (await POST(post({ message: 'sushi or thai', body: { askTone: 'request' } }))).text(),
     );
-    expect(templated.find((event) => event.type === 'pick')).toMatchObject({
+    const templatedPick = templated.find((event) => event.type === 'pick');
+    expect(templatedPick).toMatchObject({
       type: 'pick',
-      reason: discoveryCardSentence(sushi, LAUNCH_MARKET.displayName),
+      badge: 'Picked for you',
       partner: { id: sushi.id },
     });
+    if (templatedPick?.type === 'pick') {
+      expect(templatedPick.reason).toContain(sushi.name);
+      expect(templatedPick.reason.toLowerCase()).not.toContain('tagged');
+      expect(templatedPick.reason.toLowerCase()).not.toContain('confirm details');
+      expect(templatedPick.reason).not.toBe(discoveryCardSentence(sushi, LAUNCH_MARKET.displayName));
+    }
     expect(templated.some((event) => event.type === 'fallback')).toBe(false);
   });
 });

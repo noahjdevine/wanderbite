@@ -88,7 +88,7 @@ describe('discover event directions', () => {
     expect(sample?.directions).toBeUndefined();
 
     const fallback = eventsForDiscoverCard({
-      message: 'noodles',
+      message: 'sushi',
       dietary: [],
       excludedCuisineIds: [],
       restaurants: [named, nameless],
@@ -97,6 +97,7 @@ describe('discover event directions', () => {
       selectionMode: 'random_fallback',
       fallbackReason: 'invalid_pick',
       providerTimedOut: false,
+      preferredCuisine: 'japanese',
     });
     const fallbackEvent = fallback.find((event) => event.type === 'fallback');
     expect(
