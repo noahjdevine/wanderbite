@@ -89,6 +89,7 @@ function postedBodies(): {
   askTone?: string;
   refine?: string;
   surpriseSession?: boolean;
+  lineIndex?: number;
   excludeRestaurantIds?: string[];
 }[] {
   return vi
@@ -102,6 +103,7 @@ function postedBodies(): {
         askTone?: string;
         refine?: string;
         surpriseSession?: boolean;
+        lineIndex?: number;
         excludeRestaurantIds?: string[];
       };
     });
@@ -112,6 +114,7 @@ const NEXT_RUN = '22222222-2222-4222-8222-222222222222';
 
 describe('DiscoverFlow', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     resetDiscoverAutoStartClaims();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     vi.stubGlobal(
@@ -528,6 +531,67 @@ describe('DiscoverFlow', () => {
     expect(postedBodies()[0]?.excludeRestaurantIds).toBeUndefined();
     expect(postedBodies()[1]?.excludeRestaurantIds).toEqual(['rest-a']);
     expect(postedBodies()[2]?.excludeRestaurantIds).toEqual(['rest-b']);
+  });
+
+  it('clears a date-night chip when the next typed ask does not name it', async () => {
+    render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Date night' }));
+    await flush();
+    expect(postedBodies()[0]?.vibe).toBe('Date Night');
+    expect(postedBodies()[0]?.message).toBe('Date night');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('button', { name: 'Date night' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'cheap tacos' },
+    });
+    expect(screen.getByRole('button', { name: 'Date night' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    expect(postedBodies()[1]?.message).toBe('cheap tacos');
+    expect(postedBodies()[1]?.vibe).toBeUndefined();
+  });
+
+  it('keeps surprise rotation and the last pick across a reload', async () => {
+    const picks = ['rest-a', 'rest-b'];
+    let call = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      const id = picks[Math.min(call, picks.length - 1)] ?? 'rest-a';
+      call += 1;
+      return sse([
+        { type: 'step', id: 'parse', label: 'Reading your vibe', constraints: [] },
+        {
+          type: 'pick',
+          partner: { ...partner, id, name: id },
+          reason: 'A place nearby.',
+          matched: [],
+          unknown: [],
+          unmet: [],
+          isNewToMember: false,
+          food: 'generic',
+        },
+      ]);
+    });
+    const first = render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
+    await flush();
+    expect(postedBodies()[0]?.lineIndex).toBe(0);
+    expect(postedBodies()[0]?.excludeRestaurantIds).toBeUndefined();
+    first.unmount();
+
+    render(<DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
+    await flush();
+    expect(postedBodies()[1]?.lineIndex).toBe(1);
+    expect(postedBodies()[1]?.askTone).toBe('surprise');
+    expect(postedBodies()[1]?.excludeRestaurantIds).toEqual(['rest-a']);
   });
 
   it('keeps the pick and the latest ask while dietary is edited', async () => {

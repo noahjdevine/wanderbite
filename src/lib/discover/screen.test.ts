@@ -16,7 +16,12 @@ import {
   EMPTY_DISCOVER_DRAFT,
   discoverDraftHasSelection,
   draftToSpinBody,
+  DISCOVER_SHOWN_IDS_KEY,
+  DISCOVER_SURPRISE_INDEX_KEY,
   followUpDiscoverDraft,
+  readDiscoverSession,
+  vibeKeptByMessage,
+  writeDiscoverSession,
   foodForOutcome,
   messageForDiscoverStatus,
   discoverEnterSubmits,
@@ -256,8 +261,35 @@ describe('discover screen reducer', () => {
     );
     expect(next.message).toBe('something spicy instead');
     expect(next.surprise).toBe(false);
+    expect(next.vibe).toBeNull();
     expect(next.dietaryFlags).toEqual(['vegan']);
     expect(draftToSpinBody(next).message).toBe('something spicy instead');
+    expect(draftToSpinBody(next).vibe).toBeUndefined();
+    const kept = followUpDiscoverDraft(baseDraft, 'date night tacos');
+    expect(kept.vibe).toBe('Date Night');
+    expect(vibeKeptByMessage('cheap tacos', 'Date Night')).toBeNull();
+    expect(vibeKeptByMessage('a quick bite', 'Quick Bite')).toBe('Quick Bite');
+  });
+
+  it('remembers the surprise slot and shown restaurants in session storage', () => {
+    const saved = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        saved.set(key, value);
+      },
+    };
+    expect(readDiscoverSession(null)).toEqual({ surpriseIndex: 0, shownIds: [] });
+    expect(readDiscoverSession(storage)).toEqual({ surpriseIndex: 0, shownIds: [] });
+    writeDiscoverSession(storage, { surpriseIndex: 2, shownIds: ['rest-a', 'rest-b'] });
+    expect(saved.get(DISCOVER_SURPRISE_INDEX_KEY)).toBe('2');
+    expect(saved.get(DISCOVER_SHOWN_IDS_KEY)).toBe('["rest-a","rest-b"]');
+    expect(readDiscoverSession(storage)).toEqual({
+      surpriseIndex: 2,
+      shownIds: ['rest-a', 'rest-b'],
+    });
+    saved.set(DISCOVER_SHOWN_IDS_KEY, '{');
+    expect(readDiscoverSession(storage).shownIds).toEqual([]);
   });
 
   it('maps HTTP failures to the existing copy', () => {

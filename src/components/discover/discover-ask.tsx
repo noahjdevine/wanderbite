@@ -172,16 +172,20 @@ export function DiscoverAsk({
         </GlowBorder>
 
         <div className="flex flex-wrap gap-2">
-          {DISCOVER_QUICK_CHIPS.map((chip, index) => (
-            <button
-              key={chip.label}
-              type="button"
-              className="wb-chip-glass"
-              onClick={() => onQuickChip(index)}
-            >
-              {chip.label}
-            </button>
-          ))}
+          {DISCOVER_QUICK_CHIPS.map((chip, index) => {
+            const pressed = 'vibe' in chip && draft.vibe === chip.vibe;
+            return (
+              <button
+                key={chip.label}
+                type="button"
+                className={pressed ? 'wb-chip-glass ring-2 ring-white' : 'wb-chip-glass'}
+                aria-pressed={pressed}
+                onClick={() => onQuickChip(index)}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
           <button type="button" className="wb-chip-glass" onClick={onToggleRefine}>
             Refine
           </button>

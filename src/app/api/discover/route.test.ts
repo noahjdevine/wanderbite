@@ -801,6 +801,85 @@ describe('Discover stream route', () => {
     expect(serverFrom).not.toHaveBeenCalled();
   });
 
+  it('streams only the about paragraph when an active about row exists', async () => {
+    const about =
+      'Hutchins BBQ is a McKinney barbecue room. Order the brisket. Tip: go early.';
+    briefingResult = {
+      data: [
+        factRow({
+          id: '11111111-1111-4111-8111-111111111111',
+          field: 'about',
+          body: about,
+          source_url: 'https://example.com/hutchins',
+        }),
+        factRow({
+          id: '22222222-2222-4222-8222-222222222222',
+          field: 'known_for',
+          body: 'Known for brisket.',
+          source_url: MAPS,
+        }),
+        factRow({
+          id: '33333333-3333-4333-8333-333333333333',
+          field: 'vibe',
+          body: 'The pit room is lively.',
+          source_url: FACT_SOURCE,
+        }),
+      ],
+      error: null,
+    };
+    vi.stubEnv('E06_BRIEFINGS_ENABLED', 'true');
+    const events = parseDiscoverSse(await (await POST(post())).text());
+    const pick = events.find((event) => event.type === 'pick');
+    expect(pick && pick.type === 'pick' ? pick.facts : []).toEqual([
+      expect.objectContaining({
+        field: 'about',
+        label: '',
+        text: about,
+      }),
+    ]);
+    const facts = JSON.stringify(pick && pick.type === 'pick' ? pick.facts : []);
+    expect(facts).not.toContain('Known for');
+    expect(facts).not.toContain('The pit room is lively');
+    expect(facts).not.toContain('Source:');
+    expect(facts).not.toContain('Checked');
+  });
+
+  it('picks tacos over sushi for cheap tacos even when date night is still set', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    const sushi = {
+      ...BBQ,
+      id: 'rest-sushi',
+      name: 'Shun by Yama Sushi',
+      cuisine_tags: ['sushi', 'japanese'],
+    };
+    restaurantRows = [sushi, TACO];
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(anthropicResponse('Taco House is a bright room for tacos.')),
+    );
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const events = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              message: 'cheap tacos',
+              body: { vibe: 'Date Night', askTone: 'request' },
+            }),
+          )
+        ).text(),
+      );
+      const pick = events.find((event) => event.type === 'pick');
+      expect(pick).toMatchObject({
+        type: 'pick',
+        partner: { id: TACO.id, name: 'Taco House' },
+      });
+      expect(JSON.stringify(events)).not.toContain("couldn't match tacos");
+      expect(JSON.stringify(events)).not.toContain('Shun by Yama Sushi');
+    } finally {
+      random.mockRestore();
+    }
+  });
+
   it('shows two card facts and capped prompt notes when the flag is on', async () => {
     const longVibe = `${'p'.repeat(120)}UNIQUE_TAIL`;
     briefingResult = {
@@ -1320,13 +1399,13 @@ describe('Discover stream route', () => {
         expect(call.temperature).toBe(1);
         expect(call.system).toBe(expectedSystemPrompt());
         expect(body).toMatchObject({
-          restaurantId: VEGAN.id,
-          selectionMode: 'ai',
-          reason: discoveryCardSentence(VEGAN, LAUNCH_MARKET.displayName),
+          restaurantId: SALSA.id,
+          selectionMode: 'random_fallback',
+          reason: discoveryCardSentence(SALSA, LAUNCH_MARKET.displayName),
         });
       }
       expect(new Set(sent).size).toBe(1);
-      expect(new Set(ids)).toEqual(new Set([VEGAN.id]));
+      expect(new Set(ids)).toEqual(new Set([SALSA.id]));
       expect(sent[0]).toContain('"id"');
       expect(sent[0]).not.toContain('already chosen');
     } finally {

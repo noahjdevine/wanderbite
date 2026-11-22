@@ -19,8 +19,10 @@ export const SURPRISE_LINES = [
 const PRICE_ORDER = ['$', '$$', '$$$', '$$$$'] as const;
 
 const BOAT = /\b(?:boats?|yachts?|ships?|ferries|ferry)\b/i;
-const CLOCK = /\b(\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?))\b/i;
-const OPEN_AT = /\bopen\s+(?:at|until|from)\b/i;
+const VAGUE_HOURS =
+  /\bopen\s+late\b|\blate\s+night\b|\bopen\s+now\b|\bopen\s+(?:at|until|from)\b|\b\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)\b/i;
+
+export const HOURS_CAVEAT = 'Double-check their hours before you head out.';
 
 export type DiscoverRefineKind = 'cheaper' | 'new-vibe';
 
@@ -148,17 +150,21 @@ function keywordIn(text: string, keyword: string): boolean {
   return new RegExp(`(?:^|[^a-z0-9])${body}(?=$|[^a-z0-9])`, 'i').test(text);
 }
 
-/** Boat, yacht, and a clock time are asks the listing cannot satisfy. */
+/** A boat or yacht is an ask the listing cannot satisfy. Hours get a caveat instead. */
 export function unverifiableDemandMisses(message: string): string[] {
   const misses: string[] = [];
   if (BOAT.test(message)) misses.push('a boat');
-  const clock = CLOCK.exec(message);
-  if (clock?.[1]) {
-    misses.push(`being open at ${clock[1].replace(/\s+/g, ' ').trim()}`);
-  } else if (OPEN_AT.test(message)) {
-    misses.push('that time');
-  }
   return misses;
+}
+
+/** Vague hours wording. The card must not claim the place is open. */
+export function hoursAskNeedsCaveat(message: string, timeOfDay?: string | null): boolean {
+  return VAGUE_HOURS.test(`${message}\n${timeOfDay ?? ''}`);
+}
+
+export function withHoursCaveat(voice: MemberVoice, message: string, timeOfDay?: string | null): MemberVoice {
+  if (!hoursAskNeedsCaveat(message, timeOfDay) || voice.line.includes(HOURS_CAVEAT)) return voice;
+  return { ...voice, line: `${voice.line} ${HOURS_CAVEAT}` };
 }
 
 /**
@@ -210,6 +216,27 @@ export function cheaperChoiceLanded(
 }
 
 export function selectMemberVoice(args: {
+  name: string;
+  message: string;
+  askTone: DiscoverAskTone | null;
+  surpriseSession?: boolean;
+  refine?: DiscoverRefineKind | null;
+  lineIndex?: number;
+  poolRestarted?: boolean;
+  cheaperLanded?: boolean;
+  vibeChanged?: boolean;
+  restaurantTags?: string[] | null;
+  preferredCuisine?: string | null;
+  priceRange?: string | null;
+  cuisine?: string | null;
+  neighborhood?: string | null;
+  descriptive?: string | null;
+  timeOfDay?: string | null;
+}): MemberVoice {
+  return withHoursCaveat(chooseMemberVoice(args), args.message, args.timeOfDay);
+}
+
+function chooseMemberVoice(args: {
   name: string;
   message: string;
   askTone: DiscoverAskTone | null;

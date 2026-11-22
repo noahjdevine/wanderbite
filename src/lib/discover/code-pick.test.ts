@@ -3,6 +3,7 @@ import {
   listingTagsFromMessage,
   looksLikeCasualBar,
   mergeSoftAsk,
+  narrowToCuisineMatches,
   rankDiscoverRestaurant,
   type CodePickRestaurant,
 } from '@/lib/discover/code-pick';
@@ -191,6 +192,33 @@ describe('rankDiscoverRestaurant', () => {
     });
     expect(pick?.restaurant.id).toBe('tacos');
     expect(pick?.preferencesMet).toBe(false);
+  });
+
+  it('finds a taco place ahead of sushi when the ask names tacos, even on date night', () => {
+    const sushi: CodePickRestaurant = {
+      id: 'shun',
+      name: 'Shun by Yama Sushi',
+      cuisine_tags: ['sushi', 'japanese'],
+      price_range: '$$',
+    };
+    const tacos: CodePickRestaurant = {
+      id: 'tacos',
+      name: 'Taco Stand',
+      cuisine_tags: ['mexican', 'tacos'],
+      price_range: '$$',
+    };
+    expect(narrowToCuisineMatches([sushi, tacos], ['mexican']).map((row) => row.id)).toEqual([
+      'tacos',
+    ]);
+    const pick = rankDiscoverRestaurant({
+      pool: [sushi, tacos],
+      preferredCuisines: ['mexican'],
+      priceRange: '$',
+      vibe: 'Date Night',
+      random: () => 0,
+    });
+    expect(pick?.restaurant.id).toBe('tacos');
+    expect(pick?.restaurant.name).not.toBe('Shun by Yama Sushi');
   });
 
   it('does not prefer a brewery for date night when another partner exists', () => {

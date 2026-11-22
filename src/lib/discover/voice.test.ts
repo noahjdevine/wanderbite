@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  HOURS_CAVEAT,
   POOL_RESTART_LINE,
   cheaperChoiceLanded,
   cheaperVoiceLine,
@@ -173,8 +174,9 @@ describe('closest match only for unmet hard constraints', () => {
     });
     expect(impossible.card).toBe('fallback');
     expect(impossible.line).toBe(
-      "Closest I've got: Union Bear. I couldn't match vegan, sushi, a boat, or being open at 4am.",
+      "Closest I've got: Union Bear. I couldn't match vegan, sushi, or a boat. Double-check their hours before you head out.",
     );
+    expect(impossible.line.toLowerCase()).not.toContain('is open');
     expect(impossible.badge).not.toBe('Picked for you');
   });
 
@@ -240,6 +242,31 @@ describe('member copy rules', () => {
     expect(line.toLowerCase()).not.toContain('tagged');
     expect(line.toLowerCase()).not.toContain("can't confirm");
     expect(line.toLowerCase()).not.toContain('confirm details');
+  });
+
+  it('adds a hours caveat without claiming the place is open', () => {
+    for (const message of ['open late', 'late night', 'open now', 'open at 9pm']) {
+      const voice = selectMemberVoice({
+        name: 'Taco House',
+        message,
+        askTone: 'request',
+        restaurantTags: ['mexican', 'tacos'],
+        descriptive: 'Taco House is the taco spot.',
+      });
+      expect(voice.card).toBe('pick');
+      expect(voice.line).toBe(`Taco House is the taco spot. ${HOURS_CAVEAT}`);
+      expect(voice.line.toLowerCase()).not.toContain('is open');
+      expect(voice.line).not.toContain("Closest I've got");
+    }
+    const lateNight = selectMemberVoice({
+      name: 'Taco House',
+      message: 'tacos',
+      askTone: 'request',
+      timeOfDay: 'Late Night',
+      restaurantTags: ['mexican'],
+      descriptive: 'Taco House is the taco spot.',
+    });
+    expect(lateNight.line).toContain(HOURS_CAVEAT);
   });
 
   it('says when the fitting pool is used up', () => {

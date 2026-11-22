@@ -23,11 +23,14 @@ import {
   foodForOutcome,
   outcomeFromEvents,
   refineDiscoverDraft,
+  readDiscoverSession,
   rememberShownRestaurant,
   scheduleDiscoverReveal,
   shownRestaurantExclusions,
   shownRestaurantId,
   thinkingSteps,
+  vibeKeptByMessage,
+  writeDiscoverSession,
   type DiscoverDraft,
   type DiscoverRefine,
   type DiscoverViewer,
@@ -44,6 +47,14 @@ import type { DiscoverRefineKind } from '@/lib/discover/voice';
 import type { RoulettePriceRange } from '@/lib/roulette-options';
 
 type Phase = 'ask' | 'thinking' | 'pick' | 'error' | 'recipe';
+
+function discoverStorage(): Storage | null {
+  try {
+    return typeof sessionStorage === 'undefined' ? null : sessionStorage;
+  } catch {
+    return null;
+  }
+}
 
 function prefersReducedMotion(): boolean {
   return (
@@ -132,7 +143,13 @@ export function DiscoverFlow({
         return;
       }
 
-      if (options?.resetShown) shownIds.current = [];
+      const stored = readDiscoverSession(discoverStorage());
+      surpriseIndex.current = stored.surpriseIndex;
+      shownIds.current = options?.resetShown ? [] : stored.shownIds;
+      writeDiscoverSession(discoverStorage(), {
+        surpriseIndex: surpriseIndex.current,
+        shownIds: shownIds.current,
+      });
       const excludeRestaurantIds = options?.excludeShown
         ? shownRestaurantExclusions(shownIds.current)
         : undefined;
@@ -160,7 +177,13 @@ export function DiscoverFlow({
         const surpriseFramed =
           tone === 'surprise' || (tone === 'another' && options?.surpriseSession === true);
         const lineIndex = surpriseFramed ? surpriseIndex.current : undefined;
-        if (surpriseFramed) surpriseIndex.current += 1;
+        if (surpriseFramed) {
+          surpriseIndex.current += 1;
+          writeDiscoverSession(discoverStorage(), {
+            surpriseIndex: surpriseIndex.current,
+            shownIds: shownIds.current,
+          });
+        }
         const body = {
           ...spin,
           ...(excludeRestaurantIds && excludeRestaurantIds.length > 0
@@ -191,6 +214,10 @@ export function DiscoverFlow({
         );
         if (restarted) shownIds.current = shown ? [shown] : [];
         else if (shown) shownIds.current = rememberShownRestaurant(shownIds.current, shown);
+        writeDiscoverSession(discoverStorage(), {
+          surpriseIndex: surpriseIndex.current,
+          shownIds: shownIds.current,
+        });
         setDietaryOpen(false);
         setEvents(result.events);
       } catch {
@@ -293,7 +320,14 @@ export function DiscoverFlow({
           dietaryLabelFlags={dietaryFlagsForStatus(viewer.savedDietary, draft.dietaryFlags)}
           refineOpen={refineOpen}
           exclusionsSummary={exclusionsSummary}
-          onMessage={(message) => setDraft((prev) => ({ ...prev, message, surprise: false }))}
+          onMessage={(message) =>
+            setDraft((prev) => ({
+              ...prev,
+              message,
+              surprise: false,
+              vibe: vibeKeptByMessage(message, prev.vibe),
+            }))
+          }
           onSelections={(patch: Partial<RouletteSelections>) =>
             setDraft((prev) => ({ ...prev, ...patch, surprise: false }))
           }
@@ -349,7 +383,16 @@ export function DiscoverFlow({
           exclusionsSummary={exclusionsSummary}
           onClose={() => setDietaryOpen(false)}
           onMessage={(message) =>
-            setDietaryDraft((prev) => (prev ? { ...prev, message, surprise: false } : prev))
+            setDietaryDraft((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    message,
+                    surprise: false,
+                    vibe: vibeKeptByMessage(message, prev.vibe),
+                  }
+                : prev,
+            )
           }
           onSelections={(patch) =>
             setDietaryDraft((prev) => (prev ? { ...prev, ...patch, surprise: false } : prev))

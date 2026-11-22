@@ -87,6 +87,7 @@ import {
   MESSAGE_EXCLUSION_EMPTY,
   listingTagsFromMessage,
   mergeSoftAsk,
+  narrowToCuisineMatches,
   rankDiscoverRestaurant,
 } from '@/lib/discover/code-pick';
 import { discoverCodePickEnabled } from '@/lib/discover/flag';
@@ -566,13 +567,12 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
      * when Haiku's sentence is shown, and `random_fallback` when the card
      * uses the template sentence.
      */
-    const messageAsk = discoverCodePickEnabled()
-      ? mergeSoftAsk({
-          message: acceptedMessage,
-          preferredCuisine,
-          priceRange,
-        })
-      : null;
+    const softAsk = mergeSoftAsk({
+      message: acceptedMessage,
+      preferredCuisine,
+      priceRange,
+    });
+    const messageAsk = discoverCodePickEnabled() ? softAsk : null;
     if (messageAsk && messageAsk.excludedCuisines.length > 0) {
       const kept = restaurants.filter(
         (row) =>
@@ -586,9 +586,12 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       restaurants = kept;
     }
     const requireAllCuisines =
-      messageAsk !== null &&
-      messageAsk.preferredCuisines.length > 1 &&
-      !/\bor\b/i.test(acceptedMessage);
+      softAsk.preferredCuisines.length > 1 && !/\bor\b/i.test(acceptedMessage);
+    restaurants = narrowToCuisineMatches(
+      restaurants,
+      softAsk.preferredCuisines,
+      requireAllCuisines,
+    );
     const codePick = messageAsk
       ? rankDiscoverRestaurant({
           pool: restaurants,

@@ -60,6 +60,32 @@ function matchesAnyCuisine(
   return cuisineIds.some((id) => restaurantMatchesPreferredCuisine(tags, id));
 }
 
+function matchesEveryCuisine(
+  tags: string[] | null | undefined,
+  cuisineIds: readonly string[],
+): boolean {
+  return cuisineIds.every((id) => restaurantMatchesPreferredCuisine(tags, id));
+}
+
+/**
+ * When the ask names a cuisine and at least one partner matches, only those
+ * partners stay eligible. Vibe and price rank inside that set. A miss keeps
+ * the full pool so the card can say it is the closest.
+ */
+export function narrowToCuisineMatches<T extends CodePickRestaurant>(
+  pool: readonly T[],
+  preferredCuisines: readonly string[],
+  requireAll = false,
+): T[] {
+  if (preferredCuisines.length === 0 || pool.length === 0) return pool as T[];
+  if (requireAll) {
+    const all = pool.filter((row) => matchesEveryCuisine(row.cuisine_tags, preferredCuisines));
+    if (all.length > 0) return all;
+  }
+  const any = pool.filter((row) => matchesAnyCuisine(row.cuisine_tags, preferredCuisines));
+  return any.length > 0 ? any : (pool as T[]);
+}
+
 /**
  * Cuisine is worth more than price so an explicit taco or sushi ask beats a
  * cheaper place in the wrong cuisine. A date-night penalty keeps a brewery
@@ -312,8 +338,9 @@ export function rankDiscoverRestaurant<T extends CodePickRestaurant>(args: {
       ? args.pool
       : args.pool.filter((row) => !matchesAnyCuisine(row.cuisine_tags, excluded));
   if (pool.length === 0) return null;
+  const eligible = narrowToCuisineMatches(pool, preferred, args.requireAllCuisines === true);
   const tags = args.preferredTags ?? [];
-  const scored = pool.map((row) => ({
+  const scored = eligible.map((row) => ({
     row,
     score: softScore(row, preferred, args.priceRange, args.vibe, tags),
   }));

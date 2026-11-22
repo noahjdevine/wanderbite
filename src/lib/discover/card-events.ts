@@ -128,6 +128,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     cuisine: partner.cuisine,
     neighborhood: partner.neighborhood,
     descriptive: args.reason,
+    timeOfDay: args.timeOfDay,
   });
   const restarted = args.poolRestarted === true ? { poolRestarted: true as const } : {};
 
