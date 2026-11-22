@@ -1,6 +1,6 @@
 /**
- * Fields the member First visit card may show. The stored set is wider.
- * Missing fields are omitted, not filled in.
+ * Fields the member First visit card may show as labeled facts.
+ * An active about paragraph replaces this list. Missing fields are omitted.
  */
 export const MEMBER_BRIEFING_FIELDS = [
   'parking',
@@ -13,8 +13,11 @@ export const MEMBER_BRIEFING_FIELDS = [
 
 export type MemberBriefingField = (typeof MEMBER_BRIEFING_FIELDS)[number];
 
-/** Stored first-visit fields. The member card still uses MEMBER_BRIEFING_FIELDS. */
-export const BRIEFING_FIELDS = [
+/**
+ * Fields the research and maintenance prompts may extract.
+ * about is operator copy and is not in this list.
+ */
+export const RESEARCH_BRIEFING_FIELDS = [
   ...MEMBER_BRIEFING_FIELDS,
   'vibe',
   'known_for',
@@ -23,11 +26,29 @@ export const BRIEFING_FIELDS = [
   'reservations',
 ] as const;
 
+export type ResearchBriefingField = (typeof RESEARCH_BRIEFING_FIELDS)[number];
+
+/** One friendly paragraph. When active, it replaces labeled facts for members. */
+export const ABOUT_BRIEFING_FIELD = 'about' as const;
+
+/** Labeled briefing facts stay within this length. */
+export const BRIEFING_FACT_MAX_CHARS = 400;
+
+/** An about paragraph may be longer than a labeled fact. */
+export const ABOUT_BRIEFING_MAX_CHARS = 600;
+
+export function briefingBodyMaxChars(field: string): number {
+  return field === ABOUT_BRIEFING_FIELD ? ABOUT_BRIEFING_MAX_CHARS : BRIEFING_FACT_MAX_CHARS;
+}
+
+/** Stored briefing fields, including the operator about paragraph. */
+export const BRIEFING_FIELDS = [...RESEARCH_BRIEFING_FIELDS, ABOUT_BRIEFING_FIELD] as const;
+
 export type BriefingField = (typeof BRIEFING_FIELDS)[number];
 
 /**
- * Researched notes Bea may read. The First visit card still uses
- * MEMBER_BRIEFING_FIELDS only.
+ * Researched notes Bea may read beside an about paragraph.
+ * The First visit card still uses MEMBER_BRIEFING_FIELDS when no about row is active.
  */
 export const DISCOVER_BRIEFING_FIELDS = ['vibe', 'known_for', 'good_for', 'seating'] as const;
 
@@ -45,6 +66,7 @@ export const BRIEFING_FIELD_LABELS: Record<BriefingField, string> = {
   good_for: 'Good for',
   seating: 'Seating',
   reservations: 'Reservations',
+  about: 'About',
 };
 
 export const FIRST_VISIT_HEADING = 'First visit';
@@ -85,6 +107,10 @@ export type RestaurantBriefings = {
 
 export function isBriefingField(value: string): value is BriefingField {
   return (BRIEFING_FIELDS as readonly string[]).includes(value);
+}
+
+export function isResearchBriefingField(value: string): value is ResearchBriefingField {
+  return (RESEARCH_BRIEFING_FIELDS as readonly string[]).includes(value);
 }
 
 export function isMemberBriefingField(value: string): value is MemberBriefingField {

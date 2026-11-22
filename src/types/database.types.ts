@@ -1987,6 +1987,7 @@ export type Database = {
           last_verified_at: string
           restaurant_id: string
           source_url: string
+          sources: Json | null
           status: string
           updated_at: string
           version: number
@@ -2000,6 +2001,7 @@ export type Database = {
           last_verified_at: string
           restaurant_id: string
           source_url: string
+          sources?: Json | null
           status?: string
           updated_at?: string
           version?: number
@@ -2013,6 +2015,7 @@ export type Database = {
           last_verified_at?: string
           restaurant_id?: string
           source_url?: string
+          sources?: Json | null
           status?: string
           updated_at?: string
           version?: number

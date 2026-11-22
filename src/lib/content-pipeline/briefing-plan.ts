@@ -7,7 +7,7 @@ import {
 import type { ExceptionDraft } from '@/lib/content-pipeline/exceptions';
 import { evidenceExcerpt } from '@/lib/content-pipeline/facts';
 import { groundedInPage, type SupportedFact } from '@/lib/briefings/research';
-import { isBriefingField, type BriefingField } from '@/lib/briefings/types';
+import { ABOUT_BRIEFING_FIELD, isResearchBriefingField, type BriefingField } from '@/lib/briefings/types';
 import type { Json } from '@/types/database.types';
 
 const SAFE_FOR_RE = /\bsafe\s+for\b/i;
@@ -187,7 +187,8 @@ export function planBriefingUpdate(args: {
 
   const storedByField = new Map<string, StoredBriefing>();
   for (const row of args.stored) {
-    if (!isBriefingField(row.field) || storedByField.has(row.field)) continue;
+    if (row.field === ABOUT_BRIEFING_FIELD) continue;
+    if (!isResearchBriefingField(row.field) || storedByField.has(row.field)) continue;
     storedByField.set(row.field, row);
   }
   const drafts: BriefingDraft[] = [];
@@ -195,7 +196,8 @@ export function planBriefingUpdate(args: {
   const proposed = new Set<string>();
 
   for (const fact of args.grounded) {
-    if (!isBriefingField(fact.field) || proposed.has(fact.field)) continue;
+    if (fact.field === ABOUT_BRIEFING_FIELD) continue;
+    if (!isResearchBriefingField(fact.field) || proposed.has(fact.field)) continue;
     proposed.add(fact.field);
     const blocked = briefingTextBlocked(fact.text);
     if (blocked) {

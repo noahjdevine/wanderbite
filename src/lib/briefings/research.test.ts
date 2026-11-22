@@ -44,7 +44,7 @@ import {
 import { PLACES_DETAILS_ATMOSPHERE_MICRODOLLARS } from '@/lib/briefings/places';
 import { restaurantFactsGuideForPrompt, renderRestaurantFactsGuideModule } from '@/lib/briefings/facts-guide-module';
 import { RESTAURANT_FACTS_GUIDE } from '@/lib/briefings/restaurant-facts-guide.generated';
-import { BRIEFING_FIELDS, MEMBER_BRIEFING_FIELDS } from '@/lib/briefings/types';
+import { MEMBER_BRIEFING_FIELDS, RESEARCH_BRIEFING_FIELDS } from '@/lib/briefings/types';
 
 const RESTAURANT = {
   id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -326,7 +326,9 @@ describe('support passage', () => {
       'attire',
       'accessibility',
     ]);
-    expect(BRIEFING_FIELDS.slice(0, MEMBER_BRIEFING_FIELDS.length)).toEqual([...MEMBER_BRIEFING_FIELDS]);
+    expect(RESEARCH_BRIEFING_FIELDS.slice(0, MEMBER_BRIEFING_FIELDS.length)).toEqual([
+      ...MEMBER_BRIEFING_FIELDS,
+    ]);
   });
 
   it('drops a fact whose number is not the number in the passage', () => {
@@ -800,7 +802,7 @@ describe('research guide prompt', () => {
     expect(prompt).toContain('not mentioned');
     expect(prompt).toContain('phone numbers');
     expect(prompt).toContain('Say recommended only when the page says recommended');
-    for (const field of BRIEFING_FIELDS) {
+    for (const field of RESEARCH_BRIEFING_FIELDS) {
       expect(prompt).toContain(`### ${field}`);
       expect(prompt).toContain('What counts:');
       expect(prompt).toContain('What does not count:');
