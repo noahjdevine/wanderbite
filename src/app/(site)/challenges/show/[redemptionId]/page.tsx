@@ -4,8 +4,9 @@ import { MemberLevelUpCelebration } from '@/components/journey/member-level-up';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
 import { createClient } from '@/lib/supabase/server';
+import { parseSealedBoosts } from '@/lib/boost/arrival';
 import { memberCodeBoostPresentation } from '@/lib/boost/confirm-visit';
-import { visitProblemsEnabled } from '@/lib/boost/flag';
+import { arrivalSessionsEnabled, visitProblemsEnabled } from '@/lib/boost/flag';
 import { formatMemberVerifiedAt } from '@/lib/partner-verified-at';
 import { formatCents, lowestSealedBase } from '@/lib/offers/sealed-base';
 import { visitWindowOpen } from '@/lib/redemption-expiry';
@@ -108,13 +109,16 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     .maybeSingle();
   const hasNote = Boolean(noteRow);
   let sealed = null as ReturnType<typeof lowestSealedBase>;
+  let sealedBoosts: ReturnType<typeof parseSealedBoosts> = null;
   if (versionId) {
     const { data: version } = await admin
       .from('offer_versions')
-      .select('tiers')
+      .select(arrivalSessionsEnabled() ? 'tiers, boosts' : 'tiers')
       .eq('id', versionId)
       .maybeSingle();
-    sealed = lowestSealedBase((version as { tiers: Json } | null)?.tiers);
+    const versionRow = version as { tiers: Json; boosts?: Json } | null;
+    sealed = lowestSealedBase(versionRow?.tiers);
+    if (arrivalSessionsEnabled()) sealedBoosts = parseSealedBoosts(versionRow?.boosts);
   }
   const offerUnavailable = Boolean(versionId) && !sealed;
   const discountCents = sealed?.discount_amount_cents ?? offerRow?.discount_amount_cents ?? 1000;
@@ -134,11 +138,13 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
           redemptionId: row.id,
           now,
           sealedBase: sealed,
+          sealedBoosts,
         })
-      : Promise.resolve({ discountLabel: null, lockNote: null }),
+      : Promise.resolve({ discountLabel: null, lockNote: null, settledSummary: null }),
     row.status === 'verified' ? Promise.resolve(null) : getRedemptionCode(redemptionId),
   ]);
   const confirmedDiscountLabel = boostPresentation.discountLabel;
+  const settledSummary = boostPresentation.settledSummary;
   if (
     row.status !== 'verified'
     && codeResult?.state !== 'verified'
@@ -180,10 +186,11 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
         canReissue={itemStatus === 'redeemed' && visitWindowOpen(redemptionDeadline, now)}
         restaurantName={rest.name}
         restaurantSlug={rest.slug}
-        discountLabel={discountLabel}
-        minSpendLabel={minSpendLabel}
+        discountLabel={settledSummary ?? discountLabel}
+        minSpendLabel={settledSummary ? '' : minSpendLabel}
         confirmedDiscountLabel={confirmedDiscountLabel}
-        boostLockNote={boostPresentation.lockNote}
+        boostLockNote={settledSummary ? null : boostPresentation.lockNote}
+        settledSummary={settledSummary}
         status={phase}
         verifiedAt={verifiedAt}
         verifiedAtIso={verifiedIso}

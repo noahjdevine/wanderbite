@@ -65,6 +65,8 @@ describe('PartnerRedeemClient', () => {
     expect(input.getAttribute('autocomplete')).toBe('off');
     expect(input.getAttribute('inputmode')).toBeNull();
     expect(input.getAttribute('placeholder')).toBe('WB-XXXXX');
+    expect(screen.getByRole('button', { name: 'Check code' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Verify code' })).toBeNull();
     expect(screen.getByText(PARTNER_CODE_HINT)).toBeTruthy();
     expect(input.getAttribute('aria-describedby')).toBe('partner-redeem-hint');
     expect(input.getAttribute('spellcheck')).toBe('false');
@@ -249,18 +251,28 @@ describe('PartnerRedeemClient', () => {
     expect(screen.queryByText('Verified')).toBeNull();
     expect(screen.queryByText('Bill needs confirm')).toBeNull();
     expect(verifyRedemptionTokenForPartner).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Confirm bill' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Check code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Verify code' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Verify' })).toBeNull();
+    expect(screen.getByLabelText('Eligible subtotal').getAttribute('placeholder')).toBe('e.g. 55.00');
+    expect(screen.getByText('Food and drink before tax and tip.')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Open arrival check-in' })).toBeNull();
 
     fireEvent.change(screen.getByLabelText('Eligible subtotal'), { target: { value: '82.00' } });
     fireEvent.submit(screen.getByLabelText('Eligible subtotal').closest('form') as HTMLFormElement);
     expect(await screen.findByText('Wanderbite covers $25')).toBeTruthy();
     expect(screen.getByText('Discount $20')).toBeTruthy();
     expect(screen.getByText('Boost $5')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Confirm bill' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Verify code' })).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'Verify' })).toHaveLength(1);
     expect(confirmPartnerBillSubtotal).toHaveBeenCalledWith({
       sessionId: '55555555-5555-4555-8555-555555555555',
       eligibleSubtotalCents: 8200,
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Verify code' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
     const verified = await screen.findByText('Verified');
     const status = verified.closest('[role="status"]');
     expect(status?.textContent).toContain('Discount $20');
@@ -314,7 +326,7 @@ describe('PartnerRedeemClient', () => {
     const note = await screen.findByText(/below the offer minimum/);
     expect(note.textContent).toContain('so the Boost does not apply');
     expect(note.textContent).toContain('You can still verify the visit');
-    fireEvent.click(screen.getByRole('button', { name: 'Verify visit' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
     const verified = await screen.findByText('Verified');
     const status = verified.closest('[role="status"]');
     expect(status?.textContent).toContain('Wanderbite covers $0');

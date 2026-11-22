@@ -189,7 +189,6 @@ export function PartnerDashboard({
 
         {bill ? (
           <PartnerBoostBill
-            slug={restaurantSlug}
             code={bill.code}
             sessionId={bill.sessionId}
             minSpendCents={bill.minSpendCents}

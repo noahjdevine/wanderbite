@@ -91,13 +91,40 @@ describe('ShowRedemptionCode', () => {
         code="WB-LIVE1"
         expiresAt={new Date(Date.now() + 14 * 60 * 1000).toISOString()}
         status="issued"
-        boostLockNote="Boost is locked. It will apply once the restaurant confirms the bill."
+        boostLockNote="+$5 Boost locked. It will apply once the restaurant confirms the bill."
       />,
     );
     expect(view.querySelector('[data-boost-lock]')?.textContent).toBe(
-      'Boost is locked. It will apply once the restaurant confirms the bill.',
+      '+$5 Boost locked. It will apply once the restaurant confirms the bill.',
     );
     expect(view.textContent).toContain('WB-LIVE1');
+    expect(view.textContent).not.toContain('You saved');
+  });
+
+  it('shows the stored settlement and does not say the Boost is still locked', async () => {
+    const view = await render(
+      <ShowRedemptionCode
+        {...base}
+        code={null}
+        expiresAt={null}
+        status="verified"
+        verifiedAt="Nov 4, 2026, 7:00 PM"
+        discountLabel="$10 off"
+        minSpendLabel="$40 minimum spend"
+        boostLockNote="Boost locked: $5"
+        settledSummary="You saved $15 ($10 off + $5 Boost)"
+      />,
+    );
+    expect(view.querySelector('[data-settled-summary]')?.textContent).toBe(
+      'You saved $15 ($10 off + $5 Boost)',
+    );
+    expect(view.textContent).toContain('Verified');
+    expect(view.textContent).not.toContain('$40 minimum spend');
+    expect(view.textContent).not.toContain('Boost locked');
+    expect(view.textContent).not.toContain('Already verified');
+    expect(view.querySelector('[aria-live="polite"]')?.textContent).toBe(
+      'You saved $15 ($10 off + $5 Boost)',
+    );
   });
 
   it('counts down from the server deadline and re-reads when the page regains focus', async () => {

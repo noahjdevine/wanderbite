@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
+import { loadLockedBoostItemIds, loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
 import type { StoredRedemptionSettlement } from '@/lib/boost/settlement-store';
 
 const ROOT = path.resolve(__dirname, '../../..');
@@ -115,6 +115,66 @@ describe('challenge settlement read', () => {
     expect(source).not.toMatch(/quoteBoost|insert\(|update\(/);
     expect(source).toMatch(/arrivalSessionsEnabled\(\)/);
     expect(loader).toMatch(/loadStoredChallengeSavings/);
+    expect(loader).toMatch(/loadLockedBoostItemIds/);
     expect(loader).not.toMatch(/SETTLEMENT_COLUMNS|quoteBoost/);
+  });
+
+  it('reads an open locked Boost and skips a session with no lock', async () => {
+    const calls: string[] = [];
+    const supabase = {
+      from(table: string) {
+        calls.push(table);
+        return {
+          select(columns: string) {
+            calls.push(columns);
+            return {
+              in() {
+                return {
+                  eq() {
+                    return Promise.resolve({
+                      data: [
+                        { challenge_item_id: 'item-locked', locked_boost_id: 'boost-5' },
+                        { challenge_item_id: 'item-open', locked_boost_id: null },
+                      ],
+                      error: null,
+                    });
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
+
+    delete process.env.E07_ARRIVAL_SESSIONS_ENABLED;
+    await expect(loadLockedBoostItemIds(supabase, ['item-locked'])).resolves.toEqual(new Set());
+    expect(calls).toEqual([]);
+
+    process.env.E07_ARRIVAL_SESSIONS_ENABLED = 'true';
+    const locked = await loadLockedBoostItemIds(supabase, ['item-locked', 'item-open']);
+    expect(locked).toEqual(new Set(['item-locked']));
+    expect(calls).toEqual(['boost_arrival_sessions', 'challenge_item_id, locked_boost_id']);
+
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const failed = {
+      from() {
+        return {
+          select() {
+            return {
+              in() {
+                return {
+                  eq() {
+                    return Promise.resolve({ data: null, error: { message: 'unavailable' } });
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+    };
+    await expect(loadLockedBoostItemIds(failed, ['item-locked'])).resolves.toEqual(new Set());
+    error.mockRestore();
   });
 });

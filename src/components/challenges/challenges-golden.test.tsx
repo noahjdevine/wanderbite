@@ -151,7 +151,7 @@ describe('golden challenges', () => {
     expect(text).toContain('26 days left this month');
     expect(text).toContain('0');
     expect(text).toContain('/2');
-    expect(text).toContain('verified');
+    expect(text).toContain('verified this month');
     expect(text).toContain('code issued');
     expect(text).toContain('1');
     expect(text).toContain('swap left');

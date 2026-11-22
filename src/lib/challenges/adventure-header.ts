@@ -110,7 +110,7 @@ export function adventureStatTiles(input: {
       id: 'verified',
       value: String(verified),
       suffix: `/${items.length}`,
-      label: 'verified',
+      label: 'verified this month',
     });
     tiles.push({
       id: 'codes',

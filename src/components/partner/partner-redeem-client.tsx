@@ -124,8 +124,8 @@ export function PartnerRedeemClient({
         <p className="wb-partner-eyebrow">Redeem mode</p>
         <h1 className="wb-partner-title wb-partner-follow">{restaurantName}</h1>
         <p className="wb-partner-redeem-copy">
-          Scan the guest&apos;s QR code or type their Wanderbite code. Then apply the discount on
-          the check in your POS.
+          Enter the guest code. If a Boost is locked, confirm the bill next, then verify once.
+          Otherwise this checks the code and verifies the visit.
         </p>
       </div>
 
@@ -168,7 +168,6 @@ export function PartnerRedeemClient({
 
       {state.status === 'needs_bill' ? (
         <PartnerBoostBill
-          slug={slug}
           code={state.code}
           sessionId={state.sessionId}
           minSpendCents={state.minSpendCents}
@@ -226,7 +225,7 @@ export function PartnerRedeemClient({
                 Verifying…
               </>
             ) : (
-              'Verify code'
+              'Check code'
             )}
           </button>
         </form>

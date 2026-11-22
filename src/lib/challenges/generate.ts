@@ -27,10 +27,10 @@ import { varietyCycleMonthLowerBound } from '@/lib/challenges/restaurant-safety'
 import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
-import { loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
-import { sealedBoostBonusCents } from '@/lib/boost/arrival';
+import { loadLockedBoostItemIds, loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
+import { parseSealedBoosts, sealedBoostBonusCents } from '@/lib/boost/arrival';
 import { arrivalSessionsEnabled, visitProblemsEnabled } from '@/lib/boost/flag';
-import { challengeVisitSavings } from '@/lib/boost/savings-copy';
+import { boostWindowLabel, challengeVisitSavings } from '@/lib/boost/savings-copy';
 import { loadMemberSavingsCorrections } from '@/lib/boost/visit-problem-store';
 import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
 import {
@@ -130,6 +130,17 @@ export type GeneratedChallengeItem = {
    * and the offer has a Boost. Absent otherwise. Not a summed quote.
    */
   boostBonusCents?: number;
+  /**
+   * Short sealed window for that bonus, such as "Fri 10 PM–1 AM".
+   * Null when the window cannot be shown and the ticket should say Boost hours.
+   * Absent when there is no bonus.
+   */
+  boostWindowLabel?: string | null;
+  /**
+   * True when an open arrival session has locked a Boost for this item.
+   * Absent when the arrival flag is off or no lock was read.
+   */
+  boostLocked?: boolean;
   /**
    * True when storedSavingsCents is the admin correction for this visit.
    * Absent when the visit-problem flag is off or this visit has no correction.
@@ -848,17 +859,22 @@ async function loadChallengeItemsWithRestaurants(
     .filter((id): id is string => Boolean(id));
   const versionBase = new Map<string, { discount_amount_cents: number; min_spend_cents: number }>();
   const versionBoost = new Map<string, number>();
+  const versionWindow = new Map<string, string | null>();
   if (versionIds.length > 0) {
     if (arrivalSessionsEnabled()) {
       const { data: versions } = await supabase
         .from('offer_versions')
-        .select('id, tiers, boosts')
+        .select('id, tiers, boosts, timezone')
         .in('id', versionIds);
       for (const version of versions ?? []) {
         const base = lowestSealedBase(version.tiers);
         if (base) versionBase.set(version.id, base);
         const bonus = sealedBoostBonusCents(version.boosts);
-        if (bonus != null) versionBoost.set(version.id, bonus);
+        if (bonus == null) continue;
+        versionBoost.set(version.id, bonus);
+        const boosts = parseSealedBoosts(version.boosts);
+        const zone = typeof version.timezone === 'string' && version.timezone ? version.timezone : 'America/Chicago';
+        versionWindow.set(version.id, boosts ? boostWindowLabel(boosts, bonus, zone) : null);
       }
     } else {
       const { data: versions } = await supabase
@@ -917,7 +933,7 @@ async function loadChallengeItemsWithRestaurants(
           .select('redemption_id, note')
           .in('redemption_id', redemptionIds)
       : Promise.resolve({ data: [] as { redemption_id: string; note: string | null }[] });
-  const [noteResult, storedSavings, corrections] = await Promise.all([
+  const [noteResult, storedSavings, corrections, lockedBoostItems] = await Promise.all([
     noteQuery,
     // The admin client's generics are too deep to check against this read port.
     loadStoredChallengeSavings(
@@ -928,6 +944,11 @@ async function loadChallengeItemsWithRestaurants(
     visitProblemsEnabled() && redemptionIds.length > 0
       ? loadMemberSavingsCorrections(userId, redemptionIds, 'challenges')
       : Promise.resolve(null),
+    // Flag off does not query arrival sessions.
+    loadLockedBoostItemIds(
+      supabase as unknown as Parameters<typeof loadLockedBoostItemIds>[0],
+      itemIds,
+    ),
   ]);
   for (const row of noteResult.data ?? []) {
     const note = row as { redemption_id: string; note: string | null };
@@ -978,8 +999,12 @@ async function loadChallengeItemsWithRestaurants(
       ...(shownSavings.cents != null ? { storedSavingsCents: shownSavings.cents } : {}),
       ...(shownSavings.corrected ? { savingsCorrected: true } : {}),
       ...(item.offer_version_id && versionBoost.has(item.offer_version_id)
-        ? { boostBonusCents: versionBoost.get(item.offer_version_id) }
+        ? {
+            boostBonusCents: versionBoost.get(item.offer_version_id),
+            boostWindowLabel: versionWindow.get(item.offer_version_id) ?? null,
+          }
         : {}),
+      ...(lockedBoostItems.has(item.id) ? { boostLocked: true } : {}),
       visitStatus: deriveVisitStatus({
         item: {
           status: item.status,

@@ -34,7 +34,11 @@ import {
   challengeCardExpired,
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
-import { challengeBoostLine, challengeTicketOffer } from '@/lib/boost/savings-copy';
+import {
+  challengeBoostLockedCopy,
+  challengeBoostOfferCopy,
+  challengeTicketOffer,
+} from '@/lib/boost/savings-copy';
 import { memoryActionForStatus } from '@/lib/notes/note-rules';
 import { visitStatusCountsAsVisit } from '@/lib/visits/visit-status';
 import { REDEMPTION_CODE_LIFETIME_LABEL } from '@/lib/redemption-expiry';
@@ -156,7 +160,11 @@ export function AdventureTicket({
   });
   const countedVisit = item.visitStatus != null && visitStatusCountsAsVisit(item.visitStatus);
   const offerBoost =
-    item.offer.available && !countedVisit ? challengeBoostLine(item.boostBonusCents) : null;
+    item.offer.available && !countedVisit
+      ? item.boostLocked
+        ? challengeBoostLockedCopy(item.boostBonusCents)
+        : challengeBoostOfferCopy(item.boostBonusCents, item.boostWindowLabel)
+      : null;
   const status = trackStatus(item);
   const badge = photoBadge(item.visitStatus);
   const isAssigned = item.challengeItem.status === 'assigned';
@@ -289,6 +297,8 @@ export function AdventureTicket({
           boostCheckIn && isAssigned && !windowClosed && Boolean(item.challengeItem.offer_version_id) && hasCoords
         }
         challengeItemId={item.challengeItem.id}
+        alreadyLocked={item.boostLocked === true}
+        bonusCents={item.boostBonusCents}
       />
       {isAssigned && !windowClosed && canSwap ? (
         <CtaButton

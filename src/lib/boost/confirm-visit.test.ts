@@ -242,7 +242,23 @@ describe('visit confirmation', () => {
       settlement: store.port,
       arrival: arrival({ active: placeholderQuote() }).arrival,
     }));
-    expect(pending).toEqual({ discountLabel: null, lockNote: BOOST_LOCK_PENDING_NOTE });
+    expect(pending).toEqual({
+      discountLabel: null,
+      lockNote: BOOST_LOCK_PENDING_NOTE,
+      settledSummary: null,
+    });
+    const named = await memberCodeBoostPresentation({
+      ...load({
+        settlement: store.port,
+        arrival: arrival({ active: placeholderQuote() }).arrival,
+      }),
+      sealedBoosts: [{ id: 'boost-5', bonusCents: 500 }],
+    });
+    expect(named.lockNote).toBe(
+      '+$5 Boost locked. It will apply once the restaurant confirms the bill.',
+    );
+    expect(named.settledSummary).toBeNull();
+    expect(named.lockNote).not.toContain('You saved');
     const unlocked = await memberCodeBoostPresentation(load({
       settlement: store.port,
       arrival: arrival({
@@ -260,8 +276,42 @@ describe('visit confirmation', () => {
     }));
     expect(presented).toEqual({
       discountLabel: '$25 off',
-      lockNote: 'Boost locked: $5',
+      lockNote: '+$5 Boost locked',
+      settledSummary: null,
     });
+    expect(presented.lockNote).not.toContain('You saved');
+  });
+
+  it('replaces a stored settlement with the saved summary and does not say locked', async () => {
+    const store = memorySettlement({
+      initial: {
+        settlement_kind: 'consume_quote',
+        settled_at: NOW.toISOString(),
+        quote_id: QUOTE,
+        quote_version: 2,
+        base_discount_cents: 1000,
+        boost_discount_cents: 500,
+        total_discount_cents: 1500,
+        eligible_subtotal_cents: 6000,
+        below_minimum: false,
+        tier_id: 'threshold:4000',
+        boost_id: 'boost-5',
+        locked_boost_id: 'boost-5',
+        quote_expires_at: EXPIRES,
+        sealed_discount_amount_cents: null,
+        sealed_min_spend_cents: null,
+      },
+    });
+    const presented = await memberCodeBoostPresentation(load({
+      settlement: store.port,
+      arrival: arrival({ active: placeholderQuote() }).arrival,
+    }));
+    expect(presented).toEqual({
+      discountLabel: '$15 off',
+      lockNote: null,
+      settledSummary: 'You saved $15 ($10 off + $5 Boost)',
+    });
+    expect(presented.settledSummary).not.toContain('locked');
   });
 
   it('writes nothing when the visit deadline is already past', async () => {
