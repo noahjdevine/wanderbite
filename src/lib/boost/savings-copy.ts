@@ -147,21 +147,52 @@ function formatWeeklyWindow(boost: WeeklyBoost): string | null {
   return `${day} ${start}–${end}`;
 }
 
+function datedFace(
+  instant: Date,
+  timeZone: string,
+): { day: string; clock: string } | null {
+  let parts: Intl.DateTimeFormatPart[];
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hourCycle: 'h12',
+    }).formatToParts(instant);
+  } catch {
+    return null;
+  }
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+  const weekday = value('weekday');
+  const month = value('month');
+  const day = value('day');
+  const year = value('year');
+  const hour = Number(value('hour'));
+  const minute = Number(value('minute'));
+  const period = value('dayPeriod')?.toUpperCase();
+  if (!weekday || !month || !day || !year) return null;
+  if (!Number.isInteger(hour) || !Number.isInteger(minute)) return null;
+  if (period !== 'AM' && period !== 'PM') return null;
+  const clock = minute === 0 ? `${hour} ${period}` : `${hour}:${String(minute).padStart(2, '0')} ${period}`;
+  return { day: `${year}-${month}-${day}`, clock: `${weekday} ${month} ${day}, ${clock}` };
+}
+
 function formatDatedWindow(boost: DatedBoost, timeZone: string): string | null {
   const start = new Date(boost.start);
   const end = new Date(boost.end);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-  try {
-    const fmt = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      weekday: 'short',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
-    return `${fmt.format(start)}–${fmt.format(end)}`;
-  } catch {
-    return null;
+  const startFace = datedFace(start, timeZone);
+  const endFace = datedFace(end, timeZone);
+  if (!startFace || !endFace) return null;
+  if (startFace.day === endFace.day) {
+    const endClock = endFace.clock.slice(endFace.clock.lastIndexOf(', ') + 2);
+    return `${startFace.clock}–${endClock}`;
   }
+  return `${startFace.clock}–${endFace.clock}`;
 }
 
 /**
@@ -227,7 +258,8 @@ export function challengeBoostLockedCopy(bonusCents: number | null | undefined):
 
 /**
  * Settled member sentence from stored settlement cents.
- * Null when any part is missing. This does not recompute a quote.
+ * A Boost above 0 keeps the base and Boost parts. Zero or a missing Boost
+ * is the base amount only, with no "+ $0 Boost". This does not recompute a quote.
  */
 export function memberSettledSummary(input: {
   totalDiscountCents?: number | null;
@@ -237,8 +269,13 @@ export function memberSettledSummary(input: {
   const total = wholeSavingsCents(input.totalDiscountCents);
   const base = wholeSavingsCents(input.baseDiscountCents);
   const boost = wholeSavingsCents(input.boostDiscountCents);
-  if (total == null || base == null || boost == null) return null;
-  return `You saved ${formatCents(total)} (${formatCents(base)} off + ${formatCents(boost)} Boost)`;
+  if (boost != null && boost > 0) {
+    if (total == null || base == null) return null;
+    return `You saved ${formatCents(total)} (${formatCents(base)} off + ${formatCents(boost)} Boost)`;
+  }
+  const saved = base ?? total;
+  if (saved == null) return null;
+  return `You saved ${formatCents(saved)}`;
 }
 
 /**

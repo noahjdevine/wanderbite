@@ -3,7 +3,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { AdventureTicket } from '@/components/challenges/adventure-ticket';
-import { BOOST_CHECK_IN_LABEL, BoostCheckIn } from '@/components/challenges/boost-check-in';
+import {
+  BOOST_CHECK_IN_LABEL,
+  BOOST_CHECK_IN_SESSION_OPEN,
+  BoostCheckIn,
+} from '@/components/challenges/boost-check-in';
 
 const checkInMemberBoost = vi.fn();
 const getCurrentPosition = vi.fn();
@@ -262,5 +266,43 @@ describe('Boost check-in on the challenge ticket', () => {
     expect(already.querySelector('[data-boost-locked]')?.textContent).toContain('+$5 Boost locked');
     expect(already.textContent).not.toContain(BOOST_CHECK_IN_LABEL);
     expect(getCurrentPosition).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an open check-in unlocked when that session has no Boost lock', async () => {
+    checkInMemberBoost.mockResolvedValue({ ok: false, code: 'session_open' });
+    getCurrentPosition.mockImplementation((success: (position: GeolocationPosition) => void) => {
+      success({
+        coords: {
+          latitude: 33.2,
+          longitude: -96.6,
+          accuracy: 10,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+          toJSON() {
+            return {};
+          },
+        },
+        timestamp: Date.now(),
+        toJSON() {
+          return {};
+        },
+      });
+    });
+    const view = await render(
+      <BoostCheckIn enabled bonusCents={500} challengeItemId="44444444-4444-4444-8444-444444444444" />,
+    );
+    const button = Array.from(view.querySelectorAll('button')).find((node) =>
+      node.textContent?.includes(BOOST_CHECK_IN_LABEL),
+    );
+    await act(async () => {
+      button?.click();
+    });
+    expect(view.querySelector('[data-boost-locked]')).toBeNull();
+    expect(view.textContent).toContain(BOOST_CHECK_IN_SESSION_OPEN);
+    expect(view.textContent).toContain(BOOST_CHECK_IN_LABEL);
+    expect(view.textContent).not.toContain('+$5 Boost locked');
+    expect(view.textContent).not.toContain('Boost locked');
   });
 });

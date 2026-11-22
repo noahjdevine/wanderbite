@@ -7,6 +7,9 @@ import { CtaButton } from '@/components/wb/cta-button';
 import { memberLockedBoostNote } from '@/lib/boost/savings-copy';
 
 export const BOOST_CHECK_IN_LABEL = "I'm here — lock Boost";
+/** An open arrival row with no locked_boost_id. Not a Boost lock. */
+export const BOOST_CHECK_IN_SESSION_OPEN =
+  'A check-in is already open for this visit. Staff can finish it at the counter.';
 export const BOOST_CHECK_IN_LOCATION_OFF =
   'Location is off, so Boost stays unlocked. Your usual discount still works.';
 export const BOOST_CHECK_IN_LOCATION_FAILED =
@@ -36,7 +39,7 @@ function noteFor(code: string): string {
     case 'boost_not_available':
       return "Boost isn't on at this restaurant right now. Your usual discount still works.";
     case 'session_open':
-      return 'This visit already has a Boost check-in. Your usual discount still works.';
+      return BOOST_CHECK_IN_SESSION_OPEN;
     default:
       return "Boost isn't locked. Your usual discount still works.";
   }
@@ -86,7 +89,7 @@ export function BoostCheckIn({
           },
         })
           .then((result) => {
-            if (result.ok || (!result.ok && result.code === 'session_open')) {
+            if (result.ok) {
               setLockedLocally(true);
               setNote(lockedNote);
               return;

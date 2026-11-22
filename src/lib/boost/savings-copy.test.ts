@@ -202,7 +202,34 @@ describe('boost savings copy', () => {
         boostDiscountCents: 500,
       }),
     ).toBe('You saved $15 ($10 off + $5 Boost)');
-    expect(memberSettledSummary({ totalDiscountCents: 1500, baseDiscountCents: 1000 })).toBeNull();
+    expect(
+      memberSettledSummary({
+        totalDiscountCents: 1000,
+        baseDiscountCents: 1000,
+        boostDiscountCents: 0,
+      }),
+    ).toBe('You saved $10');
+    expect(
+      memberSettledSummary({
+        totalDiscountCents: 0,
+        baseDiscountCents: 0,
+        boostDiscountCents: 0,
+      }),
+    ).toBe('You saved $0');
+    expect(memberSettledSummary({ totalDiscountCents: 1500, baseDiscountCents: 1000 })).toBe(
+      'You saved $10',
+    );
+    expect(
+      memberSettledSummary({
+        totalDiscountCents: 1000,
+        baseDiscountCents: 1000,
+        boostDiscountCents: null,
+      }),
+    ).toBe('You saved $10');
+    expect(
+      memberSettledSummary({ totalDiscountCents: 1000, baseDiscountCents: 1000, boostDiscountCents: 0 }),
+    ).not.toContain('Boost');
+    expect(memberSettledSummary({ totalDiscountCents: null, baseDiscountCents: null })).toBeNull();
     expect(
       boostWindowLabel(
         [
@@ -227,6 +254,21 @@ describe('boost savings copy', () => {
         'America/Chicago',
       ),
     ).toBe('Fri 10 PM–1 AM');
+    expect(
+      boostWindowLabel(
+        [
+          {
+            id: 'dated-5',
+            kind: 'dated',
+            start: '2026-12-06T00:00:00.000Z',
+            end: '2026-12-06T03:00:00.000Z',
+            bonusCents: 500,
+          },
+        ],
+        500,
+        'America/Chicago',
+      ),
+    ).toBe('Sat Dec 5, 6 PM–9 PM');
     expect(boostWindowLabel([], 500, 'America/Chicago')).toBeNull();
     expect(
       belowMinimumQuoteCopy({ belowMinimum: true, totalDiscountCents: 0, minSpendCents: 4000 }),
