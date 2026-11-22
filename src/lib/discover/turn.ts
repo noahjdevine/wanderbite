@@ -631,7 +631,8 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
           vibeChanged:
             refine === 'new-vibe' &&
             Boolean(vibe) &&
-            !excludeRestaurantIds.includes(chosen.id),
+            excludeRestaurantIds.at(-1) !== chosen.id,
+          samePlace: refine === 'new-vibe' && excludeRestaurantIds.at(-1) === chosen.id,
           facts: discoverCardFacts(briefingFacts.byRestaurantId[chosen.id] ?? []),
           visitedRestaurantIds,
         }),

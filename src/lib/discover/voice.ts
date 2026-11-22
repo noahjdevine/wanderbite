@@ -59,11 +59,21 @@ export function cheaperVoiceLine(name: string, landed: boolean): string {
     : `Nothing easier on the wallet than ${place}.`;
 }
 
-export function vibeVoiceLine(name: string, changed: boolean): string {
+/**
+ * `same-place` is the restaurant just shown.
+ * `new-vibe` is a different restaurant after the vibe chip moved.
+ * `new-scene` is a different restaurant when the vibe itself did not change.
+ */
+export function vibeVoiceLine(
+  name: string,
+  shift: 'same-place' | 'new-vibe' | 'new-scene',
+): string {
   const place = placeName(name);
-  return changed
-    ? `Switching it up: ${place}.`
-    : `I couldn't find a different vibe. Sticking with ${place}.`;
+  if (shift === 'new-vibe') return `Switching it up: ${place}.`;
+  if (shift === 'new-scene') {
+    return `Couldn't find a totally different vibe, but here's a change of scene: ${place}.`;
+  }
+  return `I couldn't find a different vibe. Sticking with ${place}.`;
 }
 
 export function anotherIdeaLine(name: string): string {
@@ -236,6 +246,8 @@ export function selectMemberVoice(args: {
   poolRestarted?: boolean;
   cheaperLanded?: boolean;
   vibeChanged?: boolean;
+  /** True when this New vibe pick is the restaurant just shown. */
+  samePlace?: boolean;
   restaurantTags?: string[] | null;
   preferredCuisine?: string | null;
   priceRange?: string | null;
@@ -258,6 +270,8 @@ function chooseMemberVoice(args: {
   poolRestarted?: boolean;
   cheaperLanded?: boolean;
   vibeChanged?: boolean;
+  /** True when this New vibe pick is the restaurant just shown. */
+  samePlace?: boolean;
   restaurantTags?: string[] | null;
   preferredCuisine?: string | null;
   priceRange?: string | null;
@@ -300,9 +314,10 @@ function chooseMemberVoice(args: {
     };
   }
   if (args.refine === 'new-vibe') {
+    const shift = args.samePlace === true ? 'same-place' : args.vibeChanged === true ? 'new-vibe' : 'new-scene';
     return {
       badge: 'New vibe',
-      line: vibeVoiceLine(args.name, args.vibeChanged === true),
+      line: vibeVoiceLine(args.name, shift),
       card: 'pick',
     };
   }

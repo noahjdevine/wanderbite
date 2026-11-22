@@ -263,7 +263,7 @@ describe('discover screen reducer', () => {
     expect(next.message).toBe('something spicy instead');
     expect(next.surprise).toBe(false);
     expect(next.vibe).toBeNull();
-    expect(next.dietaryFlags).toEqual([]);
+    expect(next.dietaryFlags).toEqual(['vegan']);
     expect(draftToSpinBody(next).message).toBe('something spicy instead');
     expect(draftToSpinBody(next).vibe).toBeUndefined();
     const kept = followUpDiscoverDraft(baseDraft, 'date night tacos');
@@ -287,12 +287,13 @@ describe('discover screen reducer', () => {
       timeOfDay: null,
       priceRange: null,
       preferredCuisine: null,
-      dietaryFlags: [],
+      dietaryFlags: ['vegetarian'],
     });
     expect(draftToSpinBody(fresh).message).toBe('sushi');
     expect(draftToSpinBody(fresh).vibe).toBeUndefined();
     expect(draftToSpinBody(fresh).timeOfDay).toBeUndefined();
-    expect(draftToSpinBody(fresh).dietaryQuick).toBeUndefined();
+    expect(draftToSpinBody(fresh).dietaryQuick).toEqual(['vegetarian']);
+    expect(applyQuickChip({ ...baseDraft, dietaryFlags: ['vegetarian'] }, { label: 'Date night', vibe: 'Date Night' }).dietaryFlags).toEqual(['vegetarian']);
     const carried = draftForNewTypedAsk(baseDraft, 'open late');
     expect(carried.timeOfDay).toBeNull();
     expect(refineDiscoverDraft({ ...baseDraft, vibe: null }, 'new-vibe').vibe).toBeNull();

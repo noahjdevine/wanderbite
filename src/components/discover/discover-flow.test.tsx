@@ -87,6 +87,7 @@ function postedBodies(): {
   priceRange?: string;
   vibe?: string;
   timeOfDay?: string;
+  preferredCuisine?: string;
   dietaryQuick?: string[];
   askTone?: string;
   refine?: string;
@@ -103,6 +104,7 @@ function postedBodies(): {
         priceRange?: string;
         vibe?: string;
         timeOfDay?: string;
+        preferredCuisine?: string;
         dietaryQuick?: string[];
         askTone?: string;
         refine?: string;
@@ -566,6 +568,31 @@ describe('DiscoverFlow', () => {
     expect(fresh?.timeOfDay).toBeUndefined();
     expect(fresh?.dietaryQuick).toBeUndefined();
     expect(fresh?.priceRange).toBeUndefined();
+  });
+
+  it('keeps a session vegetarian filter through a chip and a new typed ask', async () => {
+    render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Refine' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vegetarian' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Date night' }));
+    await flush();
+    expect(postedBodies()[0]?.dietaryQuick).toEqual(['vegetarian']);
+    expect(postedBodies()[0]?.vibe).toBe('Date Night');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'ramen' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    const fresh = postedBodies().at(-1);
+    expect(fresh?.message).toBe('ramen');
+    expect(fresh?.dietaryQuick).toEqual(['vegetarian']);
+    expect(fresh?.vibe).toBeUndefined();
+    expect(fresh?.timeOfDay).toBeUndefined();
+    expect(fresh?.priceRange).toBeUndefined();
+    expect(fresh?.preferredCuisine).toBeUndefined();
   });
 
   it('clears a date-night chip when the next typed ask does not name it', async () => {

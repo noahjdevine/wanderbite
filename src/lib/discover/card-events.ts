@@ -61,8 +61,10 @@ export type DiscoverCardInput = {
   poolRestarted?: boolean;
   /** Cheaper found a lower listed price than the previous ask. */
   cheaperLanded?: boolean;
-  /** New vibe returned a restaurant that was not just shown. */
+  /** New vibe returned a restaurant that was not just shown, and the vibe chip moved. */
   vibeChanged?: boolean;
+  /** New vibe returned the restaurant that was just shown. */
+  samePlace?: boolean;
   /** Already capped card notes for the chosen restaurant. Empty omits the key. */
   facts?: readonly DiscoverCardFact[];
   /**
@@ -122,6 +124,7 @@ export function eventsForDiscoverCard(args: DiscoverCardInput): DiscoverEvent[] 
     poolRestarted: args.poolRestarted,
     cheaperLanded: args.cheaperLanded,
     vibeChanged: args.vibeChanged,
+    samePlace: args.samePlace,
     restaurantTags: args.chosen.cuisine_tags,
     preferredCuisine: args.preferredCuisine,
     priceRange: args.priceRange,

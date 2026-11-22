@@ -65,9 +65,12 @@ describe('tweak framing', () => {
   it('reads Cheaper and New vibe as tweaks, including after surprise', () => {
     expect(cheaperVoiceLine('Taco House', true)).toBe('A little easier on the wallet: Taco House.');
     expect(cheaperVoiceLine('Taco House', false)).toBe('Nothing easier on the wallet than Taco House.');
-    expect(vibeVoiceLine('Taco House', true)).toBe('Switching it up: Taco House.');
-    expect(vibeVoiceLine('Taco House', false)).toBe(
+    expect(vibeVoiceLine('Taco House', 'new-vibe')).toBe('Switching it up: Taco House.');
+    expect(vibeVoiceLine('Taco House', 'same-place')).toBe(
       "I couldn't find a different vibe. Sticking with Taco House.",
+    );
+    expect(vibeVoiceLine('The Common Table', 'new-scene')).toBe(
+      "Couldn't find a totally different vibe, but here's a change of scene: The Common Table.",
     );
     const cheaper = selectMemberVoice({
       name: 'Taco House',
@@ -86,9 +89,31 @@ describe('tweak framing', () => {
       askTone: 'request',
       refine: 'new-vibe',
       vibeChanged: false,
+      samePlace: true,
     });
     expect(stuck.line).toBe("I couldn't find a different vibe. Sticking with Union Bear.");
     expect(stuck.card).toBe('pick');
+    const scene = selectMemberVoice({
+      name: 'The Common Table',
+      message: '',
+      askTone: 'request',
+      refine: 'new-vibe',
+      vibeChanged: false,
+      samePlace: false,
+    });
+    expect(scene.line).toBe(
+      "Couldn't find a totally different vibe, but here's a change of scene: The Common Table.",
+    );
+    expect(scene.line).not.toContain('Sticking with');
+    const switched = selectMemberVoice({
+      name: 'The Common Table',
+      message: 'date night',
+      askTone: 'request',
+      refine: 'new-vibe',
+      vibeChanged: true,
+      samePlace: false,
+    });
+    expect(switched.line).toBe('Switching it up: The Common Table.');
   });
 
   it('knows when a cheaper click actually landed lower', () => {

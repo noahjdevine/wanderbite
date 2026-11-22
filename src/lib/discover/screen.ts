@@ -295,7 +295,6 @@ export function applyQuickChip(draft: DiscoverDraft, chip: QuickChip): DiscoverD
       timeOfDay: null,
       priceRange: null,
       preferredCuisine: null,
-      dietaryFlags: [],
     };
   }
   const message = draft.message.trim().length > 0 ? draft.message : chip.label;
@@ -307,7 +306,6 @@ export function applyQuickChip(draft: DiscoverDraft, chip: QuickChip): DiscoverD
     timeOfDay: null,
     priceRange: null,
     preferredCuisine: null,
-    dietaryFlags: [],
   };
 }
 
@@ -361,8 +359,8 @@ export function timeKeptByMessage(
 
 /**
  * A newly typed ask replaces the previous one.
- * Chip vibes, hours, price, cuisine, and session dietary filters do not come along
- * unless the new words name that vibe or time. Saved account dietaries are separate.
+ * Chip vibes, hours, price, and cuisine do not come along unless the new words
+ * name that vibe or time. Session dietary flags stay until the dietary pill changes them.
  */
 export function draftForNewTypedAsk(base: DiscoverDraft, message: string): DiscoverDraft {
   return {
@@ -373,7 +371,6 @@ export function draftForNewTypedAsk(base: DiscoverDraft, message: string): Disco
     timeOfDay: timeKeptByMessage(message, base.timeOfDay),
     priceRange: null,
     preferredCuisine: null,
-    dietaryFlags: [],
   };
 }
 
