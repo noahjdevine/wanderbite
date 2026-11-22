@@ -3,6 +3,7 @@ import {
   ABOUT_BRIEFING_FIELD,
   BRIEFING_FIELD_LABELS,
   DISCOVER_BRIEFING_FIELDS,
+  briefingBodyMaxChars,
   formatBriefingChecked,
   httpsSourceUrl,
   type BriefingFact,
@@ -41,7 +42,7 @@ function isCardField(value: string): value is DiscoverCardFactField {
 function usableBody(fact: BriefingFact): boolean {
   if (fact.sampleLabel) return false;
   const text = fact.text.trim();
-  if (!text || text.length > 400) return false;
+  if (!text || text.length > briefingBodyMaxChars(fact.field)) return false;
   if (!httpsSourceUrl(fact.sourceUrl)) return false;
   if (!formatBriefingChecked(fact.lastVerifiedAt)) return false;
   return true;

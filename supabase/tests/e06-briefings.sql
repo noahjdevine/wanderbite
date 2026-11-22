@@ -81,6 +81,60 @@ begin
     raise exception 'FAIL: fact text over 400 characters was accepted';
   exception when check_violation then null; end;
 
+  insert into public.restaurant_briefing_facts (
+    restaurant_id, field, body, source_url, last_verified_at, status
+  ) values (
+    'e06a2000-0000-4000-8000-000000000010',
+    'about',
+    repeat('a', 600),
+    'https://example.com/e06-about-600',
+    now(),
+    'paused'
+  );
+  if (
+    select char_length(body) from public.restaurant_briefing_facts
+    where restaurant_id = 'e06a2000-0000-4000-8000-000000000010'
+      and field = 'about'
+  ) is distinct from 600 then
+    raise exception 'FAIL: about text of 600 characters was not stored';
+  end if;
+  delete from public.restaurant_briefing_facts
+  where restaurant_id = 'e06a2000-0000-4000-8000-000000000010'
+    and field = 'about';
+
+  begin
+    insert into public.restaurant_briefing_facts (
+      restaurant_id, field, body, source_url, last_verified_at, status
+    ) values (
+      'e06a2000-0000-4000-8000-000000000010',
+      'about',
+      repeat('a', 601),
+      'https://example.com/e06-about-601',
+      now(),
+      'paused'
+    );
+    raise exception 'FAIL: about text over 600 characters was accepted';
+  exception when check_violation then null; end;
+
+  if char_length(public.briefing_operator_text(repeat('a', 475), 'about')) is distinct from 475 then
+    raise exception 'FAIL: about operator text of 475 was refused';
+  end if;
+  if char_length(public.briefing_operator_text(repeat('a', 600), 'about')) is distinct from 600 then
+    raise exception 'FAIL: about operator text of 600 was refused';
+  end if;
+  begin
+    perform public.briefing_operator_text(repeat('a', 601), 'about');
+    raise exception 'FAIL: about operator text over 600 was accepted';
+  exception when sqlstate '22023' then null; end;
+  begin
+    perform public.briefing_operator_text(repeat('a', 401), 'parking');
+    raise exception 'FAIL: parking operator text over 400 was accepted';
+  exception when sqlstate '22023' then null; end;
+  begin
+    perform public.briefing_operator_text(repeat('a', 401));
+    raise exception 'FAIL: one-argument briefing text over 400 was accepted';
+  exception when sqlstate '22023' then null; end;
+
   begin
     insert into public.restaurant_briefing_facts (
       restaurant_id, field, body, source_url, last_verified_at, status

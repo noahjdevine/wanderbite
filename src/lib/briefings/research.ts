@@ -12,6 +12,7 @@ import { RESTAURANT_FACTS_GUIDE } from '@/lib/briefings/restaurant-facts-guide.g
 import {
   BRIEFING_FIELDS,
   RESEARCH_BRIEFING_FIELDS,
+  briefingBodyMaxChars,
   briefingSourceLabel,
   isBriefingField,
   isResearchBriefingField,
@@ -1946,7 +1947,7 @@ export function filterSupportedFacts(args: {
       continue;
     }
     const body = text.trim();
-    if (body.length < 1 || body.length > 400) {
+    if (body.length < 1 || body.length > briefingBodyMaxChars(field)) {
       pushDropped(dropped, droppedFacts, {
         field,
         text: body || null,
@@ -2801,7 +2802,7 @@ function mergePageAndPlacesFacts(
       });
       continue;
     }
-    if (!isBriefingField(fact.field) || fact.text.trim().length < 1 || fact.text.length > 400) {
+    if (!isBriefingField(fact.field) || fact.text.trim().length < 1 || fact.text.length > briefingBodyMaxChars(fact.field)) {
       pushDropped(dropped, droppedFacts, {
         field: fact.field,
         text: fact.text,

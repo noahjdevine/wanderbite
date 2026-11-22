@@ -31,6 +31,16 @@ export type ResearchBriefingField = (typeof RESEARCH_BRIEFING_FIELDS)[number];
 /** One friendly paragraph. When active, it replaces labeled facts for members. */
 export const ABOUT_BRIEFING_FIELD = 'about' as const;
 
+/** Labeled briefing facts stay within this length. */
+export const BRIEFING_FACT_MAX_CHARS = 400;
+
+/** An about paragraph may be longer than a labeled fact. */
+export const ABOUT_BRIEFING_MAX_CHARS = 600;
+
+export function briefingBodyMaxChars(field: string): number {
+  return field === ABOUT_BRIEFING_FIELD ? ABOUT_BRIEFING_MAX_CHARS : BRIEFING_FACT_MAX_CHARS;
+}
+
 /** Stored briefing fields, including the operator about paragraph. */
 export const BRIEFING_FIELDS = [...RESEARCH_BRIEFING_FIELDS, ABOUT_BRIEFING_FIELD] as const;
 

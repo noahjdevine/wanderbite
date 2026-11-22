@@ -178,7 +178,13 @@ describe('OPS-03 schema contract', () => {
     expect([...BRIEFING_FIELDS]).toEqual([...RESTAURANT_BRIEFING_FACT_FIELDS]);
     expect(sql).toContain('add column sources jsonb');
     expect(sql).toContain('revoke select on table public.restaurant_briefing_facts from public, anon, authenticated');
-    expect(sql).not.toMatch(/insert into public\.restaurant_briefing_facts/i);
+    expect(sql).toContain('drop constraint restaurant_briefing_facts_body_check');
+    expect(sql).toContain('between 1 and 600');
+    expect(sql).toContain('between 1 and 400');
+    expect(sql).toContain('briefing_operator_text(p_text text, p_field text)');
+    expect(sql).toContain("briefing_operator_text(p_value ->> 'text', v_field)");
+    expect(sql).toContain('briefing_operator_text(p_text, v_field)');
+    expect(sql).not.toMatch(/insert into public\.restaurant_briefing_facts[\s\S]{0,120}'about'/i);
     const grantAt = sql.indexOf('grant select (');
     expect(grantAt).toBeGreaterThan(-1);
     const grant = sql.slice(grantAt, sql.indexOf(') on table public.restaurant_briefing_facts', grantAt));

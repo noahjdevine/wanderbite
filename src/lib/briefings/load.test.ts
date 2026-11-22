@@ -199,6 +199,39 @@ describe('loadRestaurantBriefings', () => {
     );
   });
 
+  it('keeps an about paragraph through 600 characters and drops 601 and a long labeled fact', async () => {
+    const api = query({
+      data: [
+        row({
+          id: '18181818-1818-4181-8181-181818181818',
+          field: 'about',
+          body: 'A'.repeat(600),
+          is_sample: false,
+        }),
+        row({
+          id: '19191919-1919-4191-8191-191919191919',
+          restaurant_id: OTHER,
+          field: 'about',
+          body: 'B'.repeat(601),
+          is_sample: false,
+        }),
+        row({
+          id: '1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a',
+          restaurant_id: OTHER,
+          field: 'parking',
+          body: 'P'.repeat(401),
+          is_sample: false,
+        }),
+      ],
+      error: null,
+    });
+    from.mockImplementation(() => api);
+    process.env.E06_BRIEFINGS_ENABLED = 'true';
+    const loaded = await loadRestaurantBriefings({ restaurantIds: [RESTAURANT, OTHER] });
+    expect(loaded.byRestaurantId[RESTAURANT]?.map((fact) => fact.text)).toEqual(['A'.repeat(600)]);
+    expect(loaded.byRestaurantId[OTHER]).toBeUndefined();
+  });
+
   it('returns nothing when the table is missing', async () => {
     from.mockImplementation(() =>
       query({ data: null, error: { code: 'PGRST205', message: 'Could not find the table' } }),

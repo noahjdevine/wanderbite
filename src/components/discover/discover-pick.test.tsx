@@ -363,6 +363,76 @@ describe('DiscoverPick directions', () => {
     expect(screen.queryByText('example.com')).toBeNull();
   });
 
+  it('shows an about paragraph through 600 characters and hides 601', () => {
+    const paragraph = 'A'.repeat(475);
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: {
+            ...pickEvent({ id: 'rest-1', name: 'Noodle House' }),
+            facts: [
+              {
+                field: 'about',
+                label: '',
+                text: paragraph,
+                sourceUrl: 'https://example.com/about',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+              {
+                field: 'known_for',
+                label: 'Known for',
+                text: 'K'.repeat(401),
+                sourceUrl: 'https://example.com/known',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText(paragraph)).toBeTruthy();
+    expect(screen.queryByText('Known for')).toBeNull();
+    expect(screen.queryByText('K'.repeat(401))).toBeNull();
+    cleanup();
+
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: {
+            ...pickEvent({ id: 'rest-2', name: 'Noodle House' }),
+            facts: [
+              {
+                field: 'about',
+                label: '',
+                text: 'B'.repeat(601),
+                sourceUrl: 'https://example.com/about',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+              {
+                field: 'good_for',
+                label: 'Good for',
+                text: 'G'.repeat(401),
+                sourceUrl: 'https://example.com/good',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.queryByText('B'.repeat(601))).toBeNull();
+    expect(screen.queryByText('Good for')).toBeNull();
+    expect(screen.queryByText('G'.repeat(401))).toBeNull();
+  });
+
   it('shows a New to you chip with researched notes', () => {
     render(
       <DiscoverPick

@@ -66,6 +66,23 @@ describe('discover card facts', () => {
     expect(shown.map((item) => item.field)).toEqual(['vibe', 'good_for']);
   });
 
+  it('shows an about paragraph of 401 to 600 characters and hides 601', () => {
+    const shown = discoverCardFacts([
+      fact({ field: 'about', label: 'About', text: 'A'.repeat(475) }),
+      fact({ field: 'known_for', label: 'Known for', text: 'Known for brisket.' }),
+    ]);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]?.field).toBe('about');
+    expect(shown[0]?.text).toHaveLength(475);
+    const tooLong = discoverCardFacts([
+      fact({ field: 'about', label: 'About', text: 'A'.repeat(601) }),
+      fact({ field: 'good_for', label: 'Good for', text: 'G'.repeat(401) }),
+      fact({ field: 'vibe', text: 'The room is cozy and candlelit.' }),
+    ]);
+    expect(tooLong.map((item) => item.field)).toEqual(['vibe']);
+    expect(JSON.stringify(tooLong)).not.toContain('A'.repeat(601));
+  });
+
   it('drops samples, unsourced rows, empty text, and overlong text', () => {
     const shown = discoverCardFacts([
       fact({ field: 'known_for', text: 'Known for brisket.', sampleLabel: 'Sample' }),

@@ -19,6 +19,7 @@ import {
   type RestaurantBriefings,
   ABOUT_BRIEFING_FIELD,
   BRIEFING_FIELD_LABELS,
+  briefingBodyMaxChars,
   DISCOVER_BRIEFING_FIELDS,
   MEMBER_BRIEFING_FIELDS,
 } from '@/lib/briefings/types';
@@ -56,7 +57,7 @@ function toFact(row: BriefingRecord, options: LoadOptions): BriefingFact | null 
   if (options.dropSamples && row.is_sample) return null;
   if (!fieldAllowed(row.field, options.fields)) return null;
   const text = row.body.trim();
-  if (!text || text.length > 400) return null;
+  if (!text || text.length > briefingBodyMaxChars(row.field)) return null;
   const sourceUrl = httpsSourceUrl(row.source_url);
   if (!sourceUrl) return null;
   const checked = formatBriefingChecked(row.last_verified_at);

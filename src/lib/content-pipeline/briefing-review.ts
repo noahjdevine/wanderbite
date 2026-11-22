@@ -1,9 +1,7 @@
 import { briefingTextBlocked, readStoredChangeSummary } from '@/lib/content-pipeline/briefing-plan';
 import { normalizeOperatorText } from '@/lib/content-pipeline/activity-review';
-import { isBriefingField } from '@/lib/briefings/types';
+import { briefingBodyMaxChars, isBriefingField } from '@/lib/briefings/types';
 import type { Json } from '@/types/database.types';
-
-export const BRIEFING_FACT_MAX = 400;
 
 export type BriefingMemberRow = {
   restaurantId: string;
@@ -57,10 +55,11 @@ export function readBriefingDraft(row: {
   };
 }
 
-export function briefingPublishError(text: string): string | null {
+export function briefingPublishError(text: string, field?: string): string | null {
   const body = normalizeOperatorText(text);
   if (!body) return 'Fact text is required.';
-  if (body.length > BRIEFING_FACT_MAX) return `Fact text must be ${BRIEFING_FACT_MAX} characters or fewer.`;
+  const limit = briefingBodyMaxChars(field ?? '');
+  if (body.length > limit) return `Fact text must be ${limit} characters or fewer.`;
   if (briefingTextBlocked(body)) return 'That text is not a publishable briefing fact.';
   return null;
 }

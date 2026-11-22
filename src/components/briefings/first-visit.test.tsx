@@ -216,6 +216,54 @@ describe('FirstVisitBriefing', () => {
     expect(view.querySelectorAll('li')).toHaveLength(0);
   });
 
+  it('shows an about paragraph of 401 to 600 characters and hides 601', async () => {
+    const paragraph = 'A'.repeat(475);
+    const shown = await render(
+      <FirstVisitBriefing
+        headingId="brief-long-about"
+        facts={[
+          fact({
+            field: 'about',
+            label: 'About',
+            text: paragraph,
+            sampleLabel: null,
+          }),
+          fact(),
+        ]}
+      />,
+    );
+    expect(shown.textContent).toContain(paragraph);
+    expect(shown.textContent).not.toContain('Parking');
+    await act(async () => {
+      root?.unmount();
+    });
+    shown.remove();
+
+    const hidden = await render(
+      <FirstVisitBriefing
+        headingId="brief-too-long-about"
+        facts={[
+          fact({
+            field: 'about',
+            label: 'About',
+            text: 'A'.repeat(601),
+            sampleLabel: null,
+          }),
+          fact({
+            field: 'parking',
+            label: 'Parking',
+            text: 'P'.repeat(401),
+            sampleLabel: null,
+          }),
+        ]}
+      />,
+    );
+    expect(hidden.textContent).not.toContain('A'.repeat(601));
+    expect(hidden.textContent).not.toContain('Parking');
+    expect(hidden.textContent).not.toContain('P'.repeat(401));
+    expect(hidden.querySelector('section')).toBeNull();
+  });
+
   it('keeps labeled facts when the about row is not in the list', async () => {
     const view = await render(
       <FirstVisitBriefing
