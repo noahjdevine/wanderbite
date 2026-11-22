@@ -17,7 +17,7 @@ import {
   VERIFY_UNAVAILABLE_MESSAGE,
   enforcePartnerVerifyLimit,
 } from '@/lib/partner-verify-limit';
-import { createSupabaseArrivalStore } from '@/lib/boost/arrival-store';
+import { createSupabaseArrivalStore, lookupActiveQuote } from '@/lib/boost/arrival-store';
 import { persistVerifiedBoostConfirmation } from '@/lib/boost/confirm-visit';
 import { arrivalSessionsEnabled } from '@/lib/boost/flag';
 import { progressionLedgerEnabled } from '@/lib/progression/flag';
@@ -28,6 +28,7 @@ import {
 import { createSupabaseSettlementStore } from '@/lib/boost/settlement-store';
 import {
   BOOST_BILL_BEFORE_VERIFY_MESSAGE,
+  BOOST_CHECK_FAILED_MESSAGE,
   quoteStillNeedsSubtotal,
   verifyBoostFields,
 } from '@/lib/boost/savings-copy';
@@ -177,45 +178,59 @@ function messageForUnclaimedRow(
   return PARTNER_CODE_NOT_FOUND_MESSAGE;
 }
 
+type BoostBillCheck =
+  | { status: 'continue' }
+  | { status: 'hold'; sessionId: string; minSpendCents: number | null }
+  | { status: 'unread' };
+
 /**
  * A locked Boost whose quote is still the $0 placeholder must not be verified
  * yet. Settlement is written only when verify runs after a staff subtotal.
- * No lock, a confirmed quote, and the flag off return null and verify as today.
+ * `record_boost_settlement` updates a row that is already verified, so a read
+ * failure here must not call `verify_redemption`. A clean miss still does.
+ * Code `expires_at` is the only clock this check uses. It is not the 840-hour
+ * assignment deadline and not a carried credit expiry.
  */
 async function lockedBoostBillHold(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   tokenHash: string,
   partnerRestaurantId: string,
-): Promise<{ sessionId: string; minSpendCents: number | null } | null> {
+): Promise<BoostBillCheck> {
   const { data, error } = await supabase
     .from('redemptions')
     .select('id, status, restaurant_id, expires_at, challenge_item_id')
     .eq('token_hash', tokenHash)
     .maybeSingle();
-  if (error || !data) return null;
-  if (data.status !== 'issued' || data.restaurant_id !== partnerRestaurantId) return null;
-  if (!data.challenge_item_id) return null;
+  if (error) return { status: 'unread' };
+  if (!data) return { status: 'continue' };
+  if (data.status !== 'issued' || data.restaurant_id !== partnerRestaurantId) return { status: 'continue' };
+  if (!data.challenge_item_id) return { status: 'continue' };
   const expiresAt = new Date(data.expires_at);
-  if (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) return null;
+  if (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) return { status: 'continue' };
 
   const arrival = createSupabaseArrivalStore(supabase);
   const open = await arrival.findOpenSessionByChallengeItem(data.challenge_item_id);
-  if (open.status !== 'found') return null;
-  if (open.session.restaurantId !== partnerRestaurantId || !open.session.lockedBoostId) return null;
-  const quote = await arrival.findActiveQuote(open.session.id);
-  if (!quote || !quoteStillNeedsSubtotal(quote)) return null;
-
-  let minSpendCents: number | null = null;
-  const item = await arrival.findItem(data.challenge_item_id);
-  if (item?.offerVersionId) {
-    const { data: version } = await supabase
-      .from('offer_versions')
-      .select('tiers')
-      .eq('id', item.offerVersionId)
-      .maybeSingle();
-    minSpendCents = lowestSealedBase(version?.tiers)?.min_spend_cents ?? null;
+  if (open.status === 'unavailable') return { status: 'unread' };
+  if (open.status !== 'found') return { status: 'continue' };
+  if (open.session.restaurantId !== partnerRestaurantId || !open.session.lockedBoostId) {
+    return { status: 'continue' };
   }
-  return { sessionId: open.session.id, minSpendCents };
+
+  const quote = await lookupActiveQuote(supabase, open.session.id);
+  if (quote.status === 'unavailable') return { status: 'unread' };
+  if (quote.status !== 'found' || !quoteStillNeedsSubtotal(quote.quote)) return { status: 'continue' };
+
+  const { data: version, error: versionError } = await supabase
+    .from('offer_versions')
+    .select('tiers')
+    .eq('id', open.session.offerVersionId)
+    .maybeSingle();
+  if (versionError) return { status: 'unread' };
+  return {
+    status: 'hold',
+    sessionId: open.session.id,
+    minSpendCents: lowestSealedBase(version?.tiers)?.min_spend_cents ?? null,
+  };
 }
 
 /**
@@ -255,7 +270,10 @@ export async function verifyRedemptionTokenForPartner(
   if (arrivalSessionsEnabled()) {
     try {
       const hold = await lockedBoostBillHold(supabase, tokenHash, partnerRestaurantId);
-      if (hold) {
+      if (hold.status === 'unread') {
+        return { success: false, message: BOOST_CHECK_FAILED_MESSAGE };
+      }
+      if (hold.status === 'hold') {
         return {
           success: false,
           needsBill: true,
@@ -265,7 +283,7 @@ export async function verifyRedemptionTokenForPartner(
         };
       }
     } catch {
-      // A failed hold read keeps today's verify path.
+      return { success: false, message: BOOST_CHECK_FAILED_MESSAGE };
     }
   }
 

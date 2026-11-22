@@ -131,6 +131,16 @@ export type OpenSessionByItemResult =
   | { status: 'none' }
   | { status: 'unavailable' };
 
+/**
+ * Active quote for one session.
+ * `none` is an empty result. `unavailable` is a read error or a row that
+ * cannot be parsed. Those two are not the same outcome.
+ */
+export type ActiveQuoteLookup =
+  | { status: 'found'; quote: ArrivalQuoteRecord }
+  | { status: 'none' }
+  | { status: 'unavailable' };
+
 export type ArrivalStore = {
   findItem(id: string): Promise<ArrivalItemRecord | null>;
   findVersion(id: string, restaurantId: string): Promise<ArrivalVersionRecord | null>;
@@ -227,6 +237,24 @@ function mapQuote(row: {
 
 const SESSION_COLUMNS =
   'id, restaurant_id, challenge_item_id, offer_version_id, redemption_id, locked_boost_id, arrival_at, expires_at, idempotency_key, status';
+
+const ACTIVE_QUOTE_COLUMNS =
+  'id, session_id, quote_version, offer_version_id, tier_id, base_discount_cents, boost_id, boost_discount_cents, total_discount_cents, eligible_subtotal_cents, below_minimum, reasons, expires_at, superseded_at';
+
+/** Same read `findActiveQuote` uses, with a read error kept separate from no row. */
+export async function lookupActiveQuote(admin: Admin, sessionId: string): Promise<ActiveQuoteLookup> {
+  const { data, error } = await admin
+    .from('boost_quotes')
+    .select(ACTIVE_QUOTE_COLUMNS)
+    .eq('session_id', sessionId)
+    .is('superseded_at', null)
+    .maybeSingle();
+  if (error) return { status: 'unavailable' };
+  if (!data) return { status: 'none' };
+  const quote = mapQuote(data);
+  if (!quote) return { status: 'unavailable' };
+  return { status: 'found', quote };
+}
 
 const OPEN_STATUSES = new Set([
   'session_open',
@@ -336,16 +364,8 @@ export function createSupabaseArrivalStore(admin: Admin): ArrivalStore {
       return { status: 'found', session };
     },
     async findActiveQuote(sessionId) {
-      const { data, error } = await admin
-        .from('boost_quotes')
-        .select(
-          'id, session_id, quote_version, offer_version_id, tier_id, base_discount_cents, boost_id, boost_discount_cents, total_discount_cents, eligible_subtotal_cents, below_minimum, reasons, expires_at, superseded_at',
-        )
-        .eq('session_id', sessionId)
-        .is('superseded_at', null)
-        .maybeSingle();
-      if (error || !data) return null;
-      return mapQuote(data);
+      const read = await lookupActiveQuote(admin, sessionId);
+      return read.status === 'found' ? read.quote : null;
     },
     async openSession(input) {
       if (input.checkInMethod === 'member_geo') {

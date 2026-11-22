@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { BOOST_CHECK_FAILED_MESSAGE } from '@/lib/boost/savings-copy';
 import { PARTNER_SESSION_EXPIRED_MESSAGE } from '@/lib/partner-session';
 import { hashRedemptionToken } from '@/lib/redemption-token-hash';
 import { PARTNER_CODE_NOT_FOUND_MESSAGE } from '@/lib/partner-redemption-code';
@@ -951,6 +952,157 @@ describe('verifyRedemptionTokenForPartner', () => {
       ['record_verified_visit_progress', { p_redemption_id: 'redemption-1' }],
     ]);
   });
+
+  describe('locked Boost read check', () => {
+    const placeholder = () =>
+      quoteRow({
+        base_discount_cents: 0,
+        boost_discount_cents: 0,
+        total_discount_cents: 0,
+        eligible_subtotal_cents: 0,
+        below_minimum: true,
+        reasons: ['below_minimum'],
+        tier_id: null,
+        boost_id: null,
+      });
+
+    function expectClosed(result: Awaited<ReturnType<typeof import('@/app/actions/partner-verify').verifyRedemptionTokenForPartner>>) {
+      expect(result).toEqual({ success: false, message: BOOST_CHECK_FAILED_MESSAGE });
+      expect(rpc).not.toHaveBeenCalled();
+    }
+
+    it('does not verify when the redemption read errors', async () => {
+      vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+      installVisit({
+        holdRedemption: { data: null, error: { message: 'redemption down' } },
+      });
+      const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+      expectClosed(await verifyRedemptionTokenForPartner('WB-G6PK2'));
+    });
+
+    it('does not verify when the open session read is unavailable', async () => {
+      vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+      const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+      installVisit({
+        sessionQuery: { data: null, error: { message: 'session down' } },
+      });
+      expectClosed(await verifyRedemptionTokenForPartner('WB-G6PK2'));
+
+      rpc.mockClear();
+      installVisit({
+        sessionQuery: { data: { ...sessionRow(), status: 'paused' }, error: null },
+      });
+      expectClosed(await verifyRedemptionTokenForPartner('WB-G6PK2'));
+    });
+
+    it('does not verify when the active quote read errors or cannot be parsed', async () => {
+      vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+      const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+      installVisit({
+        quoteQuery: { data: null, error: { message: 'quote down' } },
+      });
+      expectClosed(await verifyRedemptionTokenForPartner('WB-G6PK2'));
+
+      rpc.mockClear();
+      installVisit({
+        quoteQuery: { data: quoteRow({ reasons: ['nope'] }), error: null },
+      });
+      expectClosed(await verifyRedemptionTokenForPartner('WB-G6PK2'));
+    });
+
+    it('does not verify when the offer version read errors', async () => {
+      vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+      installVisit({
+        quote: placeholder(),
+        versionQuery: { data: null, error: { message: 'version down' } },
+      });
+      const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+      expectClosed(await verifyRedemptionTokenForPartner('WB-G6PK2'));
+    });
+
+    it('does not verify when the Boost check throws', async () => {
+      vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+      installVisit({ throwOnArrival: true });
+      const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+      expectClosed(await verifyRedemptionTokenForPartner('WB-G6PK2'));
+    });
+
+    it('still verifies a clean miss', async () => {
+      vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+      const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+
+      installVisit({ holdRedemption: { data: null, error: null } });
+      const missing = await verifyRedemptionTokenForPartner('WB-G6PK2');
+      expect(missing).not.toMatchObject({ message: BOOST_CHECK_FAILED_MESSAGE });
+      expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+
+      rpc.mockClear();
+      installVisit({
+        holdRedemption: {
+          data: issuedRow({ challenge_item_id: ITEM, restaurant_id: OTHER_ID }),
+          error: null,
+        },
+      });
+      const other = await verifyRedemptionTokenForPartner('WB-G6PK2');
+      expect(other).not.toMatchObject({ message: BOOST_CHECK_FAILED_MESSAGE });
+      expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+
+      rpc.mockClear();
+      installVisit({
+        holdRedemption: {
+          data: issuedRow({
+            challenge_item_id: ITEM,
+            expires_at: '2020-01-01T00:00:00.000Z',
+          }),
+          error: null,
+        },
+      });
+      const expired = await verifyRedemptionTokenForPartner('WB-G6PK2');
+      expect(expired).not.toMatchObject({ message: BOOST_CHECK_FAILED_MESSAGE });
+      expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+
+      rpc.mockClear();
+      installVisit({ sessionQuery: { data: null, error: null } });
+      const noSession = await verifyRedemptionTokenForPartner('WB-G6PK2');
+      expect(noSession.success).toBe(true);
+      expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+
+      rpc.mockClear();
+      installVisit({
+        session: { ...sessionRow(), locked_boost_id: null },
+        quote: placeholder(),
+        quoteQuery: { data: null, error: { message: 'quote down' } },
+      });
+      const unlocked = await verifyRedemptionTokenForPartner('WB-G6PK2');
+      expect(unlocked.success).toBe(true);
+      expect(unlocked).not.toMatchObject({ message: BOOST_CHECK_FAILED_MESSAGE });
+      expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+      expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
+
+      rpc.mockClear();
+      installVisit({ quoteQuery: { data: null, error: null } });
+      const noQuote = await verifyRedemptionTokenForPartner('WB-G6PK2');
+      expect(noQuote.success).toBe(true);
+      expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+      expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
+    });
+
+    it('does not read arrival tables when the flag is off', async () => {
+      installVisit({
+        holdRedemption: { data: null, error: { message: 'redemption down' } },
+        sessionQuery: { data: null, error: { message: 'session down' } },
+        quoteQuery: { data: null, error: { message: 'quote down' } },
+      });
+      const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+      const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
+      expect(result).toMatchObject({ success: true, needsSubtotal: false });
+      expect(result).not.toMatchObject({ message: BOOST_CHECK_FAILED_MESSAGE });
+      expect(from.mock.calls.map((call) => call[0])).not.toContain('boost_arrival_sessions');
+      expect(from.mock.calls.map((call) => call[0])).not.toContain('boost_quotes');
+      expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+      expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
+    });
+  });
 });
 
 function quoteRow(overrides: Record<string, unknown> = {}) {
@@ -1113,6 +1265,10 @@ function installVisit(options: {
   recordError?: boolean;
   deadline?: string;
   ledger?: LedgerMode;
+  holdRedemption?: QueryResult;
+  sessionQuery?: QueryResult;
+  quoteQuery?: QueryResult;
+  versionQuery?: QueryResult;
 }) {
   const filters: Array<{ table: string; column: string; value: unknown }> = [];
   const events: string[] = [];
@@ -1168,14 +1324,25 @@ function installVisit(options: {
     const resultFor = (): QueryResult => {
       if (table === 'challenge_items') return { data: item, error: null };
       if (table === 'offer_versions') {
-        return { data: { tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] }, error: null };
+        return options.versionQuery ?? {
+          data: { tiers: [{ threshold_cents: 4000, discount_cents: 1500 }] },
+          error: null,
+        };
       }
       if (table === 'user_profiles') return { data: { email: 'a@b.c' }, error: null };
       if (table === 'restaurants') return { data: { name: 'Active Grill' }, error: null };
       if (table === 'boost_arrival_sessions') {
-        return { data: options.session === undefined ? sessionRow() : options.session, error: null };
+        return options.sessionQuery ?? {
+          data: options.session === undefined ? sessionRow() : options.session,
+          error: null,
+        };
       }
-      if (table === 'boost_quotes') return { data: options.quote === undefined ? quoteRow() : options.quote, error: null };
+      if (table === 'boost_quotes') {
+        return options.quoteQuery ?? {
+          data: options.quote === undefined ? quoteRow() : options.quote,
+          error: null,
+        };
+      }
       return { data: null, error: null };
     };
     if (table === 'user_badges') {
@@ -1197,7 +1364,10 @@ function installVisit(options: {
           if (columns.includes('status')) {
             return chain(
               table,
-              { data: issuedRow({ challenge_item_id: ITEM, status: 'issued' }), error: null },
+              options.holdRedemption ?? {
+                data: issuedRow({ challenge_item_id: ITEM, status: 'issued' }),
+                error: null,
+              },
               filters,
             );
           }

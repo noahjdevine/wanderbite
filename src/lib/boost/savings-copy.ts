@@ -141,6 +141,9 @@ export function quoteStillNeedsSubtotal(quote: {
 export const BOOST_BILL_BEFORE_VERIFY_MESSAGE =
   'This guest locked a Boost. Enter the eligible bill subtotal, then verify the code.';
 
+export const BOOST_CHECK_FAILED_MESSAGE =
+  "Could not check this guest's Boost. Try verifying again in a moment.";
+
 export const BOOST_LOCK_PENDING_NOTE =
   'Boost is locked. It will apply once the restaurant confirms the bill.';
 
