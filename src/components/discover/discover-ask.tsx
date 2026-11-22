@@ -172,16 +172,20 @@ export function DiscoverAsk({
         </GlowBorder>
 
         <div className="flex flex-wrap gap-2">
-          {DISCOVER_QUICK_CHIPS.map((chip, index) => (
-            <button
-              key={chip.label}
-              type="button"
-              className="wb-chip-glass"
-              onClick={() => onQuickChip(index)}
-            >
-              {chip.label}
-            </button>
-          ))}
+          {DISCOVER_QUICK_CHIPS.map((chip, index) => {
+            const pressed = 'vibe' in chip && draft.vibe === chip.vibe;
+            return (
+              <button
+                key={chip.label}
+                type="button"
+                className={pressed ? 'wb-chip-glass ring-2 ring-white' : 'wb-chip-glass'}
+                aria-pressed={pressed}
+                onClick={() => onQuickChip(index)}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
           <button type="button" className="wb-chip-glass" onClick={onToggleRefine}>
             Refine
           </button>
@@ -193,18 +197,109 @@ export function DiscoverAsk({
           <div id="discover-refine" className="wb-glass rounded-[24px] p-4 text-white">
             <div className="mb-4 flex items-center justify-between gap-3">
               <p className="text-sm font-semibold">Refine</p>
-              <a href="/account" className="text-sm font-medium text-wb-blush underline-offset-2 hover:underline">
-                Edit saved settings
-              </a>
+              {signedIn ? (
+                <a href="/account" className="text-sm font-medium text-wb-blush underline-offset-2 hover:underline">
+                  Edit saved settings
+                </a>
+              ) : null}
             </div>
             <RouletteOptionsFields
               variant="page"
               selections={selections}
               onChange={onSelections}
               exclusionsSummary={exclusionsSummary}
+              appearance="dark"
+              accountHref={signedIn ? '/account' : null}
             />
           </div>
         ) : null}
+      </form>
+    </div>
+  );
+}
+
+/**
+ * Dietary edits stay on the result. The current pick remains mounted above
+ * this panel, so closing it does not drop the hero photo.
+ */
+export function DiscoverDietaryPanel({
+  draft,
+  signedIn,
+  exclusionsSummary,
+  onClose,
+  onMessage,
+  onSelections,
+  onApply,
+}: {
+  draft: DiscoverDraft;
+  signedIn: boolean;
+  exclusionsSummary: string | null;
+  onClose: () => void;
+  onMessage: (message: string) => void;
+  onSelections: (patch: Partial<RouletteSelections>) => void;
+  onApply: () => void;
+}) {
+  const tooLong = draft.message.length > ROULETTE_MAX_MESSAGE_CHARS;
+  const selections: RouletteSelections = {
+    vibe: draft.vibe,
+    timeOfDay: draft.timeOfDay,
+    dietaryFlags: [...draft.dietaryFlags],
+    priceRange: draft.priceRange,
+    preferredCuisine: draft.preferredCuisine,
+  };
+  return (
+    <div className="mx-auto w-full max-w-5xl px-3 pb-16 lg:px-6">
+      <form
+        id="discover-refine"
+        className="wb-glass rounded-[24px] p-4 text-white"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (tooLong) return;
+          onApply();
+        }}
+      >
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <p className="text-sm font-semibold text-white">Refine</p>
+          <div className="flex items-center gap-3">
+            {signedIn ? (
+              <a href="/account" className="text-sm font-medium text-wb-blush underline-offset-2 hover:underline">
+                Edit saved settings
+              </a>
+            ) : null}
+            <button type="button" className="text-sm font-medium text-white underline-offset-2 hover:underline" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </div>
+        <label htmlFor="discover-dietary-message" className="mb-2 block text-sm font-medium text-white">
+          Tell Bea what you are craving
+        </label>
+        <textarea
+          id="discover-dietary-message"
+          name="message"
+          rows={2}
+          value={draft.message}
+          onChange={(event) => onMessage(event.target.value)}
+          className="mb-4 w-full resize-none rounded-2xl border border-white/20 bg-white/10 px-3 py-2 text-sm text-white outline-none placeholder:text-white/60"
+        />
+        {tooLong ? (
+          <p role="status" className="mb-4 text-sm text-wb-blush">
+            {DISCOVER_MESSAGE_TOO_LONG}
+          </p>
+        ) : null}
+        <RouletteOptionsFields
+          variant="page"
+          selections={selections}
+          onChange={onSelections}
+          exclusionsSummary={exclusionsSummary}
+          appearance="dark"
+          accountHref={signedIn ? '/account' : null}
+        />
+        <div className="mt-6 flex justify-end">
+          <button type="submit" className="wb-cta h-11 px-5 text-sm" disabled={tooLong}>
+            Update pick
+          </button>
+        </div>
       </form>
     </div>
   );

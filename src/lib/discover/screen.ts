@@ -298,7 +298,15 @@ export function applyQuickChip(draft: DiscoverDraft, chip: QuickChip): DiscoverD
     };
   }
   const message = draft.message.trim().length > 0 ? draft.message : chip.label;
-  return { ...draft, surprise: false, message, vibe: chip.vibe };
+  return {
+    ...draft,
+    surprise: false,
+    message,
+    vibe: chip.vibe,
+    timeOfDay: null,
+    priceRange: null,
+    preferredCuisine: null,
+  };
 }
 
 export function cheaperPrice(current: RoulettePriceRange | null): RoulettePriceRange {
@@ -323,14 +331,96 @@ export function refineDiscoverDraft(base: DiscoverDraft, refine: DiscoverRefine)
     return { ...base, surprise: false, priceRange: cheaperPrice(base.priceRange) };
   }
   if (refine === 'new-vibe') {
+    if (!base.vibe) return { ...base, surprise: false };
     return { ...base, surprise: false, vibe: nextDiscoverVibe(base.vibe) };
   }
   return { ...base };
 }
 
+/**
+ * A newly typed ask drops a chip vibe the words do not repeat.
+ * Re-selecting the chip, or typing "date night", keeps it.
+ */
+export function vibeKeptByMessage(
+  message: string,
+  vibe: RouletteVibe | null,
+): RouletteVibe | null {
+  if (!vibe) return null;
+  return message.toLowerCase().includes(vibe.toLowerCase()) ? vibe : null;
+}
+
+export function timeKeptByMessage(
+  message: string,
+  timeOfDay: DiscoverDraft['timeOfDay'],
+): DiscoverDraft['timeOfDay'] {
+  if (!timeOfDay) return null;
+  return message.toLowerCase().includes(timeOfDay.toLowerCase()) ? timeOfDay : null;
+}
+
+/**
+ * A newly typed ask replaces the previous one.
+ * Chip vibes, hours, price, and cuisine do not come along unless the new words
+ * name that vibe or time. Session dietary flags stay until the dietary pill changes them.
+ */
+export function draftForNewTypedAsk(base: DiscoverDraft, message: string): DiscoverDraft {
+  return {
+    ...base,
+    message,
+    surprise: false,
+    vibe: vibeKeptByMessage(message, base.vibe),
+    timeOfDay: timeKeptByMessage(message, base.timeOfDay),
+    priceRange: null,
+    preferredCuisine: null,
+  };
+}
+
 /** A typed follow-up replaces the ask. Surprise must clear or the message is omitted. */
 export function followUpDiscoverDraft(base: DiscoverDraft, message: string): DiscoverDraft {
-  return { ...base, message, surprise: false };
+  return draftForNewTypedAsk(base, message);
+}
+
+export const DISCOVER_SURPRISE_INDEX_KEY = 'wanderbite.discover.surpriseIndex';
+export const DISCOVER_SHOWN_IDS_KEY = 'wanderbite.discover.shownIds';
+
+export type DiscoverSessionMemory = {
+  surpriseIndex: number;
+  shownIds: string[];
+};
+
+/** Browser session only. A missing or broken store reads as a fresh visit. */
+export function readDiscoverSession(storage: Pick<Storage, 'getItem'> | null): DiscoverSessionMemory {
+  if (!storage) return { surpriseIndex: 0, shownIds: [] };
+  let surpriseIndex = 0;
+  let shownIds: string[] = [];
+  try {
+    const index = Number(storage.getItem(DISCOVER_SURPRISE_INDEX_KEY));
+    if (Number.isFinite(index) && index >= 0) surpriseIndex = Math.trunc(index);
+  } catch {
+    surpriseIndex = 0;
+  }
+  try {
+    const raw = storage.getItem(DISCOVER_SHOWN_IDS_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) {
+      shownIds = parsed.filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+    }
+  } catch {
+    shownIds = [];
+  }
+  return { surpriseIndex, shownIds };
+}
+
+export function writeDiscoverSession(
+  storage: Pick<Storage, 'setItem'> | null,
+  memory: DiscoverSessionMemory,
+): void {
+  if (!storage) return;
+  try {
+    storage.setItem(DISCOVER_SURPRISE_INDEX_KEY, String(memory.surpriseIndex));
+    storage.setItem(DISCOVER_SHOWN_IDS_KEY, JSON.stringify(memory.shownIds));
+  } catch {
+    // A private window can reject storage. The in-memory list still works.
+  }
 }
 
 export function draftToSpinBody(draft: DiscoverDraft): RouletteSpinPayload {

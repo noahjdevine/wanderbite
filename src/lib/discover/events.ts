@@ -122,6 +122,10 @@ export type DiscoverEvent =
       food: DiscoverFood;
       /** Omitted when the restaurant has no eligible card notes. */
       facts?: DiscoverCardFact[];
+      /** Member-facing pill. Omitted streams keep "Picked for you". */
+      badge?: string;
+      /** True when every fitting partner was already shown and the pool restarted. */
+      poolRestarted?: boolean;
     }
   | {
       type: 'fallback';
@@ -141,6 +145,10 @@ export type DiscoverEvent =
        * restaurant is not among them. Omitted for a guest or a failed read.
        */
       isNewToMember?: boolean;
+      /** Member-facing pill. Omitted streams keep the tone label. */
+      badge?: string;
+      /** True when every fitting partner was already shown and the pool restarted. */
+      poolRestarted?: boolean;
     }
   | { type: 'error'; message: string };
 

@@ -5,6 +5,7 @@ import { canonicalFilterString } from '@/lib/discovery-turn';
 import {
   applyRestaurantExclusion,
   canonicalFilterWithExcludedRestaurants,
+  exclusionEmptiesPool,
 } from '@/lib/discover/exclude-restaurants';
 
 const ROOT = path.resolve(__dirname, '../../..');
@@ -24,6 +25,14 @@ describe('restaurant exclusion before the pick', () => {
   it('drops the shown restaurant and keeps the remaining order', () => {
     expect(applyRestaurantExclusion(pool, ['b']).map((row) => row.id)).toEqual(['a', 'c']);
     expect(applyRestaurantExclusion(pool, ['a', 'a', 'c']).map((row) => row.id)).toEqual(['b']);
+  });
+
+  it('notices when the exclusion list covers every remaining partner', () => {
+    expect(exclusionEmptiesPool(pool, [])).toBe(false);
+    expect(exclusionEmptiesPool(pool, ['a'])).toBe(false);
+    expect(exclusionEmptiesPool(pool, ['a', 'b', 'c'])).toBe(true);
+    expect(exclusionEmptiesPool(pool, ['c', 'missing', 'b', 'a'])).toBe(true);
+    expect(exclusionEmptiesPool([], ['a'])).toBe(false);
   });
 
   it('re-allows the oldest excluded id when the list would leave nothing', () => {

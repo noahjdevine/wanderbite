@@ -154,6 +154,18 @@ describe('validateDiscoverLine', () => {
       ok: false,
       code: 'stock_phrase',
     });
+    expect(decide("Quick Bite: Can't confirm that from the partner listing.")).toEqual({
+      ok: false,
+      code: 'stock_phrase',
+    });
+    expect(decide("We don't have a great dish pick or backstory for you yet.")).toEqual({
+      ok: false,
+      code: 'stock_phrase',
+    });
+    expect(decide('Confirm details with the restaurant.')).toEqual({
+      ok: false,
+      code: 'stock_phrase',
+    });
     expect(decide('Taco House is a bright room for tacos.')).toMatchObject({ ok: true });
   });
 

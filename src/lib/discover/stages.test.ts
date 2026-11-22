@@ -142,8 +142,9 @@ describe('discover stage helpers', () => {
     });
     expect(honesty.matched).toEqual(['Vegan', '$$ (Moderate)']);
     expect(honesty.unmet).toEqual(['Japanese / Sushi']);
-    expect(honesty.unknown.map((item) => item.label)).toEqual(['Date Night']);
-    expect(honesty.unknown[0]?.note.toLowerCase()).not.toContain('allerg');
+    expect(honesty.unknown).toEqual([]);
+    expect(JSON.stringify(honesty).toLowerCase()).not.toContain("can't confirm");
+    expect(JSON.stringify(honesty).toLowerCase()).not.toContain('allerg');
   });
 
   it('describes only filters that actually ran', () => {

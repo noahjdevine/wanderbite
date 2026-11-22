@@ -44,7 +44,7 @@ const PROMO =
   /\b(?:discount|discounts|promo|promotion|promotional|coupon|coupons|voucher|vouchers|bogo|deal|deals|sale|sales|complimentary)\b|\d+\s*%|\bpercent(?:age)?\s+off\b|\bhalf[\s-]?off\b/i;
 
 const STOCK_PHRASE =
-  /\bperfect for special occasions\b|\bcelebrations?\b|\bany occasion\b/i;
+  /\bperfect for special occasions\b|\bcelebrations?\b|\bany occasion\b|\bcan'?t confirm\b|\bbackstory\b|\bgreat dish pick\b|\bconfirm details with the restaurant\b/i;
 
 /** Quality praise the line may use only when the name or facts already say it. */
 const EMBELLISHMENT_WORDS = [

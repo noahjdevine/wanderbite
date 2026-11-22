@@ -31,6 +31,7 @@ const partner = {
   name: 'Noodle House',
   cuisine: 'Chinese',
   neighborhood: 'McKinney',
+  photoUrl: '/images/noodle.jpg',
   directions: { mapsUrl },
 };
 
@@ -85,7 +86,13 @@ function postedBodies(): {
   message?: string;
   priceRange?: string;
   vibe?: string;
+  timeOfDay?: string;
+  preferredCuisine?: string;
+  dietaryQuick?: string[];
   askTone?: string;
+  refine?: string;
+  surpriseSession?: boolean;
+  lineIndex?: number;
   excludeRestaurantIds?: string[];
 }[] {
   return vi
@@ -96,7 +103,13 @@ function postedBodies(): {
         message?: string;
         priceRange?: string;
         vibe?: string;
+        timeOfDay?: string;
+        preferredCuisine?: string;
+        dietaryQuick?: string[];
         askTone?: string;
+        refine?: string;
+        surpriseSession?: boolean;
+        lineIndex?: number;
         excludeRestaurantIds?: string[];
       };
     });
@@ -107,6 +120,7 @@ const NEXT_RUN = '22222222-2222-4222-8222-222222222222';
 
 describe('DiscoverFlow', () => {
   beforeEach(() => {
+    sessionStorage.clear();
     resetDiscoverAutoStartClaims();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     vi.stubGlobal(
@@ -166,7 +180,7 @@ describe('DiscoverFlow', () => {
     expect(heading).toBeTruthy();
     expect(document.activeElement).toBe(heading);
     expect(screen.getAllByText('Chinese').length).toBeGreaterThan(0);
-    expect(screen.getByText(/Can't confirm that from the partner listing/)).toBeTruthy();
+    expect(screen.queryByText(/Can't confirm that from the partner listing/)).toBeNull();
     expect(screen.getByText('Quiet')).toBeTruthy();
     expect(String(vi.mocked(fetch).mock.calls[0]?.[0])).toBe('/api/discover');
   });
@@ -263,7 +277,8 @@ describe('DiscoverFlow', () => {
     expect(bodies[0]?.excludeRestaurantIds).toBeUndefined();
     expect(bodies[1]?.message).toBe('spicy noodles');
     expect(bodies[1]?.priceRange).toBe('$');
-    expect(bodies[1]?.excludeRestaurantIds).toBeUndefined();
+    expect(bodies[1]?.excludeRestaurantIds).toEqual(['rest-1']);
+    expect(bodies[1]?.refine).toBe('cheaper');
     expect(bodies[2]?.message).toBe('spicy noodles');
     expect(bodies[2]?.priceRange).toBeUndefined();
     expect(bodies[2]?.askTone).toBe('another');
@@ -432,14 +447,16 @@ describe('DiscoverFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Back' }));
     fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
     await flush();
-    expect(postedBodies()[1]?.excludeRestaurantIds).toBeUndefined();
+    expect(postedBodies()[1]?.excludeRestaurantIds).toEqual(['rest-a']);
+    expect(postedBodies()[1]?.askTone).toBe('surprise');
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1400);
     });
     fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
     await flush();
-    expect(postedBodies()[2]?.excludeRestaurantIds).toEqual(['rest-b']);
+    expect(postedBodies()[2]?.excludeRestaurantIds).toEqual(['rest-a', 'rest-b']);
     expect(postedBodies()[2]?.askTone).toBe('another');
+    expect(postedBodies()[2]?.surpriseSession).toBe(true);
   });
 
   it('sends a follow-up as a new ask, clears surprise, and excludes the shown restaurant', async () => {
@@ -475,6 +492,222 @@ describe('DiscoverFlow', () => {
     expect(followUp?.askTone).toBe('request');
     expect(followUp?.excludeRestaurantIds).toEqual(['rest-1']);
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts the shown list over after Bea has used every fitting place', async () => {
+    let call = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      call += 1;
+      const restarted = call === 2;
+      const id = restarted ? 'rest-b' : call === 1 ? 'rest-a' : 'rest-c';
+      return sse([
+        { type: 'step', id: 'parse', label: 'Reading your vibe', constraints: [] },
+        {
+          type: 'pick',
+          partner: { ...partner, id, name: id },
+          reason: restarted
+            ? "That's everything I've got that fits. Starting over."
+            : 'A place nearby.',
+          badge: restarted ? 'Starting over' : 'Picked for you',
+          ...(restarted ? { poolRestarted: true } : {}),
+          matched: [],
+          unknown: [],
+          unmet: [],
+          isNewToMember: false,
+          food: 'generic',
+        },
+      ]);
+    });
+    render(
+      <DiscoverFlow initialMessage="spicy noodles" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    expect(screen.getByText(/That's everything I've got that fits\. Starting over\./)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
+    await flush();
+    expect(postedBodies()[0]?.excludeRestaurantIds).toBeUndefined();
+    expect(postedBodies()[1]?.excludeRestaurantIds).toEqual(['rest-a']);
+    expect(postedBodies()[2]?.excludeRestaurantIds).toEqual(['rest-b']);
+  });
+
+  it('drops hours, chips, and dietary filters when a new ask replaces open late', async () => {
+    render(
+      <DiscoverFlow initialMessage="open late" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
+    await flush();
+    expect(postedBodies()[1]?.message).toBe('open late');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'sushi' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Refine' }));
+    expect(screen.getByLabelText('Tell Bea what you are craving')).toHaveProperty('value', 'sushi');
+    expect(screen.getByRole('button', { name: 'Date night' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    const fresh = postedBodies().at(-1);
+    expect(fresh?.message).toBe('sushi');
+    expect(fresh?.vibe).toBeUndefined();
+    expect(fresh?.timeOfDay).toBeUndefined();
+    expect(fresh?.dietaryQuick).toBeUndefined();
+    expect(fresh?.priceRange).toBeUndefined();
+  });
+
+  it('keeps a session vegetarian filter through a chip and a new typed ask', async () => {
+    render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Refine' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Vegetarian' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Date night' }));
+    await flush();
+    expect(postedBodies()[0]?.dietaryQuick).toEqual(['vegetarian']);
+    expect(postedBodies()[0]?.vibe).toBe('Date Night');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'ramen' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    const fresh = postedBodies().at(-1);
+    expect(fresh?.message).toBe('ramen');
+    expect(fresh?.dietaryQuick).toEqual(['vegetarian']);
+    expect(fresh?.vibe).toBeUndefined();
+    expect(fresh?.timeOfDay).toBeUndefined();
+    expect(fresh?.priceRange).toBeUndefined();
+    expect(fresh?.preferredCuisine).toBeUndefined();
+  });
+
+  it('clears a date-night chip when the next typed ask does not name it', async () => {
+    render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Date night' }));
+    await flush();
+    expect(postedBodies()[0]?.vibe).toBe('Date Night');
+    expect(postedBodies()[0]?.message).toBe('Date night');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.getByRole('button', { name: 'Date night' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'cheap tacos' },
+    });
+    expect(screen.getByRole('button', { name: 'Date night' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    expect(postedBodies()[1]?.message).toBe('cheap tacos');
+    expect(postedBodies()[1]?.vibe).toBeUndefined();
+  });
+
+  it('keeps surprise rotation and the last pick across a reload', async () => {
+    const picks = ['rest-a', 'rest-b'];
+    let call = 0;
+    vi.mocked(fetch).mockImplementation(async () => {
+      const id = picks[Math.min(call, picks.length - 1)] ?? 'rest-a';
+      call += 1;
+      return sse([
+        { type: 'step', id: 'parse', label: 'Reading your vibe', constraints: [] },
+        {
+          type: 'pick',
+          partner: { ...partner, id, name: id },
+          reason: 'A place nearby.',
+          matched: [],
+          unknown: [],
+          unmet: [],
+          isNewToMember: false,
+          food: 'generic',
+        },
+      ]);
+    });
+    const first = render(
+      <DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
+    await flush();
+    expect(postedBodies()[0]?.lineIndex).toBe(0);
+    expect(postedBodies()[0]?.excludeRestaurantIds).toBeUndefined();
+    first.unmount();
+
+    render(<DiscoverFlow initialMessage="" viewer={{ firstName: null, savedDietary: [] }} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
+    await flush();
+    expect(postedBodies()[1]?.lineIndex).toBe(1);
+    expect(postedBodies()[1]?.askTone).toBe('surprise');
+    expect(postedBodies()[1]?.excludeRestaurantIds).toEqual(['rest-a']);
+  });
+
+  it('keeps the pick and the latest ask while dietary is edited', async () => {
+    render(
+      <DiscoverFlow initialMessage="spicy noodles" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.change(screen.getByLabelText('Tell Bea something else'), {
+      target: { value: 'somewhere with a patio' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Ask' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    const hero = () => screen.getByRole('img', { name: 'Noodle House' });
+    expect(hero().getAttribute('src')).toBe('/images/noodle.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'Dietary: none set' }));
+    expect(screen.getByRole('heading', { name: 'Noodle House' })).toBeTruthy();
+    expect(screen.getByLabelText('Tell Bea what you are craving')).toHaveProperty(
+      'value',
+      'somewhere with a patio',
+    );
+    expect(screen.queryByRole('link', { name: 'Edit saved settings' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Edit' })).toBeNull();
+    expect(hero().getAttribute('src')).toBe('/images/noodle.jpg');
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.getByRole('heading', { name: 'Noodle House' })).toBeTruthy();
+    expect(screen.queryByLabelText('Tell Bea what you are craving')).toBeNull();
+    expect(hero().getAttribute('src')).toBe('/images/noodle.jpg');
+  });
+
+  it('clears a stale message for surprise and links account only when signed in', async () => {
+    render(
+      <DiscoverFlow
+        initialMessage="cheap tacos"
+        viewer={{ firstName: 'Noah', savedDietary: [], signedIn: true }}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Surprise me' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Dietary: none set' }));
+    expect(screen.getByLabelText('Tell Bea what you are craving')).toHaveProperty('value', '');
+    expect(screen.getByRole('link', { name: 'Edit saved settings' }).getAttribute('href')).toBe(
+      '/account',
+    );
+    expect(screen.getByRole('heading', { name: 'Noodle House' })).toBeTruthy();
   });
 
   it('shows arrived steps immediately when reduced motion is on', async () => {

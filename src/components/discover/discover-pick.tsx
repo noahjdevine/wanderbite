@@ -11,6 +11,7 @@ import {
   type DiscoverCardFact,
 } from '@/lib/discover/briefing-facts';
 import { fallbackBadgeLabel, fallbackPresentation, type DiscoverFood } from '@/lib/discover/events';
+import { isRobotMemberCopy } from '@/lib/discover/voice';
 import type { DiscoverStepEvent } from '@/lib/discover/screen';
 import {
   DISCOVER_ALLERGY_NOTICE,
@@ -86,7 +87,9 @@ export function DiscoverPick({
   const fallbackTone = alternative
     ? (outcome.event.tone ?? fallbackPresentation(outcome.event.message))
     : null;
-  const badge = fallbackTone ? fallbackBadgeLabel(fallbackTone) : 'Picked for you';
+  const badge = alternative
+    ? (outcome.event.badge ?? fallbackBadgeLabel(fallbackTone ?? 'alternative'))
+    : (outcome.event.badge ?? 'Picked for you');
   const followUpTooLong = followUp.length > ROULETTE_MAX_MESSAGE_CHARS;
   const partner = alternative ? outcome.event.alternative : outcome.event.partner;
   const href = directionsHref(partner);
@@ -118,6 +121,7 @@ export function DiscoverPick({
       <div className="lg:grid lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:items-start lg:gap-6">
         <div className="relative overflow-hidden rounded-[28px]">
           <DiscoverPhoto
+            key={partner.id}
             photoUrl={partner.photoUrl}
             photoCredit={partner.photoCredit}
             name={partner.name}
@@ -177,11 +181,13 @@ export function DiscoverPick({
                   {label}
                 </Chip>
               ))}
-              {outcome.event.unknown.map((item) => (
-                <Chip key={`unknown-${item.label}`} variant="unknown">
-                  {item.label}: {item.note}
-                </Chip>
-              ))}
+              {outcome.event.unknown
+                .filter((item) => !isRobotMemberCopy(`${item.label}: ${item.note}`))
+                .map((item) => (
+                  <Chip key={`unknown-${item.label}`} variant="unknown">
+                    {item.label}: {item.note}
+                  </Chip>
+                ))}
               {outcome.event.unmet.map((label) => (
                 <Chip key={`unmet-${label}`} variant="unknown">
                   {label}

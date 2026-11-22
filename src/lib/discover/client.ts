@@ -7,12 +7,21 @@ import {
   messageForDiscoverStatus,
 } from '@/lib/discover/screen';
 import { parseDiscoverSseStream } from '@/lib/discover/sse-client';
-import type { RouletteSpinPayload } from '@/lib/roulette-options';
+import type { DiscoverRefineKind } from '@/lib/discover/voice';
+import type { RoulettePriceRange, RouletteSpinPayload } from '@/lib/roulette-options';
 
 export type DiscoverAskPayload = RouletteSpinPayload & {
   excludeRestaurantIds?: readonly string[];
   /** Fallback copy only. The turn still uses message, chips, and exclusions. */
   askTone?: DiscoverAskTone;
+  /** Cheaper or New vibe. Copy, plus a cheaper tie-break. */
+  refine?: DiscoverRefineKind;
+  /** Another idea while this session is still Surprise me. */
+  surpriseSession?: boolean;
+  /** Round-robin slot for the three surprise lines. */
+  lineIndex?: number;
+  /** Price before Cheaper. Omitted when that ask had no price. */
+  previousPrice?: RoulettePriceRange;
 };
 
 export type DiscoverHttpResult =

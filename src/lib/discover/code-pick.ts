@@ -15,7 +15,41 @@ export type CodePickRestaurant = {
   id: string;
   cuisine_tags: string[] | null;
   price_range: string | null;
+  name?: string | null;
 };
+
+const PRICE_ORDER = ['$', '$$', '$$$', '$$$$'] as const;
+
+const DATE_NIGHT_VIBES = new Set(['Date Night', 'Special Occasion']);
+
+/** Breweries and sports bars lose to other partners on a date-night ask. */
+const CASUAL_BAR =
+  /\b(?:brew(?:ery|eries|pub|house|ing)|taprooms?|sports[-\s]?bars?)\b/i;
+
+export function looksLikeCasualBar(
+  tags: string[] | null | undefined,
+  name?: string | null,
+): boolean {
+  return CASUAL_BAR.test([...(tags ?? []), name ?? ''].join(' '));
+}
+
+/** Soft tag hints the listing can actually carry. Patio is not a hard miss. */
+export function listingTagsFromMessage(message: string): string[] {
+  const tags: string[] = [];
+  if (/\b(?:patios?|outdoor seating|outdoors?)\b/i.test(message)) tags.push('patio');
+  return tags;
+}
+
+function priceRank(value: string | null | undefined): number {
+  const index = PRICE_ORDER.indexOf((value ?? '').trim() as (typeof PRICE_ORDER)[number]);
+  return index < 0 ? 99 : index;
+}
+
+function matchesListingTag(tags: string[] | null | undefined, wanted: readonly string[]): boolean {
+  if (wanted.length === 0) return false;
+  const text = (tags ?? []).join(' ').toLowerCase();
+  return wanted.some((tag) => text.includes(tag));
+}
 
 export type CodePickRandom = () => number;
 
@@ -26,18 +60,84 @@ function matchesAnyCuisine(
   return cuisineIds.some((id) => restaurantMatchesPreferredCuisine(tags, id));
 }
 
+function matchesEveryCuisine(
+  tags: string[] | null | undefined,
+  cuisineIds: readonly string[],
+): boolean {
+  return cuisineIds.every((id) => restaurantMatchesPreferredCuisine(tags, id));
+}
+
+/**
+ * When the ask names a cuisine and at least one partner matches, only those
+ * partners stay eligible. Vibe and price rank inside that set. A miss keeps
+ * the full pool so the card can say it is the closest.
+ */
+export function narrowToCuisineMatches<T extends CodePickRestaurant>(
+  pool: readonly T[],
+  preferredCuisines: readonly string[],
+  requireAll = false,
+): T[] {
+  if (preferredCuisines.length === 0 || pool.length === 0) return pool as T[];
+  if (requireAll) {
+    const all = pool.filter((row) => matchesEveryCuisine(row.cuisine_tags, preferredCuisines));
+    if (all.length > 0) return all;
+  }
+  const any = pool.filter((row) => matchesAnyCuisine(row.cuisine_tags, preferredCuisines));
+  return any.length > 0 ? any : (pool as T[]);
+}
+
+/**
+ * Dietary and saved exclusions have already run.
+ * Negated cuisines ("no sushi") always leave, including on a repeat or a
+ * start-over. A named cuisine then keeps only matches when any exist, so
+ * Another idea cycles those partners before a non-match is allowed.
+ */
+export function constrainDiscoverPool<T extends CodePickRestaurant>(
+  pool: readonly T[],
+  ask: { preferredCuisines: readonly string[]; excludedCuisines: readonly string[] },
+  requireAll = false,
+): { pool: T[]; emptiedByNegation: boolean } {
+  const negated =
+    ask.excludedCuisines.length === 0
+      ? (pool as T[])
+      : pool.filter(
+          (row) => !matchesAnyCuisine(row.cuisine_tags, ask.excludedCuisines),
+        );
+  if (ask.excludedCuisines.length > 0 && negated.length === 0) {
+    return { pool: [], emptiedByNegation: true };
+  }
+  return {
+    pool: narrowToCuisineMatches(negated, ask.preferredCuisines, requireAll),
+    emptiedByNegation: false,
+  };
+}
+
+/**
+ * Cuisine is worth more than price so an explicit taco or sushi ask beats a
+ * cheaper place in the wrong cuisine. A date-night penalty keeps a brewery
+ * or sports bar behind any other partner that scores the same otherwise.
+ */
 function softScore(
   row: CodePickRestaurant,
   preferredCuisines: readonly string[],
   priceRange: string | undefined,
+  vibe: string | undefined,
+  preferredTags: readonly string[],
 ): number {
   let score = 0;
-  if (preferredCuisines.length > 0 && matchesAnyCuisine(row.cuisine_tags, preferredCuisines)) {
-    score += 1;
+  if (preferredCuisines.length > 0) {
+    const hits = preferredCuisines.filter((id) =>
+      restaurantMatchesPreferredCuisine(row.cuisine_tags, id),
+    ).length;
+    score += hits * 2;
   }
   const wanted = priceRange?.trim() ?? '';
   const listed = row.price_range?.trim() ?? '';
   if (wanted && listed === wanted) score += 1;
+  if (matchesListingTag(row.cuisine_tags, preferredTags)) score += 1;
+  if (vibe && DATE_NIGHT_VIBES.has(vibe) && looksLikeCasualBar(row.cuisine_tags, row.name)) {
+    score -= 1;
+  }
   return score;
 }
 
@@ -236,6 +336,17 @@ export function rankDiscoverRestaurant<T extends CodePickRestaurant>(args: {
   preferredCuisines?: readonly string[];
   excludedCuisines?: readonly string[];
   priceRange?: string;
+  /** Date Night and Special Occasion downrank breweries and sports bars. */
+  vibe?: string;
+  /** Patio and similar listing words. They add a point; they do not filter. */
+  preferredTags?: readonly string[];
+  /** Cheaper keeps the lowest listed price inside the winning score tier. */
+  preferCheaper?: boolean;
+  /**
+   * "Vegan sushi" needs every cuisine. "Sushi or thai" is met by either.
+   * Omitted means any one preferred cuisine is enough.
+   */
+  requireAllCuisines?: boolean;
   /** Null or omitted means visits are unknown, so unvisited preference is skipped. */
   visitedRestaurantIds?: ReadonlySet<string> | null;
   random?: CodePickRandom;
@@ -253,18 +364,39 @@ export function rankDiscoverRestaurant<T extends CodePickRestaurant>(args: {
       ? args.pool
       : args.pool.filter((row) => !matchesAnyCuisine(row.cuisine_tags, excluded));
   if (pool.length === 0) return null;
-  const scored = pool.map((row) => ({
+  const eligible = narrowToCuisineMatches(pool, preferred, args.requireAllCuisines === true);
+  const tags = args.preferredTags ?? [];
+  const scored = eligible.map((row) => ({
     row,
-    score: softScore(row, preferred, args.priceRange),
+    score: softScore(row, preferred, args.priceRange, args.vibe, tags),
   }));
-  const best = scored.reduce((max, item) => Math.max(max, item.score), 0);
-  const stated = (preferred.length > 0 ? 1 : 0) + ((args.priceRange?.trim() ?? '') ? 1 : 0);
-  const tier = scored.filter((item) => item.score === best).map((item) => item.row);
+  const best = scored.reduce((max, item) => Math.max(max, item.score), Number.NEGATIVE_INFINITY);
+  let tier = scored.filter((item) => item.score === best).map((item) => item.row);
+  if (args.preferCheaper) tier = lowestPriceTier(tier);
   const ranked =
     args.visitedRestaurantIds == null
       ? tier
       : preferUnvisitedRestaurants(tier, args.visitedRestaurantIds);
   const restaurant = ranked[indexIn(ranked.length, args.random ?? Math.random)];
   if (!restaurant) return null;
-  return { restaurant, preferencesMet: stated === 0 || best >= stated };
+  const cuisineHits = preferred.filter((id) =>
+    restaurantMatchesPreferredCuisine(restaurant.cuisine_tags, id),
+  ).length;
+  const cuisineOk =
+    preferred.length === 0 ||
+    (args.requireAllCuisines ? cuisineHits === preferred.length : cuisineHits > 0);
+  const wanted = args.priceRange?.trim() ?? '';
+  const priceOk = !wanted || (restaurant.price_range?.trim() ?? '') === wanted;
+  return { restaurant, preferencesMet: cuisineOk && priceOk };
+}
+
+function lowestPriceTier<T extends CodePickRestaurant>(rows: readonly T[]): T[] {
+  let best = 99;
+  for (const row of rows) {
+    const rank = priceRank(row.price_range);
+    if (rank < best) best = rank;
+  }
+  if (best === 99) return rows as T[];
+  const narrowed = rows.filter((row) => priceRank(row.price_range) === best);
+  return narrowed.length > 0 ? narrowed : (rows as T[]);
 }

@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  constrainDiscoverPool,
+  listingTagsFromMessage,
+  looksLikeCasualBar,
   mergeSoftAsk,
+  narrowToCuisineMatches,
   rankDiscoverRestaurant,
   type CodePickRestaurant,
 } from '@/lib/discover/code-pick';
+import { exclusionEmptiesPool } from '@/lib/discover/exclude-restaurants';
 import { discoverCodePickEnabled } from '@/lib/discover/flag';
 
 const TACO: CodePickRestaurant = {
@@ -166,6 +171,166 @@ describe('rankDiscoverRestaurant', () => {
       random: () => 0,
     });
     expect(pick?.restaurant.id).toBe('stand');
+  });
+
+  it('prefers a matching cuisine over a cheaper place in the wrong cuisine', () => {
+    const brewery: CodePickRestaurant = {
+      id: 'tupps',
+      name: 'TUPPS Brewery',
+      cuisine_tags: ['brewery', 'american'],
+      price_range: '$',
+    };
+    const tacos: CodePickRestaurant = {
+      id: 'tacos',
+      name: 'Taco House',
+      cuisine_tags: ['mexican', 'tacos'],
+      price_range: '$$',
+    };
+    const pick = rankDiscoverRestaurant({
+      pool: [brewery, tacos],
+      preferredCuisine: 'mexican',
+      priceRange: '$',
+      random: () => 0,
+    });
+    expect(pick?.restaurant.id).toBe('tacos');
+    expect(pick?.preferencesMet).toBe(false);
+  });
+
+  it('keeps a negated cuisine out of the pool that another idea and start-over use', () => {
+    const umai: CodePickRestaurant = {
+      id: 'umai',
+      cuisine_tags: ['sushi', 'vegetarian'],
+      price_range: '$$',
+    };
+    const centro: CodePickRestaurant = {
+      id: 'centro',
+      cuisine_tags: ['american'],
+      price_range: '$$',
+    };
+    const kimiya: CodePickRestaurant = {
+      id: 'kimiya',
+      cuisine_tags: ['sushi'],
+      price_range: '$$',
+    };
+    const blocked = constrainDiscoverPool([umai, centro, kimiya], mergeSoftAsk({ message: 'no sushi' }));
+    expect(blocked.emptiedByNegation).toBe(false);
+    expect(blocked.pool.map((row) => row.id)).toEqual(['centro']);
+    expect(exclusionEmptiesPool(blocked.pool, ['centro'])).toBe(true);
+
+    const sushi = constrainDiscoverPool([umai, centro, kimiya], mergeSoftAsk({ message: 'sushi' }));
+    expect(sushi.pool.map((row) => row.id)).toEqual(['umai', 'kimiya']);
+    expect(exclusionEmptiesPool(sushi.pool, ['umai'])).toBe(false);
+    expect(exclusionEmptiesPool(sushi.pool, ['umai', 'kimiya'])).toBe(true);
+  });
+
+  it('finds a taco place ahead of sushi when the ask names tacos, even on date night', () => {
+    const sushi: CodePickRestaurant = {
+      id: 'shun',
+      name: 'Shun by Yama Sushi',
+      cuisine_tags: ['sushi', 'japanese'],
+      price_range: '$$',
+    };
+    const tacos: CodePickRestaurant = {
+      id: 'tacos',
+      name: 'Taco Stand',
+      cuisine_tags: ['mexican', 'tacos'],
+      price_range: '$$',
+    };
+    expect(narrowToCuisineMatches([sushi, tacos], ['mexican']).map((row) => row.id)).toEqual([
+      'tacos',
+    ]);
+    const pick = rankDiscoverRestaurant({
+      pool: [sushi, tacos],
+      preferredCuisines: ['mexican'],
+      priceRange: '$',
+      vibe: 'Date Night',
+      random: () => 0,
+    });
+    expect(pick?.restaurant.id).toBe('tacos');
+    expect(pick?.restaurant.name).not.toBe('Shun by Yama Sushi');
+  });
+
+  it('does not prefer a brewery for date night when another partner exists', () => {
+    const brewery: CodePickRestaurant = {
+      id: 'union',
+      name: 'Union Bear Brewing',
+      cuisine_tags: ['american', 'brewery'],
+      price_range: '$$',
+    };
+    const bistro: CodePickRestaurant = {
+      id: 'bistro',
+      name: 'The Bistro',
+      cuisine_tags: ['italian'],
+      price_range: '$$',
+    };
+    expect(looksLikeCasualBar(brewery.cuisine_tags, brewery.name)).toBe(true);
+    expect(looksLikeCasualBar(['sports bar'], 'Watch House')).toBe(true);
+    expect(looksLikeCasualBar(bistro.cuisine_tags, bistro.name)).toBe(false);
+    const pick = rankDiscoverRestaurant({
+      pool: [brewery, bistro],
+      vibe: 'Date Night',
+      random: () => 0,
+    });
+    expect(pick?.restaurant.id).toBe('bistro');
+    const onlyBars = rankDiscoverRestaurant({
+      pool: [brewery],
+      vibe: 'Date Night',
+      random: () => 0,
+    });
+    expect(onlyBars?.restaurant.id).toBe('union');
+  });
+
+  it('prefers a patio tag when the ask names one, without requiring it', () => {
+    expect(listingTagsFromMessage('somewhere with a patio')).toEqual(['patio']);
+    const yard: CodePickRestaurant = {
+      id: 'yard',
+      cuisine_tags: ['american', 'patio'],
+      price_range: '$$',
+    };
+    const indoors: CodePickRestaurant = {
+      id: 'indoors',
+      cuisine_tags: ['american'],
+      price_range: '$$',
+    };
+    expect(
+      rankDiscoverRestaurant({
+        pool: [indoors, yard],
+        preferredTags: listingTagsFromMessage('somewhere with a patio'),
+        random: () => 0,
+      })?.restaurant.id,
+    ).toBe('yard');
+  });
+
+  it('requires every cuisine for vegan sushi and either cuisine for sushi or thai', () => {
+    const sushi = { id: 'sushi', cuisine_tags: ['sushi'], price_range: '$$' };
+    const veganSushi = {
+      id: 'vegan-sushi',
+      cuisine_tags: ['sushi', 'vegan'],
+      price_range: '$$',
+    };
+    const both = rankDiscoverRestaurant({
+      pool: [sushi, veganSushi],
+      preferredCuisines: ['japanese', 'vegetarian_forward'],
+      requireAllCuisines: true,
+      random: () => 0,
+    });
+    expect(both?.restaurant.id).toBe('vegan-sushi');
+    expect(both?.preferencesMet).toBe(true);
+    const partial = rankDiscoverRestaurant({
+      pool: [sushi],
+      preferredCuisines: ['japanese', 'vegetarian_forward'],
+      requireAllCuisines: true,
+      random: () => 0,
+    });
+    expect(partial?.restaurant.id).toBe('sushi');
+    expect(partial?.preferencesMet).toBe(false);
+    const either = rankDiscoverRestaurant({
+      pool: [sushi],
+      preferredCuisines: ['japanese', 'thai'],
+      requireAllCuisines: false,
+      random: () => 0,
+    });
+    expect(either?.preferencesMet).toBe(true);
   });
 
   it('treats a full soft match as met and a shortfall as unmet', () => {

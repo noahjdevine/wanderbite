@@ -31,9 +31,10 @@ const DIETARY_LABELS: Record<RouletteDietaryFlag, string> = {
 
 const OCCASION_VIBES = new Set(['Date Night', 'Special Occasion']);
 
-const UNKNOWN_LISTING = "Can't confirm that from the partner listing";
-const UNKNOWN_HOURS = 'Hours are not checked for this pick';
-const UNKNOWN_PRICE = 'No price is listed';
+/**
+ * Vibe, hours, and an unlisted price cannot be confirmed from the partner row.
+ * Those constraints stay off the card. A member never sees "Can't confirm".
+ */
 
 /**
  * Rows the directory query already limits to `status = active` omit `status` in tests.
@@ -214,20 +215,12 @@ export function classifyPickConstraints(args: {
     }
     if (constraint.key === 'budget') {
       const listed = args.restaurant.price_range?.trim() ?? '';
-      if (!listed) {
-        unknown.push({ label: constraint.label, note: UNKNOWN_PRICE });
-      } else if (args.priceRange && listed === args.priceRange) {
-        matched.push(constraint.label);
-      } else {
-        unmet.push(constraint.label);
-      }
+      if (!listed) continue;
+      if (args.priceRange && listed === args.priceRange) matched.push(constraint.label);
+      else unmet.push(constraint.label);
       continue;
     }
-    if (constraint.key === 'time') {
-      unknown.push({ label: constraint.label, note: UNKNOWN_HOURS });
-      continue;
-    }
-    unknown.push({ label: constraint.label, note: UNKNOWN_LISTING });
+    // Vibe, occasion, time, and area are not on the partner row. Hide them.
   }
 
   return { matched, unknown, unmet };
