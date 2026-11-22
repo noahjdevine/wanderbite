@@ -5,7 +5,7 @@ import { Bea, BEA_DISPLAY_NAME } from '@/components/bea';
 import { Chip } from '@/components/wb/chip';
 import { DiscoverPhoto } from '@/components/discover/discover-photo';
 import { ROULETTE_MAX_MESSAGE_CHARS } from '@/lib/ai-bounds';
-import { briefingSourceDisplay, formatBriefingChecked } from '@/lib/briefings/types';
+import { ABOUT_BRIEFING_FIELD, formatBriefingChecked } from '@/lib/briefings/types';
 import {
   presentDiscoverCardFacts,
   type DiscoverCardFact,
@@ -25,28 +25,20 @@ import {
 
 function DiscoverFactList({ facts }: { facts: readonly DiscoverCardFact[] }) {
   if (facts.length === 0) return null;
+  const about = facts.find((fact) => fact.field === ABOUT_BRIEFING_FIELD && fact.text.trim());
+  if (about) {
+    return <p className="text-sm text-white/90">{about.text.trim()}</p>;
+  }
   return (
     <ul className="flex min-w-0 list-none flex-col gap-2 p-0">
       {facts.map((fact) => {
         const checked = formatBriefingChecked(fact.lastVerifiedAt);
         if (!checked) return null;
-        const sourceLabel = briefingSourceDisplay(fact.sourceUrl);
-        const googleMaps = sourceLabel === 'Google Maps';
         return (
           <li key={fact.field} className="min-w-0">
             <p className="text-sm text-white/90">
               <span className="font-semibold text-white">{fact.label}</span> {fact.text}
             </p>
-            <a
-              href={fact.sourceUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              translate={googleMaps ? 'no' : undefined}
-              aria-label={`${sourceLabel} (opens in new tab)`}
-              className="inline-flex min-h-11 max-w-full min-w-0 items-center px-1 -mx-1 text-xs font-medium text-white underline"
-            >
-              <span className="min-w-0 truncate">{sourceLabel}</span>
-            </a>
             <p className="text-xs text-white/70">Checked {checked}</p>
           </li>
         );

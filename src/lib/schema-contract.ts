@@ -485,6 +485,7 @@ export const SCHEMA_CONTRACT = {
     'field',
     'body',
     'source_url',
+    'sources',
     'last_verified_at',
     'status',
     'is_sample',
@@ -637,7 +638,8 @@ export const SCHEMA_CONTRACT = {
 
 /**
  * Values allowed by restaurant_briefing_facts_field_check and
- * public.briefing_field_name(). The member card shows only the first six.
+ * public.briefing_field_name(). The member card shows an active about
+ * paragraph, or the first six labeled fields when that row is absent.
  */
 export const RESTAURANT_BRIEFING_FACT_FIELDS = [
   'parking',
@@ -651,6 +653,7 @@ export const RESTAURANT_BRIEFING_FACT_FIELDS = [
   'good_for',
   'seating',
   'reservations',
+  'about',
 ] as const;
 
 export const POSTGIS_TYPE_TABLES = [

@@ -135,6 +135,13 @@ describe('loadRestaurantBriefings', () => {
           field: 'reservations',
           body: 'Walk-ins are welcome.',
         }),
+        row({
+          id: '12121212-1212-4121-8121-121212121212',
+          field: 'about',
+          body: 'A paused about paragraph that must stay hidden.',
+          status: 'paused',
+          is_sample: false,
+        }),
       ],
       error: null,
     });
@@ -163,6 +170,66 @@ describe('loadRestaurantBriefings', () => {
     expect(shown).not.toContain('Good for kids');
     expect(shown).not.toContain('patio');
     expect(shown).not.toContain('Walk-ins');
+    expect(shown).not.toContain('paused about');
+  });
+
+  it('returns an active about paragraph with the labeled member fields', async () => {
+    const api = query({
+      data: [
+        row({ field: 'parking', body: 'The lot is behind the building.', is_sample: false }),
+        row({
+          id: '13131313-1313-4131-8131-131313131313',
+          field: 'about',
+          body: 'A lively room. Order the brisket.',
+          is_sample: false,
+          source_url: 'https://example.com/e06-about',
+        }),
+      ],
+      error: null,
+    });
+    from.mockImplementation(() => api);
+    process.env.E06_BRIEFINGS_ENABLED = 'true';
+    const loaded = await loadRestaurantBriefings({ restaurantIds: [RESTAURANT] });
+    expect(loaded.byRestaurantId[RESTAURANT]?.map((fact) => fact.field)).toEqual([
+      'parking',
+      'about',
+    ]);
+    expect(loaded.byRestaurantId[RESTAURANT]?.find((fact) => fact.field === 'about')?.text).toBe(
+      'A lively room. Order the brisket.',
+    );
+  });
+
+  it('keeps an about paragraph through 600 characters and drops 601 and a long labeled fact', async () => {
+    const api = query({
+      data: [
+        row({
+          id: '18181818-1818-4181-8181-181818181818',
+          field: 'about',
+          body: 'A'.repeat(600),
+          is_sample: false,
+        }),
+        row({
+          id: '19191919-1919-4191-8191-191919191919',
+          restaurant_id: OTHER,
+          field: 'about',
+          body: 'B'.repeat(601),
+          is_sample: false,
+        }),
+        row({
+          id: '1a1a1a1a-1a1a-41a1-81a1-1a1a1a1a1a1a',
+          restaurant_id: OTHER,
+          field: 'parking',
+          body: 'P'.repeat(401),
+          is_sample: false,
+        }),
+      ],
+      error: null,
+    });
+    from.mockImplementation(() => api);
+    process.env.E06_BRIEFINGS_ENABLED = 'true';
+    const loaded = await loadRestaurantBriefings({ restaurantIds: [RESTAURANT, OTHER] });
+    expect(loaded.byRestaurantId[RESTAURANT]?.map((fact) => fact.text)).toEqual(['A'.repeat(600)]);
+    expect(loaded.byRestaurantId[OTHER]).toBeUndefined();
   });
 
   it('returns nothing when the table is missing', async () => {
@@ -339,6 +406,51 @@ describe('loadDiscoverBriefingFacts', () => {
     expect(shown).not.toContain('unsourced');
     expect(shown).not.toContain('no checked date');
     expect(shown).not.toContain('G'.repeat(401));
+  });
+
+  it('returns an active about paragraph and drops a paused or sample about', async () => {
+    const api = query({
+      data: [
+        row({
+          id: '14141414-1414-4141-8141-141414141414',
+          field: 'about',
+          body: 'A lively room. Order the chili oil.',
+          is_sample: false,
+        }),
+        row({
+          id: '15151515-1515-4151-8151-151515151515',
+          restaurant_id: OTHER,
+          field: 'about',
+          body: 'A paused about paragraph.',
+          status: 'paused',
+          is_sample: false,
+        }),
+        row({
+          id: '16161616-1616-4161-8161-161616161616',
+          restaurant_id: OTHER,
+          field: 'vibe',
+          body: 'The room is cozy and candlelit.',
+          is_sample: false,
+        }),
+        row({
+          id: '17171717-1717-4171-8171-171717171717',
+          field: 'about',
+          body: 'A sample about paragraph that must stay hidden.',
+          is_sample: true,
+          version: 9,
+        }),
+      ],
+      error: null,
+    });
+    from.mockImplementation(() => api);
+    process.env.E06_BRIEFINGS_ENABLED = 'true';
+    const loaded = await loadDiscoverBriefingFacts({ restaurantIds: [RESTAURANT, OTHER] });
+    expect(loaded.byRestaurantId[RESTAURANT]?.map((fact) => fact.field)).toEqual(['about']);
+    expect(loaded.byRestaurantId[RESTAURANT]?.[0]?.text).toBe('A lively room. Order the chili oil.');
+    expect(loaded.byRestaurantId[OTHER]?.map((fact) => fact.field)).toEqual(['vibe']);
+    const shown = JSON.stringify(loaded.byRestaurantId);
+    expect(shown).not.toContain('paused about');
+    expect(shown).not.toContain('sample about');
   });
 
   it('returns nothing when the read fails', async () => {

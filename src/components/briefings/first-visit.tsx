@@ -1,10 +1,17 @@
 import {
+  ABOUT_BRIEFING_FIELD,
   FIRST_VISIT_HEADING,
-  briefingSourceDisplay,
+  briefingBodyMaxChars,
   formatBriefingChecked,
   isMemberBriefingField,
   type BriefingFact,
 } from '@/lib/briefings/types';
+
+function visibleText(fact: BriefingFact): string | null {
+  const text = fact.text.trim();
+  if (!text || text.length > briefingBodyMaxChars(fact.field)) return null;
+  return text;
+}
 
 type FirstVisitBriefingProps = {
   headingId: string;
@@ -12,7 +19,22 @@ type FirstVisitBriefingProps = {
 };
 
 export function FirstVisitBriefing({ headingId, facts }: FirstVisitBriefingProps) {
-  const visible = facts.filter((fact) => isMemberBriefingField(fact.field));
+  const about = facts.find((fact) => fact.field === ABOUT_BRIEFING_FIELD);
+  const aboutText = about ? visibleText(about) : null;
+  if (about && aboutText) {
+    return (
+      <section className="space-y-2" aria-labelledby={headingId}>
+        <h3 id={headingId} className="text-sm font-semibold text-foreground">
+          {FIRST_VISIT_HEADING}
+        </h3>
+        <p className="text-sm text-foreground">{aboutText}</p>
+        {about.sampleLabel ? (
+          <p className="text-xs font-medium text-foreground">{about.sampleLabel}</p>
+        ) : null}
+      </section>
+    );
+  }
+  const visible = facts.filter((fact) => isMemberBriefingField(fact.field) && visibleText(fact));
   if (visible.length === 0) return null;
   return (
     <section className="space-y-2" aria-labelledby={headingId}>
@@ -23,30 +45,14 @@ export function FirstVisitBriefing({ headingId, facts }: FirstVisitBriefingProps
         {visible.map((fact) => {
           const checked = formatBriefingChecked(fact.lastVerifiedAt);
           if (!checked) return null;
-          const sourceLabel = briefingSourceDisplay(fact.sourceUrl);
-          const googleMaps = sourceLabel === 'Google Maps';
           return (
             <li key={fact.field} className="min-w-0 space-y-1 rounded-lg border border-border p-3">
               <p className="text-sm font-medium text-foreground">{fact.label}</p>
-              <p className="text-xs text-muted-foreground">{fact.text}</p>
+              <p className="text-xs text-muted-foreground">{visibleText(fact)}</p>
               {fact.sampleLabel ? (
                 <p className="text-xs font-medium text-foreground">{fact.sampleLabel}</p>
               ) : null}
               <p className="text-xs text-muted-foreground">Checked {checked}</p>
-              <a
-                href={fact.sourceUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                translate={googleMaps ? 'no' : undefined}
-                aria-label={`${sourceLabel} (opens in new tab)`}
-                className={
-                  googleMaps
-                    ? 'inline-flex min-h-11 max-w-full min-w-0 items-center px-1 -mx-1 whitespace-nowrap font-sans text-sm font-normal text-[#5E5E5E]'
-                    : 'inline-flex min-h-11 max-w-full min-w-0 items-center px-1 -mx-1 text-xs font-medium text-primary underline'
-                }
-              >
-                <span className="min-w-0 truncate">{sourceLabel}</span>
-              </a>
             </li>
           );
         })}

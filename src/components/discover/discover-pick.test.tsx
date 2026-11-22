@@ -247,17 +247,9 @@ describe('DiscoverPick directions', () => {
     expect(screen.queryByText('Sample')).toBeNull();
     expect(screen.queryByText('First visit')).toBeNull();
     expect(screen.getAllByText('Checked Nov 5, 2026')).toHaveLength(2);
-    const maps = screen.getByRole('link', { name: 'Google Maps (opens in new tab)' });
-    expect(maps.getAttribute('href')).toBe('https://maps.google.com/maps/place/noodle');
-    expect(maps.getAttribute('target')).toBe('_blank');
-    expect(maps.getAttribute('translate')).toBe('no');
-    expect(maps.className).toContain('min-h-11');
-    expect(maps.textContent).toBe('Google Maps');
-    const source = screen.getByRole('link', { name: 'Source: example.com (opens in new tab)' });
-    expect(source.getAttribute('href')).toBe('https://example.com/vibe');
-    expect(source.className).toContain('min-h-11');
-    expect(source.textContent).toBe('Source: example.com');
-    expect(source.querySelector('span')?.className).toContain('truncate');
+    expect(screen.queryByRole('link', { name: /Google Maps|Source/ })).toBeNull();
+    expect(screen.queryByText('Google Maps')).toBeNull();
+    expect(screen.queryByText(/Source:/)).toBeNull();
     expect(screen.getByText('“Hot noodles.”')).toBeTruthy();
   });
 
@@ -318,15 +310,127 @@ describe('DiscoverPick directions', () => {
         (_, node) => node?.tagName === 'P' && node.textContent === 'Known for Hand-pulled noodles.',
       ),
     ).toBeTruthy();
-    const source = screen.getByRole('link', { name: 'Source: example.com (opens in new tab)' });
-    expect(source.getAttribute('href')).toBe('https://example.com/known');
-    expect(source.className).toContain('min-h-11');
+    expect(screen.queryByRole('link', { name: /Source/ })).toBeNull();
+    expect(screen.queryByText(/Source:/)).toBeNull();
     expect(screen.getByText('Checked Nov 4, 2026')).toBeTruthy();
     expect(screen.queryByText('Sample')).toBeNull();
     expect(screen.queryByText('First visit')).toBeNull();
     expect(screen.queryByText('Picked for you')).toBeNull();
     expect(screen.queryByText('An alternative')).toBeNull();
     expect(screen.queryByText(/not a match/i)).toBeNull();
+  });
+
+  it('shows one about paragraph and hides labeled notes and sources', () => {
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: {
+            ...pickEvent({ id: 'rest-1', name: 'Noodle House' }),
+            facts: [
+              {
+                field: 'about',
+                label: '',
+                text: 'A lively room with hand-pulled noodles. Order the chili oil. Tip: sit by the window.',
+                sourceUrl: 'https://example.com/about',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+              {
+                field: 'known_for',
+                label: 'Known for',
+                text: 'Hand-pulled noodles.',
+                sourceUrl: 'https://maps.google.com/maps/place/noodle',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'A lively room with hand-pulled noodles. Order the chili oil. Tip: sit by the window.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Known for')).toBeNull();
+    expect(screen.queryByText(/^Checked /)).toBeNull();
+    expect(screen.queryByText('About')).toBeNull();
+    expect(screen.queryByRole('link', { name: /Google Maps|Source/ })).toBeNull();
+    expect(screen.queryByText(/Source:/)).toBeNull();
+    expect(screen.queryByText('example.com')).toBeNull();
+  });
+
+  it('shows an about paragraph through 600 characters and hides 601', () => {
+    const paragraph = 'A'.repeat(475);
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: {
+            ...pickEvent({ id: 'rest-1', name: 'Noodle House' }),
+            facts: [
+              {
+                field: 'about',
+                label: '',
+                text: paragraph,
+                sourceUrl: 'https://example.com/about',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+              {
+                field: 'known_for',
+                label: 'Known for',
+                text: 'K'.repeat(401),
+                sourceUrl: 'https://example.com/known',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.getByText(paragraph)).toBeTruthy();
+    expect(screen.queryByText('Known for')).toBeNull();
+    expect(screen.queryByText('K'.repeat(401))).toBeNull();
+    cleanup();
+
+    render(
+      <DiscoverPick
+        outcome={{
+          kind: 'pick',
+          event: {
+            ...pickEvent({ id: 'rest-2', name: 'Noodle House' }),
+            facts: [
+              {
+                field: 'about',
+                label: '',
+                text: 'B'.repeat(601),
+                sourceUrl: 'https://example.com/about',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+              {
+                field: 'good_for',
+                label: 'Good for',
+                text: 'G'.repeat(401),
+                sourceUrl: 'https://example.com/good',
+                lastVerifiedAt: '2026-11-05T06:00:00.000Z',
+              },
+            ],
+          },
+        }}
+        food="dumpling"
+        dietaryLabel="Dietary: none set"
+        {...handlers}
+      />,
+    );
+    expect(screen.queryByText('B'.repeat(601))).toBeNull();
+    expect(screen.queryByText('Good for')).toBeNull();
+    expect(screen.queryByText('G'.repeat(401))).toBeNull();
   });
 
   it('shows a New to you chip with researched notes', () => {

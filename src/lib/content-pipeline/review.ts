@@ -677,7 +677,7 @@ async function editBriefingException(
     return { ok: false, error: 'That briefing field was not found.' };
   }
   const text = normalizeOperatorText(input.description);
-  const textError = briefingPublishError(text);
+  const textError = briefingPublishError(text, exception.field);
   if (textError) return { ok: false, error: textError };
   const stored = await store.loadBriefingMember(exception.subjectId, exception.field);
   const keepActive = briefingPublishKeepsActive(stored?.status, input.keepActive === true);
@@ -768,7 +768,7 @@ export async function editBriefingDraft(
   const fact = await store.loadBriefingDraft(input.factId);
   if (!fact || fact.status !== 'pending_review') return { ok: false, error: 'Briefing draft not found.' };
   const text = normalizeOperatorText(input.text);
-  const textError = briefingPublishError(text);
+  const textError = briefingPublishError(text, fact.field);
   if (textError) return { ok: false, error: textError };
   const stored = await store.loadBriefingMember(fact.restaurantId, fact.field);
   const keepActive = briefingPublishKeepsActive(stored?.status, input.keepActive === true);

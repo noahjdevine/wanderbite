@@ -4,9 +4,11 @@ import {
   DISCOVER_FACT_PROMPT_NOTE,
   DISCOVER_PROMPT_FACT_CHARS,
   discoverCardFacts,
+  discoverLineSourceText,
   discoverPromptFacts,
   presentDiscoverCardFacts,
 } from '@/lib/discover/briefing-facts';
+import { validateDiscoverLine } from '@/lib/discover/pick-line';
 import { formatBriefingChecked, type BriefingFact } from '@/lib/briefings/types';
 
 const CHECKED = '2026-11-05T06:00:00.000Z';
@@ -64,6 +66,23 @@ describe('discover card facts', () => {
     expect(shown.map((item) => item.field)).toEqual(['vibe', 'good_for']);
   });
 
+  it('shows an about paragraph of 401 to 600 characters and hides 601', () => {
+    const shown = discoverCardFacts([
+      fact({ field: 'about', label: 'About', text: 'A'.repeat(475) }),
+      fact({ field: 'known_for', label: 'Known for', text: 'Known for brisket.' }),
+    ]);
+    expect(shown).toHaveLength(1);
+    expect(shown[0]?.field).toBe('about');
+    expect(shown[0]?.text).toHaveLength(475);
+    const tooLong = discoverCardFacts([
+      fact({ field: 'about', label: 'About', text: 'A'.repeat(601) }),
+      fact({ field: 'good_for', label: 'Good for', text: 'G'.repeat(401) }),
+      fact({ field: 'vibe', text: 'The room is cozy and candlelit.' }),
+    ]);
+    expect(tooLong.map((item) => item.field)).toEqual(['vibe']);
+    expect(JSON.stringify(tooLong)).not.toContain('A'.repeat(601));
+  });
+
   it('drops samples, unsourced rows, empty text, and overlong text', () => {
     const shown = discoverCardFacts([
       fact({ field: 'known_for', text: 'Known for brisket.', sampleLabel: 'Sample' }),
@@ -75,6 +94,28 @@ describe('discover card facts', () => {
     expect(shown).toEqual([]);
     expect(presentDiscoverCardFacts(null)).toEqual([]);
     expect(presentDiscoverCardFacts({ field: 'known_for' })).toEqual([]);
+  });
+
+  it('replaces labeled notes with one about paragraph', () => {
+    const about = 'A lively room. Order the chili oil. Tip: sit by the window.';
+    const shown = discoverCardFacts([
+      fact({ field: 'known_for', label: 'Known for', text: 'Known for brisket.' }),
+      fact({ field: 'about', label: 'About', text: about }),
+      fact({ field: 'vibe', text: 'The room is cozy and candlelit.' }),
+    ]);
+    expect(shown).toEqual([
+      {
+        field: 'about',
+        label: '',
+        text: about,
+        sourceUrl: SOURCE,
+        lastVerifiedAt: CHECKED,
+      },
+    ]);
+    expect(presentDiscoverCardFacts([
+      { field: 'known_for', label: 'Known for', text: 'Known for brisket.', sourceUrl: SOURCE, lastVerifiedAt: CHECKED },
+      { field: 'about', label: 'About', text: about, sourceUrl: SOURCE, lastVerifiedAt: CHECKED },
+    ])).toEqual(shown);
   });
 
   it('keeps a stored sentence that is longer than the prompt clip', () => {
@@ -116,6 +157,28 @@ describe('discover prompt facts', () => {
         fact({ field: 'seating', text: 'Patio.', sourceUrl: 'notaurl' }),
       ]),
     ).toBeUndefined();
+  });
+
+  it('keeps the about paragraph whole and includes it in the line source', () => {
+    const about = `${'p'.repeat(DISCOVER_PROMPT_FACT_CHARS)} premium patio tip.`;
+    const record = discoverPromptFacts([
+      fact({ field: 'about', label: 'About', text: about }),
+      fact({ field: 'known_for', text: 'Known for brisket.' }),
+    ]);
+    expect(record?.about).toBe(about);
+    expect(record?.known_for).toBe('Known for brisket.');
+    const sourceText = discoverLineSourceText('Kyoto Hibachi', [
+      fact({ field: 'about', label: 'About', text: about }),
+    ]);
+    expect(sourceText).toContain('premium patio tip');
+    expect(sourceText).not.toContain('http');
+    expect(
+      validateDiscoverLine({
+        text: 'Kyoto Hibachi offers premium sashimi.',
+        otherRestaurantNames: [],
+        sourceText,
+      }),
+    ).toMatchObject({ ok: true });
   });
 
   it('tells the model that a missing note is unknown', () => {
