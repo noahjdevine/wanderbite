@@ -4,7 +4,8 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
-import { partnerVerifiedOfferLine } from '@/lib/boost/savings-copy';
+import { PartnerBoostBill } from '@/components/partner/partner-boost-bill';
+import { partnerVerifiedOfferLine, redeemSettlementLines } from '@/lib/boost/savings-copy';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import type { PartnerAnalyticsResult } from '@/app/actions/partner-auth';
@@ -39,6 +40,11 @@ export function PartnerDashboard({
   const router = useRouter();
   const [code, setCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
+  const [bill, setBill] = useState<{
+    code: string;
+    sessionId: string;
+    minSpendCents: number | null;
+  } | null>(null);
   const [result, setResult] = useState<
     | {
         success: true;
@@ -67,6 +73,7 @@ export function PartnerDashboard({
     ...historicalVolume.map((h) => h.count)
   );
   const codeError = result && !result.success ? result : null;
+  const settlementLines = result?.success ? redeemSettlementLines(result) : null;
 
   async function handleVerify(e: React.FormEvent) {
     e.preventDefault();
@@ -75,6 +82,7 @@ export function PartnerDashboard({
     setCode(submitted);
     setIsVerifying(true);
     setResult(null);
+    setBill(null);
     try {
       const res = await verifyRedemptionTokenForPartner(submitted);
       if (res.success) {
@@ -92,6 +100,12 @@ export function PartnerDashboard({
         });
         setCode('');
         router.refresh();
+      } else if ('needsBill' in res && res.needsBill) {
+        setBill({
+          code: submitted,
+          sessionId: res.sessionId,
+          minSpendCents: res.minSpendCents,
+        });
       } else {
         setResult({ success: false, message: res.message });
       }
@@ -173,9 +187,43 @@ export function PartnerDashboard({
           </div>
         </form>
 
+        {bill ? (
+          <PartnerBoostBill
+            slug={restaurantSlug}
+            code={bill.code}
+            sessionId={bill.sessionId}
+            minSpendCents={bill.minSpendCents}
+            onCancel={() => setBill(null)}
+            onVerified={(res) => {
+              setBill(null);
+              setResult({
+                success: true,
+                email: res.redemptionDetails.email,
+                verifiedAt: res.redemptionDetails.verifiedAt,
+                hideDiscountAmount: res.hideDiscountAmount,
+                sealedDiscountCents: res.sealedDiscountCents,
+                sealedMinSpendCents: res.sealedMinSpendCents,
+                confirmedTotalDiscountCents: res.confirmedTotalDiscountCents,
+                confirmedBaseDiscountCents: res.confirmedBaseDiscountCents,
+                confirmedBoostDiscountCents: res.confirmedBoostDiscountCents,
+                needsSubtotal: res.needsSubtotal,
+              });
+              setCode('');
+              router.refresh();
+            }}
+          />
+        ) : null}
+
         {result?.success && (
           <div className="wb-partner-alert wb-partner-alert-ok wb-partner-follow" role="alert" aria-live="assertive">
             <p className="wb-partner-alert-title">{partnerVerifiedOfferLine(result)}</p>
+            {settlementLines ? (
+              <div data-confirmed-discount="">
+                <p>{settlementLines.discount}</p>
+                <p>{settlementLines.boost}</p>
+                <p>{settlementLines.total}</p>
+              </div>
+            ) : null}
             <div>
               {result.email && (
                 <p>

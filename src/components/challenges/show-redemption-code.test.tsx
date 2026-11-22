@@ -81,6 +81,23 @@ describe('ShowRedemptionCode', () => {
     expect(view.textContent).toContain('$10 off');
     expect(view.textContent).toContain('Codes expire after 15 minutes.');
     expect(view.textContent).not.toContain('$0');
+    expect(view.querySelector('[data-boost-lock]')).toBeNull();
+  });
+
+  it('mentions a locked Boost on the code screen', async () => {
+    const view = await render(
+      <ShowRedemptionCode
+        {...base}
+        code="WB-LIVE1"
+        expiresAt={new Date(Date.now() + 14 * 60 * 1000).toISOString()}
+        status="issued"
+        boostLockNote="Boost is locked. It will apply once the restaurant confirms the bill."
+      />,
+    );
+    expect(view.querySelector('[data-boost-lock]')?.textContent).toBe(
+      'Boost is locked. It will apply once the restaurant confirms the bill.',
+    );
+    expect(view.textContent).toContain('WB-LIVE1');
   });
 
   it('counts down from the server deadline and re-reads when the page regains focus', async () => {

@@ -12,6 +12,7 @@ import {
   type PartnerBillUploadResult,
 } from '@/app/actions/partner-bill-scan';
 import { logoutPartner } from '@/app/actions/partner-auth';
+import { parseEligibleSubtotalDollars } from '@/lib/boost/subtotal-input';
 import { formatCents } from '@/lib/offers/sealed-base';
 import { RECEIPT_MAX_BYTES } from '@/lib/boost/receipt-limits';
 import { toast } from 'sonner';
@@ -33,16 +34,6 @@ const RECEIPT_ACCEPT = 'image/jpeg,image/png,image/webp,image/heic,image/heif,.h
 
 function arrivalIdempotencyKey(challengeItemId: string): string {
   return `e07-arrival:${challengeItemId}`;
-}
-
-function parseDollarInput(raw: string): number | null {
-  const text = raw.trim().replace(/^\$/, '');
-  if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
-  const [whole, frac = ''] = text.split('.');
-  if (!whole || whole.length > 7) return null;
-  const cents = Number(whole) * 100 + Number(frac.padEnd(2, '0'));
-  if (!Number.isSafeInteger(cents) || cents < 0) return null;
-  return cents;
 }
 
 function checkInMessage(code: string): string {
@@ -352,7 +343,7 @@ export function PartnerArrivalClient({ restaurantName, slug }: PartnerArrivalCli
                     className="wb-partner-form wb-partner-follow"
                     onSubmit={(event) => {
                       event.preventDefault();
-                      const cents = parseDollarInput(amounts[sessionId] ?? '');
+                      const cents = parseEligibleSubtotalDollars(amounts[sessionId] ?? '');
                       if (cents == null) {
                         setMessage('Enter the eligible subtotal in dollars, such as 82.00.');
                         return;
@@ -400,6 +391,7 @@ export function PartnerArrivalClient({ restaurantName, slug }: PartnerArrivalCli
 
       <div className="wb-partner-redeem-links">
         <Link href={`/partner/${slug}`}>Full dashboard</Link>
+        <Link href={`/partner/${slug}/redeem`}>Redeem a code</Link>
         <button type="button" onClick={handleLogout} className="wb-partner-text-button">
           Log out
         </button>

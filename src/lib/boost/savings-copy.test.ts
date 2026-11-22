@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  belowMinimumQuoteCopy,
+  challengeBoostLine,
   challengeTicketOffer,
   challengeVisitSavings,
   partnerVerifiedOfferLine,
+  redeemSettlementLines,
   qrLabelForView,
   redeemSavingsCopy,
   verifyBoostFields,
@@ -158,5 +161,29 @@ describe('boost savings copy', () => {
       sealedDiscountCents: null,
       sealedMinSpendCents: null,
     })).toBe('Valid');
+  });
+
+  it('lists discount, Boost, and the total Wanderbite covers from stored cents', () => {
+    expect(redeemSettlementLines(verifyBoostFields(true, quote))).toEqual({
+      discount: 'Discount $20',
+      boost: 'Boost $5',
+      total: 'Wanderbite covers $25',
+    });
+    expect(redeemSettlementLines(verifyBoostFields(true, { kind: 'needs_subtotal' }))).toBeNull();
+    expect(challengeBoostLine(500)).toBe('+$5 Boost');
+    expect(challengeBoostLine(0)).toBeNull();
+    expect(challengeBoostLine(null)).toBeNull();
+    expect(
+      belowMinimumQuoteCopy({ belowMinimum: true, totalDiscountCents: 0, minSpendCents: 4000 }),
+    ).toBe(
+      'This bill is below the offer minimum of $40, so the Boost does not apply. Wanderbite covers $0 on this quote. You can still verify the visit.',
+    );
+    expect(belowMinimumQuoteCopy({ belowMinimum: false, totalDiscountCents: 2500 })).toBeNull();
+  });
+
+  it('shows a verified Saved total that already includes the Boost', () => {
+    expect(
+      challengeTicketOffer({ offer, visitStatus: 'verified', storedSavingsCents: 2500 }),
+    ).toEqual({ amount: 'Saved $25', requirement: 'Offer $10 off $40+' });
   });
 });

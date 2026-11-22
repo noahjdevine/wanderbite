@@ -572,7 +572,7 @@ describe('verifyRedemptionTokenForPartner', () => {
     expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
   });
 
-  it('verifies a placeholder quote without writing or showing $0', async () => {
+  it('holds verify when a locked Boost quote still needs a subtotal', async () => {
     vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
     installVisit({ quote: quoteRow({
       base_discount_cents: 0,
@@ -586,6 +586,33 @@ describe('verifyRedemptionTokenForPartner', () => {
     }) });
     const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
     const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
+    expect(result).toEqual({
+      success: false,
+      needsBill: true,
+      sessionId: SESSION,
+      minSpendCents: 4000,
+      message: 'This guest locked a Boost. Enter the eligible bill subtotal, then verify the code.',
+    });
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it('verifies a placeholder with no Boost lock and does not write $0', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    installVisit({
+      session: { ...sessionRow(), locked_boost_id: null },
+      quote: quoteRow({
+        base_discount_cents: 0,
+        boost_discount_cents: 0,
+        total_discount_cents: 0,
+        eligible_subtotal_cents: 0,
+        below_minimum: true,
+        reasons: ['below_minimum'],
+        tier_id: null,
+        boost_id: null,
+      }),
+    });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const result = await verifyRedemptionTokenForPartner('WB-G6PK2');
     expect(result).toMatchObject({
       success: true,
       hideDiscountAmount: true,
@@ -594,6 +621,42 @@ describe('verifyRedemptionTokenForPartner', () => {
       sealedDiscountCents: 1500,
     });
     expect(rpc.mock.calls.map((call) => call[0])).not.toContain('record_boost_settlement');
+    expect(rpc.mock.calls.map((call) => call[0])).toContain('verify_redemption_and_settle');
+  });
+
+  it('verifies a below-minimum staff subtotal and writes that quote', async () => {
+    vi.stubEnv('E07_ARRIVAL_SESSIONS_ENABLED', 'true');
+    installVisit({
+      quote: quoteRow({
+        base_discount_cents: 0,
+        boost_discount_cents: 0,
+        total_discount_cents: 0,
+        eligible_subtotal_cents: 2000,
+        below_minimum: true,
+        reasons: ['below_minimum'],
+        tier_id: null,
+        boost_id: null,
+      }),
+    });
+    const { verifyRedemptionTokenForPartner } = await import('@/app/actions/partner-verify');
+    const below = await verifyRedemptionTokenForPartner('WB-G6PK2');
+    expect(below).toMatchObject({
+      success: true,
+      confirmedTotalDiscountCents: 0,
+      confirmedBaseDiscountCents: 0,
+      confirmedBoostDiscountCents: 0,
+      needsSubtotal: false,
+    });
+    const record = rpc.mock.calls.find((call) => call[0] === 'record_boost_settlement');
+    expect(record?.[1]).toMatchObject({
+      p_settlement_kind: 'consume_quote',
+      p_total_discount_cents: 0,
+      p_base_discount_cents: 0,
+      p_boost_discount_cents: 0,
+      p_eligible_subtotal_cents: 2000,
+      p_below_minimum: true,
+      p_locked_boost_id: 'boost-5',
+    });
   });
 
   it('verifies a past deadline without writing a snapshot', async () => {
@@ -1130,6 +1193,13 @@ function installVisit(options: {
           if (columns === '*') return chain(table, { data: null, error: null, count: 1 }, filters);
           if (columns.includes('settlement_kind')) {
             return chain(table, { data: options.settlementRow ?? null, error: null }, filters);
+          }
+          if (columns.includes('status')) {
+            return chain(
+              table,
+              { data: issuedRow({ challenge_item_id: ITEM, status: 'issued' }), error: null },
+              filters,
+            );
           }
           return chain(table, { data: { challenge_item_id: ITEM }, error: null }, filters);
         },

@@ -124,6 +124,8 @@ type ShowRedemptionCodeProps = {
   minSpendLabel: string;
   /** Confirmed quote total. Omitted when the arrival flag is off or there is no quote to show. */
   confirmedDiscountLabel?: string | null;
+  /** Locked Boost sentence. Omitted when this visit has no Boost lock to mention. */
+  boostLockNote?: string | null;
   status: 'issued' | 'verified' | 'expired';
   verifiedAt?: string | null;
   /** ISO `verified_at`. The display string above is not used for the slam. */
@@ -150,6 +152,7 @@ export function ShowRedemptionCode({
   discountLabel,
   minSpendLabel,
   confirmedDiscountLabel = null,
+  boostLockNote = null,
   status,
   verifiedAt,
   verifiedAtIso = null,
@@ -391,6 +394,11 @@ export function ShowRedemptionCode({
       <div className="mt-4 w-full rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-4 py-3 text-center">
         <p className="font-display text-[28px] leading-none text-wb-plum">{discountLabel}</p>
         {minSpendLabel ? <p className="mt-1 text-sm text-wb-muted">{minSpendLabel}</p> : null}
+        {boostLockNote ? (
+          <p className="mt-2 text-sm text-wb-ink" data-boost-lock="">
+            {boostLockNote}
+          </p>
+        ) : null}
       </div>
 
       {displayPhase === 'verified' ? (

@@ -1,3 +1,4 @@
+import { quoteStillNeedsSubtotal } from '@/lib/boost/savings-copy';
 import type { SealedBase } from '@/lib/offers/sealed-base';
 
 /**
@@ -178,8 +179,7 @@ function quoteIsActiveMath(quote: BoostConfirmationQuote): boolean {
  * invent the 1000-cent display fallback from getMemberProgress.
  */
 function isPlaceholderQuote(quote: BoostConfirmationQuote): boolean {
-  const noStaffSubtotal = quote.eligibleSubtotalCents <= 0;
-  return quote.eligibleSubtotalCents === 0 || (quote.belowMinimum && noStaffSubtotal);
+  return quoteStillNeedsSubtotal(quote);
 }
 
 function identitiesDisagree(session: BoostConfirmationSession, quote: BoostConfirmationQuote): boolean {

@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const verifyRedemptionTokenForPartner = vi.hoisted(() => vi.fn());
+const confirmPartnerBillSubtotal = vi.hoisted(() => vi.fn());
 const refresh = vi.hoisted(() => vi.fn());
 
 vi.mock('next/navigation', () => ({
@@ -20,6 +21,10 @@ vi.mock('@/app/actions/partner-verify', () => ({
   verifyRedemptionTokenForPartner: (...args: unknown[]) => verifyRedemptionTokenForPartner(...args),
 }));
 
+vi.mock('@/app/actions/partner-bill-scan', () => ({
+  confirmPartnerBillSubtotal: (...args: unknown[]) => confirmPartnerBillSubtotal(...args),
+}));
+
 import { PARTNER_CODE_HINT, PARTNER_CODE_NOT_FOUND_MESSAGE } from '@/lib/partner-redemption-code';
 import { PartnerRedeemClient } from './partner-redeem-client';
 
@@ -30,6 +35,7 @@ afterEach(() => {
 
 beforeEach(() => {
   verifyRedemptionTokenForPartner.mockReset();
+  confirmPartnerBillSubtotal.mockReset();
   refresh.mockReset();
 });
 
@@ -148,9 +154,10 @@ describe('PartnerRedeemClient', () => {
     fireEvent.change(screen.getByLabelText('Customer code'), { target: { value: 'WB-OK' } });
     fireEvent.submit(screen.getByLabelText('Customer code').closest('form') as HTMLFormElement);
     const status = await screen.findByRole('status');
-    expect(status.querySelector('[data-confirmed-discount]')?.textContent).toBe(
-      '$25 off ($20 base + $5 Boost)',
-    );
+    const totals = status.querySelector('[data-confirmed-discount]')?.textContent ?? '';
+    expect(totals).toContain('Discount $20');
+    expect(totals).toContain('Boost $5');
+    expect(totals).toContain('Wanderbite covers $25');
     expect(status.textContent).toContain("Apply the Wanderbite discount on the guest's check.");
   });
 
@@ -195,5 +202,122 @@ describe('PartnerRedeemClient', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(
       'This code was already used on Nov 1, 2026.',
     );
+  });
+
+  it('confirms a locked Boost bill before verify and then shows the settlement', async () => {
+    verifyRedemptionTokenForPartner
+      .mockResolvedValueOnce({
+        success: false,
+        needsBill: true,
+        sessionId: '55555555-5555-4555-8555-555555555555',
+        minSpendCents: 4000,
+        message: 'This guest locked a Boost. Enter the eligible bill subtotal, then verify the code.',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        redemptionDetails: {
+          email: 'guest@example.com',
+          restaurantName: 'North Grill',
+          verifiedAt: 'Nov 4, 2026, 3:00 PM',
+        },
+        newBadgesEarned: [],
+        hideDiscountAmount: false,
+        sealedDiscountCents: 1500,
+        sealedMinSpendCents: 4000,
+        confirmedTotalDiscountCents: 2500,
+        confirmedBaseDiscountCents: 2000,
+        confirmedBoostDiscountCents: 500,
+        needsSubtotal: false,
+      });
+    confirmPartnerBillSubtotal.mockResolvedValue({
+      ok: true,
+      quote: {
+        baseDiscountCents: 2000,
+        boostDiscountCents: 500,
+        totalDiscountCents: 2500,
+        eligibleSubtotalCents: 8200,
+        belowMinimum: false,
+      },
+    });
+    render(<PartnerRedeemClient restaurantName="North Grill" slug="north-grill" />);
+    fireEvent.change(screen.getByLabelText('Customer code'), { target: { value: 'WB-BOOST' } });
+    fireEvent.submit(screen.getByLabelText('Customer code').closest('form') as HTMLFormElement);
+    const held = await screen.findByText(
+      'This guest locked a Boost. Enter the eligible bill subtotal, then verify the code.',
+    );
+    expect(held).toBeTruthy();
+    expect(screen.queryByText('Verified')).toBeNull();
+    expect(screen.queryByText('Bill needs confirm')).toBeNull();
+    expect(verifyRedemptionTokenForPartner).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(screen.getByLabelText('Eligible subtotal'), { target: { value: '82.00' } });
+    fireEvent.submit(screen.getByLabelText('Eligible subtotal').closest('form') as HTMLFormElement);
+    expect(await screen.findByText('Wanderbite covers $25')).toBeTruthy();
+    expect(screen.getByText('Discount $20')).toBeTruthy();
+    expect(screen.getByText('Boost $5')).toBeTruthy();
+    expect(confirmPartnerBillSubtotal).toHaveBeenCalledWith({
+      sessionId: '55555555-5555-4555-8555-555555555555',
+      eligibleSubtotalCents: 8200,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Verify code' }));
+    const verified = await screen.findByText('Verified');
+    const status = verified.closest('[role="status"]');
+    expect(status?.textContent).toContain('Discount $20');
+    expect(status?.textContent).toContain('Boost $5');
+    expect(status?.textContent).toContain('Wanderbite covers $25');
+    expect(verifyRedemptionTokenForPartner).toHaveBeenCalledTimes(2);
+    expect(verifyRedemptionTokenForPartner).toHaveBeenLastCalledWith('WB-BOOST');
+  });
+
+  it('says when the bill is below the minimum and still lets staff verify', async () => {
+    verifyRedemptionTokenForPartner
+      .mockResolvedValueOnce({
+        success: false,
+        needsBill: true,
+        sessionId: '55555555-5555-4555-8555-555555555555',
+        minSpendCents: 4000,
+        message: 'This guest locked a Boost. Enter the eligible bill subtotal, then verify the code.',
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        redemptionDetails: {
+          email: null,
+          restaurantName: 'North Grill',
+          verifiedAt: 'Nov 4, 2026, 3:00 PM',
+        },
+        newBadgesEarned: [],
+        hideDiscountAmount: false,
+        sealedDiscountCents: 1500,
+        sealedMinSpendCents: 4000,
+        confirmedTotalDiscountCents: 0,
+        confirmedBaseDiscountCents: 0,
+        confirmedBoostDiscountCents: 0,
+        needsSubtotal: false,
+      });
+    confirmPartnerBillSubtotal.mockResolvedValue({
+      ok: true,
+      quote: {
+        baseDiscountCents: 0,
+        boostDiscountCents: 0,
+        totalDiscountCents: 0,
+        eligibleSubtotalCents: 2000,
+        belowMinimum: true,
+      },
+    });
+    render(<PartnerRedeemClient restaurantName="North Grill" slug="north-grill" />);
+    fireEvent.change(screen.getByLabelText('Customer code'), { target: { value: 'WB-LOW' } });
+    fireEvent.submit(screen.getByLabelText('Customer code').closest('form') as HTMLFormElement);
+    await screen.findByLabelText('Eligible subtotal');
+    fireEvent.change(screen.getByLabelText('Eligible subtotal'), { target: { value: '20.00' } });
+    fireEvent.submit(screen.getByLabelText('Eligible subtotal').closest('form') as HTMLFormElement);
+    const note = await screen.findByText(/below the offer minimum/);
+    expect(note.textContent).toContain('so the Boost does not apply');
+    expect(note.textContent).toContain('You can still verify the visit');
+    fireEvent.click(screen.getByRole('button', { name: 'Verify visit' }));
+    const verified = await screen.findByText('Verified');
+    const status = verified.closest('[role="status"]');
+    expect(status?.textContent).toContain('Wanderbite covers $0');
+    expect(status?.textContent).toContain('Boost $0');
   });
 });

@@ -78,6 +78,21 @@ function parseBoosts(value: Json): OfferBoost[] | null {
   return boosts;
 }
 
+/**
+ * Largest positive Boost bonus on a sealed offer, for the ticket line.
+ * Bonuses are not added together. A malformed list is null, not zero.
+ */
+export function sealedBoostBonusCents(value: Json | null | undefined): number | null {
+  const boosts = parseBoosts(value ?? null);
+  if (!boosts) return null;
+  let best: number | null = null;
+  for (const boost of boosts) {
+    if (!Number.isInteger(boost.bonusCents) || boost.bonusCents <= 0) continue;
+    if (best == null || boost.bonusCents > best) best = boost.bonusCents;
+  }
+  return best;
+}
+
 /** Sealed JSON from offer_versions. A malformed term list is refused, not dropped. */
 export function sealBoostOfferVersion(row: OfferVersionTermsRow): SealedBoostOfferVersion | null {
   const tiers = parseTiers(row.tiers);

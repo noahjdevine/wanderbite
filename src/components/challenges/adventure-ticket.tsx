@@ -34,7 +34,7 @@ import {
   challengeCardExpired,
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
-import { challengeTicketOffer } from '@/lib/boost/savings-copy';
+import { challengeBoostLine, challengeTicketOffer } from '@/lib/boost/savings-copy';
 import { memoryActionForStatus } from '@/lib/notes/note-rules';
 import { visitStatusCountsAsVisit } from '@/lib/visits/visit-status';
 import { REDEMPTION_CODE_LIFETIME_LABEL } from '@/lib/redemption-expiry';
@@ -154,11 +154,14 @@ export function AdventureTicket({
     storedSavingsCents: item.storedSavingsCents,
     savingsCorrected: item.savingsCorrected === true,
   });
+  const countedVisit = item.visitStatus != null && visitStatusCountsAsVisit(item.visitStatus);
+  const offerBoost =
+    item.offer.available && !countedVisit ? challengeBoostLine(item.boostBonusCents) : null;
   const status = trackStatus(item);
   const badge = photoBadge(item.visitStatus);
   const isAssigned = item.challengeItem.status === 'assigned';
   const isRedeemed = item.challengeItem.status === 'redeemed';
-  const postVerify = item.visitStatus != null && visitStatusCountsAsVisit(item.visitStatus);
+  const postVerify = countedVisit;
   const windowClosed = isExpired || item.visitStatus === 'expired';
   const [displayCode, setDisplayCode] = useState<string | null>(item.redemptionToken ?? null);
 
@@ -258,6 +261,7 @@ export function AdventureTicket({
       area={ticketArea(item)}
       offerAmount={offer.amount}
       offerRequirement={offer.requirement}
+      offerBoost={offerBoost}
       offerNote={offer.note}
       status={status}
       action={action}

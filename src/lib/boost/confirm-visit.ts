@@ -21,9 +21,10 @@ import {
   type PersistBoostSettlementResult,
   type SettlementStorePort,
 } from '@/lib/boost/settlement-store';
-import type { SealedBase } from '@/lib/offers/sealed-base';
+import { formatCents, type SealedBase } from '@/lib/offers/sealed-base';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import {
+  BOOST_LOCK_PENDING_NOTE,
   qrLabelForView,
   type BoostSavingsView,
   type ConfirmedQuoteSavings,
@@ -134,13 +135,18 @@ export function savingsViewAfterPersist(
   return { kind: 'hidden' };
 }
 
+type VisitDetail = {
+  plan: BoostConfirmationPlan;
+  lockedBoostId: string | null;
+};
+
 /**
  * Load the real visit deadline, the open session for this item, its active
  * quote, and any recorded settlement. Flag off returns before any read.
  * A missing item or an unreadable session returns null and does not plan
  * with a deadline that was never loaded.
  */
-export async function loadVisitPlan(input: VisitConfirmationLoad): Promise<BoostConfirmationPlan | null> {
+async function loadVisitDetail(input: VisitConfirmationLoad): Promise<VisitDetail | null> {
   if (!arrivalSessionsEnabled()) return null;
   const { arrival, settlement } = reads(input);
   const [item, open, recorded] = await Promise.all([
@@ -151,21 +157,62 @@ export async function loadVisitPlan(input: VisitConfirmationLoad): Promise<Boost
   if (!item || open.status === 'unavailable') return null;
   const session = open.status === 'found' ? open.session : null;
   const quote = session ? await arrival.findActiveQuote(session.id) : null;
-  return planBoostConfirmation({
-    now: input.now,
-    redemptionDeadline: deadlineInstant(item.redemptionDeadline),
-    session: session ? toConfirmationSession(session) : null,
-    quote: quote ? toConfirmationQuote(quote) : null,
-    sealedBase: input.sealedBase,
-    recorded,
-  });
+  return {
+    lockedBoostId: session?.lockedBoostId ?? null,
+    plan: planBoostConfirmation({
+      now: input.now,
+      redemptionDeadline: deadlineInstant(item.redemptionDeadline),
+      session: session ? toConfirmationSession(session) : null,
+      quote: quote ? toConfirmationQuote(quote) : null,
+      sealedBase: input.sealedBase,
+      recorded,
+    }),
+  };
+}
+
+export async function loadVisitPlan(input: VisitConfirmationLoad): Promise<BoostConfirmationPlan | null> {
+  const detail = await loadVisitDetail(input);
+  return detail?.plan ?? null;
+}
+
+/** Code-screen sentence for a locked Boost. Null when there is nothing to mention. */
+export function memberBoostLockCopy(input: {
+  lockedBoostId: string | null;
+  view: BoostSavingsView;
+}): string | null {
+  if (!input.lockedBoostId) return null;
+  if (input.view.kind === 'needs_subtotal') return BOOST_LOCK_PENDING_NOTE;
+  if (input.view.kind === 'quote' && input.view.savings.boostDiscountCents > 0) {
+    return `Boost locked: ${formatCents(input.view.savings.boostDiscountCents)}`;
+  }
+  return null;
+}
+
+/**
+ * Member code screen. One load for the confirmed total and the lock note.
+ * Flag off, a missing visit, and a read failure stay blank.
+ */
+export async function memberCodeBoostPresentation(input: VisitConfirmationLoad): Promise<{
+  discountLabel: string | null;
+  lockNote: string | null;
+}> {
+  try {
+    const detail = await loadVisitDetail(input);
+    const view = savingsViewFromPlan(detail?.plan ?? null);
+    return {
+      discountLabel: qrLabelForView(view),
+      lockNote: detail ? memberBoostLockCopy({ lockedBoostId: detail.lockedBoostId, view }) : null,
+    };
+  } catch {
+    return { discountLabel: null, lockNote: null };
+  }
 }
 
 /** Member QR. Does not persist, close a session, or set `redemption_id`. */
 export async function memberQrConfirmedDiscountLabel(input: VisitConfirmationLoad): Promise<string | null> {
   try {
-    const plan = await loadVisitPlan(input);
-    return qrLabelForView(savingsViewFromPlan(plan));
+    const presented = await memberCodeBoostPresentation(input);
+    return presented.discountLabel;
   } catch {
     return null;
   }

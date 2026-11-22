@@ -26,7 +26,11 @@ import {
   type ProgressionLedgerClient,
 } from '@/lib/progression/record-visit';
 import { createSupabaseSettlementStore } from '@/lib/boost/settlement-store';
-import { verifyBoostFields } from '@/lib/boost/savings-copy';
+import {
+  BOOST_BILL_BEFORE_VERIFY_MESSAGE,
+  quoteStillNeedsSubtotal,
+  verifyBoostFields,
+} from '@/lib/boost/savings-copy';
 import { lowestSealedBase, type SealedBase } from '@/lib/offers/sealed-base';
 import { reportVerifyIntegrityError } from '@/lib/report-verify-integrity-error';
 import { badgeIdsEarnedByVerifiedVisits } from '@/lib/progress/rules';
@@ -70,6 +74,13 @@ export type VerifyRedemptionResult =
       confirmedBaseDiscountCents: number | null;
       confirmedBoostDiscountCents: number | null;
       needsSubtotal: boolean;
+    }
+  | {
+      success: false;
+      needsBill: true;
+      sessionId: string;
+      minSpendCents: number | null;
+      message: string;
     }
   | { success: false; message: string };
 
@@ -167,6 +178,47 @@ function messageForUnclaimedRow(
 }
 
 /**
+ * A locked Boost whose quote is still the $0 placeholder must not be verified
+ * yet. Settlement is written only when verify runs after a staff subtotal.
+ * No lock, a confirmed quote, and the flag off return null and verify as today.
+ */
+async function lockedBoostBillHold(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  tokenHash: string,
+  partnerRestaurantId: string,
+): Promise<{ sessionId: string; minSpendCents: number | null } | null> {
+  const { data, error } = await supabase
+    .from('redemptions')
+    .select('id, status, restaurant_id, expires_at, challenge_item_id')
+    .eq('token_hash', tokenHash)
+    .maybeSingle();
+  if (error || !data) return null;
+  if (data.status !== 'issued' || data.restaurant_id !== partnerRestaurantId) return null;
+  if (!data.challenge_item_id) return null;
+  const expiresAt = new Date(data.expires_at);
+  if (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) return null;
+
+  const arrival = createSupabaseArrivalStore(supabase);
+  const open = await arrival.findOpenSessionByChallengeItem(data.challenge_item_id);
+  if (open.status !== 'found') return null;
+  if (open.session.restaurantId !== partnerRestaurantId || !open.session.lockedBoostId) return null;
+  const quote = await arrival.findActiveQuote(open.session.id);
+  if (!quote || !quoteStillNeedsSubtotal(quote)) return null;
+
+  let minSpendCents: number | null = null;
+  const item = await arrival.findItem(data.challenge_item_id);
+  if (item?.offerVersionId) {
+    const { data: version } = await supabase
+      .from('offer_versions')
+      .select('tiers')
+      .eq('id', item.offerVersionId)
+      .maybeSingle();
+    minSpendCents = lowestSealedBase(version?.tiers)?.min_spend_cents ?? null;
+  }
+  return { sessionId: open.session.id, minSpendCents };
+}
+
+/**
  * Partner Portal: verify a customer code. Only succeeds if the redemption is for
  * the restaurant in the partner session cookie. Uses service role (bypasses RLS);
  * authorization is enforced by hashed partner session + atomic RPC.
@@ -199,6 +251,23 @@ export async function verifyRedemptionTokenForPartner(
 
   const supabase = getSupabaseAdmin();
   const tokenHash = hashRedemptionToken(canonical);
+
+  if (arrivalSessionsEnabled()) {
+    try {
+      const hold = await lockedBoostBillHold(supabase, tokenHash, partnerRestaurantId);
+      if (hold) {
+        return {
+          success: false,
+          needsBill: true,
+          sessionId: hold.sessionId,
+          minSpendCents: hold.minSpendCents,
+          message: BOOST_BILL_BEFORE_VERIFY_MESSAGE,
+        };
+      }
+    } catch {
+      // A failed hold read keeps today's verify path.
+    }
+  }
 
   const { data: issuedRow } = await supabase
     .from('redemptions')

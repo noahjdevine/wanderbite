@@ -4,7 +4,7 @@ import { MemberLevelUpCelebration } from '@/components/journey/member-level-up';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
 import { createClient } from '@/lib/supabase/server';
-import { memberQrConfirmedDiscountLabel } from '@/lib/boost/confirm-visit';
+import { memberCodeBoostPresentation } from '@/lib/boost/confirm-visit';
 import { visitProblemsEnabled } from '@/lib/boost/flag';
 import { formatMemberVerifiedAt } from '@/lib/partner-verified-at';
 import { formatCents, lowestSealedBase } from '@/lib/offers/sealed-base';
@@ -127,17 +127,18 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
     : `${formatCents(minSpendCents)} minimum spend`;
 
   const now = new Date();
-  const [confirmedDiscountLabel, codeResult] = await Promise.all([
+  const [boostPresentation, codeResult] = await Promise.all([
     row.challenge_item_id
-      ? memberQrConfirmedDiscountLabel({
+      ? memberCodeBoostPresentation({
           challengeItemId: row.challenge_item_id,
           redemptionId: row.id,
           now,
           sealedBase: sealed,
         })
-      : Promise.resolve(null),
+      : Promise.resolve({ discountLabel: null, lockNote: null }),
     row.status === 'verified' ? Promise.resolve(null) : getRedemptionCode(redemptionId),
   ]);
+  const confirmedDiscountLabel = boostPresentation.discountLabel;
   if (
     row.status !== 'verified'
     && codeResult?.state !== 'verified'
@@ -182,6 +183,7 @@ export default async function ShowRedemptionPage({ params }: PageProps) {
         discountLabel={discountLabel}
         minSpendLabel={minSpendLabel}
         confirmedDiscountLabel={confirmedDiscountLabel}
+        boostLockNote={boostPresentation.lockNote}
         status={phase}
         verifiedAt={verifiedAt}
         verifiedAtIso={verifiedIso}

@@ -28,7 +28,8 @@ import { firstRpcRow } from '@/lib/challenges/rpc';
 import { requireLaunchMarketId } from '@/lib/launch-market-server';
 import { safeManualImagePath } from '@/lib/restaurant-image';
 import { loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
-import { visitProblemsEnabled } from '@/lib/boost/flag';
+import { sealedBoostBonusCents } from '@/lib/boost/arrival';
+import { arrivalSessionsEnabled, visitProblemsEnabled } from '@/lib/boost/flag';
 import { challengeVisitSavings } from '@/lib/boost/savings-copy';
 import { loadMemberSavingsCorrections } from '@/lib/boost/visit-problem-store';
 import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
@@ -124,6 +125,11 @@ export type GeneratedChallengeItem = {
    * A savings correction replaces this figure. Not a recomputed quote.
    */
   storedSavingsCents?: number | null;
+  /**
+   * Largest sealed Boost bonus, in cents, when the arrival flag is exactly true
+   * and the offer has a Boost. Absent otherwise. Not a summed quote.
+   */
+  boostBonusCents?: number;
   /**
    * True when storedSavingsCents is the admin correction for this visit.
    * Absent when the visit-problem flag is off or this visit has no correction.
@@ -841,14 +847,28 @@ async function loadChallengeItemsWithRestaurants(
     .map((item) => item.offer_version_id)
     .filter((id): id is string => Boolean(id));
   const versionBase = new Map<string, { discount_amount_cents: number; min_spend_cents: number }>();
+  const versionBoost = new Map<string, number>();
   if (versionIds.length > 0) {
-    const { data: versions } = await supabase
-      .from('offer_versions')
-      .select('id, tiers')
-      .in('id', versionIds);
-    for (const version of versions ?? []) {
-      const base = lowestSealedBase(version.tiers);
-      if (base) versionBase.set(version.id, base);
+    if (arrivalSessionsEnabled()) {
+      const { data: versions } = await supabase
+        .from('offer_versions')
+        .select('id, tiers, boosts')
+        .in('id', versionIds);
+      for (const version of versions ?? []) {
+        const base = lowestSealedBase(version.tiers);
+        if (base) versionBase.set(version.id, base);
+        const bonus = sealedBoostBonusCents(version.boosts);
+        if (bonus != null) versionBoost.set(version.id, bonus);
+      }
+    } else {
+      const { data: versions } = await supabase
+        .from('offer_versions')
+        .select('id, tiers')
+        .in('id', versionIds);
+      for (const version of versions ?? []) {
+        const base = lowestSealedBase(version.tiers);
+        if (base) versionBase.set(version.id, base);
+      }
     }
   }
 
@@ -957,6 +977,9 @@ async function loadChallengeItemsWithRestaurants(
       redemptionId: item.status === 'redeemed' ? redemption?.id ?? null : null,
       ...(shownSavings.cents != null ? { storedSavingsCents: shownSavings.cents } : {}),
       ...(shownSavings.corrected ? { savingsCorrected: true } : {}),
+      ...(item.offer_version_id && versionBoost.has(item.offer_version_id)
+        ? { boostBonusCents: versionBoost.get(item.offer_version_id) }
+        : {}),
       visitStatus: deriveVisitStatus({
         item: {
           status: item.status,
