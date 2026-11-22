@@ -163,7 +163,9 @@ describe('eventsForDiscoverCard copy', () => {
       providerTimedOut: false,
       askTone: 'request',
     });
-    expect(fallbackMessage(events)).toBe("Closest I've got: Green Table. I couldn't match sushi.");
+    expect(fallbackMessage(events)).toBe(
+      "Closest I've got: Green Table. I couldn't match sushi with vegan.",
+    );
     expect(fallbackMessage(events)).toContain("Closest I've got: Green Table.");
     expect(fallbackMessage(events).toLowerCase()).not.toContain('not a match');
     expect(fallbackMessage(events).toLowerCase()).not.toContain('matched');

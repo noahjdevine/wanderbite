@@ -295,10 +295,20 @@ export function applyQuickChip(draft: DiscoverDraft, chip: QuickChip): DiscoverD
       timeOfDay: null,
       priceRange: null,
       preferredCuisine: null,
+      dietaryFlags: [],
     };
   }
   const message = draft.message.trim().length > 0 ? draft.message : chip.label;
-  return { ...draft, surprise: false, message, vibe: chip.vibe };
+  return {
+    ...draft,
+    surprise: false,
+    message,
+    vibe: chip.vibe,
+    timeOfDay: null,
+    priceRange: null,
+    preferredCuisine: null,
+    dietaryFlags: [],
+  };
 }
 
 export function cheaperPrice(current: RoulettePriceRange | null): RoulettePriceRange {
@@ -323,6 +333,7 @@ export function refineDiscoverDraft(base: DiscoverDraft, refine: DiscoverRefine)
     return { ...base, surprise: false, priceRange: cheaperPrice(base.priceRange) };
   }
   if (refine === 'new-vibe') {
+    if (!base.vibe) return { ...base, surprise: false };
     return { ...base, surprise: false, vibe: nextDiscoverVibe(base.vibe) };
   }
   return { ...base };
@@ -340,14 +351,35 @@ export function vibeKeptByMessage(
   return message.toLowerCase().includes(vibe.toLowerCase()) ? vibe : null;
 }
 
-/** A typed follow-up replaces the ask. Surprise must clear or the message is omitted. */
-export function followUpDiscoverDraft(base: DiscoverDraft, message: string): DiscoverDraft {
+export function timeKeptByMessage(
+  message: string,
+  timeOfDay: DiscoverDraft['timeOfDay'],
+): DiscoverDraft['timeOfDay'] {
+  if (!timeOfDay) return null;
+  return message.toLowerCase().includes(timeOfDay.toLowerCase()) ? timeOfDay : null;
+}
+
+/**
+ * A newly typed ask replaces the previous one.
+ * Chip vibes, hours, price, cuisine, and session dietary filters do not come along
+ * unless the new words name that vibe or time. Saved account dietaries are separate.
+ */
+export function draftForNewTypedAsk(base: DiscoverDraft, message: string): DiscoverDraft {
   return {
     ...base,
     message,
     surprise: false,
     vibe: vibeKeptByMessage(message, base.vibe),
+    timeOfDay: timeKeptByMessage(message, base.timeOfDay),
+    priceRange: null,
+    preferredCuisine: null,
+    dietaryFlags: [],
   };
+}
+
+/** A typed follow-up replaces the ask. Surprise must clear or the message is omitted. */
+export function followUpDiscoverDraft(base: DiscoverDraft, message: string): DiscoverDraft {
+  return draftForNewTypedAsk(base, message);
 }
 
 export const DISCOVER_SURPRISE_INDEX_KEY = 'wanderbite.discover.surpriseIndex';

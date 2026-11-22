@@ -1,7 +1,8 @@
 import { CUISINES, cuisineLabel, isCuisineId, type CuisineId } from '@/lib/cuisines';
 import { mergeSoftAsk } from '@/lib/discover/code-pick';
 import type { DiscoverAskTone } from '@/lib/discover/events';
-import { restaurantMatchesPreferredCuisine } from '@/lib/discover/stages';
+import { dietaryConstraintLabel, restaurantMatchesPreferredCuisine } from '@/lib/discover/stages';
+import { isRouletteDietaryFlag } from '@/lib/roulette-dietary';
 
 /**
  * Member-facing Bea line for one Discover card.
@@ -177,6 +178,8 @@ export function hardConstraintMisses(args: {
   preferredCuisine?: string | null;
   priceRange?: string | null;
   restaurantTags: string[] | null | undefined;
+  /** Active dietary filters. Named with a missed cuisine: "sushi with vegetarian". */
+  dietary?: readonly string[];
 }): string[] {
   const ask = mergeSoftAsk({
     message: args.message,
@@ -196,7 +199,15 @@ export function hardConstraintMisses(args: {
       }
     }
   }
-  return [...cuisineMisses, ...unverifiableDemandMisses(args.message)];
+  const diet = (args.dietary ?? [])
+    .filter((flag) => isRouletteDietaryFlag(flag))
+    .map((flag) => dietaryConstraintLabel(flag).toLowerCase());
+  const cuisinePhrase = briefList(cuisineMisses);
+  const named =
+    cuisinePhrase.length > 0 && diet.length > 0
+      ? [`${cuisinePhrase} with ${briefList(diet)}`]
+      : cuisineMisses;
+  return [...named, ...unverifiableDemandMisses(args.message)];
 }
 
 /**
@@ -232,6 +243,7 @@ export function selectMemberVoice(args: {
   neighborhood?: string | null;
   descriptive?: string | null;
   timeOfDay?: string | null;
+  dietary?: readonly string[];
 }): MemberVoice {
   return withHoursCaveat(chooseMemberVoice(args), args.message, args.timeOfDay);
 }
@@ -252,9 +264,33 @@ function chooseMemberVoice(args: {
   cuisine?: string | null;
   neighborhood?: string | null;
   descriptive?: string | null;
+  dietary?: readonly string[];
 }): MemberVoice {
   if (args.poolRestarted) {
     return { badge: 'Starting over', line: POOL_RESTART_LINE, card: 'pick' };
+  }
+  const surprise =
+    args.askTone === 'surprise' || (args.askTone === 'another' && args.surpriseSession === true);
+  if (surprise) {
+    return {
+      badge: 'Surprise',
+      line: surpriseLine(args.name, args.lineIndex ?? 0),
+      card: 'pick',
+    };
+  }
+  const misses = hardConstraintMisses({
+    message: args.message,
+    preferredCuisine: args.preferredCuisine,
+    priceRange: args.priceRange,
+    restaurantTags: args.restaurantTags,
+    dietary: args.dietary,
+  });
+  if (misses.length > 0) {
+    return {
+      badge: 'Closest pick',
+      line: closestVoiceLine(args.name, misses),
+      card: 'fallback',
+    };
   }
   if (args.refine === 'cheaper') {
     return {
@@ -270,33 +306,11 @@ function chooseMemberVoice(args: {
       card: 'pick',
     };
   }
-  const surprise =
-    args.askTone === 'surprise' || (args.askTone === 'another' && args.surpriseSession === true);
-  if (surprise) {
-    return {
-      badge: 'Surprise',
-      line: surpriseLine(args.name, args.lineIndex ?? 0),
-      card: 'pick',
-    };
-  }
   if (args.askTone === 'another') {
     return {
       badge: "Here's another idea",
       line: anotherIdeaLine(args.name),
       card: 'pick',
-    };
-  }
-  const misses = hardConstraintMisses({
-    message: args.message,
-    preferredCuisine: args.preferredCuisine,
-    priceRange: args.priceRange,
-    restaurantTags: args.restaurantTags,
-  });
-  if (misses.length > 0) {
-    return {
-      badge: 'Closest pick',
-      line: closestVoiceLine(args.name, misses),
-      card: 'fallback',
     };
   }
   return {

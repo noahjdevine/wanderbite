@@ -195,25 +195,40 @@ describe('closest match only for unmet hard constraints', () => {
     ).toEqual(['a boat']);
   });
 
-  it('keeps another idea on one line even when the first pass had a descriptive sentence', () => {
+  it('keeps another idea on one line when the place still matches', () => {
     const first = selectMemberVoice({
       name: 'Green Table',
       message: 'quiet sushi',
       askTone: 'another',
-      restaurantTags: ['noodles'],
+      restaurantTags: ['sushi'],
       descriptive: 'Green Table is a bright room for noodles.',
     });
     const later = selectMemberVoice({
       name: 'Green Table',
       message: 'quiet sushi',
       askTone: 'another',
-      restaurantTags: ['noodles'],
+      restaurantTags: ['sushi'],
       descriptive: null,
     });
     expect(first.line).toBe("Here's another idea: Green Table.");
     expect(later.line).toBe(first.line);
     expect(first.badge).toBe(later.badge);
     expect(first.line).not.toContain("Closest I've got");
+  });
+
+  it('names a missed cuisine and the active dietary filter on another idea', () => {
+    const voice = selectMemberVoice({
+      name: 'Centro On The Square',
+      message: 'sushi',
+      askTone: 'another',
+      restaurantTags: ['american'],
+      dietary: ['vegetarian'],
+    });
+    expect(voice).toMatchObject({
+      card: 'fallback',
+      badge: 'Closest pick',
+      line: "Closest I've got: Centro On The Square. I couldn't match sushi with vegetarian.",
+    });
   });
 });
 

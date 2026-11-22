@@ -18,6 +18,7 @@ import {
   draftToSpinBody,
   DISCOVER_SHOWN_IDS_KEY,
   DISCOVER_SURPRISE_INDEX_KEY,
+  draftForNewTypedAsk,
   followUpDiscoverDraft,
   readDiscoverSession,
   vibeKeptByMessage,
@@ -262,13 +263,39 @@ describe('discover screen reducer', () => {
     expect(next.message).toBe('something spicy instead');
     expect(next.surprise).toBe(false);
     expect(next.vibe).toBeNull();
-    expect(next.dietaryFlags).toEqual(['vegan']);
+    expect(next.dietaryFlags).toEqual([]);
     expect(draftToSpinBody(next).message).toBe('something spicy instead');
     expect(draftToSpinBody(next).vibe).toBeUndefined();
     const kept = followUpDiscoverDraft(baseDraft, 'date night tacos');
     expect(kept.vibe).toBe('Date Night');
     expect(vibeKeptByMessage('cheap tacos', 'Date Night')).toBeNull();
     expect(vibeKeptByMessage('a quick bite', 'Quick Bite')).toBe('Quick Bite');
+    const fresh = draftForNewTypedAsk(
+      {
+        ...baseDraft,
+        dietaryFlags: ['vegetarian'],
+        timeOfDay: 'Late Night',
+        priceRange: '$$$',
+        preferredCuisine: 'japanese',
+        vibe: 'Adventurous',
+      },
+      'sushi',
+    );
+    expect(fresh).toMatchObject({
+      message: 'sushi',
+      vibe: null,
+      timeOfDay: null,
+      priceRange: null,
+      preferredCuisine: null,
+      dietaryFlags: [],
+    });
+    expect(draftToSpinBody(fresh).message).toBe('sushi');
+    expect(draftToSpinBody(fresh).vibe).toBeUndefined();
+    expect(draftToSpinBody(fresh).timeOfDay).toBeUndefined();
+    expect(draftToSpinBody(fresh).dietaryQuick).toBeUndefined();
+    const carried = draftForNewTypedAsk(baseDraft, 'open late');
+    expect(carried.timeOfDay).toBeNull();
+    expect(refineDiscoverDraft({ ...baseDraft, vibe: null }, 'new-vibe').vibe).toBeNull();
   });
 
   it('remembers the surprise slot and shown restaurants in session storage', () => {

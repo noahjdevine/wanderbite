@@ -86,6 +86,8 @@ function postedBodies(): {
   message?: string;
   priceRange?: string;
   vibe?: string;
+  timeOfDay?: string;
+  dietaryQuick?: string[];
   askTone?: string;
   refine?: string;
   surpriseSession?: boolean;
@@ -100,6 +102,8 @@ function postedBodies(): {
         message?: string;
         priceRange?: string;
         vibe?: string;
+        timeOfDay?: string;
+        dietaryQuick?: string[];
         askTone?: string;
         refine?: string;
         surpriseSession?: boolean;
@@ -531,6 +535,37 @@ describe('DiscoverFlow', () => {
     expect(postedBodies()[0]?.excludeRestaurantIds).toBeUndefined();
     expect(postedBodies()[1]?.excludeRestaurantIds).toEqual(['rest-a']);
     expect(postedBodies()[2]?.excludeRestaurantIds).toEqual(['rest-b']);
+  });
+
+  it('drops hours, chips, and dietary filters when a new ask replaces open late', async () => {
+    render(
+      <DiscoverFlow initialMessage="open late" viewer={{ firstName: null, savedDietary: [] }} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1400);
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Another idea' }));
+    await flush();
+    expect(postedBodies()[1]?.message).toBe('open late');
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+    fireEvent.change(screen.getByLabelText('Tell Bea what you are craving'), {
+      target: { value: 'sushi' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Refine' }));
+    expect(screen.getByLabelText('Tell Bea what you are craving')).toHaveProperty('value', 'sushi');
+    expect(screen.getByRole('button', { name: 'Date night' }).getAttribute('aria-pressed')).toBe(
+      'false',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Bea' }));
+    await flush();
+    const fresh = postedBodies().at(-1);
+    expect(fresh?.message).toBe('sushi');
+    expect(fresh?.vibe).toBeUndefined();
+    expect(fresh?.timeOfDay).toBeUndefined();
+    expect(fresh?.dietaryQuick).toBeUndefined();
+    expect(fresh?.priceRange).toBeUndefined();
   });
 
   it('clears a date-night chip when the next typed ask does not name it', async () => {

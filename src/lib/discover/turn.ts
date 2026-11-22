@@ -86,8 +86,8 @@ import { eventsForDiscoverCard } from '@/lib/discover/card-events';
 import {
   MESSAGE_EXCLUSION_EMPTY,
   listingTagsFromMessage,
+  constrainDiscoverPool,
   mergeSoftAsk,
-  narrowToCuisineMatches,
   rankDiscoverRestaurant,
 } from '@/lib/discover/code-pick';
 import { discoverCodePickEnabled } from '@/lib/discover/flag';
@@ -523,6 +523,19 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
       }
     }
 
+    const softAsk = mergeSoftAsk({
+      message: acceptedMessage,
+      preferredCuisine,
+      priceRange,
+    });
+    const requireAllCuisines =
+      softAsk.preferredCuisines.length > 1 && !/\bor\b/i.test(acceptedMessage);
+    const constrained = constrainDiscoverPool(restaurants, softAsk, requireAllCuisines);
+    if (constrained.emptiedByNegation) {
+      return errorResponse(MESSAGE_EXCLUSION_EMPTY, 404);
+    }
+    restaurants = constrained.pool;
+
     const poolRestarted = exclusionEmptiesPool(restaurants, excludeRestaurantIds);
     if (!poolRestarted) {
       restaurants = applyRestaurantExclusion(restaurants, excludeRestaurantIds);
@@ -567,31 +580,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
      * when Haiku's sentence is shown, and `random_fallback` when the card
      * uses the template sentence.
      */
-    const softAsk = mergeSoftAsk({
-      message: acceptedMessage,
-      preferredCuisine,
-      priceRange,
-    });
     const messageAsk = discoverCodePickEnabled() ? softAsk : null;
-    if (messageAsk && messageAsk.excludedCuisines.length > 0) {
-      const kept = restaurants.filter(
-        (row) =>
-          !messageAsk.excludedCuisines.some((id) =>
-            restaurantMatchesPreferredCuisine(row.cuisine_tags, id),
-          ),
-      );
-      if (kept.length === 0) {
-        return errorResponse(MESSAGE_EXCLUSION_EMPTY, 404);
-      }
-      restaurants = kept;
-    }
-    const requireAllCuisines =
-      softAsk.preferredCuisines.length > 1 && !/\bor\b/i.test(acceptedMessage);
-    restaurants = narrowToCuisineMatches(
-      restaurants,
-      softAsk.preferredCuisines,
-      requireAllCuisines,
-    );
     const codePick = messageAsk
       ? rankDiscoverRestaurant({
           pool: restaurants,
@@ -622,9 +611,7 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
         events: eventsForDiscoverCard({
           message: acceptedMessage,
           dietary: dietaryFlags,
-          excludedCuisineIds: messageAsk
-            ? [...excludedCuisines, ...messageAsk.excludedCuisines]
-            : excludedCuisines,
+          excludedCuisineIds: [...excludedCuisines, ...softAsk.excludedCuisines],
           vibe,
           timeOfDay,
           priceRange,
@@ -641,7 +628,10 @@ export async function runDiscoverTurn(request: NextRequest): Promise<DiscoverTur
           lineIndex,
           poolRestarted,
           cheaperLanded: refine === 'cheaper' && cheaperChoiceLanded(chosen.price_range, previousPrice),
-          vibeChanged: refine === 'new-vibe' && !excludeRestaurantIds.includes(chosen.id),
+          vibeChanged:
+            refine === 'new-vibe' &&
+            Boolean(vibe) &&
+            !excludeRestaurantIds.includes(chosen.id),
           facts: discoverCardFacts(briefingFacts.byRestaurantId[chosen.id] ?? []),
           visitedRestaurantIds,
         }),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  constrainDiscoverPool,
   listingTagsFromMessage,
   looksLikeCasualBar,
   mergeSoftAsk,
@@ -7,6 +8,7 @@ import {
   rankDiscoverRestaurant,
   type CodePickRestaurant,
 } from '@/lib/discover/code-pick';
+import { exclusionEmptiesPool } from '@/lib/discover/exclude-restaurants';
 import { discoverCodePickEnabled } from '@/lib/discover/flag';
 
 const TACO: CodePickRestaurant = {
@@ -192,6 +194,33 @@ describe('rankDiscoverRestaurant', () => {
     });
     expect(pick?.restaurant.id).toBe('tacos');
     expect(pick?.preferencesMet).toBe(false);
+  });
+
+  it('keeps a negated cuisine out of the pool that another idea and start-over use', () => {
+    const umai: CodePickRestaurant = {
+      id: 'umai',
+      cuisine_tags: ['sushi', 'vegetarian'],
+      price_range: '$$',
+    };
+    const centro: CodePickRestaurant = {
+      id: 'centro',
+      cuisine_tags: ['american'],
+      price_range: '$$',
+    };
+    const kimiya: CodePickRestaurant = {
+      id: 'kimiya',
+      cuisine_tags: ['sushi'],
+      price_range: '$$',
+    };
+    const blocked = constrainDiscoverPool([umai, centro, kimiya], mergeSoftAsk({ message: 'no sushi' }));
+    expect(blocked.emptiedByNegation).toBe(false);
+    expect(blocked.pool.map((row) => row.id)).toEqual(['centro']);
+    expect(exclusionEmptiesPool(blocked.pool, ['centro'])).toBe(true);
+
+    const sushi = constrainDiscoverPool([umai, centro, kimiya], mergeSoftAsk({ message: 'sushi' }));
+    expect(sushi.pool.map((row) => row.id)).toEqual(['umai', 'kimiya']);
+    expect(exclusionEmptiesPool(sushi.pool, ['umai'])).toBe(false);
+    expect(exclusionEmptiesPool(sushi.pool, ['umai', 'kimiya'])).toBe(true);
   });
 
   it('finds a taco place ahead of sushi when the ask names tacos, even on date night', () => {

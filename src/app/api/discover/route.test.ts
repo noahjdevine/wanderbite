@@ -541,13 +541,11 @@ describe('Discover stream route', () => {
     const another = await POST(
       post({ message: 'quiet sushi', body: { askTone: 'another', preferredCuisine: 'japanese' } }),
     );
-    const anotherPick = parseDiscoverSse(await another.text()).find((event) => event.type === 'pick');
-    expect(anotherPick && anotherPick.type === 'pick' ? anotherPick.reason : '').toBe(
-      "Here's another idea: Green Table.",
+    const anotherPick = parseDiscoverSse(await another.text()).find((event) => event.type === 'fallback');
+    expect(anotherPick && anotherPick.type === 'fallback' ? anotherPick.message : '').toBe(
+      "Closest I've got: Green Table. I couldn't match sushi with vegan.",
     );
-    expect(anotherPick && anotherPick.type === 'pick' ? anotherPick.badge : '').toBe(
-      "Here's another idea",
-    );
+    expect(anotherPick && anotherPick.type === 'fallback' ? anotherPick.badge : '').toBe('Closest pick');
     const filter = events.find((event) => event.type === 'step' && event.id === 'filter');
     if (filter?.type === 'step' && filter.id === 'filter') {
       expect(filter.total).toBe(1);
@@ -875,6 +873,137 @@ describe('Discover stream route', () => {
       });
       expect(JSON.stringify(events)).not.toContain("couldn't match tacos");
       expect(JSON.stringify(events)).not.toContain('Shun by Yama Sushi');
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('keeps no-sushi out of every pick, including the start-over', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    const umai = {
+      ...BBQ,
+      id: 'rest-umai',
+      name: 'Umai Sushi',
+      cuisine_tags: ['sushi', 'vegetarian'],
+    };
+    const centro = { ...BBQ, id: 'rest-centro', name: 'Centro', cuisine_tags: ['american'] };
+    restaurantRows = [umai, centro];
+    fetchMock.mockImplementation(() => Promise.resolve(anthropicResponse('Centro is a bright room.')));
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const first = parseDiscoverSse(
+        await (await POST(post({ message: 'no sushi', body: { askTone: 'another' } }))).text(),
+      );
+      expect(JSON.stringify(first)).toContain('Centro');
+      expect(JSON.stringify(first)).not.toContain('Umai');
+
+      const restarted = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              message: 'no sushi',
+              body: { askTone: 'another', excludeRestaurantIds: [centro.id] },
+            }),
+          )
+        ).text(),
+      );
+      expect(JSON.stringify(restarted)).not.toContain('Umai');
+      expect(restarted.find((event) => event.type === 'pick')).toMatchObject({
+        poolRestarted: true,
+        reason: "That's everything I've got that fits. Starting over.",
+        partner: { id: centro.id },
+      });
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('cycles sushi matches before a non-match, then starts over inside that set', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    const umai = { ...BBQ, id: 'rest-umai', name: 'Umai Sushi', cuisine_tags: ['sushi', 'vegetarian'] };
+    const kimiya = { ...BBQ, id: 'rest-kimiya', name: 'Kimiya', cuisine_tags: ['sushi'] };
+    const centro = { ...BBQ, id: 'rest-centro', name: 'Centro On The Square', cuisine_tags: ['american'] };
+    restaurantRows = [centro, umai, kimiya];
+    fetchMock.mockImplementation(() => Promise.resolve(anthropicResponse('Kimiya is a sushi room.')));
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const next = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              message: 'sushi',
+              body: { askTone: 'another', excludeRestaurantIds: [umai.id] },
+            }),
+          )
+        ).text(),
+      );
+      expect(next.find((event) => event.type === 'pick')).toMatchObject({
+        partner: { id: kimiya.id, name: 'Kimiya' },
+      });
+      expect(JSON.stringify(next)).not.toContain('Centro');
+      expect(JSON.stringify(next)).not.toContain("couldn't match");
+      expect(JSON.stringify(next)).not.toContain('Starting over');
+
+      const restarted = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              message: 'sushi',
+              body: { askTone: 'another', excludeRestaurantIds: [umai.id, kimiya.id] },
+            }),
+          )
+        ).text(),
+      );
+      const pick = restarted.find((event) => event.type === 'pick');
+      expect(pick).toMatchObject({
+        poolRestarted: true,
+        reason: "That's everything I've got that fits. Starting over.",
+      });
+      if (pick?.type === 'pick') expect([umai.id, kimiya.id]).toContain(pick.partner.id);
+      expect(JSON.stringify(restarted)).not.toContain('Centro');
+    } finally {
+      random.mockRestore();
+    }
+  });
+
+  it('says when sushi cannot be met together with vegetarian', async () => {
+    vi.stubEnv('DISCOVER_CODE_PICK_ENABLED', 'true');
+    const shun = {
+      ...BBQ,
+      id: 'rest-shun',
+      name: 'Shun by Yama Sushi',
+      cuisine_tags: ['sushi'],
+      is_vegan: false,
+    };
+    const centro = {
+      ...BBQ,
+      id: 'rest-centro',
+      name: 'Centro On The Square',
+      cuisine_tags: ['american', 'vegetarian'],
+    };
+    restaurantRows = [shun, centro];
+    fetchMock.mockImplementation(() =>
+      Promise.resolve(anthropicResponse('Centro is a bright room.')),
+    );
+    const random = vi.spyOn(Math, 'random').mockReturnValue(0);
+    try {
+      const events = parseDiscoverSse(
+        await (
+          await POST(
+            post({
+              message: 'sushi',
+              body: { askTone: 'another', dietaryQuick: ['vegetarian'] },
+            }),
+          )
+        ).text(),
+      );
+      const card = events.find((event) => event.type === 'fallback');
+      expect(card).toMatchObject({
+        type: 'fallback',
+        alternative: { name: 'Centro On The Square' },
+        message: "Closest I've got: Centro On The Square. I couldn't match sushi with vegetarian.",
+      });
+      expect(JSON.stringify(events)).not.toContain('Shun');
     } finally {
       random.mockRestore();
     }
@@ -1309,11 +1438,11 @@ describe('Discover stream route', () => {
           )
         ).text(),
       );
-      expect(another.find((event) => event.type === 'pick')).toMatchObject({
-        badge: "Here's another idea",
-        partner: { id: VEGAN.id },
+      expect(another.find((event) => event.type === 'fallback')).toMatchObject({
+        badge: 'Closest pick',
+        alternative: { id: VEGAN.id },
         isNewToMember: false,
-        reason: "Here's another idea: Green Table.",
+        message: "Closest I've got: Green Table. I couldn't match sushi.",
       });
       expect(JSON.stringify(another)).not.toContain(BBQ.id);
       const scoped = redemptionQuery.find((call) => call[0] === 'in');

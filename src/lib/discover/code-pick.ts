@@ -87,6 +87,32 @@ export function narrowToCuisineMatches<T extends CodePickRestaurant>(
 }
 
 /**
+ * Dietary and saved exclusions have already run.
+ * Negated cuisines ("no sushi") always leave, including on a repeat or a
+ * start-over. A named cuisine then keeps only matches when any exist, so
+ * Another idea cycles those partners before a non-match is allowed.
+ */
+export function constrainDiscoverPool<T extends CodePickRestaurant>(
+  pool: readonly T[],
+  ask: { preferredCuisines: readonly string[]; excludedCuisines: readonly string[] },
+  requireAll = false,
+): { pool: T[]; emptiedByNegation: boolean } {
+  const negated =
+    ask.excludedCuisines.length === 0
+      ? (pool as T[])
+      : pool.filter(
+          (row) => !matchesAnyCuisine(row.cuisine_tags, ask.excludedCuisines),
+        );
+  if (ask.excludedCuisines.length > 0 && negated.length === 0) {
+    return { pool: [], emptiedByNegation: true };
+  }
+  return {
+    pool: narrowToCuisineMatches(negated, ask.preferredCuisines, requireAll),
+    emptiedByNegation: false,
+  };
+}
+
+/**
  * Cuisine is worth more than price so an explicit taco or sushi ask beats a
  * cheaper place in the wrong cuisine. A date-night penalty keeps a brewery
  * or sports bar behind any other partner that scores the same otherwise.

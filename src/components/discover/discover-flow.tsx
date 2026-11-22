@@ -18,6 +18,7 @@ import {
   applyQuickChip,
   dietaryButtonLabel,
   dietaryFlagsForStatus,
+  draftForNewTypedAsk,
   draftToSpinBody,
   followUpDiscoverDraft,
   foodForOutcome,
@@ -101,6 +102,9 @@ export function DiscoverFlow({
   const shownIds = useRef<string[]>([]);
   /** Round-robin slot for Surprise me, including another idea after surprise. */
   const surpriseIndex = useRef(0);
+  /** Origin message whose chips were already dropped for the in-progress typed ask. */
+  const clearedOriginMessage = useRef<string | null>(null);
+  const dietaryMessageCleared = useRef(false);
 
   const exclusionsSummary = useMemo(() => {
     if (excludedCuisines.length === 0) return null;
@@ -287,6 +291,7 @@ export function DiscoverFlow({
 
   function openDietary() {
     const source = draft;
+    dietaryMessageCleared.current = false;
     setDietaryDraft(source.surprise ? { ...source, message: '' } : { ...source });
     setDietaryOpen(true);
   }
@@ -321,12 +326,29 @@ export function DiscoverFlow({
           refineOpen={refineOpen}
           exclusionsSummary={exclusionsSummary}
           onMessage={(message) =>
-            setDraft((prev) => ({
-              ...prev,
-              message,
-              surprise: false,
-              vibe: vibeKeptByMessage(message, prev.vibe),
-            }))
+            setDraft((prev) => {
+              const originMessage = originDraft?.message.trim() ?? null;
+              const replacing = originMessage != null && originMessage !== message.trim();
+              if (!replacing) {
+                clearedOriginMessage.current = null;
+                return {
+                  ...prev,
+                  message,
+                  surprise: false,
+                  vibe: vibeKeptByMessage(message, prev.vibe),
+                };
+              }
+              if (clearedOriginMessage.current === originMessage) {
+                return {
+                  ...prev,
+                  message,
+                  surprise: false,
+                  vibe: vibeKeptByMessage(message, prev.vibe),
+                };
+              }
+              clearedOriginMessage.current = originMessage;
+              return draftForNewTypedAsk(prev, message);
+            })
           }
           onSelections={(patch: Partial<RouletteSelections>) =>
             setDraft((prev) => ({ ...prev, ...patch, surprise: false }))
@@ -383,16 +405,22 @@ export function DiscoverFlow({
           exclusionsSummary={exclusionsSummary}
           onClose={() => setDietaryOpen(false)}
           onMessage={(message) =>
-            setDietaryDraft((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    message,
-                    surprise: false,
-                    vibe: vibeKeptByMessage(message, prev.vibe),
-                  }
-                : prev,
-            )
+            setDietaryDraft((prev) => {
+              if (!prev) return prev;
+              if (!dietaryMessageCleared.current && prev.message.trim() !== message.trim()) {
+                dietaryMessageCleared.current = true;
+                return {
+                  ...draftForNewTypedAsk(prev, message),
+                  dietaryFlags: prev.dietaryFlags,
+                };
+              }
+              return {
+                ...prev,
+                message,
+                surprise: false,
+                vibe: vibeKeptByMessage(message, prev.vibe),
+              };
+            })
           }
           onSelections={(patch) =>
             setDietaryDraft((prev) => (prev ? { ...prev, ...patch, surprise: false } : prev))
