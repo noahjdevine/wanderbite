@@ -1247,6 +1247,17 @@
   font: inherit;
   font-size: 16px;
 }
+/* Password discs from a monospace or display font are wider than a digit, so
+   a long PIN can paint as a handful of dots. Verdana's disc matches the value. */
+.wb-partner-pin {
+  font-family: Verdana, Geneva, sans-serif !important;
+  letter-spacing: normal !important;
+  color: transparent !important;
+  caret-color: var(--wb-ink);
+}
+.wb-partner-pin::placeholder {
+  color: var(--wb-muted);
+}
 .wb-partner-code {
   min-height: 76px;
   border-radius: 18px;

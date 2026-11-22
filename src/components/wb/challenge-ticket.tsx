@@ -8,6 +8,8 @@ type ChallengeTicketProps = {
   /** Omitted on the directory, which does not show an offer. */
   offerAmount?: string;
   offerRequirement?: string;
+  /** Sealed Boost bonus, such as "+$5 Boost". Omitted when the offer has none. */
+  offerBoost?: string | null;
   /** Short note under the offer, such as a savings correction. */
   offerNote?: string;
   /** Omitted on the directory, which does not show a visit track. */
@@ -34,6 +36,7 @@ export function ChallengeTicket({
   area,
   offerAmount,
   offerRequirement,
+  offerBoost,
   offerNote,
   status,
   actionHref,
@@ -106,7 +109,14 @@ export function ChallengeTicket({
         </div>
         {offerAmount ? (
           <div className="flex items-center justify-between rounded-2xl border-[1.5px] border-dashed border-[#e3d9c6] bg-[#f4efe6] px-3.5 py-3">
-            <span className="font-display text-[26px] leading-none text-wb-plum">{offerAmount}</span>
+            <span className="flex flex-col gap-1">
+              <span className="font-display text-[26px] leading-none text-wb-plum">{offerAmount}</span>
+              {offerBoost ? (
+                <span className="font-display text-[20px] leading-none text-wb-plum" data-boost-offer="">
+                  {offerBoost}
+                </span>
+              ) : null}
+            </span>
             {offerRequirement ? <span className="text-[13px] text-wb-muted"> {offerRequirement}</span> : null}
           </div>
         ) : null}

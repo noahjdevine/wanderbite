@@ -43,6 +43,10 @@ vi.mock('@/app/actions/partner-verify', () => ({
   verifyRedemptionTokenForPartner: (...args: unknown[]) => verifyRedemptionTokenForPartner(...args),
 }));
 
+vi.mock('@/app/actions/partner-bill-scan', () => ({
+  confirmPartnerBillSubtotal: vi.fn(),
+}));
+
 import PartnerLayout from './layout';
 import PartnerFallbackPage from './page';
 import PartnerSlugPage from './[slug]/page';

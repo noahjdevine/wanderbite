@@ -3,7 +3,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { AdventureTicket } from '@/components/challenges/adventure-ticket';
-import { BOOST_CHECK_IN_LABEL } from '@/components/challenges/boost-check-in';
+import { BOOST_CHECK_IN_LABEL, BOOST_CHECK_IN_LOCKED, BoostCheckIn } from '@/components/challenges/boost-check-in';
 
 const checkInMemberBoost = vi.fn();
 const getCurrentPosition = vi.fn();
@@ -175,5 +175,53 @@ describe('Boost check-in on the challenge ticket', () => {
       100,
       100.1,
     ]);
+  });
+
+  it('shows +$5 Boost on the offer and tells the member the restaurant confirms the bill', async () => {
+    const withBoost = item();
+    withBoost.boostBonusCents = 500;
+    const offer = await render(ticket(true, withBoost));
+    expect(offer.querySelector('[data-boost-offer]')?.textContent).toBe('+$5 Boost');
+
+    const saved = item({ status: 'redeemed' });
+    saved.visitStatus = 'verified';
+    saved.storedSavingsCents = 2500;
+    saved.boostBonusCents = 500;
+    const settled = await render(ticket(true, saved));
+    expect(settled.textContent).toContain('Saved $25');
+    expect(settled.textContent).not.toContain('+$5 Boost');
+
+    checkInMemberBoost.mockResolvedValue({ ok: true });
+    getCurrentPosition.mockImplementation((success: (position: GeolocationPosition) => void) => {
+      success({
+        coords: {
+          latitude: 33.2,
+          longitude: -96.6,
+          accuracy: 10,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+          toJSON() {
+            return {};
+          },
+        },
+        timestamp: Date.now(),
+        toJSON() {
+          return {};
+        },
+      });
+    });
+    const locked = await render(
+      <BoostCheckIn enabled challengeItemId="44444444-4444-4444-8444-444444444444" />,
+    );
+    const button = Array.from(locked.querySelectorAll('button')).find((node) =>
+      node.textContent?.includes(BOOST_CHECK_IN_LABEL),
+    );
+    await act(async () => {
+      button?.click();
+    });
+    expect(locked.textContent).toContain(BOOST_CHECK_IN_LOCKED);
+    expect(BOOST_CHECK_IN_LOCKED).toContain('once the restaurant confirms the bill');
   });
 });

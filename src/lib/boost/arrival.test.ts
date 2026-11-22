@@ -5,6 +5,7 @@ import {
   arrivalSessionExpiresAt,
   qualifyingArrivalBoostId,
   sealBoostOfferVersion,
+  sealedBoostBonusCents,
 } from '@/lib/boost/arrival';
 import { quoteBoost, type BoostQuote, type SealedBoostOfferVersion } from '@/lib/boost/quote';
 import type { WeeklyBoost } from '@/lib/offers/calculator';
@@ -107,6 +108,12 @@ describe('sealed terms and the arrival lock', () => {
       boostSessionMinutes: null,
     });
     expect(sealed?.boosts[0]).toMatchObject({ id: 'boost-5', kind: 'weekly', bonusCents: 500 });
+    expect(sealedBoostBonusCents(sealed ? [
+      { id: 'boost-5', kind: 'weekly', start_isodow: 5, start_minute: 0, end_minute: 60, bonus_cents: 500 },
+      { id: 'boost-large', kind: 'weekly', start_isodow: 5, start_minute: 0, end_minute: 60, bonus_cents: 800 },
+    ] : null)).toBe(800);
+    expect(sealedBoostBonusCents([])).toBeNull();
+    expect(sealedBoostBonusCents([{ id: 'bad' }])).toBeNull();
     expect(
       sealBoostOfferVersion({
         id: 'version-1',

@@ -8,6 +8,7 @@ import type {
   OpenSessionByItemResult,
 } from '@/lib/boost/arrival-store';
 import {
+  memberCodeBoostPresentation,
   memberQrConfirmedDiscountLabel,
   persistVerifiedBoostConfirmation,
   savingsViewFromPlan,
@@ -20,6 +21,7 @@ import type {
   SettlementStorePort,
   StoredRedemptionSettlement,
 } from '@/lib/boost/settlement-store';
+import { BOOST_LOCK_PENDING_NOTE } from '@/lib/boost/savings-copy';
 import type { SealedBase } from '@/lib/offers/sealed-base';
 
 const ITEM = '44444444-4444-4444-8444-444444444444';
@@ -236,6 +238,30 @@ describe('visit confirmation', () => {
       settlement: store.port,
       arrival: arrival({ active: placeholderQuote() }).arrival,
     }))).toBeNull();
+    const pending = await memberCodeBoostPresentation(load({
+      settlement: store.port,
+      arrival: arrival({ active: placeholderQuote() }).arrival,
+    }));
+    expect(pending).toEqual({ discountLabel: null, lockNote: BOOST_LOCK_PENDING_NOTE });
+    const unlocked = await memberCodeBoostPresentation(load({
+      settlement: store.port,
+      arrival: arrival({
+        active: placeholderQuote(),
+        open: { status: 'found', session: { ...session(), lockedBoostId: null } },
+      }).arrival,
+    }));
+    expect(unlocked.lockNote).toBeNull();
+  });
+
+  it('mentions the locked Boost beside a confirmed quote total', async () => {
+    const presented = await memberCodeBoostPresentation(load({
+      settlement: memorySettlement().port,
+      arrival: arrival({}).arrival,
+    }));
+    expect(presented).toEqual({
+      discountLabel: '$25 off',
+      lockNote: 'Boost locked: $5',
+    });
   });
 
   it('writes nothing when the visit deadline is already past', async () => {

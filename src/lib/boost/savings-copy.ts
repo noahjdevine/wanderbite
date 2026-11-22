@@ -71,6 +71,82 @@ export function redeemSavingsCopy(input: {
   return `${total} (${formatCents(base)} base + ${formatCents(boost)} Boost)`;
 }
 
+export type RedeemSettlementLines = {
+  discount: string;
+  boost: string;
+  total: string;
+};
+
+/**
+ * Partner result lines from stored settlement cents.
+ * Null when any part is missing. This does not recompute a quote.
+ */
+export function redeemSettlementLines(input: {
+  confirmedBaseDiscountCents?: number | null;
+  confirmedBoostDiscountCents?: number | null;
+  confirmedTotalDiscountCents?: number | null;
+}): RedeemSettlementLines | null {
+  const base = wholeSavingsCents(input.confirmedBaseDiscountCents);
+  const boost = wholeSavingsCents(input.confirmedBoostDiscountCents);
+  const total = wholeSavingsCents(input.confirmedTotalDiscountCents);
+  if (base == null || boost == null || total == null) return null;
+  return {
+    discount: `Discount ${formatCents(base)}`,
+    boost: `Boost ${formatCents(boost)}`,
+    total: `Wanderbite covers ${formatCents(total)}`,
+  };
+}
+
+/**
+ * Staff sentence after a confirmed quote that missed the offer minimum.
+ * The covered amount is the quote total. This does not invent a base-only price.
+ */
+export function belowMinimumQuoteCopy(input: {
+  belowMinimum: boolean;
+  totalDiscountCents: number;
+  minSpendCents?: number | null;
+}): string | null {
+  const total = wholeSavingsCents(input.totalDiscountCents);
+  if (!input.belowMinimum || total == null) return null;
+  const minimum =
+    typeof input.minSpendCents === 'number' &&
+    Number.isInteger(input.minSpendCents) &&
+    input.minSpendCents > 0
+      ? ` of ${formatCents(input.minSpendCents)}`
+      : '';
+  return `This bill is below the offer minimum${minimum}, so the Boost does not apply. Wanderbite covers ${formatCents(total)} on this quote. You can still verify the visit.`;
+}
+
+/** Ticket line for a sealed Boost bonus. Null hides it. */
+export function challengeBoostLine(bonusCents: number | null | undefined): string | null {
+  const bonus = wholeSavingsCents(bonusCents);
+  if (bonus == null || bonus <= 0) return null;
+  return `+${formatCents(bonus)} Boost`;
+}
+
+/**
+ * The check-in placeholder has no staff-confirmed subtotal.
+ * Eligible subtotal 0 is that placeholder. `belowMinimum` with no positive
+ * subtotal is the same case. A positive subtotal is staff evidence, including
+ * when it misses the tier.
+ */
+export function quoteStillNeedsSubtotal(quote: {
+  eligibleSubtotalCents: number;
+  belowMinimum: boolean;
+}): boolean {
+  const noStaffSubtotal = quote.eligibleSubtotalCents <= 0;
+  return quote.eligibleSubtotalCents === 0 || (quote.belowMinimum && noStaffSubtotal);
+}
+
+export const BOOST_BILL_BEFORE_VERIFY_MESSAGE =
+  'This guest locked a Boost. Enter the eligible bill subtotal, then verify the code.';
+
+export const BOOST_CHECK_FAILED_MESSAGE =
+  "Could not check this guest's Boost. Try verifying again in a moment.";
+
+export const BOOST_LOCK_PENDING_NOTE =
+  'Boost is locked. It will apply once the restaurant confirms the bill.';
+
 type ChallengeOffer =
   | { available: false }
   | { available: true; discount_amount_cents: number; min_spend_cents: number };

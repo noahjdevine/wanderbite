@@ -5,7 +5,8 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { verifyRedemptionTokenForPartner } from '@/app/actions/partner-verify';
-import { redeemSavingsCopy } from '@/lib/boost/savings-copy';
+import { PartnerBoostBill } from '@/components/partner/partner-boost-bill';
+import { redeemSavingsCopy, redeemSettlementLines } from '@/lib/boost/savings-copy';
 import { toast } from 'sonner';
 import { logoutPartner } from '@/app/actions/partner-auth';
 import {
@@ -22,7 +23,19 @@ import {
 type VerifyState =
   | { status: 'idle' }
   | { status: 'verifying' }
-  | { status: 'success'; email: string | null; verifiedAt: string; savingsCopy: string | null }
+  | {
+      status: 'needs_bill';
+      code: string;
+      sessionId: string;
+      minSpendCents: number | null;
+    }
+  | {
+      status: 'success';
+      email: string | null;
+      verifiedAt: string;
+      savingsCopy: string | null;
+      lines: ReturnType<typeof redeemSettlementLines>;
+    }
   | { status: 'error'; message: string };
 
 type PartnerRedeemClientProps = {
@@ -56,9 +69,17 @@ export function PartnerRedeemClient({
           email: res.redemptionDetails.email,
           verifiedAt: res.redemptionDetails.verifiedAt,
           savingsCopy: redeemSavingsCopy(res),
+          lines: redeemSettlementLines(res),
         });
         setCode('');
         router.refresh();
+      } else if ('needsBill' in res && res.needsBill) {
+        setState({
+          status: 'needs_bill',
+          code: submitted,
+          sessionId: res.sessionId,
+          minSpendCents: res.minSpendCents,
+        });
       } else {
         setState({ status: 'error', message: res.message });
       }
@@ -112,7 +133,15 @@ export function PartnerRedeemClient({
         <div className="wb-partner-alert wb-partner-alert-ok wb-partner-result" role="status" aria-live="polite">
           <CheckCircle2 className="size-10" aria-hidden />
           <p className="wb-partner-alert-title">Verified</p>
-          {state.savingsCopy ? <p data-confirmed-discount="">{state.savingsCopy}</p> : null}
+          {state.lines ? (
+            <div data-confirmed-discount="">
+              <p>{state.lines.discount}</p>
+              <p>{state.lines.boost}</p>
+              <p>{state.lines.total}</p>
+            </div>
+          ) : state.savingsCopy ? (
+            <p data-confirmed-discount="">{state.savingsCopy}</p>
+          ) : null}
           <p>Apply the Wanderbite discount on the guest&apos;s check.</p>
           {state.email && <p>Guest: {state.email}</p>}
           <p>{state.verifiedAt}</p>
@@ -136,6 +165,27 @@ export function PartnerRedeemClient({
           </button>
         </div>
       )}
+
+      {state.status === 'needs_bill' ? (
+        <PartnerBoostBill
+          slug={slug}
+          code={state.code}
+          sessionId={state.sessionId}
+          minSpendCents={state.minSpendCents}
+          onCancel={() => setState({ status: 'idle' })}
+          onVerified={(res) => {
+            setState({
+              status: 'success',
+              email: res.redemptionDetails.email,
+              verifiedAt: res.redemptionDetails.verifiedAt,
+              savingsCopy: redeemSavingsCopy(res),
+              lines: redeemSettlementLines(res),
+            });
+            setCode('');
+            router.refresh();
+          }}
+        />
+      ) : null}
 
       {(state.status === 'idle' || state.status === 'verifying' || state.status === 'error') && (
         <form onSubmit={handleSubmit} className="wb-partner-form">

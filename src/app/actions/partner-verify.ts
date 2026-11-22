@@ -17,7 +17,7 @@ import {
   VERIFY_UNAVAILABLE_MESSAGE,
   enforcePartnerVerifyLimit,
 } from '@/lib/partner-verify-limit';
-import { createSupabaseArrivalStore } from '@/lib/boost/arrival-store';
+import { createSupabaseArrivalStore, lookupActiveQuote } from '@/lib/boost/arrival-store';
 import { persistVerifiedBoostConfirmation } from '@/lib/boost/confirm-visit';
 import { arrivalSessionsEnabled } from '@/lib/boost/flag';
 import { progressionLedgerEnabled } from '@/lib/progression/flag';
@@ -26,7 +26,12 @@ import {
   type ProgressionLedgerClient,
 } from '@/lib/progression/record-visit';
 import { createSupabaseSettlementStore } from '@/lib/boost/settlement-store';
-import { verifyBoostFields } from '@/lib/boost/savings-copy';
+import {
+  BOOST_BILL_BEFORE_VERIFY_MESSAGE,
+  BOOST_CHECK_FAILED_MESSAGE,
+  quoteStillNeedsSubtotal,
+  verifyBoostFields,
+} from '@/lib/boost/savings-copy';
 import { lowestSealedBase, type SealedBase } from '@/lib/offers/sealed-base';
 import { reportVerifyIntegrityError } from '@/lib/report-verify-integrity-error';
 import { badgeIdsEarnedByVerifiedVisits } from '@/lib/progress/rules';
@@ -70,6 +75,13 @@ export type VerifyRedemptionResult =
       confirmedBaseDiscountCents: number | null;
       confirmedBoostDiscountCents: number | null;
       needsSubtotal: boolean;
+    }
+  | {
+      success: false;
+      needsBill: true;
+      sessionId: string;
+      minSpendCents: number | null;
+      message: string;
     }
   | { success: false; message: string };
 
@@ -166,6 +178,61 @@ function messageForUnclaimedRow(
   return PARTNER_CODE_NOT_FOUND_MESSAGE;
 }
 
+type BoostBillCheck =
+  | { status: 'continue' }
+  | { status: 'hold'; sessionId: string; minSpendCents: number | null }
+  | { status: 'unread' };
+
+/**
+ * A locked Boost whose quote is still the $0 placeholder must not be verified
+ * yet. Settlement is written only when verify runs after a staff subtotal.
+ * `record_boost_settlement` updates a row that is already verified, so a read
+ * failure here must not call `verify_redemption`. A clean miss still does.
+ * Code `expires_at` is the only clock this check uses. It is not the 840-hour
+ * assignment deadline and not a carried credit expiry.
+ */
+async function lockedBoostBillHold(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  tokenHash: string,
+  partnerRestaurantId: string,
+): Promise<BoostBillCheck> {
+  const { data, error } = await supabase
+    .from('redemptions')
+    .select('id, status, restaurant_id, expires_at, challenge_item_id')
+    .eq('token_hash', tokenHash)
+    .maybeSingle();
+  if (error) return { status: 'unread' };
+  if (!data) return { status: 'continue' };
+  if (data.status !== 'issued' || data.restaurant_id !== partnerRestaurantId) return { status: 'continue' };
+  if (!data.challenge_item_id) return { status: 'continue' };
+  const expiresAt = new Date(data.expires_at);
+  if (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) return { status: 'continue' };
+
+  const arrival = createSupabaseArrivalStore(supabase);
+  const open = await arrival.findOpenSessionByChallengeItem(data.challenge_item_id);
+  if (open.status === 'unavailable') return { status: 'unread' };
+  if (open.status !== 'found') return { status: 'continue' };
+  if (open.session.restaurantId !== partnerRestaurantId || !open.session.lockedBoostId) {
+    return { status: 'continue' };
+  }
+
+  const quote = await lookupActiveQuote(supabase, open.session.id);
+  if (quote.status === 'unavailable') return { status: 'unread' };
+  if (quote.status !== 'found' || !quoteStillNeedsSubtotal(quote.quote)) return { status: 'continue' };
+
+  const { data: version, error: versionError } = await supabase
+    .from('offer_versions')
+    .select('tiers')
+    .eq('id', open.session.offerVersionId)
+    .maybeSingle();
+  if (versionError) return { status: 'unread' };
+  return {
+    status: 'hold',
+    sessionId: open.session.id,
+    minSpendCents: lowestSealedBase(version?.tiers)?.min_spend_cents ?? null,
+  };
+}
+
 /**
  * Partner Portal: verify a customer code. Only succeeds if the redemption is for
  * the restaurant in the partner session cookie. Uses service role (bypasses RLS);
@@ -199,6 +266,26 @@ export async function verifyRedemptionTokenForPartner(
 
   const supabase = getSupabaseAdmin();
   const tokenHash = hashRedemptionToken(canonical);
+
+  if (arrivalSessionsEnabled()) {
+    try {
+      const hold = await lockedBoostBillHold(supabase, tokenHash, partnerRestaurantId);
+      if (hold.status === 'unread') {
+        return { success: false, message: BOOST_CHECK_FAILED_MESSAGE };
+      }
+      if (hold.status === 'hold') {
+        return {
+          success: false,
+          needsBill: true,
+          sessionId: hold.sessionId,
+          minSpendCents: hold.minSpendCents,
+          message: BOOST_BILL_BEFORE_VERIFY_MESSAGE,
+        };
+      }
+    } catch {
+      return { success: false, message: BOOST_CHECK_FAILED_MESSAGE };
+    }
+  }
 
   const { data: issuedRow } = await supabase
     .from('redemptions')

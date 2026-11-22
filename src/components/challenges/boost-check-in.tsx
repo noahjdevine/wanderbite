@@ -7,7 +7,7 @@ import { CtaButton } from '@/components/wb/cta-button';
 
 export const BOOST_CHECK_IN_LABEL = "I'm here — lock Boost";
 export const BOOST_CHECK_IN_LOCKED =
-  'Boost is locked for this visit. Your usual discount still works if you need a code.';
+  'Boost is locked for this visit. It will apply once the restaurant confirms the bill.';
 export const BOOST_CHECK_IN_LOCATION_OFF =
   'Location is off, so Boost stays unlocked. Your usual discount still works.';
 export const BOOST_CHECK_IN_LOCATION_FAILED =
