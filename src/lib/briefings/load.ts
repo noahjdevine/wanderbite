@@ -17,6 +17,7 @@ import {
   type BriefingField,
   type BriefingRecord,
   type RestaurantBriefings,
+  ABOUT_BRIEFING_FIELD,
   BRIEFING_FIELD_LABELS,
   DISCOVER_BRIEFING_FIELDS,
   MEMBER_BRIEFING_FIELDS,
@@ -33,12 +34,12 @@ type LoadOptions = {
 };
 
 const MEMBER_LOAD: LoadOptions = {
-  fields: MEMBER_BRIEFING_FIELDS,
+  fields: [...MEMBER_BRIEFING_FIELDS, ABOUT_BRIEFING_FIELD],
   dropSamples: false,
 };
 
 const DISCOVER_LOAD: LoadOptions = {
-  fields: DISCOVER_BRIEFING_FIELDS,
+  fields: [...DISCOVER_BRIEFING_FIELDS, ABOUT_BRIEFING_FIELD],
   dropSamples: true,
 };
 
@@ -136,7 +137,7 @@ export async function loadRestaurantBriefings(args: {
 }
 
 /**
- * Active non-sample vibe, known_for, good_for, and seating notes for Discover.
+ * Active non-sample vibe, known_for, good_for, seating, and about notes for Discover.
  * Same flag, query, and failure behavior as the member loader. Samples are
  * dropped before a newer sample can hide an older real note.
  */

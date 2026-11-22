@@ -11,8 +11,11 @@ begin
     or has_table_privilege('authenticated', 'public.restaurant_briefing_facts', 'INSERT')
     or has_table_privilege('authenticated', 'public.restaurant_briefing_facts', 'UPDATE')
     or has_table_privilege('authenticated', 'public.restaurant_briefing_facts', 'DELETE')
-    or not has_table_privilege('anon', 'public.restaurant_briefing_facts', 'SELECT')
-    or not has_table_privilege('authenticated', 'public.restaurant_briefing_facts', 'SELECT')
+    or not has_column_privilege('anon', 'public.restaurant_briefing_facts', 'body', 'SELECT')
+    or not has_column_privilege('authenticated', 'public.restaurant_briefing_facts', 'source_url', 'SELECT')
+    or has_column_privilege('anon', 'public.restaurant_briefing_facts', 'sources', 'SELECT')
+    or has_column_privilege('authenticated', 'public.restaurant_briefing_facts', 'sources', 'SELECT')
+    or not has_column_privilege('service_role', 'public.restaurant_briefing_facts', 'sources', 'SELECT')
     or not has_table_privilege('service_role', 'public.restaurant_briefing_facts', 'SELECT')
     or not has_table_privilege('service_role', 'public.restaurant_briefing_facts', 'INSERT')
     or not has_table_privilege('service_role', 'public.restaurant_briefing_facts', 'UPDATE')
@@ -153,7 +156,7 @@ do $$
 declare
   v_field text;
 begin
-  foreach v_field in array array['vibe', 'known_for', 'good_for', 'seating', 'reservations']
+  foreach v_field in array array['vibe', 'known_for', 'good_for', 'seating', 'reservations', 'about']
   loop
     if public.briefing_field_name(v_field) is distinct from v_field then
       raise exception 'FAIL: briefing_field_name rejected %', v_field;
@@ -181,6 +184,40 @@ begin
   if (select count(*) from public.restaurant_briefing_facts) <> 2 then
     raise exception 'FAIL: new-field inserts were left in place';
   end if;
+
+  if public.briefing_field_name('about') is distinct from 'about' then
+    raise exception 'FAIL: briefing_field_name rejected about';
+  end if;
+
+  insert into public.restaurant_briefing_facts (
+    restaurant_id, field, body, source_url, sources, last_verified_at, status
+  ) values (
+    'e06a2000-0000-4000-8000-000000000010',
+    'about',
+    'A lively room. Order the sample plate.',
+    'https://example.com/e06-about',
+    '["https://example.com/e06-about-extra"]'::jsonb,
+    now(),
+    'paused'
+  );
+  delete from public.restaurant_briefing_facts
+  where restaurant_id = 'e06a2000-0000-4000-8000-000000000010'
+    and field = 'about';
+
+  begin
+    insert into public.restaurant_briefing_facts (
+      restaurant_id, field, body, source_url, sources, last_verified_at, status
+    ) values (
+      'e06a2000-0000-4000-8000-000000000010',
+      'about',
+      'A lively room. Order the sample plate.',
+      'https://example.com/e06-about',
+      '["http://example.com/e06-about-extra"]'::jsonb,
+      now(),
+      'paused'
+    );
+    raise exception 'FAIL: a non-https extra source was accepted';
+  exception when check_violation then null; end;
 end $$;
 
 do $$
@@ -237,6 +274,11 @@ begin
   ) then
     raise exception 'FAIL: anon can read a paused fact';
   end if;
+  begin
+    perform sources from public.restaurant_briefing_facts
+    where id = 'e06a2000-0000-4000-8000-000000000001';
+    raise exception 'FAIL: anon read restaurant_briefing_facts.sources';
+  exception when insufficient_privilege then null; end;
   begin
     perform official_website from public.restaurants where id = 'e06a2000-0000-4000-8000-000000000010';
     raise exception 'FAIL: anon read restaurants.official_website';

@@ -4,9 +4,11 @@ import {
   DISCOVER_FACT_PROMPT_NOTE,
   DISCOVER_PROMPT_FACT_CHARS,
   discoverCardFacts,
+  discoverLineSourceText,
   discoverPromptFacts,
   presentDiscoverCardFacts,
 } from '@/lib/discover/briefing-facts';
+import { validateDiscoverLine } from '@/lib/discover/pick-line';
 import { formatBriefingChecked, type BriefingFact } from '@/lib/briefings/types';
 
 const CHECKED = '2026-11-05T06:00:00.000Z';
@@ -77,6 +79,28 @@ describe('discover card facts', () => {
     expect(presentDiscoverCardFacts({ field: 'known_for' })).toEqual([]);
   });
 
+  it('replaces labeled notes with one about paragraph', () => {
+    const about = 'A lively room. Order the chili oil. Tip: sit by the window.';
+    const shown = discoverCardFacts([
+      fact({ field: 'known_for', label: 'Known for', text: 'Known for brisket.' }),
+      fact({ field: 'about', label: 'About', text: about }),
+      fact({ field: 'vibe', text: 'The room is cozy and candlelit.' }),
+    ]);
+    expect(shown).toEqual([
+      {
+        field: 'about',
+        label: '',
+        text: about,
+        sourceUrl: SOURCE,
+        lastVerifiedAt: CHECKED,
+      },
+    ]);
+    expect(presentDiscoverCardFacts([
+      { field: 'known_for', label: 'Known for', text: 'Known for brisket.', sourceUrl: SOURCE, lastVerifiedAt: CHECKED },
+      { field: 'about', label: 'About', text: about, sourceUrl: SOURCE, lastVerifiedAt: CHECKED },
+    ])).toEqual(shown);
+  });
+
   it('keeps a stored sentence that is longer than the prompt clip', () => {
     const text = `${'p'.repeat(DISCOVER_PROMPT_FACT_CHARS)}UNIQUE_TAIL`;
     const shown = discoverCardFacts([fact({ field: 'known_for', label: 'Known for', text })]);
@@ -116,6 +140,28 @@ describe('discover prompt facts', () => {
         fact({ field: 'seating', text: 'Patio.', sourceUrl: 'notaurl' }),
       ]),
     ).toBeUndefined();
+  });
+
+  it('keeps the about paragraph whole and includes it in the line source', () => {
+    const about = `${'p'.repeat(DISCOVER_PROMPT_FACT_CHARS)} premium patio tip.`;
+    const record = discoverPromptFacts([
+      fact({ field: 'about', label: 'About', text: about }),
+      fact({ field: 'known_for', text: 'Known for brisket.' }),
+    ]);
+    expect(record?.about).toBe(about);
+    expect(record?.known_for).toBe('Known for brisket.');
+    const sourceText = discoverLineSourceText('Kyoto Hibachi', [
+      fact({ field: 'about', label: 'About', text: about }),
+    ]);
+    expect(sourceText).toContain('premium patio tip');
+    expect(sourceText).not.toContain('http');
+    expect(
+      validateDiscoverLine({
+        text: 'Kyoto Hibachi offers premium sashimi.',
+        otherRestaurantNames: [],
+        sourceText,
+      }),
+    ).toMatchObject({ ok: true });
   });
 
   it('tells the model that a missing note is unknown', () => {

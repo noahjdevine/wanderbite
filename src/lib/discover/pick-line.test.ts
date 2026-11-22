@@ -122,6 +122,25 @@ describe('validateDiscoverLine', () => {
     ).toMatchObject({ ok: true });
   });
 
+  it('allows a praise word that appears in the about paragraph', () => {
+    const about =
+      'A lively room with premium sashimi, a fun story about the first boat, and a tip to order the chef plate.';
+    expect(
+      validateDiscoverLine({
+        text: 'Kyoto Hibachi offers premium sashimi.',
+        otherRestaurantNames: [],
+        sourceText: `Kyoto Hibachi\n${about}`,
+      }),
+    ).toMatchObject({ ok: true });
+    expect(
+      validateDiscoverLine({
+        text: 'Kyoto Hibachi offers premium sashimi.',
+        otherRestaurantNames: [],
+        sourceText: 'Kyoto Hibachi\nA lively room and a tip to order the chef plate.',
+      }),
+    ).toEqual({ ok: false, code: 'embellishment' });
+  });
+
   it('rejects stock occasion phrases', () => {
     expect(decide('Taco House is perfect for special occasions.')).toEqual({
       ok: false,

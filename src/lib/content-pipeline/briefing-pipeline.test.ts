@@ -124,6 +124,18 @@ describe('briefing grounding and refresh', () => {
     expect(invented.kept).toHaveLength(0);
   });
 
+  it('leaves an operator about paragraph out of maintenance', () => {
+    const planned = planBriefingUpdate({
+      sourceId: SOURCE,
+      restaurantId: RESTAURANT,
+      pageText: parked,
+      grounded: [],
+      stored: [{ field: 'about', body: 'Order the peach cobbler.', status: 'active' }],
+    });
+    expect(planned.drafts).toEqual([]);
+    expect(planned.exceptions).toEqual([]);
+  });
+
   it('drafts a paused difference and opens exceptions without activating', () => {
     const grounded = filterSupportedFacts({
       raw: { facts: [{ field: 'parking', text: parked, source_url: URL }] },

@@ -98,6 +98,7 @@ import {
 import {
   DISCOVER_FACT_PROMPT_NOTE,
   discoverCardFacts,
+  discoverLineSourceText,
   discoverPromptFacts,
 } from '@/lib/discover/briefing-facts';
 import { parseDiscoverAskTone, type DiscoverEvent } from '@/lib/discover/events';
@@ -896,11 +897,9 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
     if (codePickRestaurant && !providerFailed) {
       try {
         const lineFacts = briefingsEnabled()
-          ? discoverPromptFacts(briefingFacts.byRestaurantId[codePickRestaurant.id] ?? [])
-          : undefined;
-        const sourceText = [codePickRestaurant.name, ...Object.values(lineFacts ?? {})]
-          .filter((part): part is string => typeof part === 'string' && part.trim().length > 0)
-          .join('\n');
+          ? briefingFacts.byRestaurantId[codePickRestaurant.id] ?? []
+          : [];
+        const sourceText = discoverLineSourceText(codePickRestaurant.name, lineFacts);
         lineDecision = validateDiscoverLine({
           text: claudeText,
           otherRestaurantNames: restaurants

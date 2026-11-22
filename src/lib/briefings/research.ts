@@ -11,9 +11,12 @@ import { restaurantFactsGuideForPrompt } from '@/lib/briefings/facts-guide-modul
 import { RESTAURANT_FACTS_GUIDE } from '@/lib/briefings/restaurant-facts-guide.generated';
 import {
   BRIEFING_FIELDS,
+  RESEARCH_BRIEFING_FIELDS,
   briefingSourceLabel,
   isBriefingField,
+  isResearchBriefingField,
   type BriefingField,
+  type ResearchBriefingField,
 } from '@/lib/briefings/types';
 
 /** Same pinned snapshot as Discover chat. Not a moving alias. */
@@ -1924,7 +1927,7 @@ export function filterSupportedFacts(args: {
     const source = record.source_url;
     const rawSource = typeof source === 'string' && source.trim() ? source.trim() : null;
     const proposed = typeof text === 'string' ? text.trim() : null;
-    if (typeof field !== 'string' || !isBriefingField(field)) {
+    if (typeof field !== 'string' || !isResearchBriefingField(field)) {
       pushDropped(dropped, droppedFacts, {
         field: typeof field === 'string' ? field : null,
         text: proposed,
@@ -2055,7 +2058,7 @@ export function briefingSystemPrompt(): string {
   return [
     'Extract first-visit facts for one restaurant.',
     'Return JSON only: {"facts":[{"field":"parking","text":"...","source_url":"https://..."}]}',
-    `field must be one of ${BRIEFING_FIELDS.join(', ')}.`,
+    `field must be one of ${RESEARCH_BRIEFING_FIELDS.join(', ')}.`,
     'Include a field only when the supplied page text states it.',
     'source_url must be copied exactly from the fetched URL list.',
     'Do not invent, guess, or use outside knowledge.',
@@ -3121,16 +3124,18 @@ export function briefingInsertRow(fact: SupportedFact, restaurantId: string, ver
   };
 }
 
-export type BriefingFieldCounts = Record<BriefingField, { kept: number; dropped: number }>;
+export type BriefingFieldCounts = Record<ResearchBriefingField, { kept: number; dropped: number }>;
 
 function emptyFieldCounts(): BriefingFieldCounts {
-  return Object.fromEntries(BRIEFING_FIELDS.map((field) => [field, { kept: 0, dropped: 0 }])) as BriefingFieldCounts;
+  return Object.fromEntries(
+    RESEARCH_BRIEFING_FIELDS.map((field) => [field, { kept: 0, dropped: 0 }]),
+  ) as BriefingFieldCounts;
 }
 
 /** Field named by a drop line. Unknown and non-field drops are not counted. */
-export function droppedBriefingField(reason: string): BriefingField | null {
+export function droppedBriefingField(reason: string): ResearchBriefingField | null {
   const match = /^dropped (?:Places |duplicate )?([a-z_]+)\b/.exec(reason);
-  if (!match || !isBriefingField(match[1])) return null;
+  if (!match || !isResearchBriefingField(match[1])) return null;
   return match[1];
 }
 
@@ -3141,7 +3146,7 @@ export function briefingFieldOutcomeCounts(
 ): BriefingFieldCounts {
   const counts = emptyFieldCounts();
   for (const fact of facts) {
-    if (isBriefingField(fact.field)) counts[fact.field].kept += 1;
+    if (isResearchBriefingField(fact.field)) counts[fact.field].kept += 1;
   }
   for (const reason of dropped) {
     const field = droppedBriefingField(reason);
@@ -3151,7 +3156,7 @@ export function briefingFieldOutcomeCounts(
 }
 
 function addFieldCounts(total: BriefingFieldCounts, next: BriefingFieldCounts): void {
-  for (const field of BRIEFING_FIELDS) {
+  for (const field of RESEARCH_BRIEFING_FIELDS) {
     total[field].kept += next[field].kept;
     total[field].dropped += next[field].dropped;
   }
@@ -3182,7 +3187,7 @@ function formatDroppedFactLines(fact: DroppedFact): string[] {
 }
 
 function formatFieldCountLines(counts: BriefingFieldCounts): string[] {
-  return BRIEFING_FIELDS.map(
+  return RESEARCH_BRIEFING_FIELDS.map(
     (field) => `- ${field}: kept ${counts[field].kept}, dropped ${counts[field].dropped}`,
   );
 }
