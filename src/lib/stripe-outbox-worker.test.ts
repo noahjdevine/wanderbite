@@ -17,7 +17,7 @@ vi.mock('@/lib/posthog-server', () => ({
 import { processWebhookOutbox } from '@/lib/stripe-outbox-worker';
 
 const FRESH = {
-  from: 'Wanderbite <noreply@wanderbite.com>',
+  from: 'Wanderbite <noreply@wanderbite.co>',
   to: 'member@example.com',
   subject: 'Your Wanderbite subscription is active',
   html: '<p>Welcome</p>',

@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { isCheckoutEnabled } from '@/lib/checkout-enabled';
 import {
+  EMAIL_FROM,
   classifyResendSend,
   decideConfirmationPreSend,
   decideReminderPreSend,
@@ -16,7 +17,7 @@ const NOW = new Date('2026-09-23T12:00:00.000Z');
 
 function payload(subject: string): StoredEmailPayload {
   return {
-    from: 'Wanderbite <noreply@wanderbite.com>',
+    from: 'Wanderbite <noreply@wanderbite.co>',
     to: 'member@example.com',
     subject,
     html: `<p>${subject}</p>`,
@@ -26,6 +27,10 @@ function payload(subject: string): StoredEmailPayload {
 }
 
 describe('email send decisions', () => {
+  it('sends from the verified wanderbite.co address', () => {
+    expect(EMAIL_FROM).toBe('Wanderbite <noreply@wanderbite.co>');
+  });
+
   it('keeps checkout fail-closed and the approved AI ceilings', () => {
     expect(isCheckoutEnabled('true')).toBe(true);
     expect(isCheckoutEnabled('TRUE')).toBe(false);

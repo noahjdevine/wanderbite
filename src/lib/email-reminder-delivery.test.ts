@@ -38,7 +38,7 @@ function claim(overrides: Record<string, unknown> = {}) {
 
 function payload(daysLeft: number, names: string[]) {
   return {
-    from: 'Wanderbite <noreply@wanderbite.com>',
+    from: 'Wanderbite <noreply@wanderbite.co>',
     to: 'member@example.com',
     subject: `${daysLeft} days`,
     html: names.join('|'),
