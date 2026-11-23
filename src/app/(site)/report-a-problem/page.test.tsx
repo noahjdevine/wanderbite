@@ -1,4 +1,6 @@
 import { cleanup, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const harness = vi.hoisted(() => ({
@@ -53,6 +55,15 @@ describe('/report-a-problem', () => {
       searchParams: Promise.resolve({ from: 'https://evil.example' }),
     }));
     expect(screen.getByRole('heading', { name: 'Report a problem' })).toBeTruthy();
+    expect(document.querySelector('main')?.className).toContain('report-problem-page');
+    const css = readFileSync(
+      path.join(process.cwd(), 'src/app/styles/wanderbite-theme.css'),
+      'utf8',
+    );
+    expect(css).toContain('@media (max-width: 32rem)');
+    expect(css).toContain('.report-problem-page');
+    expect(css).toContain('padding-inline: 5rem');
+    expect(css).toContain('body:has(.report-problem-page) nextjs-portal');
     expect(screen.getByLabelText('Email')).toBeTruthy();
     expect((screen.getByLabelText('Which page?') as HTMLInputElement).value).toBe('');
   });

@@ -14,8 +14,9 @@ export const PASSPORT_TAB_HREF = '/journey?view=passport';
 const PASSPORT_VIEWS = new Set(['passport', 'map']);
 
 /**
- * The bar is not mounted on partner, onboarding, checkout, or the dev gallery.
- * These prefixes still hide it if a layout that does mount it is showing the path.
+ * The bar is not mounted on partner, onboarding, checkout, the dev gallery,
+ * or the report-a-problem form. These prefixes still hide it if a layout that
+ * does mount it is showing the path.
  */
 export const MEMBER_TAB_BAR_HIDDEN_PREFIXES = [
   '/partner',
@@ -34,6 +35,7 @@ export const MEMBER_TAB_BAR_HIDDEN_PREFIXES = [
   '/checkout',
   '/challenges/show',
   '/dev',
+  '/report-a-problem',
 ] as const;
 
 export function normalizeMemberPath(pathname: string): string {

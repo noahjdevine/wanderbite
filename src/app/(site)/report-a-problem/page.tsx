@@ -38,7 +38,7 @@ export default async function ReportProblemPage({
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 pb-24 pt-24 md:pt-28">
+    <main className="report-problem-page min-h-screen bg-background px-4 pb-24 pt-24 md:pt-28">
       <div className="mx-auto w-full max-w-lg">
         <ReportProblemForm initialPage={initialPage} showEmail={showEmail} />
       </div>

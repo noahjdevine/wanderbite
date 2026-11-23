@@ -217,6 +217,7 @@ describe('site header and footer', () => {
     expect(menu.className).toContain('wb-nav-menu');
     hrefs(PUBLIC_LINKS);
     expect(within(menu).getByRole('link', { name: 'Sign In' }).getAttribute('href')).toBe('/signin');
+    expect(within(menu).queryByRole('link', { name: 'Report a problem' })).toBeNull();
     expect(within(menu).queryByRole('link', { name: 'Start Your Adventure' })).toBeNull();
     expect(screen.getByRole('link', { name: 'Start Your Adventure' }).getAttribute('href')).toBe('/signup');
 
@@ -246,6 +247,7 @@ describe('site header and footer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
     hrefs(MEMBER_LINKS);
     expect(screen.getByRole('button', { name: 'Sign Out' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Report a problem' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Sign In' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Sign up' })).toBeNull();
   });
@@ -289,7 +291,7 @@ describe('site header and footer', () => {
     expect(screen.queryByRole('link', { name: 'Report a problem' })).toBeNull();
   });
 
-  it('adds Report a problem in the footer and account menu only when asked', () => {
+  it('adds Report a problem in the footer, signed-out nav, account menu, and mobile menu when asked', () => {
     pathname = '/challenges';
     const footer = render(<Footer reportProblems />);
     expect(footer.getByRole('link', { name: 'Report a problem' }).getAttribute('href')).toBe(
@@ -297,12 +299,42 @@ describe('site header and footer', () => {
     );
     footer.unmount();
 
+    const signedOutDesktop = render(<Navbar reportProblems />);
+    expect(screen.getByRole('link', { name: 'Report a problem' }).getAttribute('href')).toBe(
+      '/report-a-problem?from=%2Fchallenges',
+    );
+    const desktopNames = screen.getAllByRole('link').map((link) => link.textContent?.replace(/\s+/g, ' ').trim());
+    expect(desktopNames.indexOf('Report a problem')).toBe(desktopNames.indexOf('Sign In') - 1);
+    signedOutDesktop.unmount();
+
     session.signedIn = true;
-    render(<Navbar reportProblems />);
+    const signedInDesktop = render(<Navbar reportProblems />);
+    expect(screen.queryByRole('link', { name: 'Report a problem' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Account menu' }));
     expect(screen.getByRole('link', { name: 'Report a problem' }).getAttribute('href')).toBe(
       '/report-a-problem?from=%2Fchallenges',
     );
+    signedInDesktop.unmount();
+
+    session.signedIn = false;
+    const signedOutMobile = render(<MobileNav reportProblems />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    const signedOutMenu = screen.getByRole('dialog', { name: 'Menu' });
+    expect(within(signedOutMenu).getByRole('link', { name: 'Report a problem' }).getAttribute('href')).toBe(
+      '/report-a-problem?from=%2Fchallenges',
+    );
+    expect(within(signedOutMenu).getByRole('link', { name: 'Sign In' })).toBeTruthy();
+    signedOutMobile.unmount();
+
+    session.signedIn = true;
+    render(<MobileNav reportProblems />);
+    fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
+    const signedInMenu = screen.getByRole('dialog', { name: 'Menu' });
+    expect(within(signedInMenu).getByRole('link', { name: 'Report a problem' }).getAttribute('href')).toBe(
+      '/report-a-problem?from=%2Fchallenges',
+    );
+    expect(within(signedInMenu).getByRole('button', { name: 'Sign Out' })).toBeTruthy();
+    expect(within(signedInMenu).queryByRole('link', { name: 'Sign In' })).toBeNull();
   });
 
   it('keeps menu motion off and link text on night above WCAG AA', () => {

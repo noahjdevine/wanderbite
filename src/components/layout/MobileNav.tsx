@@ -14,6 +14,7 @@ import {
   type NavItem,
 } from '@/lib/nav-items';
 import { AccountMenu } from '@/components/layout/account-menu';
+import { ReportProblemLinkSlot } from '@/components/layout/report-problem-link';
 import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
 
 const FOCUSABLE =
@@ -190,6 +191,9 @@ export function MobileNav({ reportProblems = false }: { reportProblems?: boolean
 
             <hr className="my-3 border-white/15" />
 
+            {reportProblems ? (
+              <ReportProblemLinkSlot className="wb-nav-menu-link" onNavigate={closeDrawer} />
+            ) : null}
             {signedIn ? (
               <button type="button" onClick={handleSignOut} className="wb-nav-menu-link">
                 Sign Out

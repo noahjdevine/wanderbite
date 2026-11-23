@@ -159,7 +159,7 @@ describe('member tab bar layout', () => {
     expect(document.querySelector('.wb-member-tabbar-pad')).toBeNull();
 
     session.signedIn = true;
-    for (const path of ['/signin', '/signup', '/onboarding', '/partner/yard', '/admin', '/contact', '/privacy', '/terms', '/rules', '/challenges/show/red-1']) {
+    for (const path of ['/signin', '/signup', '/onboarding', '/partner/yard', '/admin', '/contact', '/privacy', '/terms', '/rules', '/challenges/show/red-1', '/report-a-problem']) {
       pathname = path;
       const view = render(
         <SiteLayout>

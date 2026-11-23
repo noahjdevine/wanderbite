@@ -77,6 +77,7 @@ describe('shouldShowMemberTabBar', () => {
       '/challenges/show/red-1',
       '/dev/components',
       '/dev/screens',
+      '/report-a-problem',
     ]) {
       expect(shouldShowMemberTabBar(path, true)).toBe(false);
     }

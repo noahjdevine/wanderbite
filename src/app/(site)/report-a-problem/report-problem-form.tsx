@@ -1,6 +1,6 @@
 'use client';
 
-import { useActionState } from 'react';
+import { useActionState, useState, type FormEvent } from 'react';
 import Link from 'next/link';
 import { Loader2 } from 'lucide-react';
 import {
@@ -8,6 +8,11 @@ import {
   type SiteProblemFormState,
 } from '@/app/actions/site-problem-reports';
 import { Button } from '@/components/ui/button';
+import { WHAT_HAPPENED_MAX, WHAT_HAPPENED_MIN } from '@/lib/site-problems/report';
+
+const WHAT_HAPPENED_SHORT = 'Please tell us a little more (at least 10 characters).';
+const WHAT_HAPPENED_LONG = 'That is a bit long. Please keep it under 2000 characters.';
+const WHAT_HAPPENED_ERROR_ID = 'what-happened-error';
 
 const fieldClass =
   'mt-1 w-full rounded-md border border-input bg-background px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/20';
@@ -22,6 +27,23 @@ export function ReportProblemForm({
   showEmail: boolean;
 }) {
   const [state, formAction, pending] = useActionState(submitSiteProblemReport, IDLE);
+  const [fieldError, setFieldError] = useState<string | null>(null);
+
+  function onSubmit(event: FormEvent<HTMLFormElement>) {
+    const raw = String(new FormData(event.currentTarget).get('what_happened') ?? '');
+    const length = Array.from(raw.trim()).length;
+    if (length < WHAT_HAPPENED_MIN) {
+      event.preventDefault();
+      setFieldError(WHAT_HAPPENED_SHORT);
+      return;
+    }
+    if (length > WHAT_HAPPENED_MAX) {
+      event.preventDefault();
+      setFieldError(WHAT_HAPPENED_LONG);
+      return;
+    }
+    setFieldError(null);
+  }
 
   if (state.ok) {
     return (
@@ -38,8 +60,10 @@ export function ReportProblemForm({
     );
   }
 
+  const fieldMessage = fieldError ?? (state.code === 'what_happened' ? state.message : null);
+
   return (
-    <form action={formAction} className="relative space-y-5">
+    <form action={formAction} className="relative space-y-5" noValidate onSubmit={onSubmit}>
       <div>
         <h1 className="text-2xl font-bold tracking-tight text-foreground">Report a problem</h1>
         <p className="mt-2 text-base text-muted-foreground">
@@ -47,7 +71,7 @@ export function ReportProblemForm({
         </p>
       </div>
 
-      {state.code !== 'idle' && state.message ? (
+      {state.code !== 'idle' && state.code !== 'what_happened' && state.message ? (
         <p role="alert" className="text-sm text-destructive">
           {state.message}
         </p>
@@ -73,11 +97,21 @@ export function ReportProblemForm({
           id="what_happened"
           name="what_happened"
           required
-          minLength={10}
-          maxLength={2000}
+          minLength={WHAT_HAPPENED_MIN}
+          maxLength={WHAT_HAPPENED_MAX}
           rows={5}
-          className={fieldClass}
+          aria-invalid={fieldMessage ? true : undefined}
+          aria-describedby={fieldMessage ? WHAT_HAPPENED_ERROR_ID : undefined}
+          onChange={() => {
+            if (fieldError) setFieldError(null);
+          }}
+          className={`${fieldClass} aria-invalid:border-destructive`}
         />
+        {fieldMessage ? (
+          <p id={WHAT_HAPPENED_ERROR_ID} role="alert" className="mt-1 text-sm text-destructive">
+            {fieldMessage}
+          </p>
+        ) : null}
       </div>
 
       <div>
