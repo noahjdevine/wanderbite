@@ -240,6 +240,11 @@ export function ProgressView({ model, savedRecipes, progression }: ProgressViewP
                         {adventure.meta ? (
                           <p className="m-0 text-[13px] text-wb-muted">{adventure.meta}</p>
                         ) : null}
+                        {adventure.settlementLabel ? (
+                          <p className="m-0 break-words text-[13px] text-wb-ink" data-settled-amount="">
+                            {adventure.settlementLabel}
+                          </p>
+                        ) : null}
                       </div>
                       <StatusChip status={adventure.visitStatus} label={adventure.statusLabel} />
                       {adventure.memoryHref && adventure.memoryLabel ? (

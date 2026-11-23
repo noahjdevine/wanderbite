@@ -103,9 +103,11 @@ function openingAnnouncement(
     nowMs,
   });
   if (derived === 'code_issued') {
-    if (!expiresAt) return visitStatusLabel('code_issued');
+    if (!expiresAt) return '';
     const remaining = new Date(expiresAt).getTime() - nowMs;
-    return remaining <= ONE_MINUTE_MS ? ONE_MINUTE_LEFT : visitStatusLabel('code_issued');
+    // The visible status already says "Code issued". The live region stays
+    // quiet until the minute warning so that line is not read twice.
+    return remaining <= ONE_MINUTE_MS ? ONE_MINUTE_LEFT : '';
   }
   if (derived === 'code_expired' || derived === 'expired') return visitStatusLabel(derived);
   if (derived === 'verified' || derived === 'note_added') return settledSummary ?? 'Already verified';
@@ -400,7 +402,9 @@ export function ShowRedemptionCode({
       </p>
       <div className="text-center">
         <p className="text-sm font-semibold tracking-wide text-wb-muted uppercase">Show your server</p>
-        <h1 className="font-display mt-2 text-[40px] leading-none text-wb-ink">{restaurantName}</h1>
+        <h1 className="font-display mt-2 max-w-full break-words text-[40px] leading-none text-wb-ink">
+          {restaurantName}
+        </h1>
         <p className="mt-3 text-sm font-medium text-wb-ink" data-visit-status={liveStatus}>
           {statusLabel}
         </p>
@@ -465,7 +469,7 @@ export function ShowRedemptionCode({
         </div>
       ) : (
         <>
-          <div className="mt-6 rounded-[28px] bg-white p-5 shadow-[var(--wb-shadow-card)]">
+          <div className="mt-6 max-w-full rounded-[28px] bg-white p-5 shadow-[var(--wb-shadow-card)]">
             {confirmedDiscountLabel ? (
               <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
                 <QRCode value={scanUrl} size={280} level="M" />
@@ -482,7 +486,7 @@ export function ShowRedemptionCode({
             Server can scan this QR, or use the code below if scanning isn&apos;t available.
           </p>
 
-          <p className="font-mono mt-5 text-center text-4xl font-bold tracking-[0.28em] text-wb-ink sm:text-5xl">
+          <p className="font-mono mt-5 max-w-full break-all text-center text-4xl font-bold tracking-[0.14em] text-wb-ink sm:text-5xl sm:tracking-[0.28em]">
             {liveCode}
           </p>
 

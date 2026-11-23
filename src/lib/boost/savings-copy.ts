@@ -181,18 +181,56 @@ function datedFace(
   return { day: `${year}-${month}-${day}`, clock: `${weekday} ${month} ${day}, ${clock}` };
 }
 
+const BOOST_WINDOW_FALLBACK_ZONE = 'America/Chicago';
+
+/**
+ * First usable IANA zone. Blank and invalid zones are skipped.
+ * America/Chicago is the last resort when the restaurant or market has none.
+ */
+export function boostDisplayZone(...candidates: Array<string | null | undefined>): string {
+  for (const candidate of candidates) {
+    const zone = candidate?.trim();
+    if (!zone) continue;
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: zone }).format(0);
+      return zone;
+    } catch {
+      continue;
+    }
+  }
+  return BOOST_WINDOW_FALLBACK_ZONE;
+}
+
+/** Short label for a dated window. Chicago stays CT, matching the member clock. */
+function shortZoneAbbreviation(timeZone: string, instant: Date): string {
+  if (timeZone === BOOST_WINDOW_FALLBACK_ZONE) return 'CT';
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'short',
+    }).formatToParts(instant);
+    const label = parts.find((part) => part.type === 'timeZoneName')?.value;
+    if (label && label !== timeZone) return label;
+  } catch {
+    return 'CT';
+  }
+  return 'CT';
+}
+
 function formatDatedWindow(boost: DatedBoost, timeZone: string): string | null {
   const start = new Date(boost.start);
   const end = new Date(boost.end);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-  const startFace = datedFace(start, timeZone);
-  const endFace = datedFace(end, timeZone);
+  const zone = boostDisplayZone(timeZone);
+  const startFace = datedFace(start, zone);
+  const endFace = datedFace(end, zone);
   if (!startFace || !endFace) return null;
+  const abbreviation = shortZoneAbbreviation(zone, start);
   if (startFace.day === endFace.day) {
     const endClock = endFace.clock.slice(endFace.clock.lastIndexOf(', ') + 2);
-    return `${startFace.clock}–${endClock}`;
+    return `${startFace.clock}–${endClock} ${abbreviation}`;
   }
-  return `${startFace.clock}–${endFace.clock}`;
+  return `${startFace.clock}–${endFace.clock} ${abbreviation}`;
 }
 
 /**
@@ -207,18 +245,20 @@ export function boostWindowLabel(
 ): string | null {
   const bonus = wholeSavingsCents(bonusCents);
   if (bonus == null || bonus <= 0) return null;
+  const zone = boostDisplayZone(timeZone);
   const labels = [
     ...new Set(
       boosts.flatMap((boost) => {
         if (boost.bonusCents !== bonus) return [];
-        const label = boost.kind === 'weekly' ? formatWeeklyWindow(boost) : formatDatedWindow(boost, timeZone);
+        const label = boost.kind === 'weekly' ? formatWeeklyWindow(boost) : formatDatedWindow(boost, zone);
         return label ? [label] : [];
       }),
     ),
   ];
   if (labels.length === 0) return null;
   const joined = labels.join(' or ');
-  if (joined.length > 64) return null;
+  // Room for a short zone abbreviation such as " CT" on a dated window.
+  if (joined.length > 72) return null;
   return joined;
 }
 
@@ -251,9 +291,26 @@ export function memberLockedBoostNote(bonusCents: number | null | undefined): st
   return `${label}. It will apply once the restaurant confirms the bill.`;
 }
 
-/** Locked card line. Null bonus still says the visit is locked. */
+/** Locked card line. The amount is the sealed bonus. A missing bonus stays unlabeled. */
 export function challengeBoostLockedCopy(bonusCents: number | null | undefined): string {
-  return memberLockedBoostLabel(bonusCents) ?? 'Boost locked';
+  const bonus = wholeSavingsCents(bonusCents);
+  if (bonus == null || bonus <= 0) return 'Boost locked';
+  return `Boost locked: +${formatCents(bonus)}`;
+}
+
+/**
+ * Journey row for a settled Boost. Uses the stored base and Boost cents.
+ * Zero, missing, or unusable Boost cents add nothing. This does not add the
+ * parts into a new total and does not recompute a quote.
+ */
+export function journeySettledBoostLine(input: {
+  baseDiscountCents?: number | null;
+  boostDiscountCents?: number | null;
+}): string | null {
+  const base = wholeSavingsCents(input.baseDiscountCents);
+  const boost = wholeSavingsCents(input.boostDiscountCents);
+  if (base == null || boost == null || boost <= 0) return null;
+  return `${formatCents(base)} off + ${formatCents(boost)} Boost`;
 }
 
 /**

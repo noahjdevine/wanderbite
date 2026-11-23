@@ -1,7 +1,10 @@
 /** Dollars typed by staff, such as 55 or 55.00. Same rules as arrival check-in. */
 
-/** Neutral example. A real-looking amount belongs in the field only after staff type it. */
-export const ELIGIBLE_SUBTOTAL_PLACEHOLDER = 'e.g. 55.00';
+/**
+ * Empty on purpose. A sample amount such as 55.00 reads as a typed subtotal.
+ * The label and helper name the field. Validation is unchanged.
+ */
+export const ELIGIBLE_SUBTOTAL_PLACEHOLDER = '';
 
 /** Eligible cents are food and drink. Tax and tip are not part of that subtotal. */
 export const ELIGIBLE_SUBTOTAL_HELP = 'Food and drink before tax and tip.';

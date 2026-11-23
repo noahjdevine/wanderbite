@@ -255,7 +255,9 @@ describe('PartnerRedeemClient', () => {
     expect(screen.queryByRole('button', { name: 'Check code' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Verify code' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Verify' })).toBeNull();
-    expect(screen.getByLabelText('Eligible subtotal').getAttribute('placeholder')).toBe('e.g. 55.00');
+    const subtotal = screen.getByLabelText('Eligible subtotal') as HTMLInputElement;
+    expect(subtotal.getAttribute('placeholder')).toBe('');
+    expect(subtotal.value).toBe('');
     expect(screen.getByText('Food and drink before tax and tip.')).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'Open arrival check-in' })).toBeNull();
 

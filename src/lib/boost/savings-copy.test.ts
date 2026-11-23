@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   belowMinimumQuoteCopy,
+  boostDisplayZone,
   boostWindowLabel,
   challengeBoostLine,
   challengeBoostLockedCopy,
   challengeBoostOfferCopy,
+  journeySettledBoostLine,
   challengeTicketOffer,
   challengeVisitSavings,
   partnerVerifiedOfferLine,
@@ -187,8 +189,17 @@ describe('boost savings copy', () => {
     expect(challengeBoostOfferCopy(500, '  ')).toBe(
       '+$5 Boost if you check in during Boost hours. Lock it at the restaurant.',
     );
-    expect(challengeBoostLockedCopy(500)).toBe('+$5 Boost locked');
+    expect(challengeBoostLockedCopy(500)).toBe('Boost locked: +$5');
     expect(challengeBoostLockedCopy(null)).toBe('Boost locked');
+    expect(journeySettledBoostLine({ baseDiscountCents: 1000, boostDiscountCents: 500 })).toBe(
+      '$10 off + $5 Boost',
+    );
+    expect(journeySettledBoostLine({ baseDiscountCents: 1000, boostDiscountCents: 0 })).toBeNull();
+    expect(journeySettledBoostLine({ baseDiscountCents: 1000, boostDiscountCents: null })).toBeNull();
+    expect(journeySettledBoostLine({ baseDiscountCents: null, boostDiscountCents: 500 })).toBeNull();
+    expect(boostDisplayZone('America/Denver', 'America/Chicago')).toBe('America/Denver');
+    expect(boostDisplayZone('Not/A_Zone', '  America/New_York  ')).toBe('America/New_York');
+    expect(boostDisplayZone(null, ' ')).toBe('America/Chicago');
     expect(memberLockedBoostNote(500)).toBe(
       '+$5 Boost locked. It will apply once the restaurant confirms the bill.',
     );
@@ -268,7 +279,37 @@ describe('boost savings copy', () => {
         500,
         'America/Chicago',
       ),
-    ).toBe('Sat Dec 5, 6 PM–9 PM');
+    ).toBe('Sat Dec 5, 6 PM–9 PM CT');
+    expect(
+      boostWindowLabel(
+        [
+          {
+            id: 'dated-ny',
+            kind: 'dated',
+            start: '2026-12-06T00:00:00.000Z',
+            end: '2026-12-06T03:00:00.000Z',
+            bonusCents: 500,
+          },
+        ],
+        500,
+        'America/New_York',
+      ),
+    ).toBe('Sat Dec 5, 7 PM–10 PM EST');
+    expect(
+      boostWindowLabel(
+        [
+          {
+            id: 'dated-bad-zone',
+            kind: 'dated',
+            start: '2026-12-06T00:00:00.000Z',
+            end: '2026-12-06T03:00:00.000Z',
+            bonusCents: 500,
+          },
+        ],
+        500,
+        'Not/A_Zone',
+      ),
+    ).toBe('Sat Dec 5, 6 PM–9 PM CT');
     expect(boostWindowLabel([], 500, 'America/Chicago')).toBeNull();
     expect(
       belowMinimumQuoteCopy({ belowMinimum: true, totalDiscountCents: 0, minSpendCents: 4000 }),

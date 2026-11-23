@@ -23,6 +23,8 @@ type BoostCheckInProps = {
   alreadyLocked?: boolean;
   /** Sealed bonus, so the locked state can show the amount. */
   bonusCents?: number | null;
+  /** Fired only after this tap locks a Boost. An open session does not call it. */
+  onLocked?: () => void;
 };
 
 function noteFor(code: string): string {
@@ -58,6 +60,7 @@ export function BoostCheckIn({
   challengeItemId,
   alreadyLocked = false,
   bonusCents = null,
+  onLocked,
 }: BoostCheckInProps) {
   const [pending, setPending] = useState(false);
   const [note, setNote] = useState<string | null>(null);
@@ -92,6 +95,7 @@ export function BoostCheckIn({
             if (result.ok) {
               setLockedLocally(true);
               setNote(lockedNote);
+              onLocked?.();
               return;
             }
             setNote(noteFor(result.code));
@@ -124,7 +128,7 @@ export function BoostCheckIn({
       <CtaButton
         variant="secondary-cream"
         creamStyle="outline"
-        className="min-h-[52px] w-full"
+        className="min-h-[52px] w-full whitespace-normal px-4 text-center"
         disabled={pending}
         type="button"
         onClick={() => {

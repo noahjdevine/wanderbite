@@ -1,5 +1,11 @@
 import 'server-only';
 
+import { arrivalSessionsEnabled } from '@/lib/boost/flag';
+import {
+  recordedBoostSettlementFromRow,
+  SETTLEMENT_COLUMNS,
+  type StoredRedemptionSettlement,
+} from '@/lib/boost/settlement-store';
 import { getCurrentChallengeForUser } from '@/lib/challenges/generate';
 import {
   assembleProgressAdventures,
@@ -9,6 +15,30 @@ import {
   type ProgressAdventure,
 } from '@/lib/progress/progress-board';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+
+export type JourneyBoostParts = {
+  baseDiscountCents: number;
+  boostDiscountCents: number;
+};
+
+/**
+ * Stored consume_quote parts for a Journey row.
+ * A sealed snapshot, a zero Boost, or an unusable row returns null.
+ * The cents are the stored columns. This does not recompute a quote.
+ */
+export function journeyBoostPartsFromSettlement(
+  row: StoredRedemptionSettlement | null,
+): JourneyBoostParts | null {
+  const recorded = recordedBoostSettlementFromRow(row);
+  const snapshot = recorded?.snapshot;
+  if (!snapshot || !('boost_discount_cents' in snapshot) || !('base_discount_cents' in snapshot)) {
+    return null;
+  }
+  const base = snapshot.base_discount_cents;
+  const boost = snapshot.boost_discount_cents;
+  if (!Number.isInteger(base) || base < 0 || !Number.isInteger(boost) || boost <= 0) return null;
+  return { baseDiscountCents: base, boostDiscountCents: boost };
+}
 
 export type ProgressActivity =
   | { ok: true; hasPair: boolean; adventures: ProgressAdventure[] }
@@ -118,6 +148,29 @@ export async function loadProgressActivity(userId: string, now: Date): Promise<P
 
     const noteIds = new Set<string>();
     const redemptionIds = redemptions.map((row) => row.id);
+    const boostPartsByRedemptionId = new Map<string, JourneyBoostParts>();
+    if (arrivalSessionsEnabled() && redemptionIds.length > 0) {
+      try {
+        const { data: settlementData, error: settlementError } = await admin
+          .from('redemptions')
+          .select(`id, ${SETTLEMENT_COLUMNS}`)
+          .eq('user_id', userId)
+          .in('id', redemptionIds);
+        if (settlementError) {
+          console.error('[progress] settlement read:', settlementError.message);
+        } else {
+          for (const row of (settlementData ?? []) as Array<StoredRedemptionSettlement & { id: string }>) {
+            const parts = journeyBoostPartsFromSettlement(row);
+            if (parts) boostPartsByRedemptionId.set(row.id, parts);
+          }
+        }
+      } catch (error) {
+        console.error(
+          '[progress] settlement read:',
+          error instanceof Error ? error.message : 'unknown',
+        );
+      }
+    }
     if (redemptionIds.length > 0) {
       const { data: noteData, error: noteError } = await admin
         .from('bite_notes')
@@ -146,6 +199,7 @@ export async function loadProgressActivity(userId: string, now: Date): Promise<P
         restaurants,
         noteRedemptionIds: noteIds,
         now,
+        boostPartsByRedemptionId,
       }),
     };
   } catch (error) {

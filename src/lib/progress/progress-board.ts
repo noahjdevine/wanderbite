@@ -16,6 +16,7 @@
  * 6. caught_up — a pair exists and none of the above apply. Opens Discover.
  */
 
+import { journeySettledBoostLine } from '@/lib/boost/savings-copy';
 import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { AREA_HOLD_HEADING } from '@/lib/launch-market';
 import { chicagoMonthStart } from '@/lib/cron-period';
@@ -96,6 +97,9 @@ export type ProgressAdventure = {
   expiresAt: string | null;
   deadline: string | null;
   slotNumber: number | null;
+  /** Stored consume_quote parts. Omitted when this visit has no settled Boost. */
+  settledBaseCents?: number | null;
+  settledBoostCents?: number | null;
 };
 
 export type NoPairCtaId = 'area_hold' | 'credits_waiting' | 'reveal' | 'generate';
@@ -143,6 +147,8 @@ export type RecentAdventure = {
   statusLabel: string;
   memoryHref: string | null;
   memoryLabel: 'Add memory' | 'Edit memory' | null;
+  /** Stored base + Boost. Null when this visit has no settled Boost. */
+  settlementLabel: string | null;
 };
 
 export type ProgressReadyModel = {
@@ -364,6 +370,8 @@ export function assembleProgressAdventures(input: {
   restaurants: readonly ActivityRestaurant[];
   noteRedemptionIds: ReadonlySet<string>;
   now: Date;
+  /** Stored settlement parts, keyed by redemption id. Empty when the flag is off. */
+  boostPartsByRedemptionId?: ReadonlyMap<string, { baseDiscountCents: number; boostDiscountCents: number }>;
 }): ProgressAdventure[] {
   const itemById = new Map(input.items.map((item) => [item.id, item]));
   const restaurantById = new Map(input.restaurants.map((restaurant) => [restaurant.id, restaurant]));
@@ -382,6 +390,7 @@ export function assembleProgressAdventures(input: {
         restaurant: restaurantFor(redemption.restaurantId ?? item?.restaurantId ?? null, restaurantById),
         hasNote: input.noteRedemptionIds.has(redemption.id),
         now: input.now,
+        boostParts: input.boostPartsByRedemptionId?.get(redemption.id) ?? null,
       }),
     );
   }
@@ -644,6 +653,10 @@ function recentAdventures(adventures: readonly ProgressAdventure[]): RecentAdven
         statusLabel: visitStatusLabel(adventure.visitStatus),
         memoryHref: memory?.href ?? null,
         memoryLabel: memory?.label ?? null,
+        settlementLabel: journeySettledBoostLine({
+          baseDiscountCents: adventure.settledBaseCents,
+          boostDiscountCents: adventure.settledBoostCents,
+        }),
       };
     });
 }
@@ -817,6 +830,7 @@ function adventureFromRedemption(input: {
   restaurant: ActivityRestaurant | undefined;
   hasNote: boolean;
   now: Date;
+  boostParts: { baseDiscountCents: number; boostDiscountCents: number } | null;
 }): ProgressAdventure {
   const visitStatus = deriveVisitStatus({
     item: {
@@ -844,6 +858,12 @@ function adventureFromRedemption(input: {
     expiresAt: input.redemption.expiresAt,
     deadline: input.item?.redemptionDeadline ?? null,
     slotNumber: input.item?.slotNumber ?? null,
+    ...(input.boostParts
+      ? {
+          settledBaseCents: input.boostParts.baseDiscountCents,
+          settledBoostCents: input.boostParts.boostDiscountCents,
+        }
+      : {}),
   };
 }
 

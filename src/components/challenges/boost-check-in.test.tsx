@@ -189,6 +189,7 @@ describe('Boost check-in on the challenge ticket', () => {
     expect(offer.querySelector('[data-boost-offer]')?.textContent).toBe(
       '+$5 Boost if you check in Fri 10 PM–1 AM. Lock it at the restaurant.',
     );
+    expect(offer.textContent).toContain('Ready to visit');
     expect(offer.textContent).toContain(BOOST_CHECK_IN_LABEL);
 
     const hoursOnly = item();
@@ -210,10 +211,13 @@ describe('Boost check-in on the challenge ticket', () => {
     held.boostBonusCents = 500;
     held.boostLocked = true;
     const heldView = await render(ticket(true, held));
-    expect(heldView.querySelector('[data-boost-offer]')?.textContent).toBe('+$5 Boost locked');
+    expect(heldView.querySelector('[data-boost-offer]')?.textContent).toBe('Boost locked: +$5');
     expect(heldView.querySelector('[data-boost-locked]')?.textContent).toContain(
       '+$5 Boost locked. It will apply once the restaurant confirms the bill.',
     );
+    expect(heldView.textContent).toContain('Boost locked');
+    expect(heldView.textContent).not.toContain('Ready to visit');
+    expect(heldView.textContent).not.toContain('Lock it');
     expect(heldView.textContent).not.toContain(BOOST_CHECK_IN_LABEL);
 
     checkInMemberBoost.mockResolvedValue({ ok: true });
@@ -304,5 +308,64 @@ describe('Boost check-in on the challenge ticket', () => {
     expect(view.textContent).toContain(BOOST_CHECK_IN_LABEL);
     expect(view.textContent).not.toContain('+$5 Boost locked');
     expect(view.textContent).not.toContain('Boost locked');
+
+    const openItem = item();
+    openItem.boostBonusCents = 500;
+    openItem.boostWindowLabel = 'Fri 10 PM–1 AM';
+    const card = await render(ticket(true, openItem));
+    const cardButton = Array.from(card.querySelectorAll('button')).find((node) =>
+      node.textContent?.includes(BOOST_CHECK_IN_LABEL),
+    );
+    await act(async () => {
+      cardButton?.click();
+    });
+    expect(card.querySelector('[data-boost-offer]')?.textContent).toBe(
+      '+$5 Boost if you check in Fri 10 PM–1 AM. Lock it at the restaurant.',
+    );
+    expect(card.textContent).toContain('Ready to visit');
+    expect(card.textContent).toContain('Lock it at the restaurant');
+    expect(card.textContent).not.toContain('Boost locked');
+    expect(card.textContent).toContain(BOOST_CHECK_IN_LABEL);
+  });
+
+  it('replaces the lock prompt and Ready badge after the member locks', async () => {
+    checkInMemberBoost.mockResolvedValue({ ok: true });
+    getCurrentPosition.mockImplementation((success: (position: GeolocationPosition) => void) => {
+      success({
+        coords: {
+          latitude: 33.2,
+          longitude: -96.6,
+          accuracy: 10,
+          altitude: null,
+          altitudeAccuracy: null,
+          heading: null,
+          speed: null,
+          toJSON() {
+            return {};
+          },
+        },
+        timestamp: Date.now(),
+        toJSON() {
+          return {};
+        },
+      });
+    });
+    const row = item();
+    row.boostBonusCents = 500;
+    row.boostWindowLabel = 'Fri 10 PM–1 AM';
+    const view = await render(ticket(true, row));
+    expect(view.textContent).toContain('Ready to visit');
+    expect(view.textContent).toContain('Lock it at the restaurant');
+    const button = Array.from(view.querySelectorAll('button')).find((node) =>
+      node.textContent?.includes(BOOST_CHECK_IN_LABEL),
+    );
+    await act(async () => {
+      button?.click();
+    });
+    expect(view.querySelector('[data-boost-offer]')?.textContent).toBe('Boost locked: +$5');
+    expect(view.textContent).toContain('Boost locked');
+    expect(view.textContent).not.toContain('Ready to visit');
+    expect(view.textContent).not.toContain('Lock it');
+    expect(view.textContent).not.toContain(BOOST_CHECK_IN_LABEL);
   });
 });

@@ -54,10 +54,15 @@ function ticketArea(item: GeneratedChallengeItem): string {
   return item.restaurant.address?.trim() ?? '';
 }
 
-function photoBadge(status: VisitStatus | undefined): { text: string; tone: 'ready' | 'wait' } | null {
+function photoBadge(
+  status: VisitStatus | undefined,
+  boostLocked: boolean,
+): { text: string; tone: 'ready' | 'wait' } | null {
   switch (status) {
     case 'ready':
-      return { text: 'Ready to visit', tone: 'ready' };
+      return boostLocked
+        ? { text: 'Boost locked', tone: 'ready' }
+        : { text: 'Ready to visit', tone: 'ready' };
     case 'code_issued':
       return { text: 'Code issued · awaiting verification', tone: 'wait' };
     case 'code_expired':
@@ -139,6 +144,7 @@ export function AdventureTicket({
 }: AdventureTicketProps) {
   const [nowMs] = useState(() => Date.now());
   const [redeemDialogOpen, setRedeemDialogOpen] = useState(false);
+  const [lockedLocally, setLockedLocally] = useState(false);
   const isExpired = challengeCardExpired({
     now: new Date(nowMs),
     cycleCreatedAt,
@@ -159,14 +165,15 @@ export function AdventureTicket({
     savingsCorrected: item.savingsCorrected === true,
   });
   const countedVisit = item.visitStatus != null && visitStatusCountsAsVisit(item.visitStatus);
+  const boostLocked = item.boostLocked === true || lockedLocally;
   const offerBoost =
     item.offer.available && !countedVisit
-      ? item.boostLocked
+      ? boostLocked
         ? challengeBoostLockedCopy(item.boostBonusCents)
         : challengeBoostOfferCopy(item.boostBonusCents, item.boostWindowLabel)
       : null;
   const status = trackStatus(item);
-  const badge = photoBadge(item.visitStatus);
+  const badge = photoBadge(item.visitStatus, boostLocked);
   const isAssigned = item.challengeItem.status === 'assigned';
   const isRedeemed = item.challengeItem.status === 'redeemed';
   const postVerify = countedVisit;
@@ -297,8 +304,9 @@ export function AdventureTicket({
           boostCheckIn && isAssigned && !windowClosed && Boolean(item.challengeItem.offer_version_id) && hasCoords
         }
         challengeItemId={item.challengeItem.id}
-        alreadyLocked={item.boostLocked === true}
+        alreadyLocked={boostLocked}
         bonusCents={item.boostBonusCents}
+        onLocked={() => setLockedLocally(true)}
       />
       {isAssigned && !windowClosed && canSwap ? (
         <CtaButton
