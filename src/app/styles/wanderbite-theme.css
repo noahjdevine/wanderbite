@@ -1274,6 +1274,12 @@
   font-weight: 500;
   letter-spacing: normal;
 }
+/* Lighter than typed text, so an empty subtotal does not look pre-filled. */
+.wb-partner-field.wb-subtotal::placeholder {
+  color: #9a91a6;
+  font-weight: 400;
+  font-style: italic;
+}
 .wb-partner-verify,
 .wb-partner-form {
   display: flex;

@@ -367,7 +367,7 @@ export function PartnerArrivalClient({ restaurantName, slug }: PartnerArrivalCli
                         autoComplete="off"
                         placeholder={ELIGIBLE_SUBTOTAL_PLACEHOLDER}
                         aria-describedby={`amount-help-${item.challengeItemId}`}
-                        className="wb-partner-field"
+                        className="wb-partner-field wb-subtotal"
                         value={amounts[sessionId] ?? ''}
                         onChange={(event) =>
                           setAmounts((current) => ({ ...current, [sessionId]: event.target.value }))

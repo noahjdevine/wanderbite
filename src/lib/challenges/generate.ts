@@ -30,7 +30,7 @@ import { safeManualImagePath } from '@/lib/restaurant-image';
 import { loadLockedBoostItemIds, loadStoredChallengeSavings } from '@/lib/boost/challenge-settlement';
 import { parseSealedBoosts, sealedBoostBonusCents } from '@/lib/boost/arrival';
 import { arrivalSessionsEnabled, visitProblemsEnabled } from '@/lib/boost/flag';
-import { boostWindowLabel, challengeVisitSavings } from '@/lib/boost/savings-copy';
+import { boostDisplayZone, boostWindowLabel, challengeVisitSavings } from '@/lib/boost/savings-copy';
 import { loadMemberSavingsCorrections } from '@/lib/boost/visit-problem-store';
 import { deriveVisitStatus, type VisitStatus } from '@/lib/visits/visit-status';
 import {
@@ -862,9 +862,22 @@ async function loadChallengeItemsWithRestaurants(
   const versionWindow = new Map<string, string | null>();
   if (versionIds.length > 0) {
     if (arrivalSessionsEnabled()) {
+      const marketZoneById = new Map<string, string>();
+      const marketIds = [...new Set([...restMap.values()].map((restaurant) => restaurant.market_id))];
+      if (marketIds.length > 0) {
+        const { data: marketRows } = await supabase
+          .from('markets')
+          .select('id, timezone')
+          .in('id', marketIds);
+        for (const market of marketRows ?? []) {
+          if (typeof market.timezone === 'string' && market.timezone) {
+            marketZoneById.set(market.id, market.timezone);
+          }
+        }
+      }
       const { data: versions } = await supabase
         .from('offer_versions')
-        .select('id, tiers, boosts, timezone')
+        .select('id, restaurant_id, tiers, boosts, timezone')
         .in('id', versionIds);
       for (const version of versions ?? []) {
         const base = lowestSealedBase(version.tiers);
@@ -873,7 +886,9 @@ async function loadChallengeItemsWithRestaurants(
         if (bonus == null) continue;
         versionBoost.set(version.id, bonus);
         const boosts = parseSealedBoosts(version.boosts);
-        const zone = typeof version.timezone === 'string' && version.timezone ? version.timezone : 'America/Chicago';
+        const restaurant = restMap.get(version.restaurant_id);
+        const marketZone = restaurant ? marketZoneById.get(restaurant.market_id) : null;
+        const zone = boostDisplayZone(marketZone, version.timezone);
         versionWindow.set(version.id, boosts ? boostWindowLabel(boosts, bonus, zone) : null);
       }
     } else {

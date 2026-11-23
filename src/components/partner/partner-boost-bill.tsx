@@ -190,7 +190,7 @@ export function PartnerBoostBill({
               autoComplete="off"
               placeholder={ELIGIBLE_SUBTOTAL_PLACEHOLDER}
               aria-describedby="partner-boost-subtotal-help"
-              className="wb-partner-field"
+              className="wb-partner-field wb-subtotal"
               value={amount}
               disabled={pending != null}
               onChange={(event) => setAmount(event.target.value)}
@@ -199,7 +199,7 @@ export function PartnerBoostBill({
               {ELIGIBLE_SUBTOTAL_HELP}
             </p>
           </div>
-          <button type="submit" className="wb-cta wb-partner-cta" disabled={pending != null || !amount.trim()}>
+          <button type="submit" className="wb-cta wb-partner-cta wb-partner-cta-block" disabled={pending != null || !amount.trim()}>
             {pending === 'confirm' ? 'Confirming…' : 'Confirm bill'}
           </button>
         </form>

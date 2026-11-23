@@ -149,7 +149,9 @@ describe('ShowRedemptionCode', () => {
     expect(countdown?.textContent).toMatch(/Code expires in 14:/);
     expect(countdown?.hasAttribute('aria-live')).toBe(false);
     const live = () => view.querySelector('[aria-live="polite"]');
-    expect(live()?.textContent).toBe('Code issued');
+    expect(view.querySelector('[data-visit-status="code_issued"]')?.textContent).toBe('Code issued');
+    expect(view.textContent?.match(/Code issued/g)).toEqual(['Code issued']);
+    expect(live()?.textContent).toBe('');
     expect(live()?.textContent).not.toMatch(/\d:\d/);
     expect(view.querySelector('svg')?.getAttribute('class') ?? '').not.toMatch(/animate/);
 
@@ -184,7 +186,8 @@ describe('ShowRedemptionCode', () => {
       );
       const live = () => view.querySelector('[aria-live="polite"]');
       const countdown = () => view.querySelector('p.tabular-nums');
-      expect(live()?.textContent).toBe('Code issued');
+      expect(view.textContent?.match(/Code issued/g)).toEqual(['Code issued']);
+      expect(live()?.textContent).toBe('');
       expect(countdown()?.textContent).toBe('Code expires in 01:10');
       await act(async () => {
         await vi.advanceTimersByTimeAsync(11_000);

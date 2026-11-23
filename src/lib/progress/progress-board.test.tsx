@@ -677,7 +677,7 @@ describe('Progress page', () => {
     }
   });
 
-  it('keeps visit rows free of a per-visit amount, including a settled Boost visit', () => {
+  it('shows stored base and Boost cents on a settled Boost row and nothing extra otherwise', () => {
     const model = buildProgressModel({
       progress: baseProgress({
         xp: 400,
@@ -698,6 +698,8 @@ describe('Progress page', () => {
             restaurantName: 'Boost Kitchen',
             occurredAt: '2026-11-04T18:00:00.000Z',
             verifiedAt: '2026-11-04T18:00:00.000Z',
+            settledBaseCents: 1000,
+            settledBoostCents: 500,
           }),
           adventure({
             id: '44444444-4444-4444-8444-444444444444',
@@ -706,15 +708,20 @@ describe('Progress page', () => {
             restaurantName: 'Plain Kitchen',
             occurredAt: '2026-10-04T18:00:00.000Z',
             verifiedAt: '2026-10-04T18:00:00.000Z',
+            settledBaseCents: 1500,
+            settledBoostCents: 0,
           }),
         ],
       },
     });
     render(<ProgressView model={model} />);
     const recent = screen.getByRole('region', { name: 'Recent adventures' });
-    expect(recent.textContent).toContain('Boost Kitchen');
-    expect(recent.textContent).toContain('Plain Kitchen');
-    expect(recent.textContent).not.toMatch(/\$\d/);
+    const rows = [...recent.querySelectorAll('li')];
+    const boost = rows.find((row) => row.textContent?.includes('Boost Kitchen'));
+    const plain = rows.find((row) => row.textContent?.includes('Plain Kitchen'));
+    expect(boost?.querySelector('[data-settled-amount]')?.textContent).toBe('$10 off + $5 Boost');
+    expect(plain?.querySelector('[data-settled-amount]')).toBeNull();
+    expect(plain?.textContent).not.toMatch(/\$\d/);
     expect(screen.getByText('all-time verified visits')).toBeTruthy();
     expect(screen.getByText('$40')).toBeTruthy();
   });

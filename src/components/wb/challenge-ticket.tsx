@@ -116,7 +116,7 @@ export function ChallengeTicket({
               ) : null}
             </div>
             {offerBoost ? (
-              <p className="m-0 mt-2 text-sm leading-snug text-wb-ink" data-boost-offer="">
+              <p className="m-0 mt-2 break-words text-sm leading-snug text-wb-ink" data-boost-offer="">
                 {offerBoost}
               </p>
             ) : null}
