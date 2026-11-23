@@ -1,5 +1,5 @@
 -- Site problem reports.
--- NOT applied to hosted. Forward-only. Noah approves any apply.
+-- Applied to hosted as version 20261123164045. Forward-only.
 -- Members and signed-out visitors tell us about broken pages.
 -- This is not a visit problem. visit_problem_* tables are unchanged.
 -- No member or anon select, update, or delete. Inserts are service role only.

@@ -492,4 +492,5 @@ Site QA 2026-11-05: signed-in Discover hides the join upsell, `/journey` keeps o
 
 The Discover line validator is strict: it rejects price words including `cheap` and `affordable`, deal words, and unsourced praise words such as premium or gourmet unless they appear in the name or facts. Negation parsing is pattern-based. Watch the `line_rejected` rate by `lineCode` in production.
 
-- [ ] Site problem reports: `SITE_PROBLEM_REPORTS_ENABLED` stays unset. Migration `20261123160000_site_problem_reports.sql` is not applied to hosted. The footer and account-menu link, `/report-a-problem`, and `/admin/site-problems` appear only when the flag is exactly `true`.
+- [ ] Site problem reports: `SITE_PROBLEM_REPORTS_ENABLED` stays unset. Migration `20261123164045_site_problem_reports.sql` is applied on hosted. The footer and account-menu link, `/report-a-problem`, and `/admin/site-problems` appear only when the flag is exactly `true`.
+- [ ] Owner problem alerts: `SITE_PROBLEM_ALERT_EMAIL` stays unset, so a new site report or visit-problem case sends no email. Set that one address and `RESEND_API_KEY` to email the owner once. Review and resolve send nothing.

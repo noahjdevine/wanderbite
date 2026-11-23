@@ -195,7 +195,7 @@ describe('OPS-03 schema contract', () => {
 
   it('adds site problem reports in a forward migration and leaves visit problems alone', () => {
     const files = readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith('_site_problem_reports.sql'));
-    expect(files).toEqual(['20261123160000_site_problem_reports.sql']);
+    expect(files).toEqual(['20261123164045_site_problem_reports.sql']);
     const sql = readFileSync(path.join(MIGRATIONS_DIR, files[0] ?? ''), 'utf8');
     expect(sql).toContain('create table public.site_problem_reports');
     expect(sql).toContain('references auth.users (id) on delete set null');
