@@ -19,7 +19,8 @@ export type AdminAuditAction =
   | 'content.source_pause'
   | 'content.source_resume'
   | 'visit_problem.review'
-  | 'visit_problem.resolve';
+  | 'visit_problem.resolve'
+  | 'site_problem.review';
 
 export async function logAdminAction(params: {
   actorUserId: string;

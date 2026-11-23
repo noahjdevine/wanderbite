@@ -192,4 +192,17 @@ describe('OPS-03 schema contract', () => {
     expect(sql).toContain("'about'");
     expect(sql).toContain("'vibe'");
   });
+
+  it('adds site problem reports in a forward migration and leaves visit problems alone', () => {
+    const files = readdirSync(MIGRATIONS_DIR).filter((name) => name.endsWith('_site_problem_reports.sql'));
+    expect(files).toEqual(['20261123160000_site_problem_reports.sql']);
+    const sql = readFileSync(path.join(MIGRATIONS_DIR, files[0] ?? ''), 'utf8');
+    expect(sql).toContain('create table public.site_problem_reports');
+    expect(sql).toContain('references auth.users (id) on delete set null');
+    expect(sql).toContain('enable row level security');
+    expect(sql).toContain('revoke all on table public.site_problem_reports');
+    expect(sql).toContain("status in ('new', 'reviewed', 'closed')");
+    expect(sql).not.toMatch(/alter table public\.visit_problem/);
+    expect(sql).not.toMatch(/create table public\.visit_problem/);
+  });
 });

@@ -45,7 +45,7 @@ function NavLinksWithSearch({ items }: { items: NavItem[] }) {
   return <NavLinks items={items} search={search} />;
 }
 
-export function Navbar() {
+export function Navbar({ reportProblems = false }: { reportProblems?: boolean }) {
   const { signedIn, loading } = useSupabaseUser();
   const pathname = usePathname();
   const items = signedIn ? MEMBER_NAV_ITEMS : PUBLIC_NAV_ITEMS;
@@ -74,7 +74,7 @@ export function Navbar() {
           {loading ? (
             <div className="h-11 w-24 rounded-full bg-white/15" />
           ) : signedIn ? (
-            <AccountMenu />
+            <AccountMenu reportProblems={reportProblems} />
           ) : (
             <>
               <Link href="/signin" className="wb-nav-signin">

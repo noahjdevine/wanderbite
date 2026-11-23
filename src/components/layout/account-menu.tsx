@@ -1,8 +1,10 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronDown, User as UserIcon } from 'lucide-react';
+import { ReportProblemLink } from '@/components/layout/report-problem-link';
 import { createClient } from '@/lib/supabase/client';
 import { cn } from '@/lib/utils';
 import {
@@ -18,7 +20,11 @@ type AccountMenuProps = {
   className?: string;
 };
 
-export function AccountMenu({ variant = 'default', className }: AccountMenuProps) {
+export function AccountMenu({
+  variant = 'default',
+  className,
+  reportProblems = false,
+}: AccountMenuProps & { reportProblems?: boolean }) {
   const router = useRouter();
 
   async function handleSignOut() {
@@ -51,6 +57,13 @@ export function AccountMenu({ variant = 'default', className }: AccountMenuProps
         <DropdownMenuItem asChild>
           <Link href="/suggest">Suggest a Restaurant</Link>
         </DropdownMenuItem>
+        {reportProblems ? (
+          <Suspense fallback={null}>
+            <DropdownMenuItem asChild>
+              <ReportProblemLink />
+            </DropdownMenuItem>
+          </Suspense>
+        ) : null}
         <DropdownMenuItem onClick={handleSignOut}>Sign Out</DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

@@ -2315,6 +2315,51 @@ export type Database = {
           },
         ]
       }
+      site_problem_reports: {
+        Row: {
+          admin_note: string | null
+          contact_email: string | null
+          created_at: string
+          id: string
+          page_path: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          trying_to_do: string | null
+          user_agent: string | null
+          user_id: string | null
+          what_happened: string
+        }
+        Insert: {
+          admin_note?: string | null
+          contact_email?: string | null
+          created_at?: string
+          id?: string
+          page_path?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          trying_to_do?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          what_happened: string
+        }
+        Update: {
+          admin_note?: string | null
+          contact_email?: string | null
+          created_at?: string
+          id?: string
+          page_path?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          trying_to_do?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          what_happened?: string
+        }
+        Relationships: []
+      }
       source_facts: {
         Row: {
           evidence_excerpt: string

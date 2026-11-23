@@ -289,3 +289,18 @@ export const cspReportLimiter = verifyRedis
       prefix: 'wanderbite:csp-report-ip',
     })
   : null;
+
+/** 5 site problem reports per hour per user id or IP digest. */
+export const siteProblemReportLimiter = aiRedis
+  ? new Ratelimit({
+      redis: aiRedis,
+      limiter: Ratelimit.slidingWindow(5, '1 h'),
+      prefix: 'wanderbite:site-problem-report',
+    })
+  : null;
+
+export async function evaluateSiteProblemReportLimit(
+  subject: string,
+): Promise<FailClosedLimitResult> {
+  return evaluateLimiter(siteProblemReportLimiter, subject);
+}
