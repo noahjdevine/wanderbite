@@ -246,9 +246,9 @@ describe('account page shell', () => {
   it('keeps the header offset and does not hide account content', () => {
     const layout = readFileSync(path.join(process.cwd(), 'src/app/account/layout.tsx'), 'utf8');
     expect(layout).toContain('pt-14 xl:pt-0');
-    expect(layout).toContain('<Navbar />');
-    expect(layout).toContain('<Footer />');
-    expect(layout).toContain('<MobileNav />');
+    expect(layout).toContain('<Navbar');
+    expect(layout).toContain('<Footer');
+    expect(layout).toContain('<MobileNav');
     const css = readFileSync(path.join(process.cwd(), 'src/app/styles/wanderbite-theme.css'), 'utf8');
     const start = css.indexOf('/* ---------- Account page');
     const block = css.slice(start);

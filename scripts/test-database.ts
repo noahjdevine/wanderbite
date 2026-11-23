@@ -205,6 +205,8 @@ async function main() {
   process.stdout.write('PASS: E07-B2 private bill-receipts bucket, proposal grants, and open-session scope.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e08-journal-reflections.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E08-A2 journal reflection grants, ownership, checks, and unchanged bite_notes.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/site-problem-reports.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: site problem reports are service-role only; members and anon cannot read or change them.\n');
   await runE06B2ActivityMaintenanceDb({ sql });
   process.stdout.write('PASS: E06-B2 cron-path expiry, cadence selection, and flag-off leaves activities untouched.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e02-credit-safe-swaps.sql'), 'utf8')) + '\n');

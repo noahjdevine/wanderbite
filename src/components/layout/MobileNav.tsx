@@ -71,7 +71,7 @@ function MenuLinksWithSearch({
   return <MenuLinks items={items} search={search} onNavigate={onNavigate} />;
 }
 
-export function MobileNav() {
+export function MobileNav({ reportProblems = false }: { reportProblems?: boolean }) {
   const { signedIn, loading } = useSupabaseUser();
   const pathname = usePathname();
   const router = useRouter();
@@ -143,7 +143,7 @@ export function MobileNav() {
           {loading ? (
             <div className="h-11 w-20 rounded-full bg-white/15" />
           ) : signedIn ? (
-            <AccountMenu variant="icon" />
+            <AccountMenu variant="icon" reportProblems={reportProblems} />
           ) : (
             <Link href="/signup" className="wb-nav-cta wb-nav-cta--compact">
               Start Your Adventure

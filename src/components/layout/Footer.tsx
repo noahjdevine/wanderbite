@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { ReportProblemLinkSlot } from '@/components/layout/report-problem-link';
 import { createClient } from '@/lib/supabase/client';
 import { useSupabaseUser } from '@/hooks/use-supabase-user';
 
@@ -24,7 +25,7 @@ function FooterSignOut() {
   );
 }
 
-export function Footer() {
+export function Footer({ reportProblems = false }: { reportProblems?: boolean }) {
   const currentYear = new Date().getFullYear();
   const { signedIn, loading } = useSupabaseUser();
 
@@ -56,6 +57,7 @@ export function Footer() {
           <Link href="/contact" className={linkClass}>
             Contact
           </Link>
+          {reportProblems ? <ReportProblemLinkSlot className={linkClass} /> : null}
           {loading ? (
             <span className="h-4 w-16 rounded bg-white/15" aria-hidden />
           ) : signedIn ? (
