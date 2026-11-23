@@ -719,7 +719,11 @@ describe('Progress page', () => {
     const rows = [...recent.querySelectorAll('li')];
     const boost = rows.find((row) => row.textContent?.includes('Boost Kitchen'));
     const plain = rows.find((row) => row.textContent?.includes('Plain Kitchen'));
-    expect(boost?.querySelector('[data-settled-amount]')?.textContent).toBe('$10 off + $5 Boost');
+    const amount = boost?.querySelector('[data-settled-amount]');
+    expect(amount?.textContent).toBe('$10 off + $5 Boost');
+    expect(amount?.querySelector('.whitespace-nowrap')?.textContent).toBe('$5 Boost');
+    expect(boost?.getAttribute('class')).toContain('grid-cols-[60px_minmax(0,1fr)]');
+    expect(boost?.querySelector('[data-visit-actions]')?.getAttribute('class')).toContain('col-start-2');
     expect(plain?.querySelector('[data-settled-amount]')).toBeNull();
     expect(plain?.textContent).not.toMatch(/\$\d/);
     expect(screen.getByText('all-time verified visits')).toBeTruthy();

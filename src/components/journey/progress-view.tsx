@@ -224,7 +224,7 @@ export function ProgressView({ model, savedRecipes, progression }: ProgressViewP
                       id={anchor ?? undefined}
                       tabIndex={anchor ? -1 : undefined}
                       data-visit-status={adventure.visitStatus}
-                      className="flex scroll-mt-24 flex-wrap items-center gap-3.5 outline-none"
+                      className="grid scroll-mt-24 grid-cols-[60px_minmax(0,1fr)] items-start gap-x-3.5 gap-y-2 outline-none sm:grid-cols-[60px_minmax(0,1fr)_auto] sm:items-center"
                     >
                       {/* Cards stay on img. The proxy path is same-origin. */}
                       {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -233,29 +233,34 @@ export function ProgressView({ model, savedRecipes, progression }: ProgressViewP
                         alt=""
                         width={60}
                         height={60}
-                        className="h-[60px] w-[60px] shrink-0 rounded-[18px] object-cover"
+                        className="row-span-2 h-[60px] w-[60px] rounded-[18px] object-cover sm:row-span-1"
                       />
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0">
                         <p className="m-0 text-base font-semibold">{adventure.restaurantName}</p>
                         {adventure.meta ? (
                           <p className="m-0 text-[13px] text-wb-muted">{adventure.meta}</p>
                         ) : null}
                         {adventure.settlementLabel ? (
-                          <p className="m-0 break-words text-[13px] text-wb-ink" data-settled-amount="">
-                            {adventure.settlementLabel}
+                          <p className="m-0 text-[13px] text-wb-ink" data-settled-amount="">
+                            <SettledAmount label={adventure.settlementLabel} />
                           </p>
                         ) : null}
                       </div>
-                      <StatusChip status={adventure.visitStatus} label={adventure.statusLabel} />
-                      {adventure.memoryHref && adventure.memoryLabel ? (
-                        <a
-                          href={adventure.memoryHref}
-                          data-memory-action={adventure.memoryLabel === 'Add memory' ? 'add' : 'edit'}
-                          className="inline-flex min-h-11 items-center rounded-full border border-[#d9cfe6] px-3 text-[13px] font-semibold text-wb-plum"
-                        >
-                          {adventure.memoryLabel}
-                        </a>
-                      ) : null}
+                      <div
+                        data-visit-actions=""
+                        className="col-start-2 flex flex-wrap items-center gap-2 sm:col-start-3 sm:justify-self-end"
+                      >
+                        <StatusChip status={adventure.visitStatus} label={adventure.statusLabel} />
+                        {adventure.memoryHref && adventure.memoryLabel ? (
+                          <a
+                            href={adventure.memoryHref}
+                            data-memory-action={adventure.memoryLabel === 'Add memory' ? 'add' : 'edit'}
+                            className="inline-flex min-h-11 items-center rounded-full border border-[#d9cfe6] px-3 text-[13px] font-semibold text-wb-plum"
+                          >
+                            {adventure.memoryLabel}
+                          </a>
+                        ) : null}
+                      </div>
                     </li>
                   );
                 })}
@@ -408,6 +413,23 @@ function StreakMark({
     <span className="h-10 w-10 rounded-full border border-wb-line">
       <span className="sr-only">{label} no visit</span>
     </span>
+  );
+}
+
+/**
+ * Keeps "$5 Boost" on one line. The base amount may wrap before that unit.
+ */
+function SettledAmount({ label }: { label: string }) {
+  const marker = ' Boost';
+  const end = label.endsWith(marker) ? label.length - marker.length : -1;
+  const dollar = end > 0 ? label.lastIndexOf('$', end - 1) : -1;
+  if (dollar < 0) return label;
+  if (dollar === 0) return <span className="whitespace-nowrap">{label}</span>;
+  return (
+    <>
+      {label.slice(0, dollar)}
+      <span className="whitespace-nowrap">{label.slice(dollar)}</span>
+    </>
   );
 }
 

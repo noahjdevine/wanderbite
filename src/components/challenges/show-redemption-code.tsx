@@ -367,6 +367,7 @@ export function ShowRedemptionCode({
     nowMs,
   });
   const statusLabel = visitStatusLabel(liveStatus);
+  const showHeading = displayPhase === 'verified' ? 'All set' : 'Show your server';
   const scanUrl = liveCode ? buildPartnerRedeemScanUrl(restaurantSlug, liveCode) : null;
   const statusText =
     displayPhase === 'issued' ? `Code expires in ${formatRedemptionCountdown(remainingMs)}` : null;
@@ -401,7 +402,7 @@ export function ShowRedemptionCode({
         {displayPhase === 'verified' && settledSummary ? settledSummary : announcement}
       </p>
       <div className="text-center">
-        <p className="text-sm font-semibold tracking-wide text-wb-muted uppercase">Show your server</p>
+        <p className="text-sm font-semibold tracking-wide text-wb-muted uppercase" data-show-heading={showHeading}>{showHeading}</p>
         <h1 className="font-display mt-2 max-w-full break-words text-[40px] leading-none text-wb-ink">
           {restaurantName}
         </h1>

@@ -189,6 +189,74 @@ describe('PartnerRedeemClient', () => {
     expect(status.textContent).not.toContain('$15');
   });
 
+  it('says Checking while the code is being checked, and Verifying only on Verify', async () => {
+    let releaseCheck: (value: unknown) => void = () => {};
+    verifyRedemptionTokenForPartner.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseCheck = resolve;
+        }),
+    );
+    render(<PartnerRedeemClient restaurantName="North Grill" slug="north-grill" />);
+    fireEvent.change(screen.getByLabelText('Customer code'), { target: { value: 'WB-CHECK' } });
+    fireEvent.submit(screen.getByLabelText('Customer code').closest('form') as HTMLFormElement);
+    expect(await screen.findByRole('button', { name: 'Checking…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Verifying…' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Check code' })).toBeNull();
+
+    releaseCheck({
+      success: false,
+      needsBill: true,
+      sessionId: '55555555-5555-4555-8555-555555555555',
+      minSpendCents: 4000,
+      message: 'This guest locked a Boost. Enter the eligible bill subtotal, then verify the code.',
+    });
+    await screen.findByLabelText('Eligible subtotal');
+
+    let releaseVerify: (value: unknown) => void = () => {};
+    verifyRedemptionTokenForPartner.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseVerify = resolve;
+        }),
+    );
+    confirmPartnerBillSubtotal.mockResolvedValue({
+      ok: true,
+      quote: {
+        baseDiscountCents: 2000,
+        boostDiscountCents: 500,
+        totalDiscountCents: 2500,
+        eligibleSubtotalCents: 8200,
+        belowMinimum: false,
+      },
+    });
+    fireEvent.change(screen.getByLabelText('Eligible subtotal'), { target: { value: '82.00' } });
+    fireEvent.submit(screen.getByLabelText('Eligible subtotal').closest('form') as HTMLFormElement);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify' }));
+    expect(await screen.findByRole('button', { name: 'Verifying…' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Checking…' })).toBeNull();
+
+    releaseVerify({
+      success: true,
+      redemptionDetails: {
+        email: 'guest@example.com',
+        restaurantName: 'North Grill',
+        verifiedAt: 'Nov 4, 2026, 3:00 PM',
+      },
+      newBadgesEarned: [],
+      hideDiscountAmount: false,
+      sealedDiscountCents: 1500,
+      sealedMinSpendCents: 4000,
+      confirmedTotalDiscountCents: 2500,
+      confirmedBaseDiscountCents: 2000,
+      confirmedBoostDiscountCents: 500,
+      needsSubtotal: false,
+    });
+    expect((await screen.findByText('Verified')).closest('[role="status"]')?.textContent).toContain(
+      'Wanderbite covers $25',
+    );
+  });
+
   it('still auto-verifies a pending code once', async () => {
     verifyRedemptionTokenForPartner.mockResolvedValue({
       success: false,

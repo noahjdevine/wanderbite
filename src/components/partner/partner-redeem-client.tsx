@@ -222,7 +222,7 @@ export function PartnerRedeemClient({
             {state.status === 'verifying' ? (
               <>
                 <Loader2 className="mr-2 size-5 animate-spin motion-reduce:animate-none" aria-hidden />
-                Verifying…
+                Checking…
               </>
             ) : (
               'Check code'

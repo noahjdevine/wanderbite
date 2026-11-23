@@ -75,6 +75,7 @@ describe('ShowRedemptionCode', () => {
         confirmedDiscountLabel="$25 off"
       />,
     );
+    expect(view.querySelector('[data-show-heading]')?.textContent).toBe('Show your server');
     expect(view.querySelector('[data-confirmed-discount]')?.textContent).toBe('$25 off');
     expect(view.querySelector('svg')).toBeTruthy();
     expect(view.textContent).toContain('WB-LIVE1');
@@ -118,6 +119,8 @@ describe('ShowRedemptionCode', () => {
     expect(view.querySelector('[data-settled-summary]')?.textContent).toBe(
       'You saved $15 ($10 off + $5 Boost)',
     );
+    expect(view.querySelector('[data-show-heading]')?.textContent).toBe('All set');
+    expect(view.textContent).not.toContain('Show your server');
     expect(view.textContent).toContain('Verified');
     expect(view.textContent).not.toContain('$40 minimum spend');
     expect(view.textContent).not.toContain('Boost locked');
@@ -272,6 +275,8 @@ describe('ShowRedemptionCode', () => {
         verifiedAt="Nov 4, 2026, 7:00 PM"
       />,
     );
+    expect(verified.querySelector('[data-show-heading]')?.textContent).toBe('All set');
+    expect(verified.textContent).not.toContain('Show your server');
     expect(verified.textContent).toContain('Already verified');
     expect(verified.querySelector('[aria-live="polite"]')?.textContent).toBe('Already verified');
     expect(verified.textContent).not.toContain('Get a new one');
