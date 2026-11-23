@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { hashClientIp } from '@/lib/ai-ip-hash';
 import { trustedClientIpFromHeaders } from '@/lib/client-ip';
 import { evaluateSiteProblemReportLimit } from '@/lib/ratelimit';
+import { scheduleProblemAlert } from '@/lib/site-problems/alert';
 import { siteProblemReportsEnabled } from '@/lib/site-problems/flag';
 import {
   DISABLED_MESSAGE,
@@ -44,6 +45,7 @@ function failure(
  * Store one site problem report.
  * Unset SITE_PROBLEM_REPORTS_ENABLED refuses before any read or insert.
  * The signed-in user id comes from the session. A visitor email is optional.
+ * After the row is saved, one owner alert is scheduled. That send cannot fail this response.
  */
 export async function submitSiteProblemReport(
   _prev: SiteProblemFormState,
@@ -98,15 +100,38 @@ export async function submitSiteProblemReport(
 
   try {
     const admin = getSupabaseAdmin();
-    const { error } = await admin.from('site_problem_reports').insert({
-      user_id: userId,
-      contact_email: userId ? null : parsed.contactEmail,
-      page_path: parsed.pagePath,
-      what_happened: parsed.whatHappened,
-      trying_to_do: parsed.tryingToDo,
-      user_agent: truncateUserAgent(hdrs.get('user-agent')),
-    });
+    const { data, error } = await admin
+      .from('site_problem_reports')
+      .insert({
+        user_id: userId,
+        contact_email: userId ? null : parsed.contactEmail,
+        page_path: parsed.pagePath,
+        what_happened: parsed.whatHappened,
+        trying_to_do: parsed.tryingToDo,
+        user_agent: truncateUserAgent(hdrs.get('user-agent')),
+      })
+      .select('id, created_at')
+      .single();
     if (error) return failure('unavailable', SAVE_FAILED_MESSAGE);
+    if (data?.id) {
+      try {
+        scheduleProblemAlert({
+          kind: 'site',
+          reportId: data.id,
+          occurredAt: data.created_at,
+          pagePath: parsed.pagePath,
+          whatHappened: parsed.whatHappened,
+          reporter: userId ? 'member' : 'visitor',
+        });
+      } catch (scheduleError) {
+        console.error(
+          '[problem-alert] schedule failed',
+          scheduleError instanceof Error ? scheduleError.message : 'unknown',
+        );
+      }
+    } else {
+      console.warn('[problem-alert] skipped count=1 reason=missing_report');
+    }
   } catch {
     return failure('unavailable', SAVE_FAILED_MESSAGE);
   }

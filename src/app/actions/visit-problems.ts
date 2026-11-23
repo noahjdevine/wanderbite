@@ -1,6 +1,7 @@
 'use server';
 
 import { requireUser } from '@/lib/auth/require-user';
+import { scheduleProblemAlert } from '@/lib/site-problems/alert';
 import { visitProblemsEnabled } from '@/lib/boost/flag';
 import {
   MAKEUP_OFFER_CLOSED,
@@ -38,6 +39,7 @@ function disabled(): { ok: false; code: 'disabled' } {
  * File one open problem for the signed-in member's own visit.
  * Unset E07_VISIT_PROBLEMS_ENABLED returns disabled before any read.
  * A redemption code is not required. This does not change the visit.
+ * A new case schedules one owner alert. That send cannot fail this response.
  */
 export async function submitVisitProblem(input: {
   challengeItemId: string;
@@ -57,13 +59,31 @@ export async function submitVisitProblem(input: {
     if (!redemptionId) return { ok: false, code: 'invalid_redemption' };
   }
 
-  return submitOwnedVisitProblem(createSupabaseVisitProblemStore(), {
+  const filed = await submitOwnedVisitProblem(createSupabaseVisitProblemStore(), {
     userId: auth.userId,
     challengeItemId,
     redemptionId,
     category: input.category,
     explanation: input.explanation,
   });
+  if (filed.ok) {
+    try {
+      scheduleProblemAlert({
+        kind: 'visit',
+        reportId: filed.problem.id,
+        occurredAt: filed.problem.createdAt,
+        challengeItemId: filed.problem.challengeItemId,
+        categoryLabel: filed.problem.categoryLabel,
+        whatHappened: filed.problem.explanation,
+      });
+    } catch (scheduleError) {
+      console.error(
+        '[problem-alert] schedule failed',
+        scheduleError instanceof Error ? scheduleError.message : 'unknown',
+      );
+    }
+  }
+  return filed;
 }
 
 /**

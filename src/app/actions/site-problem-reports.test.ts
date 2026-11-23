@@ -49,12 +49,30 @@ vi.mock('@/lib/ratelimit', () => ({
   },
 }));
 
+const scheduleProblemAlert = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/site-problems/alert', () => ({
+  scheduleProblemAlert: (...args: unknown[]) => scheduleProblemAlert(...args),
+}));
+
 vi.mock('@/lib/supabase-admin', () => ({
   getSupabaseAdmin: () => ({
     from: (table: string) => ({
       insert: (row: unknown) => {
         harness.inserts.push({ table, row });
-        return Promise.resolve({ error: harness.insertError });
+        return {
+          select: () => ({
+            single: async () => ({
+              data: harness.insertError
+                ? null
+                : {
+                    id: '11111111-1111-4111-8111-111111111111',
+                    created_at: '2026-11-23T18:41:00.000Z',
+                  },
+              error: harness.insertError,
+            }),
+          }),
+        };
       },
     }),
   }),
@@ -82,6 +100,7 @@ describe('submitSiteProblemReport', () => {
     harness.limitIds = [];
     harness.inserts = [];
     harness.insertError = null;
+    scheduleProblemAlert.mockReset();
     vi.stubEnv('NODE_ENV', 'test');
   });
 
@@ -91,6 +110,7 @@ describe('submitSiteProblemReport', () => {
     expect(result).toMatchObject({ ok: false, code: 'disabled' });
     expect(harness.getUserCalls).toBe(0);
     expect(harness.inserts).toEqual([]);
+    expect(scheduleProblemAlert).not.toHaveBeenCalled();
   });
 
   it('stores a signed-out report with or without an email and no user id', async () => {
@@ -136,6 +156,17 @@ describe('submitSiteProblemReport', () => {
     expect(first.row.user_agent.length).toBe(300);
     expect(JSON.stringify(harness.inserts)).not.toContain('203.0.113.10');
     expect(harness.limitIds).toEqual(['ip:v1:203.0.113.10', 'ip:v1:203.0.113.10']);
+    expect(scheduleProblemAlert).toHaveBeenCalledTimes(2);
+    expect(scheduleProblemAlert).toHaveBeenNthCalledWith(1, {
+      kind: 'site',
+      reportId: '11111111-1111-4111-8111-111111111111',
+      occurredAt: '2026-11-23T18:41:00.000Z',
+      pagePath: '/challenges',
+      whatHappened: story,
+      reporter: 'visitor',
+    });
+    expect(JSON.stringify(scheduleProblemAlert.mock.calls)).not.toContain('guest@example.com');
+    expect(JSON.stringify(scheduleProblemAlert.mock.calls)).not.toContain('Agent/');
   });
 
   it('stores the signed-in user id and ignores a posted email', async () => {
@@ -150,6 +181,13 @@ describe('submitSiteProblemReport', () => {
       row: { user_id: 'user-1', contact_email: null, page_path: '/challenges' },
     });
     expect(harness.limitIds).toEqual(['user:user-1']);
+    expect(scheduleProblemAlert).toHaveBeenCalledWith(expect.objectContaining({
+      reporter: 'member',
+      pagePath: '/challenges',
+    }));
+    expect(JSON.stringify(scheduleProblemAlert.mock.calls)).not.toContain('user-1');
+    expect(JSON.stringify(scheduleProblemAlert.mock.calls)).not.toContain('member@example.com');
+    expect(JSON.stringify(scheduleProblemAlert.mock.calls)).not.toContain('other@example.com');
   });
 
   it('rejects a short story and a filled honeypot without inserting', async () => {
@@ -162,6 +200,7 @@ describe('submitSiteProblemReport', () => {
     }));
     expect(honeypot).toMatchObject({ ok: false, code: 'rejected' });
     expect(harness.inserts).toEqual([]);
+    expect(scheduleProblemAlert).not.toHaveBeenCalled();
   });
 
   it('returns a friendly message when the rate limit says no', async () => {
@@ -183,5 +222,18 @@ describe('submitSiteProblemReport', () => {
     harness.insertError = { message: 'relation does not exist' };
     const result = await submitSiteProblemReport(idle, form({ what_happened: story }));
     expect(result).toEqual({ ok: false, code: 'unavailable', message: SAVE_FAILED_MESSAGE });
+    expect(scheduleProblemAlert).not.toHaveBeenCalled();
+  });
+
+  it('still saves when scheduling the owner alert throws', async () => {
+    scheduleProblemAlert.mockImplementation(() => {
+      throw new Error('after blew up');
+    });
+    const result = await submitSiteProblemReport(idle, form({
+      what_happened: story,
+      page_path: '/challenges',
+    }));
+    expect(result).toEqual({ ok: true, returnPath: '/challenges' });
+    expect(harness.inserts).toHaveLength(1);
   });
 });

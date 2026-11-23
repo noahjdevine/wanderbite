@@ -55,6 +55,12 @@ vi.mock('@/app/actions/redeem-challenge', () => ({
   redeemChallengeItem: (...args: unknown[]) => redeemChallengeItem(...args),
 }));
 
+const scheduleProblemAlert = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/site-problems/alert', () => ({
+  scheduleProblemAlert: (...args: unknown[]) => scheduleProblemAlert(...args),
+}));
+
 import { revalidatePath } from 'next/cache';
 import { getOwnVisitProblem, startMakeupVisit, submitVisitProblem } from '@/app/actions/visit-problems';
 import {
@@ -81,7 +87,108 @@ function caseQuery(row: Record<string, unknown> | null) {
 describe('visit problem actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    scheduleProblemAlert.mockReset();
     delete process.env.E07_VISIT_PROBLEMS_ENABLED;
+  });
+
+  it('schedules one owner alert for a new case and none when one is already open', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    const createdAt = '2026-11-23T18:41:00.000Z';
+    createSupabaseVisitProblemStore.mockReturnValue({
+      lookupOwnedVisit: async () => ({
+        ok: true,
+        visit: { challengeItemId: ITEM, itemStatus: 'redeemed', redemptionId: null },
+      }),
+      insertCase: async () => ({
+        ok: true,
+        row: {
+          id: CASE,
+          user_id: 'member-1',
+          challenge_item_id: ITEM,
+          redemption_id: null,
+          category: 'wrong_discount',
+          explanation: 'The discount was wrong on the bill.',
+          status: 'submitted',
+          member_response: null,
+          resolved_at: null,
+          created_at: createdAt,
+          updated_at: createdAt,
+        },
+      }),
+    });
+
+    const filed = await submitVisitProblem({
+      challengeItemId: ITEM,
+      category: 'wrong_discount',
+      explanation: 'The discount was wrong on the bill.',
+    });
+    expect(filed).toMatchObject({ ok: true, problem: { id: CASE, categoryLabel: 'Wrong discount' } });
+    expect(scheduleProblemAlert).toHaveBeenCalledTimes(1);
+    expect(scheduleProblemAlert).toHaveBeenCalledWith({
+      kind: 'visit',
+      reportId: CASE,
+      occurredAt: createdAt,
+      challengeItemId: ITEM,
+      categoryLabel: 'Wrong discount',
+      whatHappened: 'The discount was wrong on the bill.',
+    });
+    const sent = JSON.stringify(scheduleProblemAlert.mock.calls);
+    expect(sent).not.toContain('member-1');
+    expect(sent).not.toContain('member@example.com');
+
+    createSupabaseVisitProblemStore.mockReturnValue({
+      lookupOwnedVisit: async () => ({
+        ok: true,
+        visit: { challengeItemId: ITEM, itemStatus: 'redeemed', redemptionId: null },
+      }),
+      insertCase: async () => ({ ok: false, code: 'already_open' }),
+    });
+    await expect(
+      submitVisitProblem({
+        challengeItemId: ITEM,
+        category: 'wrong_discount',
+        explanation: 'The discount was wrong on the bill.',
+      }),
+    ).resolves.toEqual({ ok: false, code: 'already_open' });
+    expect(scheduleProblemAlert).toHaveBeenCalledTimes(1);
+  });
+
+  it('still returns the new case when the owner alert cannot be scheduled', async () => {
+    process.env.E07_VISIT_PROBLEMS_ENABLED = 'true';
+    requireUser.mockResolvedValue({ ok: true, userId: 'member-1', email: 'member@example.com' });
+    scheduleProblemAlert.mockImplementation(() => {
+      throw new Error('after blew up');
+    });
+    createSupabaseVisitProblemStore.mockReturnValue({
+      lookupOwnedVisit: async () => ({
+        ok: true,
+        visit: { challengeItemId: ITEM, itemStatus: 'assigned', redemptionId: null },
+      }),
+      insertCase: async () => ({
+        ok: true,
+        row: {
+          id: CASE,
+          user_id: 'member-1',
+          challenge_item_id: ITEM,
+          redemption_id: null,
+          category: 'other',
+          explanation: 'Something else went wrong at the table.',
+          status: 'submitted',
+          member_response: null,
+          resolved_at: null,
+          created_at: '2026-11-23T18:41:00.000Z',
+          updated_at: '2026-11-23T18:41:00.000Z',
+        },
+      }),
+    });
+    await expect(
+      submitVisitProblem({
+        challengeItemId: ITEM,
+        category: 'other',
+        explanation: 'Something else went wrong at the table.',
+      }),
+    ).resolves.toMatchObject({ ok: true, problem: { id: CASE } });
   });
 
   it('returns disabled before auth or a table read when the flag is off', async () => {
@@ -424,6 +531,7 @@ describe('visit problem actions', () => {
       memberResponse: 'The offer stood as shown.',
       reason: 'No correction in this slice.',
     });
+    expect(scheduleProblemAlert).not.toHaveBeenCalled();
   });
 
   it('does not correct savings for a partner or when the flag is off', async () => {

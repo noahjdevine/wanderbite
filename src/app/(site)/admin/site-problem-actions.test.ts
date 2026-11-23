@@ -35,6 +35,12 @@ vi.mock('@/lib/audit/log-admin-action', () => ({
   },
 }));
 
+const scheduleProblemAlert = vi.hoisted(() => vi.fn());
+
+vi.mock('@/lib/site-problems/alert', () => ({
+  scheduleProblemAlert: (...args: unknown[]) => scheduleProblemAlert(...args),
+}));
+
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }));
 
 vi.mock('@/lib/supabase-admin', () => ({
@@ -77,6 +83,7 @@ describe('updateSiteProblemReport', () => {
     harness.updateError = null;
     harness.updates = [];
     harness.audits = [];
+    scheduleProblemAlert.mockReset();
   });
 
   it('refuses when the flag is off before the admin check', async () => {
@@ -118,6 +125,7 @@ describe('updateSiteProblemReport', () => {
         metadata: { from_status: 'new', to_status: 'reviewed', note_set: true },
       },
     ]);
+    expect(scheduleProblemAlert).not.toHaveBeenCalled();
   });
 
   it('rejects a status we do not use and a note that is too long', async () => {
