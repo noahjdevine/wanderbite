@@ -13,6 +13,7 @@ import {
 } from '@/lib/nav-items';
 import { cn } from '@/lib/utils';
 import { AccountMenu } from '@/components/layout/account-menu';
+import { ReportProblemLinkSlot } from '@/components/layout/report-problem-link';
 import { WanderbiteLogoLink } from '@/components/layout/wanderbite-logo-link';
 
 function NavLinks({ items, search }: { items: NavItem[]; search: string }) {
@@ -77,6 +78,9 @@ export function Navbar({ reportProblems = false }: { reportProblems?: boolean })
             <AccountMenu reportProblems={reportProblems} />
           ) : (
             <>
+              {reportProblems ? (
+                <ReportProblemLinkSlot className="wb-footer-link whitespace-nowrap" />
+              ) : null}
               <Link href="/signin" className="wb-nav-signin">
                 Sign In
               </Link>

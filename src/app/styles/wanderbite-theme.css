@@ -461,6 +461,14 @@
     display: none;
   }
 }
+/* Dev-tools indicator only. It is the dark round button in local dev.
+   Hide it on this page so it cannot cover the form. Other pages keep it.
+   Production has no fixed control on this route: the member tab bar is
+   omitted here, so the page keeps the same 1rem side padding as the rest
+   of the site. */
+body:has(.report-problem-page) nextjs-portal {
+  display: none !important;
+}
 @media (width < 80rem) {
   .wb-member-tabbar-slot.wb-member-tabbar-pad {
     display: block;
