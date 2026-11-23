@@ -461,18 +461,11 @@
     display: none;
   }
 }
-/* This page only. On a narrow phone a fixed dark round control covers the
-   form: the dev-tools button on the left, and the preview toolbar on the
-   right edge of "What were you trying to do?". The member tab bar stays off
-   this route. 32rem stays above the 360–430px check so a scrollbar still
-   matches. The dev-tools host is hidden here and left alone on every other
-   page. */
-@media (max-width: 32rem) {
-  .report-problem-page {
-    padding-inline: 5rem;
-    padding-bottom: 8rem;
-  }
-}
+/* Dev-tools indicator only. It is the dark round button in local dev.
+   Hide it on this page so it cannot cover the form. Other pages keep it.
+   Production has no fixed control on this route: the member tab bar is
+   omitted here, so the page keeps the same 1rem side padding as the rest
+   of the site. */
 body:has(.report-problem-page) nextjs-portal {
   display: none !important;
 }
