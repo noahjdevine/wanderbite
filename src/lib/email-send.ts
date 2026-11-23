@@ -2,7 +2,7 @@ import { differenceInMilliseconds } from 'date-fns';
 
 export const IDEMPOTENCY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-export const EMAIL_FROM = 'Wanderbite <noreply@wanderbite.com>';
+export const EMAIL_FROM = 'Wanderbite <noreply@wanderbite.co>';
 
 export type StoredEmailPayload = {
   from: string;

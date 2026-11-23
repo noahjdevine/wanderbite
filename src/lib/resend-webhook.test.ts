@@ -12,7 +12,7 @@ function event(type: string, extra: Record<string, unknown> = {}, to: string[] =
       created_at: '2026-09-23T00:00:00.000Z',
       email_id: 'em_1',
       message_id: 'm1',
-      from: 'Wanderbite <noreply@wanderbite.com>',
+      from: 'Wanderbite <noreply@wanderbite.co>',
       to,
       subject: 'Hello',
       ...extra,
@@ -93,7 +93,7 @@ describe('handleResendWebhook', () => {
         "created_at": "2026-09-23T00:00:00.000Z",
         "email_id": "em_1",
         "message_id": "m1",
-        "from": "Wanderbite <noreply@wanderbite.com>",
+        "from": "Wanderbite <noreply@wanderbite.co>",
         "to": ["member@example.com"],
         "subject": "Hello"
       }
