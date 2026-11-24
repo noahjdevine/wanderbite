@@ -10,6 +10,7 @@ import {
   parseActivityNoteDraft,
 } from '@/lib/activities/note-copy';
 import { eligibleNoteActivities, type NoteSourceActivity, type NoteSourceRestaurant } from '@/lib/activities/note-eligible';
+import type { ActivityNoteModelResult } from '@/lib/activities/note-generate';
 
 export const ACTIVITY_NOTE_SCHEMA = 'wanderbite.e06.activity_notes.v1';
 export const ACTIVITY_NOTE_OUTPUT_DIR = '.activity-notes';
@@ -20,7 +21,7 @@ const HOSTED_PROJECT_REF = 'yiajoycgiyxjvznndjge';
 export type ActivityNoteModelCaller = (input: {
   system: string;
   user: string;
-}) => Promise<{ text: string; usage: { input: number; output: number } | null }>;
+}) => Promise<ActivityNoteModelResult>;
 
 export type ActivityNoteDraftInsert = {
   restaurant_id: string;
@@ -171,14 +172,25 @@ export async function runActivityNoteDrafts(args: {
     });
     const otherRestaurantNames = args.restaurantNames.filter((name) => name !== restaurant.name);
     const firstText = await args.callModel(prompt);
+    const firstFailure = firstText.failure?.trim();
+    if (firstFailure) {
+      result.skips.push(firstFailure);
+      restaurants.push(result);
+      continue;
+    }
     let parsed = parseActivityNoteDraft(firstText.text, { candidates, otherRestaurantNames });
     if (!parsed.ok && isActivityNoteRetryReason(parsed.reason)) {
       const retry = await args.callModel({
         system: prompt.system,
         user: `${prompt.user}\n\nThe previous draft was blocked: ${parsed.reason} Write a new note that fixes that. Do not use a banned opening or closer. ${ACTIVITY_NOTE_WALK_DISTANCE_RULE}\n`,
       });
-      parsed = parseActivityNoteDraft(retry.text, { candidates, otherRestaurantNames });
-      if (!parsed.ok) parsed = { ok: false, reason: `blocked: ${parsed.reason}` };
+      const retryFailure = retry.failure?.trim();
+      if (retryFailure) {
+        parsed = { ok: false, reason: retryFailure };
+      } else {
+        parsed = parseActivityNoteDraft(retry.text, { candidates, otherRestaurantNames });
+        if (!parsed.ok) parsed = { ok: false, reason: `blocked: ${parsed.reason}` };
+      }
     }
     if (!parsed.ok) {
       result.skips.push(parsed.reason);

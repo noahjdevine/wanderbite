@@ -46,6 +46,13 @@ function anthropicUsage(raw: string): { input: number; output: number } | null {
   }
 }
 
+export type ActivityNoteModelResult = {
+  text: string;
+  usage: { input: number; output: number } | null;
+  /** Set when the Messages request itself failed. This is the skip reason. */
+  failure?: string;
+};
+
 /**
  * Operator model call. Same Messages URL as menu drafts.
  * The default model is the pinned Haiku snapshot. The operator script may pass another id.
@@ -57,7 +64,7 @@ export async function callActivityNoteModel(args: {
   apiKey: string;
   model?: string;
   fetchImpl?: typeof fetch;
-}): Promise<{ text: string; usage: { input: number; output: number } | null }> {
+}): Promise<ActivityNoteModelResult> {
   const apiKey = args.apiKey.trim();
   if (!apiKey) return { text: '', usage: null };
   const fetchImpl = args.fetchImpl ?? fetch;
@@ -83,7 +90,7 @@ export async function callActivityNoteModel(args: {
     const raw = await response.text();
     if (!response.ok) {
       console.error('[activity-notes] model failed', response.status);
-      return { text: '', usage: null };
+      return { text: '', usage: null, failure: `model request failed (${response.status})` };
     }
     return { text: anthropicText(raw), usage: anthropicUsage(raw) };
   } catch (err) {
