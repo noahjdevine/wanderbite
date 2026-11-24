@@ -1,4 +1,8 @@
-import { activityNoteBodyError } from '@/lib/activities/note-copy';
+import {
+  activityDisplayName,
+  activityNoteBodyError,
+  type ActivityNoteCitedPlace,
+} from '@/lib/activities/note-copy';
 import { activityIsNoteVisible, type NoteVisibleActivity } from '@/lib/activities/note-visibility';
 
 export type ActivityNoteStatus = 'draft' | 'approved' | 'rejected' | 'paused';
@@ -14,11 +18,15 @@ export type StoredActivityNote = {
   reviewedBy: string | null;
 };
 
-export type ReviewActivity = NoteVisibleActivity & { name: string };
+export type ReviewActivity = NoteVisibleActivity & {
+  name: string;
+  /** True when the unrounded distance from the restaurant is within a half mile. */
+  walkable: boolean;
+};
 
 export type ActivityNoteStore = {
   loadNote(id: string): Promise<StoredActivityNote | null>;
-  loadActivities(ids: readonly string[]): Promise<ReviewActivity[]>;
+  loadActivities(ids: readonly string[], restaurantId: string): Promise<ReviewActivity[]>;
   approveDraft(args: {
     noteId: string;
     expectedVersion: number;
@@ -37,7 +45,7 @@ async function citedActivities(
   store: ActivityNoteStore,
   note: StoredActivityNote,
 ): Promise<ReviewActivity[] | null> {
-  const rows = await store.loadActivities(note.activityIds);
+  const rows = await store.loadActivities(note.activityIds, note.restaurantId);
   const byId = new Map(rows.map((row) => [row.id, row]));
   const chosen: ReviewActivity[] = [];
   for (const id of note.activityIds) {
@@ -46,6 +54,14 @@ async function citedActivities(
     chosen.push(row);
   }
   return chosen;
+}
+
+function citedPlaces(activities: readonly ReviewActivity[]): ActivityNoteCitedPlace[] {
+  return activities.map((activity) => ({
+    name: activity.name,
+    displayName: activityDisplayName(activity.name),
+    walkable: activity.walkable,
+  }));
 }
 
 export async function approveRestaurantActivityNote(
@@ -58,6 +74,7 @@ export async function approveRestaurantActivityNote(
   if (!activities) return { ok: false, error: 'A cited activity is missing.' };
   const bodyError = activityNoteBodyError(note.body, {
     requiredNames: activities.map((activity) => activity.name),
+    cited: citedPlaces(activities),
   });
   if (bodyError) return { ok: false, error: bodyError };
   const now = args.now ?? new Date();
@@ -95,6 +112,7 @@ export async function editRestaurantActivityNote(
   if (!activities) return { ok: false, error: 'A cited activity is missing.' };
   const bodyError = activityNoteBodyError(args.body, {
     requiredNames: activities.map((activity) => activity.name),
+    cited: citedPlaces(activities),
   });
   if (bodyError) return { ok: false, error: bodyError };
   const saved = await store.save(
