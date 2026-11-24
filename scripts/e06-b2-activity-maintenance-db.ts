@@ -65,7 +65,7 @@ export async function runE06B2ActivityMaintenanceDb(opts: {
     const guardedCalls: string[] = [];
     const guarded = guardedPort(guardedCalls);
     const off = await prepareActivityMaintenance({ enabled: false, now: NOW, port: guarded });
-    assert.deepEqual(off, { sources: [], expired: 0, skip: null });
+    assert.deepEqual(off, { sources: [], expired: 0, paused: 0, skip: null });
     assert.deepEqual(guardedCalls, []);
     assert.equal(statusOf(sql, YESTERDAY), 'active');
     assert.equal(statusOf(sql, TODAY), 'active');
@@ -80,6 +80,7 @@ export async function runE06B2ActivityMaintenanceDb(opts: {
     });
     assert.equal(on.skip, null);
     assert.equal(on.expired, 1);
+    assert.equal(on.paused, 0);
     assert.deepEqual(on.sources.map((row) => row.id), [VENUE_OLD, EVENT]);
     assert.equal(statusOf(sql, YESTERDAY), 'expired');
     assert.equal(statusOf(sql, TODAY), 'active');
@@ -173,6 +174,7 @@ function guardedPort(calls: string[]): ActivityMaintenancePort {
     probeSchema: () => refuse('probe'),
     listExpirable: () => refuse('list'),
     expireDated: () => refuse('expire'),
+    pauseStaleNotes: () => refuse('pause'),
     listActiveActivitySources: () => refuse('sources'),
   };
 }
@@ -205,6 +207,14 @@ function psqlPort(sql: (query: string) => string): ActivityMaintenancePort {
       const count = sql(`select public.expire_dated_activities('${assertDate(today)}'::date)`).trim();
       const parsed = Number(count);
       if (!Number.isInteger(parsed)) throw new Error(`bad expire count ${count}`);
+      return parsed;
+    },
+    async pauseStaleNotes(now) {
+      const count = sql(
+        `select public.pause_stale_activity_notes('${now.toISOString()}'::timestamptz)`,
+      ).trim();
+      const parsed = Number(count);
+      if (!Number.isInteger(parsed)) throw new Error(`bad pause count ${count}`);
       return parsed;
     },
     async listActiveActivitySources() {

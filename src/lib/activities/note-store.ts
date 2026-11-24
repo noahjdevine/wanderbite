@@ -69,17 +69,14 @@ export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteSt
         }];
       });
     },
-    async listApproved(restaurantId) {
-      const { data, error } = await supabase
-        .from('restaurant_activity_notes')
-        .select(NOTE_COLUMNS)
-        .eq('restaurant_id', restaurantId)
-        .eq('status', 'approved');
-      if (error) throw new Error('Approved note lookup failed.');
-      return (data ?? []).flatMap((row) => {
-        const note = mapNote(row);
-        return note ? [note] : [];
+    async approveDraft(args) {
+      const { error } = await supabase.rpc('approve_restaurant_activity_note', {
+        p_note_id: args.noteId,
+        p_admin_id: args.adminId,
+        p_now: args.now,
+        p_expected_version: args.expectedVersion,
       });
+      return !error;
     },
     async save(note, expectedStatus) {
       const { data, error } = await supabase

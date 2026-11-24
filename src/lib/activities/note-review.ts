@@ -19,7 +19,12 @@ export type ReviewActivity = NoteVisibleActivity & { name: string };
 export type ActivityNoteStore = {
   loadNote(id: string): Promise<StoredActivityNote | null>;
   loadActivities(ids: readonly string[]): Promise<ReviewActivity[]>;
-  listApproved(restaurantId: string): Promise<StoredActivityNote[]>;
+  approveDraft(args: {
+    noteId: string;
+    expectedVersion: number;
+    adminId: string;
+    now: string;
+  }): Promise<boolean>;
   save(note: StoredActivityNote, expectedStatus: ActivityNoteStatus): Promise<boolean>;
   audit(entry: { adminId: string; action: string; noteId: string; metadata: Record<string, unknown> }): Promise<void>;
 };
@@ -60,31 +65,13 @@ export async function approveRestaurantActivityNote(
     return { ok: false, error: 'A cited activity is not currently showing.' };
   }
   const reviewedAt = now.toISOString();
-  const approved = await store.listApproved(note.restaurantId);
-  for (const prior of approved) {
-    const paused = await store.save(
-      {
-        ...prior,
-        status: 'paused',
-        version: prior.version + 1,
-        reviewedAt,
-        reviewedBy: args.adminId,
-      },
-      'approved',
-    );
-    if (!paused) return { ok: false, error: 'The previous approved note could not be paused.' };
-  }
-  const saved = await store.save(
-    {
-      ...note,
-      status: 'approved',
-      version: note.version + 1,
-      reviewedAt,
-      reviewedBy: args.adminId,
-    },
-    'draft',
-  );
-  if (!saved) return { ok: false, error: 'Activity note could not be saved.' };
+  const saved = await store.approveDraft({
+    noteId: note.id,
+    expectedVersion: note.version,
+    adminId: args.adminId,
+    now: reviewedAt,
+  });
+  if (!saved) return { ok: false, error: 'This note changed before it could be approved.' };
   await store.audit({
     adminId: args.adminId,
     action: 'content.activity_note_approve',

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   ACTIVITY_DATA_END,
@@ -22,6 +24,15 @@ const CANDIDATES = [
 
 const TWO =
   'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. If you would rather sit, Comedy Arena is the easy next stop.';
+
+type SentenceCase = { name: string; body: string; count: number };
+
+const SENTENCE_CASES = JSON.parse(
+  readFileSync(path.join(process.cwd(), 'supabase/tests/fixtures/activity-note-sentence-counts.json'), 'utf8'),
+) as SentenceCase[];
+
+const ACCEPTANCE =
+  "After dinner, wander over to St. Peter's Pub. It's 3.5 miles away and Dr. Pepper fans will love it.";
 
 describe('activity note prompt and parser', () => {
   it('uses the menu model and Noah\'s sentence as the voice sample', () => {
@@ -92,5 +103,23 @@ describe('activity note prompt and parser', () => {
     expect(activityNoteBodyError(`${base}The plate is allergy-safe for you.`, { requiredNames: [SQUARE] })).toMatch(
       /allergy-safe/i,
     );
+  });
+});
+
+describe('activity note sentence count', () => {
+  it('matches the shared fixture for abbreviations, decimals, and 2 to 4 sentences', () => {
+    expect(SENTENCE_CASES.map((row) => row.count).sort()).toEqual(
+      expect.arrayContaining([0, 1, 2, 3, 4, 5]),
+    );
+    const acceptance = SENTENCE_CASES.find((row) => row.body === ACCEPTANCE);
+    expect(acceptance?.count).toBe(2);
+    for (const row of SENTENCE_CASES) {
+      expect(activityNoteSentenceCount(row.body), row.name).toBe(row.count);
+    }
+    expect(activityNoteBodyError(ACCEPTANCE, { requiredNames: ["St. Peter's Pub"] })).toBeNull();
+    const one = SENTENCE_CASES.find((row) => row.count === 1);
+    const five = SENTENCE_CASES.find((row) => row.count === 5);
+    expect(one && activityNoteSentenceCount(one.body)).toBe(1);
+    expect(five && activityNoteSentenceCount(five.body)).toBe(5);
   });
 });

@@ -46,6 +46,25 @@ function run(args: string[], input?: string) {
   if (result.status !== 0) throw new Error(`Docker ${args[0]} failed: ${result.stderr || result.stdout}`);
   return result.stdout.trim();
 }
+function sqlLiteral(value: string) {
+  return `'${value.replaceAll("'", "''")}'`;
+}
+
+/** Shared with vitest via supabase/tests/fixtures/activity-note-sentence-counts.json. */
+function activityNoteSentenceFixtureSql() {
+  const cases = JSON.parse(readFileSync(
+    path.join(root, 'supabase/tests/fixtures/activity-note-sentence-counts.json'),
+    'utf8',
+  )) as { body: string; count: number }[];
+  if (!cases.every((row) => typeof row.body === 'string' && Number.isInteger(row.count))) {
+    throw new Error('activity note sentence fixture is not countable');
+  }
+  const values = cases
+    .map((row) => `(${sqlLiteral(row.body)}, ${Number(row.count)})`)
+    .join(',\n');
+  return `create temp table activity_note_sentence_cases (body text, expected integer);\ninsert into activity_note_sentence_cases (body, expected) values\n${values};\n`;
+}
+
 function sql(query: string, user = 'postgres') {
   return run(['exec', '-i', id, 'psql', '-X', '-U', user, '-d', 'postgres',
     '-v', 'ON_ERROR_STOP=1', '-Atq'], query);
@@ -159,6 +178,8 @@ async function main() {
   process.stdout.write('PASS: E06 activities constraints, grants, and active non-expired reads.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-activity-notes.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E06 activity notes, wider categories, and one approved note per restaurant.\n');
+  process.stdout.write(sql(activityNoteSentenceFixtureSql() + readFileSync(path.join(root, 'supabase/tests/e06-activity-note-followup.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E06 note sentence counts, atomic approve, and 31-day pause.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-briefings.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E06 briefing constraints, grants, and active-only reads.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-b1-activity-pipeline.sql'), 'utf8')) + '\n');

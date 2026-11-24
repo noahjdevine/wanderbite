@@ -18,10 +18,25 @@ export const ACTIVITY_DATA_END = 'END_UNTRUSTED_ACTIVITY_DATA';
 export const ACTIVITY_NOTE_EXAMPLE =
   "After having some of the best bbq in Texas, you could burn off some of those calories by walking around or taking a tour of McKinney's historic Chestnut Square Village, or letting it all settle by checking out a comedy show at the nearby Comedy Arena in downtown McKinney.";
 
+/**
+ * Periods that are not sentence boundaries. The SQL function
+ * activity_note_sentence_count applies these replacements in the same order.
+ * Mrs stays before Mr so "Mrs." is one abbreviation.
+ */
+function maskNonSentencePeriods(body: string): string {
+  return body
+    .replace(/(^|[^A-Za-z])a\.m\./gi, '$1am')
+    .replace(/(^|[^A-Za-z])p\.m\./gi, '$1pm')
+    .replace(/(^|[^A-Za-z])e\.g\./gi, '$1eg')
+    .replace(/(^|[^A-Za-z])i\.e\./gi, '$1ie')
+    .replace(/(^|[^A-Za-z])(Mrs|Mr|Ms|Blvd|Ave|etc|Jr|Dr|St|Mt|Rd|Ln|Sr|vs)\./gi, '$1$2')
+    .replace(/([0-9])\.([0-9])/g, '$1$2');
+}
+
 export function activityNoteSentenceCount(body: string): number {
   const trimmed = body.trim();
   if (!trimmed || !/[.!?]$/.test(trimmed)) return 0;
-  return trimmed
+  return maskNonSentencePeriods(trimmed)
     .split(/[.!?]+/)
     .map((sentence) => sentence.trim())
     .filter(Boolean).length;

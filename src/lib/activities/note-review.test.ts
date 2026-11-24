@@ -31,13 +31,27 @@ function activity(): ReviewActivity {
 function memory(notes: StoredActivityNote[]): ActivityNoteStore {
   return {
     async loadNote(id) {
-      return notes.find((note) => note.id === id) ?? null;
+      const found = notes.find((note) => note.id === id);
+      return found ? { ...found } : null;
     },
     async loadActivities() {
       return [activity()];
     },
-    async listApproved(restaurantId) {
-      return notes.filter((note) => note.restaurantId === restaurantId && note.status === 'approved');
+    async approveDraft(args) {
+      const note = notes.find((row) => row.id === args.noteId);
+      if (!note || note.status !== 'draft' || note.version !== args.expectedVersion) return false;
+      for (const prior of notes) {
+        if (prior.restaurantId !== note.restaurantId || prior.status !== 'approved') continue;
+        prior.status = 'paused';
+        prior.version += 1;
+        prior.reviewedAt = args.now;
+        prior.reviewedBy = args.adminId;
+      }
+      note.status = 'approved';
+      note.version += 1;
+      note.reviewedAt = args.now;
+      note.reviewedBy = args.adminId;
+      return true;
     },
     async save(note, expectedStatus) {
       const current = notes.find((row) => row.id === note.id);
@@ -88,6 +102,29 @@ describe('activity note review', () => {
     expect(approved.ok).toBe(true);
     expect(notes.filter((note) => note.status === 'approved').map((note) => note.id)).toEqual(['note-2']);
     expect(notes.find((note) => note.id === 'note-1')?.status).toBe('paused');
+  });
+
+  it('writes nothing and skips the audit when the draft version is stale', async () => {
+    const notes = [draft('note-1', 'approved'), draft('note-2')];
+    const store = memory(notes);
+    const load = store.loadNote.bind(store);
+    let audits = 0;
+    store.loadNote = async (id) => {
+      const note = await load(id);
+      if (id === 'note-2') {
+        const row = notes.find((item) => item.id === id);
+        if (row) row.version = 9;
+      }
+      return note;
+    };
+    store.audit = async () => {
+      audits += 1;
+    };
+    const approved = await approveRestaurantActivityNote(store, { noteId: 'note-2', adminId: 'admin', now: NOW });
+    expect(approved).toEqual({ ok: false, error: 'This note changed before it could be approved.' });
+    expect(notes.map((note) => note.status)).toEqual(['approved', 'draft']);
+    expect(notes.find((note) => note.id === 'note-2')?.version).toBe(9);
+    expect(audits).toBe(0);
   });
 
   it('does not approve a draft whose cited activity is paused', async () => {

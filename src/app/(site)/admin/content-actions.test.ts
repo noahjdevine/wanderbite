@@ -270,6 +270,32 @@ vi.mock('@/lib/supabase-admin', () => ({
         });
         return Promise.resolve({ data: recipe.version, error: null });
       }
+      if (fn === 'approve_restaurant_activity_note') {
+        const notes = harness.tables.restaurant_activity_notes ?? [];
+        const note = notes.find((row) => row.id === args.p_note_id);
+        if (
+          !note
+          || note.status !== 'draft'
+          || Number(note.version) !== Number(args.p_expected_version)
+        ) {
+          return Promise.resolve({ data: null, error: { message: 'activity note is not a current draft' } });
+        }
+        const reviewedAt = String(args.p_now);
+        const reviewedBy = String(args.p_admin_id);
+        for (const prior of notes) {
+          if (prior.restaurant_id === note.restaurant_id && prior.status === 'approved') {
+            prior.status = 'paused';
+            prior.version = Number(prior.version) + 1;
+            prior.reviewed_at = reviewedAt;
+            prior.reviewed_by = reviewedBy;
+          }
+        }
+        note.status = 'approved';
+        note.version = Number(note.version) + 1;
+        note.reviewed_at = reviewedAt;
+        note.reviewed_by = reviewedBy;
+        return Promise.resolve({ data: note.id, error: null });
+      }
       if (fn === 'decide_activity_summary_fact') {
         const fact = harness.tables.source_facts?.find((row) => row.id === args.p_fact_id);
         if (!fact || fact.status !== 'pending_review' || fact.subject_type !== 'activity' || fact.field !== 'summary') {
@@ -812,6 +838,8 @@ describe('activity note actions', () => {
     seedNote('draft', NOTE_ID);
     const approved = await approveActivityNote(NOTE_ID);
     expect(approved).toMatchObject({ ok: true, published: true });
+    expect(harness.calls.filter((call) => call.table === 'approve_restaurant_activity_note' && call.op === 'rpc')).toHaveLength(1);
+    expect(harness.calls.filter((call) => call.table === 'restaurant_activity_notes' && call.op === 'update')).toHaveLength(0);
     const rows = harness.tables.restaurant_activity_notes ?? [];
     expect(rows.filter((row) => row.status === 'approved')).toHaveLength(1);
     expect(rows.find((row) => row.id === NOTE_ID)?.status).toBe('approved');
