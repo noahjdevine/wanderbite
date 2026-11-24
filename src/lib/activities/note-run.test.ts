@@ -10,6 +10,7 @@ import {
   ACTIVITY_NOTE_MODEL,
   ACTIVITY_NOTE_PROMPT_VERSION,
   ACTIVITY_NOTE_WALK_DISTANCE_REASON,
+  ACTIVITY_NOTE_WALK_DISTANCE_RULE,
 } from '@/lib/activities/note-copy';
 import type { NoteSourceActivity, NoteSourceRestaurant } from '@/lib/activities/note-eligible';
 import {
@@ -281,6 +282,7 @@ describe('activity note drafts', () => {
     expect(callModel).toHaveBeenCalledTimes(2);
     expect(String(callModel.mock.calls[0]?.[0].user)).toContain('"walkable":false');
     expect(String(callModel.mock.calls[1]?.[0].user)).toContain(ACTIVITY_NOTE_WALK_DISTANCE_REASON);
+    expect(String(callModel.mock.calls[1]?.[0].user)).toContain(ACTIVITY_NOTE_WALK_DISTANCE_RULE);
     expect(insertDraft).toHaveBeenCalledTimes(1);
     expect(saved.dbWrites).toBe(1);
     expect(saved.restaurants[0]?.draft?.body).toBe(good);
@@ -292,6 +294,70 @@ describe('activity note drafts', () => {
       now: NOW,
       callModel: async () => ({
         text: JSON.stringify({ body: tooFar, activity_ids: [arenaId] }),
+        usage: null,
+      }),
+      insertDraft,
+    });
+    expect(insertDraft).toHaveBeenCalledTimes(1);
+    expect(blocked.dbWrites).toBe(0);
+    expect(blocked.restaurants[0]?.draft).toBeNull();
+    expect(blocked.restaurants[0]?.skips).toEqual([`blocked: ${ACTIVITY_NOTE_WALK_DISTANCE_REASON}`]);
+  });
+
+  it('retries a mixed pair when the walk sentence names the far place', async () => {
+    const squareId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const arenaId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const names = [squareId, arenaId];
+    const farSentence =
+      'It is a short walk to The Comedy Arena after the plates are cleared. Chestnut Square Village is the other stop if you want to wander.';
+    const closeSentence =
+      'It is a short walk to Chestnut Square Village after the plates are cleared. The Comedy Arena is the other stop if you want to sit.';
+    const square = activity();
+    const arena = activity({
+      id: arenaId,
+      name: 'The Comedy Arena',
+      category: 'comedy',
+      lat: 33.21,
+      lon: -96.6156,
+    });
+    const insertDraft = vi.fn(async () => ({ id: 'note-mixed' }));
+    let calls = 0;
+    const callModel = vi.fn(async (_input: { system: string; user: string }) => {
+      calls += 1;
+      return {
+        text: JSON.stringify({
+          body: calls === 1 ? farSentence : closeSentence,
+          activity_ids: names,
+        }),
+        usage: null,
+      };
+    });
+    const saved = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [square, arena],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'apply',
+      now: NOW,
+      callModel,
+      insertDraft,
+    });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(String(callModel.mock.calls[0]?.[0].user)).toContain('"walkable":true');
+    expect(String(callModel.mock.calls[0]?.[0].user)).toContain('"walkable":false');
+    expect(String(callModel.mock.calls[1]?.[0].user)).toContain(ACTIVITY_NOTE_WALK_DISTANCE_REASON);
+    expect(String(callModel.mock.calls[1]?.[0].user)).toContain(ACTIVITY_NOTE_WALK_DISTANCE_RULE);
+    expect(insertDraft).toHaveBeenCalledTimes(1);
+    expect(saved.dbWrites).toBe(1);
+    expect(saved.restaurants[0]?.draft?.body).toBe(closeSentence);
+    expect(saved.restaurants[0]?.draft?.activity_ids).toEqual(names);
+    const blocked = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [square, arena],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'apply',
+      now: NOW,
+      callModel: async () => ({
+        text: JSON.stringify({ body: farSentence, activity_ids: names }),
         usage: null,
       }),
       insertDraft,
