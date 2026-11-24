@@ -1,19 +1,20 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { callActivityNoteModel } from '@/lib/activities/note-generate';
-import { ACTIVITY_NOTE_MODEL } from '@/lib/activities/note-copy';
+import { callActivityNoteModel, resolveActivityNoteModel } from '@/lib/activities/note-generate';
+import { ACTIVITY_NOTE_MODEL, ACTIVITY_NOTE_PROMPT_VERSION } from '@/lib/activities/note-copy';
 import type { NoteSourceActivity, NoteSourceRestaurant } from '@/lib/activities/note-eligible';
 import {
   activityNoteReadAllowed,
   activityNoteWriteAllowed,
+  formatActivityNoteSummary,
   runActivityNoteDrafts,
 } from '@/lib/activities/note-run';
 
 const NOW = new Date('2026-11-04T18:00:00.000Z');
 const SQUARE = 'Chestnut Square Village';
 const BODY =
-  'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. It is a small detour that keeps the night easy.';
+  'You could wander through Chestnut Square Village and let the meal settle while you walk. It is a small detour that keeps the night easy.';
 
 function restaurant(): NoteSourceRestaurant {
   return {
@@ -83,8 +84,12 @@ describe('activity note drafts', () => {
     });
     expect(insertDraft).not.toHaveBeenCalled();
     expect(summary.dbWrites).toBe(0);
+    expect(summary.model).toBe(ACTIVITY_NOTE_MODEL);
     expect(summary.restaurants[0]?.draft?.status).toBe('draft');
+    expect(summary.restaurants[0]?.draft?.model).toBe(ACTIVITY_NOTE_MODEL);
+    expect(summary.restaurants[0]?.draft?.prompt_version).toBe(ACTIVITY_NOTE_PROMPT_VERSION);
     expect(summary.restaurants[0]?.insertedId).toBeNull();
+    expect(formatActivityNoteSummary(summary, null)).toContain(`model=${ACTIVITY_NOTE_MODEL}`);
     const prompt = callModel.mock.calls[0]?.[0];
     expect(prompt?.user).toContain(SQUARE);
     expect(prompt?.user).not.toContain('Kids Museum');
@@ -133,6 +138,24 @@ describe('activity note drafts', () => {
     });
     expect(bodies[0]?.model).toBe(ACTIVITY_NOTE_MODEL);
     expect(bodies[0]?.tools).toBeUndefined();
+    const overrideBodies: { model?: string }[] = [];
+    await callActivityNoteModel({
+      system: 'system',
+      user: 'user',
+      apiKey: 'test-key',
+      model: 'claude-sonnet-4-5',
+      fetchImpl: async (_input, init) => {
+        overrideBodies.push(JSON.parse(String(init?.body)) as { model?: string });
+        return new Response(JSON.stringify({ content: [{ type: 'text', text: '{}' }] }), { status: 200 });
+      },
+    });
+    expect(overrideBodies[0]?.model).toBe('claude-sonnet-4-5');
+    expect(resolveActivityNoteModel({})).toEqual({ ok: true, model: ACTIVITY_NOTE_MODEL });
+    expect(resolveActivityNoteModel({ WANDERBITE_ACTIVITY_NOTES_MODEL: '  claude-sonnet-4-5  ' })).toEqual({
+      ok: true,
+      model: 'claude-sonnet-4-5',
+    });
+    expect(resolveActivityNoteModel({ WANDERBITE_ACTIVITY_NOTES_MODEL: 'not a model' }).ok).toBe(false);
     const root = process.cwd();
     for (const file of ['note-generate.ts', 'note-run.ts', 'note-copy.ts', 'note-store.ts', 'load-notes.ts']) {
       const sourceText = readFileSync(path.join(root, 'src/lib/activities', file), 'utf8');
@@ -141,5 +164,70 @@ describe('activity note drafts', () => {
     const script = readFileSync(path.join(root, 'scripts/e06-activity-notes.ts'), 'utf8');
     expect(script).not.toMatch(/ai_reserve|rpcAi|entitlement_credits/);
     expect(script).toContain('WANDERBITE_ACTIVITY_NOTES_HOSTED_OK');
+    expect(script).toContain('WANDERBITE_ACTIVITY_NOTES_MODEL');
+  });
+
+  it('retries a filler note once and reports blocked instead of saving', async () => {
+    const filler =
+      'After dinner, you could wander through Chestnut Square Village and let the meal settle. It is a small detour that keeps the night easy.';
+    const insertDraft = vi.fn(async () => ({ id: 'note-1' }));
+    let calls = 0;
+    const callModel = vi.fn(async (_input: { system: string; user: string }) => {
+      calls += 1;
+      const body = calls === 1 ? filler : BODY;
+      return {
+        text: JSON.stringify({ body, activity_ids: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'] }),
+        usage: null,
+      };
+    });
+    const summary = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [activity()],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'dry-run',
+      now: NOW,
+      callModel,
+      insertDraft,
+    });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(String(callModel.mock.calls[1]?.[0].user)).toContain('The previous draft was blocked');
+    expect(insertDraft).not.toHaveBeenCalled();
+    expect(summary.restaurants[0]?.draft?.body).toBe(BODY);
+    const blocked = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [activity()],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'apply',
+      now: NOW,
+      callModel: async () => ({
+        text: JSON.stringify({
+          body: filler,
+          activity_ids: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+        }),
+        usage: null,
+      }),
+      insertDraft,
+    });
+    expect(insertDraft).not.toHaveBeenCalled();
+    expect(blocked.dbWrites).toBe(0);
+    expect(blocked.restaurants[0]?.draft).toBeNull();
+    expect(blocked.restaurants[0]?.skips[0]).toMatch(/^blocked: /);
+  });
+
+  it('does not retry a note that failed for another reason', async () => {
+    const callModel = vi.fn(async () => ({ text: 'not-json', usage: null }));
+    const summary = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [activity()],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'dry-run',
+      now: NOW,
+      model: 'claude-sonnet-4-5',
+      callModel,
+    });
+    expect(callModel).toHaveBeenCalledTimes(1);
+    expect(summary.model).toBe('claude-sonnet-4-5');
+    expect(summary.restaurants[0]?.skips).toEqual(['model output was not a note']);
+    expect(formatActivityNoteSummary(summary, null)).toContain('model=claude-sonnet-4-5');
   });
 });

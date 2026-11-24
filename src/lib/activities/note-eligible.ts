@@ -1,13 +1,19 @@
 import { haversineMiles, toGeoPoint } from '@/lib/launch-market';
 import { ACTIVITY_NEARBY_CAP_MILES, chicagoCalendarDate } from '@/lib/activities/match';
+import { activityDisplayName, ACTIVITY_NOTE_WALKABLE_MILES, type NotePromptActivity } from '@/lib/activities/note-copy';
 import {
   ACTIVITY_STALE_AFTER_MS,
   isActivityCategory,
   isActivityCost,
 } from '@/lib/activities/types';
-import type { NotePromptActivity } from '@/lib/activities/note-copy';
 
-export const ACTIVITY_NOTE_CANDIDATE_CAP = 6;
+/** Varied set size. Real outings fill every seat that is not held for dessert. */
+export const ACTIVITY_NOTE_CANDIDATE_CAP = 12;
+
+/** Dessert can be the right next stop after a light meal, and it cannot crowd out the set. */
+export const ACTIVITY_NOTE_DESSERT_CAP = 2;
+
+const DESSERT_CATEGORY = 'dessert';
 
 export type NoteSourceActivity = {
   id: string;
@@ -33,6 +39,11 @@ export type NoteSourceRestaurant = {
   lon: number | null;
 };
 
+type RankedNoteActivity = {
+  activity: NotePromptActivity;
+  miles: number;
+};
+
 function normalizeName(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -56,9 +67,58 @@ function calendarCurrent(activity: NoteSourceActivity, today: string): boolean {
   return true;
 }
 
+function roundMiles(miles: number): number {
+  return Math.round(miles * 10) / 10;
+}
+
+function compareCandidates(left: RankedNoteActivity, right: RankedNoteActivity): number {
+  if (left.miles !== right.miles) return left.miles - right.miles;
+  const name = left.activity.name.localeCompare(right.activity.name);
+  if (name !== 0) return name;
+  return left.activity.id.localeCompare(right.activity.id);
+}
+
+/**
+ * One place from each category per pass, nearer categories first when the
+ * cap stops a pass early. Later passes fill from the categories that remain.
+ */
+function pickDiverse(rows: readonly RankedNoteActivity[], limit: number): RankedNoteActivity[] {
+  const buckets = new Map<string, RankedNoteActivity[]>();
+  for (const row of [...rows].sort(compareCandidates)) {
+    const list = buckets.get(row.activity.category);
+    if (list) list.push(row);
+    else buckets.set(row.activity.category, [row]);
+  }
+  const selected: RankedNoteActivity[] = [];
+  while (selected.length < limit) {
+    const next = [...buckets.values()]
+      .filter((list) => list.length > 0)
+      .sort((left, right) => compareCandidates(left[0]!, right[0]!));
+    if (next.length === 0) break;
+    for (const list of next) {
+      if (selected.length >= limit) break;
+      const row = list.shift();
+      if (row) selected.push(row);
+    }
+  }
+  return selected;
+}
+
+function presentToModel(rows: readonly RankedNoteActivity[]): NotePromptActivity[] {
+  return [...rows]
+    .sort((left, right) => {
+      const leftDessert = left.activity.category === DESSERT_CATEGORY ? 1 : 0;
+      const rightDessert = right.activity.category === DESSERT_CATEGORY ? 1 : 0;
+      if (leftDessert !== rightDessert) return leftDessert - rightDessert;
+      return compareCandidates(left, right);
+    })
+    .map((row) => row.activity);
+}
+
 /**
  * Currently showing, non-kids activities within 5 miles.
  * Coordinate distance only. A Wanderbite restaurant name is not an outing.
+ * The set prefers a spread of real outings and keeps at most two dessert shops.
  */
 export function eligibleNoteActivities(args: {
   restaurant: NoteSourceRestaurant;
@@ -70,7 +130,7 @@ export function eligibleNoteActivities(args: {
   if (!origin) return [];
   const today = chicagoCalendarDate(args.now);
   const blocked = new Set(args.restaurantNames.map(normalizeName).filter(Boolean));
-  const ranked: { activity: NotePromptActivity; miles: number }[] = [];
+  const ranked: RankedNoteActivity[] = [];
   for (const activity of args.activities) {
     if (activity.kids_oriented) continue;
     if (activity.status !== 'active' || activity.is_sample) continue;
@@ -82,20 +142,27 @@ export function eligibleNoteActivities(args: {
     if (!point) continue;
     const miles = haversineMiles(origin, point);
     if (miles > ACTIVITY_NEARBY_CAP_MILES) continue;
+    const name = activity.name.trim();
     ranked.push({
       activity: {
         id: activity.id,
-        name: activity.name.trim(),
+        name,
+        displayName: activityDisplayName(name),
         category: activity.category,
+        miles: roundMiles(miles),
+        walkable: miles <= ACTIVITY_NOTE_WALKABLE_MILES,
       },
       miles,
     });
   }
-  ranked.sort((left, right) => {
-    if (left.miles !== right.miles) return left.miles - right.miles;
-    const name = left.activity.name.localeCompare(right.activity.name);
-    if (name !== 0) return name;
-    return left.activity.id.localeCompare(right.activity.id);
-  });
-  return ranked.slice(0, ACTIVITY_NOTE_CANDIDATE_CAP).map((row) => row.activity);
+  const desserts = ranked.filter((row) => row.activity.category === DESSERT_CATEGORY);
+  const outings = ranked.filter((row) => row.activity.category !== DESSERT_CATEGORY);
+  const dessertBudget = Math.min(ACTIVITY_NOTE_DESSERT_CAP, desserts.length);
+  const chosenOutings = pickDiverse(outings, ACTIVITY_NOTE_CANDIDATE_CAP - dessertBudget);
+  const dessertRoom = Math.min(
+    ACTIVITY_NOTE_DESSERT_CAP,
+    Math.max(0, ACTIVITY_NOTE_CANDIDATE_CAP - chosenOutings.length),
+  );
+  const chosenDesserts = [...desserts].sort(compareCandidates).slice(0, dessertRoom);
+  return presentToModel([...chosenOutings, ...chosenDesserts]);
 }

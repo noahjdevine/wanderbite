@@ -14,7 +14,7 @@ import {
   type ActivityNoteDraftInsert,
   type ExistingActivityNote,
 } from '../src/lib/activities/note-run';
-import { callActivityNoteModel } from '../src/lib/activities/note-generate';
+import { callActivityNoteModel, resolveActivityNoteModel } from '../src/lib/activities/note-generate';
 import type { Database } from '../src/types/database.types';
 
 dotenv.config({ path: path.resolve(process.cwd(), '.env.local') });
@@ -26,11 +26,19 @@ It does not write the database.
 
   npm run activity:notes
   npm run activity:notes -- --slug hutchins-bbq
+  WANDERBITE_ACTIVITY_NOTES_MODEL=<model-id> npm run activity:notes
   WANDERBITE_ACTIVITY_NOTES_APPLY=1 npm run activity:notes -- --apply --slug hutchins-bbq
 
-Drafts use the restaurant name and cuisine tags plus currently showing, non-kids
-activities within 5 miles. Paused, stale, sample, and kids_oriented rows are skipped.
-A Wanderbite restaurant is not used as the outing. The model cannot invent a place.
+Drafts use the restaurant name and cuisine tags plus a varied set of currently
+showing, non-kids activities within 5 miles. Real outings are ranked ahead of
+dessert, and dessert is capped at 2. Paused, stale, sample, and kids_oriented
+rows are skipped. The model sees a short place name, rounded miles, and whether
+the stop is walkable. A Wanderbite restaurant is not used as the outing. The
+model cannot invent a place. A note that opens or closes with filler is retried
+once, then reported as blocked and not saved.
+
+WANDERBITE_ACTIVITY_NOTES_MODEL overrides the Haiku snapshot for this script only.
+The dry-run printout and JSON record the model id that was used.
 
 --apply inserts status=draft rows. A restaurant with an open draft, or the same
 source hash, is skipped. Members do not see drafts until an admin approves one.
@@ -63,6 +71,8 @@ async function main(): Promise<void> {
     process.stdout.write(HELP);
     return;
   }
+  const resolvedModel = resolveActivityNoteModel(process.env);
+  if (!resolvedModel.ok) fail(resolvedModel.reason);
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? '';
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? '';
   const read = activityNoteReadAllowed(url);
@@ -92,9 +102,10 @@ async function main(): Promise<void> {
     activities,
     restaurantNames: allRestaurants.map((restaurant) => restaurant.name),
     mode: parsed.mode,
+    model: resolvedModel.model,
     now: startedAt,
     existing,
-    callModel: async (input) => callActivityNoteModel({ ...input, apiKey }),
+    callModel: async (input) => callActivityNoteModel({ ...input, apiKey, model: resolvedModel.model }),
     insertDraft: parsed.mode === 'apply' ? (row) => insertDraft(supabase, row) : undefined,
   });
   const filePath = outputPath(startedAt);

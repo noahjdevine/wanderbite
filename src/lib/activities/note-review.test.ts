@@ -11,9 +11,9 @@ import {
 const NOW = new Date('2026-11-04T18:00:00.000Z');
 const PLACE = 'Chestnut Square Village';
 const BODY =
-  'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. It is a small detour that keeps the night easy.';
+  'You could wander through Chestnut Square Village and let the meal settle while you walk. It is a small detour that keeps the night easy.';
 const EDITED =
-  'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. Save the second stop for a night when you want to sit down.';
+  'You could wander through Chestnut Square Village and let the meal settle while you walk. Save the second stop for a night when you want to sit down.';
 
 function activity(): ReviewActivity {
   return {
