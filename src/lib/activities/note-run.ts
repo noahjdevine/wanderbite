@@ -5,6 +5,7 @@ import {
   ACTIVITY_NOTE_PROMPT_VERSION,
   activityNoteSourceHash,
   buildActivityNotePrompt,
+  isActivityNoteFillerReason,
   parseActivityNoteDraft,
 } from '@/lib/activities/note-copy';
 import { eligibleNoteActivities, type NoteSourceActivity, type NoteSourceRestaurant } from '@/lib/activities/note-eligible';
@@ -50,6 +51,7 @@ export type ActivityNoteRestaurantResult = {
 export type ActivityNoteRunSummary = {
   schema: typeof ACTIVITY_NOTE_SCHEMA;
   mode: 'dry-run' | 'apply';
+  model: string;
   generatedAt: string;
   dbWrites: number;
   restaurants: ActivityNoteRestaurantResult[];
@@ -108,12 +110,14 @@ export async function runActivityNoteDrafts(args: {
   activities: readonly NoteSourceActivity[];
   restaurantNames: readonly string[];
   mode: 'dry-run' | 'apply';
+  model?: string;
   now?: Date;
   callModel: ActivityNoteModelCaller;
   existing?: readonly ExistingActivityNote[];
   insertDraft?: (row: ActivityNoteDraftInsert) => Promise<{ id: string }>;
 }): Promise<ActivityNoteRunSummary> {
   const now = args.now ?? new Date();
+  const modelId = args.model?.trim() || ACTIVITY_NOTE_MODEL;
   const existing = args.existing ?? [];
   const selected = args.restaurants.slice(0, ACTIVITY_NOTE_RESTAURANT_CAP);
   const skips = args.restaurants.slice(ACTIVITY_NOTE_RESTAURANT_CAP).map(
@@ -164,11 +168,17 @@ export async function runActivityNoteDrafts(args: {
       cuisineTags: restaurant.cuisineTags,
       activities: candidates,
     });
-    const model = await args.callModel(prompt);
-    const parsed = parseActivityNoteDraft(model.text, {
-      candidates,
-      otherRestaurantNames: args.restaurantNames.filter((name) => name !== restaurant.name),
-    });
+    const otherRestaurantNames = args.restaurantNames.filter((name) => name !== restaurant.name);
+    const firstText = await args.callModel(prompt);
+    let parsed = parseActivityNoteDraft(firstText.text, { candidates, otherRestaurantNames });
+    if (!parsed.ok && isActivityNoteFillerReason(parsed.reason)) {
+      const retry = await args.callModel({
+        system: prompt.system,
+        user: `${prompt.user}\n\nThe previous draft was blocked: ${parsed.reason} Write a new note that fixes that. Do not use a banned opening or closer.\n`,
+      });
+      parsed = parseActivityNoteDraft(retry.text, { candidates, otherRestaurantNames });
+      if (!parsed.ok) parsed = { ok: false, reason: `blocked: ${parsed.reason}` };
+    }
     if (!parsed.ok) {
       result.skips.push(parsed.reason);
       restaurants.push(result);
@@ -179,7 +189,7 @@ export async function runActivityNoteDrafts(args: {
       body: parsed.body,
       status: 'draft',
       activity_ids: parsed.activityIds,
-      model: ACTIVITY_NOTE_MODEL,
+      model: modelId,
       prompt_version: ACTIVITY_NOTE_PROMPT_VERSION,
       source_hash: sourceHash,
       is_sample: false,
@@ -201,6 +211,7 @@ export async function runActivityNoteDrafts(args: {
   return {
     schema: ACTIVITY_NOTE_SCHEMA,
     mode: args.mode,
+    model: modelId,
     generatedAt: now.toISOString(),
     dbWrites,
     restaurants,
@@ -222,7 +233,7 @@ export function formatActivityNoteSummary(summary: ActivityNoteRunSummary, outpu
     for (const skip of restaurant.skips) lines.push(`  skip: ${restaurant.restaurantName}: ${skip}`);
   }
   for (const skip of summary.skips) lines.push(`skip: ${skip}`);
-  lines.push(`mode=${summary.mode} db_writes=${summary.dbWrites}`);
+  lines.push(`mode=${summary.mode} model=${summary.model} db_writes=${summary.dbWrites}`);
   if (outputPath) lines.push(`wrote ${outputPath}`);
   return `${lines.join('\n')}\n`;
 }
