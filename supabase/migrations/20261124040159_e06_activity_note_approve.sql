@@ -1,5 +1,5 @@
 -- E06 follow-up: abbreviation-aware sentence count and one-transaction note approve.
--- NOT applied to hosted. Forward-only. Does not edit 20261124040000.
+-- Applied to hosted. Forward-only. Does not edit 20261124040154.
 
 set local lock_timeout = '5s';
 set local statement_timeout = '30s';
