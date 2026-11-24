@@ -496,3 +496,4 @@ The Discover line validator is strict: it rejects price words including `cheap` 
 
 - [ ] Site problem reports: `SITE_PROBLEM_REPORTS_ENABLED` stays unset. Migration `20261123164045_site_problem_reports.sql` is applied on hosted. The footer link, the signed-out desktop and mobile menu link, the signed-in account menu and mobile menu link, `/report-a-problem`, and `/admin/site-problems` appear only when the flag is exactly `true`.
 - [ ] Owner problem alerts: `SITE_PROBLEM_ALERT_EMAIL` stays unset, so a new site report or visit-problem case sends no email. Set that one address and `RESEND_API_KEY` to email the owner once. Review and resolve send nothing.
+- [ ] Haiku 5.5: apply `20261124142713_haiku_5_5_price.sql` on hosted before deploying `claude-haiku-5-5`, or Bea calls fail closed on a missing rate.

@@ -213,7 +213,8 @@ function promptRowsFrom(content: string): Array<Record<string, unknown>> {
 function anthropicBody(call: unknown): {
   model: string;
   max_tokens: number;
-  temperature: number;
+  temperature?: number;
+  thinking?: { type?: string };
   system: string;
   messages: { content: string }[];
 } {
@@ -221,7 +222,8 @@ function anthropicBody(call: unknown): {
   return JSON.parse(String(init?.body)) as {
     model: string;
     max_tokens: number;
-    temperature: number;
+    temperature?: number;
+    thinking?: { type?: string };
     system: string;
     messages: { content: string }[];
   };
@@ -499,7 +501,8 @@ describe('Discover stream route', () => {
     const sent = anthropicBody(fetchMock.mock.calls[0]);
     expect(sent.system).toBe(expectedSystemPrompt());
     expect(sent.max_tokens).toBe(ROULETTE_MAX_OUTPUT_TOKENS);
-    expect(sent.temperature).toBe(1);
+    expect(sent.temperature).toBeUndefined();
+    expect(sent.thinking).toEqual({ type: 'disabled' });
     expect(sent.messages[0]?.content ?? '').not.toContain("haven't been");
   });
 
@@ -787,7 +790,8 @@ describe('Discover stream route', () => {
     }
     expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
     expect(sent.max_tokens).toBe(ROULETTE_MAX_OUTPUT_TOKENS);
-    expect(sent.temperature).toBe(1);
+    expect(sent.temperature).toBeUndefined();
+    expect(sent.thinking).toEqual({ type: 'disabled' });
     expect(sent.system).toBe(expectedSystemPrompt());
     const pick = parseDiscoverSse(await response.text()).find((event) => event.type === 'pick');
     expect(pick && pick.type === 'pick' ? Object.hasOwn(pick, 'facts') : true).toBe(false);
@@ -1108,10 +1112,11 @@ describe('Discover stream route', () => {
       fetchMock.mock.calls.find((call) => String(call[0]).includes('anthropic')),
     );
     expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
-    expect(ANTHROPIC_HAIKU_SNAPSHOT).toBe('claude-haiku-4-5-20251001');
+    expect(ANTHROPIC_HAIKU_SNAPSHOT).toBe('claude-haiku-5-5');
     expect(sent.max_tokens).toBe(300);
     expect(ROULETTE_MAX_OUTPUT_TOKENS).toBe(300);
-    expect(sent.temperature).toBe(1);
+    expect(sent.temperature).toBeUndefined();
+    expect(sent.thinking).toEqual({ type: 'disabled' });
     expect(sent.system).toBe(expectedSystemPrompt());
     const content = sent.messages[0]?.content ?? '';
     expect(content).toContain(DISCOVER_FACT_PROMPT_NOTE);
@@ -1270,7 +1275,8 @@ describe('Discover stream route', () => {
       );
       expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
       expect(sent.max_tokens).toBe(300);
-      expect(sent.temperature).toBe(1);
+      expect(sent.temperature).toBeUndefined();
+    expect(sent.thinking).toEqual({ type: 'disabled' });
       expect(sent.system).toBe(expectedSystemPrompt());
       const content = sent.messages[0]?.content ?? '';
       const rows = promptRowsFrom(content);
@@ -1525,7 +1531,8 @@ describe('Discover stream route', () => {
         expect(call.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
         expect(call.max_tokens).toBe(ROULETTE_MAX_OUTPUT_TOKENS);
         expect(call.max_tokens).toBe(300);
-        expect(call.temperature).toBe(1);
+        expect(call.temperature).toBeUndefined();
+        expect(call.thinking).toEqual({ type: 'disabled' });
         expect(call.system).toBe(expectedSystemPrompt());
         expect(body).toMatchObject({
           restaurantId: SALSA.id,
@@ -1578,7 +1585,8 @@ describe('Discover stream route', () => {
       expect(sent.model).toBe(ANTHROPIC_HAIKU_SNAPSHOT);
       expect(sent.max_tokens).toBe(DISCOVER_LINE_MAX_OUTPUT_TOKENS);
       expect(sent.max_tokens).toBe(80);
-      expect(sent.temperature).toBe(1);
+      expect(sent.temperature).toBeUndefined();
+    expect(sent.thinking).toEqual({ type: 'disabled' });
       expect(sent.system).toContain('already chosen');
       expect(sent.messages[0]?.content).toContain('Taco House');
       expect(sent.messages[0]?.content).not.toContain(SALSA.name);

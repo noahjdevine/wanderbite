@@ -16,7 +16,7 @@ import {
 import { newExceptions, type ExceptionDraft, type OpenExceptionKey } from '@/lib/content-pipeline/exceptions';
 import { evidenceExcerpt } from '@/lib/content-pipeline/facts';
 import type { AttemptWrite, MaintenanceReservation, SourcePatch } from '@/lib/content-pipeline/refresh';
-import { estimateTokens } from '@/lib/recipes/menu-generate';
+import { estimateTokens, MENU_MAX_OUTPUT_TOKENS } from '@/lib/recipes/menu-generate';
 import type { MenuModelCaller } from '@/lib/recipes/menu-run';
 
 export type ActivityRefreshOutcome = {
@@ -130,7 +130,7 @@ export async function runActivityRefresh(args: {
             sourceId: args.sourceId,
             contentHash: args.hash,
             estimatedInput,
-            estimatedOutput: 200,
+            estimatedOutput: MENU_MAX_OUTPUT_TOKENS,
           })
         : null;
       if (reservation && !reservation.ok) {

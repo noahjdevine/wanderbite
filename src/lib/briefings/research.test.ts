@@ -195,20 +195,22 @@ describe('briefing research filter', () => {
   });
 
   it('prices the Haiku snapshot the same way the published rate table does', () => {
-    expect(estimateMicrodollars({ input: 1000, output: 100 })).toBe(1500);
+    expect(estimateMicrodollars({ input: 1000, output: 100 })).toBe(150);
     expect(estimateMicrodollars({ web_search_requests: 1 })).toBe(WEB_SEARCH_MICRODOLLARS_PER_REQUEST);
     expect(estimateMicrodollars({ input: 1000, output: 100, web_search_requests: 2 })).toBe(
-      1500 + 2 * WEB_SEARCH_MICRODOLLARS_PER_REQUEST,
+      150 + 2 * WEB_SEARCH_MICRODOLLARS_PER_REQUEST,
     );
     expect(BRIEFING_WEB_SEARCH_TOOL).toBe('web_search_20260318');
     expect(BRIEFING_WEB_SEARCH_MAX_USES).toBe(5);
     expect(briefingModelMatchesDiscover()).toBe(true);
     const sql = readFileSync(
-      path.resolve(process.cwd(), 'supabase/migrations/20260919172836_ai_budget_reservations.sql'),
+      path.resolve(process.cwd(), 'supabase/migrations/20261124142713_haiku_5_5_price.sql'),
       'utf8',
     );
-    expect(sql).toContain(`'anthropic', '${BRIEFING_MODEL}', 'input', 1000000`);
-    expect(sql).toContain(`'anthropic', '${BRIEFING_MODEL}', 'output', 5000000`);
+    expect(sql).toContain(`'anthropic', '${BRIEFING_MODEL}', 'input', 100000`);
+    expect(sql).toContain(`'anthropic', '${BRIEFING_MODEL}', 'output', 500000`);
+    expect(sql).toContain(`'anthropic', '${BRIEFING_MODEL}', 'cache_read', 10000`);
+    expect(sql).toContain(`'anthropic', '${BRIEFING_MODEL}', 'cache_write_5m', 125000`);
   });
 
   it('refuses a hosted URL unless the one-run OK is set', () => {
@@ -882,10 +884,14 @@ describe('discoverBriefingUrls', () => {
     expect(headers['anthropic-version']).toBe('2023-06-01');
     const body = JSON.parse(String(init?.body)) as {
       model?: string;
+      temperature?: number;
+      thinking?: { type?: string };
       tools?: Array<Record<string, unknown>>;
       messages?: Array<{ content?: string }>;
     };
     expect(body.model).toBe(BRIEFING_MODEL);
+    expect(body.temperature).toBeUndefined();
+    expect(body.thinking).toEqual({ type: 'disabled' });
     expect(body.tools).toEqual([
       {
         type: 'web_search_20260318',
@@ -1012,7 +1018,7 @@ describe('discoverBriefingUrls', () => {
     expect(found.urls).toEqual([OFFICIAL]);
     expect(found.warnings).toEqual(['Anthropic web search was unavailable']);
     expect(found.units).toEqual({ input: 14, output: 3, web_search_requests: 2 });
-    expect(estimateMicrodollars(found.units)).toBe(14 + 15 + 2 * WEB_SEARCH_MICRODOLLARS_PER_REQUEST);
+    expect(estimateMicrodollars(found.units)).toBe(1 + 2 + 2 * WEB_SEARCH_MICRODOLLARS_PER_REQUEST);
   });
 });
 
@@ -1038,7 +1044,7 @@ describe('researchOneRestaurant', () => {
     expect(result.fetchedUrls).toEqual([OFFICIAL, YELP]);
     expect(result.facts.map((fact) => fact.field)).toEqual(['parking']);
     expect(result.units).toEqual({ input: 1000, output: 100, web_search_requests: 1 });
-    expect(result.estimatedMicrodollars).toBe(1500 + WEB_SEARCH_MICRODOLLARS_PER_REQUEST);
+    expect(result.estimatedMicrodollars).toBe(150 + WEB_SEARCH_MICRODOLLARS_PER_REQUEST);
     expect(result.dropped.length).toBeGreaterThan(0);
     expect(vi.mocked(fetchMock).mock.calls.some((call) => String(call[0]).includes('duckduckgo'))).toBe(
       false,
@@ -1137,8 +1143,17 @@ describe('callBriefingModel', () => {
   it('posts to the Haiku messages API and reads token usage', async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe('https://api.anthropic.com/v1/messages');
-      const body = JSON.parse(String(init?.body)) as { model?: string; tools?: unknown };
+      const body = JSON.parse(String(init?.body)) as {
+        model?: string;
+        max_tokens?: number;
+        temperature?: number;
+        thinking?: { type?: string };
+        tools?: unknown;
+      };
       expect(body.model).toBe(BRIEFING_MODEL);
+      expect(body.max_tokens).toBe(2048);
+      expect(body.temperature).toBeUndefined();
+      expect(body.thinking).toEqual({ type: 'disabled' });
       expect(body.tools).toBeUndefined();
       return response(
         JSON.stringify({
@@ -1157,7 +1172,7 @@ describe('callBriefingModel', () => {
     });
     expect(result.text).toBe('{"facts":[]}');
     expect(result.units).toEqual({ input: 12, output: 3 });
-    expect(estimateMicrodollars(result.units)).toBe(27);
+    expect(estimateMicrodollars(result.units)).toBe(3);
   });
 });
 

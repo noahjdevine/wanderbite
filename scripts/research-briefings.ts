@@ -32,7 +32,7 @@ another domain, and that page is the official page. Other page fetches do not
 follow a redirect onto another domain. www and a trailing slash stay on the
 same site. One fetch follows at most 10 redirects, keeps Set-Cookie for that
 fetch only, and reports a repeated URL as a redirect loop. It asks Claude Haiku
-(claude-haiku-4-5-20251001) to search with Anthropic's server-side web_search
+(claude-haiku-5-5) to search with Anthropic's server-side web_search
 tool (web_search_20260318, at most 5 searches, McKinney TX). It asks for the
 official site and for menu, about, and FAQ pages. It then fetches
 those public https pages itself. The official site is first. Up to four

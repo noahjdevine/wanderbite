@@ -1,7 +1,6 @@
 import 'server-only';
 
-/** Pinned Anthropic snapshot. Not a moving alias. Not a price. */
-export const ANTHROPIC_HAIKU_SNAPSHOT = 'claude-haiku-4-5-20251001';
+export { ANTHROPIC_HAIKU_SNAPSHOT, anthropicMessageBody, isClaude5Model } from './haiku-model';
 export const ANTHROPIC_PROVIDER = 'anthropic';
 export const ROULETTE_MAX_OUTPUT_TOKENS = 300;
 /** One Discover sentence. The budget quote must use this same cap when it is sent. */

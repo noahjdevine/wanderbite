@@ -16,7 +16,7 @@ import {
   normalizeHttpsUrl,
   parseBriefingModelJson,
 } from '@/lib/briefings/research';
-import { estimateTokens } from '@/lib/recipes/menu-generate';
+import { estimateTokens, MENU_MAX_OUTPUT_TOKENS } from '@/lib/recipes/menu-generate';
 import type { MenuModelCaller } from '@/lib/recipes/menu-run';
 
 export type BriefingRefreshOutcome = {
@@ -159,7 +159,7 @@ export async function runBriefingRefresh(args: {
     sourceId: args.sourceId,
     contentHash: args.hash,
     estimatedInput,
-    estimatedOutput: 400,
+    estimatedOutput: MENU_MAX_OUTPUT_TOKENS,
   });
   if (!reservation.ok) {
     await args.record(attempt({

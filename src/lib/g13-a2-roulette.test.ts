@@ -59,11 +59,13 @@ describe('G13-A2 roulette route and client contracts', () => {
   it('pins Haiku snapshot, maxDuration 60, and fail-closed billable AI', () => {
     const route = readFileSync(path.join(ROOT, 'src/app/api/roulette/route.ts'), 'utf8');
     const turn = readFileSync(path.join(ROOT, 'src/lib/discover/turn.ts'), 'utf8');
-    const models = readFileSync(path.join(ROOT, 'src/lib/ai-budget/models.ts'), 'utf8');
+    const models = readFileSync(path.join(ROOT, 'src/lib/ai-budget/haiku-model.ts'), 'utf8');
     expect(route).toMatch(/export const maxDuration = 60/);
     expect(route).toMatch(/runDiscoverTurn/);
-    expect(models).toMatch(/claude-haiku-4-5-20251001/);
+    expect(models).toMatch(/claude-haiku-5-5/);
     expect(turn).toMatch(/ANTHROPIC_HAIKU_SNAPSHOT/);
+    expect(turn).toMatch(/anthropicMessageBody/);
+    expect(turn).not.toMatch(/temperature\s*:/);
     expect(turn).not.toMatch(/model: 'claude-haiku-4-5'/);
     expect(turn).toMatch(/isWanderbiteAiDisabled/);
     expect(turn).toMatch(/allowBillableRoulette/);

@@ -1,7 +1,9 @@
 import { ACTIVITY_NOTE_MODEL } from '@/lib/activities/note-copy';
+import { anthropicMessageBody } from '@/lib/ai-budget/haiku-model';
 
 const ANTHROPIC_MESSAGES_URL = 'https://api.anthropic.com/v1/messages';
-const MAX_OUTPUT_TOKENS = 512;
+/** Structured note JSON truncated below this on Haiku 5.5. */
+export const ACTIVITY_NOTE_MAX_OUTPUT_TOKENS = 2048;
 const MODEL_ID = /^[A-Za-z0-9._:-]{1,80}$/;
 
 /**
@@ -69,13 +71,13 @@ export async function callActivityNoteModel(args: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
+      body: JSON.stringify(anthropicMessageBody({
         model: args.model?.trim() || ACTIVITY_NOTE_MODEL,
-        max_tokens: MAX_OUTPUT_TOKENS,
+        max_tokens: ACTIVITY_NOTE_MAX_OUTPUT_TOKENS,
         temperature: 0,
         system: args.system,
         messages: [{ role: 'user', content: args.user }],
-      }),
+      })),
       signal: controller.signal,
     });
     const raw = await response.text();
