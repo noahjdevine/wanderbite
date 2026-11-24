@@ -6,10 +6,13 @@ import { resolveSavedDescription } from '@/lib/content-pipeline/rollback';
 import { NOTHING_PUBLISHED } from '@/lib/content-pipeline/review';
 import { loadContentReviewModel } from '@/lib/content-pipeline/review-db';
 import {
+  approveActivityNote,
   approveActivitySummary,
   approveContentException,
+  editActivityNote,
   editActivitySummary,
   editContentException,
+  rejectActivityNote,
   rejectActivitySummary,
   rejectContentException,
   rollbackContentRecipe,
@@ -758,5 +761,73 @@ describe('activity queue actions', () => {
     expect(activityRow()).toMatchObject({ hours_note: 'Afternoons on the sample listing', version: 1 });
     expect(harness.tables.content_exceptions?.find((row) => row.id === HOURS_ID)?.status).toBe('rejected');
     expect(harness.calls.some((call) => call.op === 'rpc')).toBe(false);
+  });
+});
+
+const NOTE_ID = 'abababab-abab-4aba-8aba-abababababab';
+const NOTE_RESTAURANT = 'cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd';
+const NOTE_ACTIVITY = 'efefefef-efef-4efe-8efe-efefefefefef';
+const NOTE_BODY =
+  'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. It is a small detour that keeps the night easy.';
+const NOTE_EDIT =
+  'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. Save the second stop for a quieter night.';
+
+describe('activity note actions', () => {
+  function seedNote(status = 'draft', id = NOTE_ID) {
+    harness.tables.restaurant_activity_notes = [
+      ...(harness.tables.restaurant_activity_notes ?? []),
+      {
+        id,
+        restaurant_id: NOTE_RESTAURANT,
+        body: NOTE_BODY,
+        status,
+        activity_ids: [NOTE_ACTIVITY],
+        version: 1,
+        reviewed_at: null,
+        reviewed_by: null,
+      },
+    ];
+    harness.tables.activities = [{
+      id: NOTE_ACTIVITY,
+      name: 'Chestnut Square Village',
+      status: 'active',
+      is_sample: false,
+      source_url: 'https://example.com/chestnut-square',
+      valid_from: null,
+      valid_until: null,
+      last_verified_at: new Date().toISOString(),
+    }];
+  }
+
+  it('refuses a non-admin before any note write', async () => {
+    seedNote();
+    harness.role = 'member';
+    const refused = await approveActivityNote(NOTE_ID);
+    expect(refused).toEqual({ ok: false, error: 'Unauthorized: admin access required.' });
+    expect(harness.tables.restaurant_activity_notes?.[0]?.status).toBe('draft');
+  });
+
+  it('approves one draft, pauses the previous approved note, edits, and rejects', async () => {
+    seedNote('approved', '11111111-1111-4111-8111-111111111111');
+    seedNote('draft', NOTE_ID);
+    const approved = await approveActivityNote(NOTE_ID);
+    expect(approved).toMatchObject({ ok: true, published: true });
+    const rows = harness.tables.restaurant_activity_notes ?? [];
+    expect(rows.filter((row) => row.status === 'approved')).toHaveLength(1);
+    expect(rows.find((row) => row.id === NOTE_ID)?.status).toBe('approved');
+    expect(rows.find((row) => row.id === '11111111-1111-4111-8111-111111111111')?.status).toBe('paused');
+
+    rows.forEach((row) => {
+      if (row.id === NOTE_ID) row.status = 'draft';
+    });
+    const edited = await editActivityNote(NOTE_ID, NOTE_EDIT);
+    expect(edited).toMatchObject({ ok: true, published: false });
+    expect(rows.find((row) => row.id === NOTE_ID)?.body).toBe(NOTE_EDIT);
+    expect(rows.find((row) => row.id === NOTE_ID)?.status).toBe('draft');
+
+    const rejected = await rejectActivityNote(NOTE_ID);
+    expect(rejected).toMatchObject({ ok: true, published: false });
+    expect(rows.find((row) => row.id === NOTE_ID)?.status).toBe('rejected');
+    expect(rows.filter((row) => row.status === 'approved')).toHaveLength(0);
   });
 });

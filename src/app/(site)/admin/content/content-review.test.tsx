@@ -15,6 +15,9 @@ const editBriefingDraft = vi.hoisted(() => vi.fn());
 const rejectBriefingDraft = vi.hoisted(() => vi.fn());
 const rollbackContentRecipe = vi.hoisted(() => vi.fn());
 const setContentSourceStatus = vi.hoisted(() => vi.fn());
+const approveActivityNote = vi.hoisted(() => vi.fn());
+const editActivityNote = vi.hoisted(() => vi.fn());
+const rejectActivityNote = vi.hoisted(() => vi.fn());
 
 vi.mock('../content-actions', () => ({
   approveContentException,
@@ -28,6 +31,9 @@ vi.mock('../content-actions', () => ({
   rejectBriefingDraft,
   rollbackContentRecipe,
   setContentSourceStatus,
+  approveActivityNote,
+  editActivityNote,
+  rejectActivityNote,
 }));
 
 vi.mock('next/navigation', () => ({
@@ -131,6 +137,9 @@ describe('ContentReview', () => {
     rejectBriefingDraft.mockReset();
     rollbackContentRecipe.mockReset();
     setContentSourceStatus.mockReset();
+    approveActivityNote.mockReset();
+    editActivityNote.mockReset();
+    rejectActivityNote.mockReset();
     approveContentException.mockResolvedValue({ ok: true, published: false, notice: 'Approved. Nothing was published.' });
     editContentException.mockResolvedValue({ ok: true, published: true, notice: 'Published the edited paraphrase.' });
     rejectContentException.mockResolvedValue({ ok: true, published: false, notice: 'Rejected. Nothing was published.' });
@@ -420,5 +429,41 @@ describe('ContentReview', () => {
     expect(document.body.textContent).toContain('Edit saves the fact you type.');
     const edit = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Publish edit');
     expect(edit).toBeTruthy();
+  });
+
+  it('approves, edits, and rejects an activity note draft as plain text', async () => {
+    approveActivityNote.mockResolvedValue({ ok: true, published: true, notice: 'Approved.' });
+    editActivityNote.mockResolvedValue({ ok: true, published: false, notice: 'Saved.' });
+    rejectActivityNote.mockResolvedValue({ ok: true, published: false, notice: 'Rejected.' });
+    const withNote = model();
+    withNote.activityNotes = [{
+      id: 'abababab-abab-4aba-8aba-abababababab',
+      restaurantName: 'Hutchins BBQ',
+      body: 'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. It is a small detour that keeps the night easy.',
+      activityNames: ['Chestnut Square Village'],
+      status: 'draft',
+    }];
+    await act(async () => {
+      root.render(<ContentReview model={withNote} />);
+    });
+    const block = document.querySelector('[data-testid="activity-note-abababab-abab-4aba-8aba-abababababab"]');
+    expect(block?.textContent).toContain('Chestnut Square Village');
+    expect(block?.querySelector('a')).toBeNull();
+    const approve = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Approve note');
+    await act(async () => {
+      approve?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(approveActivityNote).toHaveBeenCalledWith('abababab-abab-4aba-8aba-abababababab');
+    const save = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Save edit');
+    await act(async () => {
+      save?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(editActivityNote).toHaveBeenCalled();
+    const reject = [...document.querySelectorAll('button')].find((button) => button.textContent === 'Reject note');
+    await act(async () => {
+      reject?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(rejectActivityNote).toHaveBeenCalledWith('abababab-abab-4aba-8aba-abababababab');
+    expect(approveContentException).not.toHaveBeenCalled();
   });
 });

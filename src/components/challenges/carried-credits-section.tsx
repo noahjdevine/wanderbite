@@ -3,7 +3,7 @@
 import type { BiteNoteSummary } from '@/app/actions/bite-notes';
 import { CarriedCreditCard } from '@/components/challenges/carried-credit-card';
 import type { CarriedCreditView } from '@/lib/challenges/carried-credits';
-import type { ActivitySuggestions } from '@/lib/activities/types';
+import type { ActivityNoteMap, ActivitySuggestions } from '@/lib/activities/types';
 import type { RestaurantBriefings } from '@/lib/briefings/types';
 import type { RecipeSections } from '@/lib/recipes/display';
 
@@ -19,6 +19,8 @@ type CarriedCreditsSectionProps = {
   launchEligible: boolean;
   recipeSections?: RecipeSections;
   activitySuggestions?: ActivitySuggestions;
+  activityNotesMode?: boolean;
+  activityNotes?: ActivityNoteMap;
   briefings?: RestaurantBriefings;
   /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
   visitProblems?: boolean;
@@ -36,6 +38,8 @@ export function CarriedCreditsSection({
   launchEligible,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
   activitySuggestions = { byRestaurantId: {} },
+  activityNotesMode = false,
+  activityNotes = { byRestaurantId: {} },
   briefings = { byRestaurantId: {} },
   visitProblems = false,
 }: CarriedCreditsSectionProps) {
@@ -77,6 +81,10 @@ export function CarriedCreditsSection({
                 credit.item
                   ? activitySuggestions.byRestaurantId[credit.item.restaurant.id] ?? []
                   : []
+              }
+              activityNotesMode={activityNotesMode}
+              activityNote={
+                credit.item ? activityNotes.byRestaurantId[credit.item.restaurant.id] ?? null : null
               }
               briefings={
                 credit.item ? briefings.byRestaurantId[credit.item.restaurant.id] ?? [] : []

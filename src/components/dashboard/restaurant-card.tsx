@@ -37,6 +37,7 @@ import {
   challengeCardExpired,
   formatChicagoDeadline,
 } from '@/lib/challenges/challenge-deadline';
+import { ActivityNoteBlock } from '@/components/activities/activity-note';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
 import { ReportVisitProblem } from '@/components/challenges/report-visit-problem';
 import { FirstVisitBriefing } from '@/components/briefings/first-visit';
@@ -74,6 +75,13 @@ export type RestaurantCardProps = {
   recipeExclusionLine?: string | null;
   /** Empty when E06_ACTIVITIES_ENABLED is not exactly true, or nothing qualifies. */
   activities?: ActivitySuggestion[];
+  /**
+   * Exact E06_ACTIVITIES_ENABLED and E06_ACTIVITY_NOTES_ENABLED.
+   * When true, the personal note replaces the fact boxes.
+   */
+  activityNotesMode?: boolean;
+  /** Approved note body. Null hides the section. */
+  activityNote?: string | null;
   /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
   briefings?: BriefingFact[];
   /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
@@ -97,6 +105,8 @@ export function RestaurantCard({
   recipes = [],
   recipeExclusionLine = null,
   activities = [],
+  activityNotesMode = false,
+  activityNote = null,
   briefings = [],
   visitProblems = false,
 }: RestaurantCardProps) {
@@ -196,7 +206,9 @@ export function RestaurantCard({
         ) : null}
         {revealReason ? <p className="text-sm text-foreground">{revealReason}</p> : null}
         {item.visitStatus ? <StatusTrack status={item.visitStatus} /> : null}
-        <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
+        {activityNotesMode ? null : (
+          <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
+        )}
         <FirstVisitBriefing headingId={`briefing-${item.restaurant.id}`} facts={briefings} />
         {item.socialProof &&
           item.socialProof.totalRatings >= 3 &&
@@ -322,6 +334,11 @@ export function RestaurantCard({
           </Button>
         </CardFooter>
       )}
+      {activityNotesMode && activityNote?.trim() ? (
+        <div className="px-6 pb-6">
+          <ActivityNoteBlock headingId={`activity-note-${item.restaurant.id}`} body={activityNote} />
+        </div>
+      ) : null}
     </Card>
   );
 }

@@ -13,6 +13,8 @@ import {
   type ReviewExceptionRow,
   type ReviewSourceRow,
 } from '@/lib/content-pipeline/review';
+import { activitySchemaMissing, logActivityNotesUnavailableOnce } from '@/lib/activities/flag';
+import type { ActivityNoteReview } from '@/lib/content-pipeline/review-model';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import type { Json } from '@/types/database.types';
 
@@ -465,7 +467,7 @@ export async function loadContentReviewModel(
     });
   }
 
-  return assembleContentReview({
+  const model = assembleContentReview({
     exceptions,
     sources,
     recipes,
@@ -476,4 +478,40 @@ export async function loadContentReviewModel(
     briefings,
     briefingDrafts,
   });
+  return { ...model, activityNotes: await loadActivityNoteDrafts(supabase) };
+}
+
+async function loadActivityNoteDrafts(supabase: AdminClient): Promise<ActivityNoteReview[]> {
+  const notesResult = await supabase
+    .from('restaurant_activity_notes')
+    .select('id, restaurant_id, body, status, activity_ids')
+    .eq('status', 'draft');
+  if (notesResult.error) {
+    if (activitySchemaMissing(notesResult.error)) {
+      logActivityNotesUnavailableOnce();
+      return [];
+    }
+    throw new Error('Activity notes failed to load.');
+  }
+  const notes = notesResult.data ?? [];
+  if (notes.length === 0) return [];
+  const restaurantIds = [...new Set(notes.map((note) => note.restaurant_id))];
+  const activityIds = [...new Set(notes.flatMap((note) => note.activity_ids))];
+  const [restaurantResult, activityResult] = await Promise.all([
+    supabase.from('restaurants').select('id, name').in('id', restaurantIds),
+    activityIds.length > 0
+      ? supabase.from('activities').select('id, name').in('id', activityIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (restaurantResult.error) throw new Error('Activity note restaurants failed to load.');
+  if (activityResult.error) throw new Error('Activity note places failed to load.');
+  const restaurantNames = new Map((restaurantResult.data ?? []).map((row) => [row.id, row.name]));
+  const activityNames = new Map((activityResult.data ?? []).map((row) => [row.id, row.name]));
+  return notes.map((note) => ({
+    id: note.id,
+    restaurantName: restaurantNames.get(note.restaurant_id) ?? 'Unknown restaurant',
+    body: note.body,
+    activityNames: note.activity_ids.map((id) => activityNames.get(id) ?? 'Unknown place'),
+    status: note.status,
+  }));
 }

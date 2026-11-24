@@ -44,7 +44,7 @@ import {
   reasonForSlot,
   type MonthlyRevealPanel,
 } from '@/lib/challenges/monthly-reveal-copy';
-import type { ActivitySuggestions } from '@/lib/activities/types';
+import type { ActivityNoteMap, ActivitySuggestions } from '@/lib/activities/types';
 import type { RestaurantBriefings } from '@/lib/briefings/types';
 import type { RecipeSections } from '@/lib/recipes/display';
 
@@ -94,6 +94,10 @@ type DashboardClientProps = {
   recipeSections?: RecipeSections;
   /** Empty when E06_ACTIVITIES_ENABLED is not exactly true. */
   activitySuggestions?: ActivitySuggestions;
+  /** True only when both activity flags are exactly true. Fact boxes stay off. */
+  activityNotesMode?: boolean;
+  /** Approved note bodies. Empty when the notes flag is off or nothing qualifies. */
+  activityNotes?: ActivityNoteMap;
   /** Empty when E06_BRIEFINGS_ENABLED is not exactly true. */
   briefings?: RestaurantBriefings;
   /** Challenges uses the Golden Hour sheet. Dashboard keeps the classic stack. */
@@ -125,6 +129,8 @@ export function DashboardClient({
   blockMemberGenerate = false,
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
   activitySuggestions = { byRestaurantId: {} },
+  activityNotesMode = false,
+  activityNotes = { byRestaurantId: {} },
   briefings = { byRestaurantId: {} },
   appearance = 'classic',
   showIncompleteProfile = false,
@@ -283,6 +289,8 @@ export function DashboardClient({
               recipes={recipeSections.byRestaurantId[item.restaurant.id] ?? []}
               recipeExclusionLine={recipeSections.exclusionLine}
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
+              activityNotesMode={activityNotesMode}
+              activityNote={activityNotes.byRestaurantId[item.restaurant.id] ?? null}
               briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
               boostCheckIn={boostCheckIn}
               visitProblems={visitProblems}
@@ -308,6 +316,8 @@ export function DashboardClient({
               recipes={recipeSections.byRestaurantId[item.restaurant.id] ?? []}
               recipeExclusionLine={recipeSections.exclusionLine}
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
+              activityNotesMode={activityNotesMode}
+              activityNote={activityNotes.byRestaurantId[item.restaurant.id] ?? null}
               briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
               visitProblems={visitProblems}
             />
@@ -372,6 +382,8 @@ export function DashboardClient({
       launchEligible={launchEligible}
       recipeSections={recipeSections}
       activitySuggestions={activitySuggestions}
+      activityNotesMode={activityNotesMode}
+      activityNotes={activityNotes}
       briefings={briefings}
       visitProblems={visitProblems}
     />

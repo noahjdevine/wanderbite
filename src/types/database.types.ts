@@ -24,6 +24,7 @@ export type Database = {
           hours_note: string | null
           id: string
           is_sample: boolean
+          kids_oriented: boolean
           last_verified_at: string | null
           lat: number | null
           lon: number | null
@@ -47,6 +48,7 @@ export type Database = {
           hours_note?: string | null
           id?: string
           is_sample?: boolean
+          kids_oriented?: boolean
           last_verified_at?: string | null
           lat?: number | null
           lon?: number | null
@@ -70,6 +72,7 @@ export type Database = {
           hours_note?: string | null
           id?: string
           is_sample?: boolean
+          kids_oriented?: boolean
           last_verified_at?: string | null
           lat?: number | null
           lon?: number | null
@@ -1971,6 +1974,79 @@ export type Database = {
           {
             foreignKeyName: "redemptions_user_id_fkey"
             columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      restaurant_activity_notes: {
+        Row: {
+          activity_ids: string[]
+          body: string
+          created_at: string
+          id: string
+          is_sample: boolean
+          model: string
+          prompt_version: string
+          restaurant_id: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source_hash: string
+          status: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          activity_ids: string[]
+          body: string
+          created_at?: string
+          id?: string
+          is_sample?: boolean
+          model: string
+          prompt_version: string
+          restaurant_id: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_hash: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          activity_ids?: string[]
+          body?: string
+          created_at?: string
+          id?: string
+          is_sample?: boolean
+          model?: string
+          prompt_version?: string
+          restaurant_id?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source_hash?: string
+          status?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "restaurant_activity_notes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_activity_notes_restaurant_id_fkey"
+            columns: ["restaurant_id"]
+            isOneToOne: false
+            referencedRelation: "restaurants_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "restaurant_activity_notes_reviewed_by_fkey"
+            columns: ["reviewed_by"]
             isOneToOne: false
             referencedRelation: "user_profiles"
             referencedColumns: ["id"]

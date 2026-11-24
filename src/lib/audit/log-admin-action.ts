@@ -18,6 +18,9 @@ export type AdminAuditAction =
   | 'content.recipe_rollback'
   | 'content.source_pause'
   | 'content.source_resume'
+  | 'content.activity_note_approve'
+  | 'content.activity_note_edit'
+  | 'content.activity_note_reject'
   | 'visit_problem.review'
   | 'visit_problem.resolve'
   | 'site_problem.review';

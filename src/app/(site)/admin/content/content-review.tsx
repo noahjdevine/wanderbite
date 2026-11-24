@@ -20,12 +20,15 @@ import {
   type ExceptionView,
 } from '@/lib/content-pipeline/review-model';
 import {
+  approveActivityNote,
   approveActivitySummary,
   approveBriefingDraft,
   approveContentException,
+  editActivityNote,
   editActivitySummary,
   editBriefingDraft,
   editContentException,
+  rejectActivityNote,
   rejectActivitySummary,
   rejectBriefingDraft,
   rejectContentException,
@@ -137,6 +140,72 @@ export function ContentReview({ model }: { model: ContentReviewModel }) {
                 return editContentException(row.id, text);
               })}
             />
+          ))
+        )}
+      </section>
+
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">Activity notes</h2>
+          <p className="text-sm text-muted-foreground">
+            Drafts only. Approve shows the note to members while every cited place is still current. Edit saves your wording and leaves it a draft. Reject hides it.
+          </p>
+        </div>
+        {(model.activityNotes ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">No activity note drafts.</p>
+        ) : (
+          (model.activityNotes ?? []).map((note) => (
+            <Card key={note.id}>
+              <CardHeader>
+                <CardTitle className="text-base">
+                  {note.restaurantName}
+                  <span className="ml-2 text-sm font-normal text-muted-foreground">{note.status}</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p>{note.activityNames.join(' · ')}</p>
+                <PlainText text={note.body} testId={`activity-note-${note.id}`} />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => run(() => approveActivityNote(note.id))}
+                  >
+                    Approve note
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => run(() => rejectActivityNote(note.id))}
+                  >
+                    Reject note
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <label className="block font-medium" htmlFor={`activity-note-edit-${note.id}`}>
+                    Edited note
+                  </label>
+                  <textarea
+                    id={`activity-note-edit-${note.id}`}
+                    className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2"
+                    value={drafts[note.id] ?? note.body}
+                    onChange={(event) => setDrafts((current) => ({ ...current, [note.id]: event.target.value }))}
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={pending}
+                    onClick={() => run(() => editActivityNote(note.id, drafts[note.id] ?? note.body))}
+                  >
+                    Save edit
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ))
         )}
       </section>

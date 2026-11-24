@@ -1,5 +1,17 @@
-/** Fixed E06 catalog. Museums, walks, classes, sports, and arts. */
-export const ACTIVITY_CATEGORIES = ['museum', 'walk', 'class', 'sports', 'arts'] as const;
+/** Fixed E06 catalog. The original five, plus the E06 note-slice categories. */
+export const ACTIVITY_CATEGORIES = [
+  'museum',
+  'walk',
+  'class',
+  'sports',
+  'arts',
+  'comedy',
+  'theater',
+  'live_music',
+  'games',
+  'landmark',
+  'dessert',
+] as const;
 export type ActivityCategory = (typeof ACTIVITY_CATEGORIES)[number];
 
 export const ACTIVITY_COST_CATEGORIES = ['free', '$', '$$', '$$$', 'unknown'] as const;
@@ -16,6 +28,13 @@ export const ACTIVITY_MATCH_LIMIT = 2;
 export const ACTIVITY_DEFAULT_BOUND_MILES = 15;
 
 export const NEARBY_IDEA_HEADING = 'Optional nearby idea';
+
+/** Shown only when an approved, still-valid personal note replaces the fact boxes. */
+export const ACTIVITY_NOTE_HEADING = 'For the rest of the night';
+
+export type ActivityNoteMap = {
+  byRestaurantId: Record<string, string>;
+};
 
 export const OPTIONAL_ACTIVITY_LABEL =
   'Optional suggestion. Independently operated. Admission or booking may cost extra.';
@@ -41,6 +60,12 @@ const CATEGORY_LABELS: Record<ActivityCategory, string> = {
   class: 'Class',
   sports: 'Sports',
   arts: 'Arts',
+  comedy: 'Comedy',
+  theater: 'Theater',
+  live_music: 'Live music',
+  games: 'Games',
+  landmark: 'Landmark',
+  dessert: 'Dessert',
 };
 
 const COST_LABELS: Record<ActivityCostCategory, string> = {

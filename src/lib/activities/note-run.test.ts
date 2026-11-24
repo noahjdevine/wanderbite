@@ -1,0 +1,145 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it, vi } from 'vitest';
+import { callActivityNoteModel } from '@/lib/activities/note-generate';
+import { ACTIVITY_NOTE_MODEL } from '@/lib/activities/note-copy';
+import type { NoteSourceActivity, NoteSourceRestaurant } from '@/lib/activities/note-eligible';
+import {
+  activityNoteReadAllowed,
+  activityNoteWriteAllowed,
+  runActivityNoteDrafts,
+} from '@/lib/activities/note-run';
+
+const NOW = new Date('2026-11-04T18:00:00.000Z');
+const SQUARE = 'Chestnut Square Village';
+const BODY =
+  'After dinner, you could wander through Chestnut Square Village and let the meal settle while you walk. It is a small detour that keeps the night easy.';
+
+function restaurant(): NoteSourceRestaurant {
+  return {
+    id: '11111111-1111-4111-8111-111111111111',
+    name: 'Hutchins BBQ',
+    cuisineTags: ['bbq'],
+    lat: 33.1972,
+    lon: -96.6156,
+  };
+}
+
+function activity(overrides: Partial<NoteSourceActivity> = {}): NoteSourceActivity {
+  return {
+    id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    name: SQUARE,
+    category: 'landmark',
+    source_url: 'https://example.com/chestnut-square',
+    lat: 33.198,
+    lon: -96.616,
+    valid_from: null,
+    valid_until: null,
+    last_verified_at: '2026-11-02T18:00:00.000Z',
+    status: 'active',
+    is_sample: false,
+    kids_oriented: false,
+    cost_category: 'free',
+    ...overrides,
+  };
+}
+
+function modelText() {
+  return JSON.stringify({
+    body: BODY,
+    activity_ids: ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'],
+  });
+}
+
+describe('activity note drafts', () => {
+  it('refuses apply without the gates and hosted URLs without HOSTED_OK', () => {
+    expect(activityNoteWriteAllowed('http://127.0.0.1:54321', {}).ok).toBe(false);
+    expect(activityNoteWriteAllowed('http://127.0.0.1:54321', { WANDERBITE_ACTIVITY_NOTES_APPLY: '1' }).ok).toBe(true);
+    expect(
+      activityNoteWriteAllowed('https://example.supabase.co', { WANDERBITE_ACTIVITY_NOTES_APPLY: '1' }).ok,
+    ).toBe(false);
+    expect(
+      activityNoteReadAllowed('https://yiajoycgiyxjvznndjge.supabase.co', {}).ok,
+    ).toBe(false);
+    expect(
+      activityNoteWriteAllowed('https://yiajoycgiyxjvznndjge.supabase.co', {
+        WANDERBITE_ACTIVITY_NOTES_APPLY: '1',
+        WANDERBITE_ACTIVITY_NOTES_HOSTED_OK: '1',
+      }).ok,
+    ).toBe(true);
+  });
+
+  it('writes no database rows on a dry-run and skips kids places', async () => {
+    const insertDraft = vi.fn();
+    const callModel = vi.fn(async (_input: { system: string; user: string }) => ({ text: modelText(), usage: null }));
+    const summary = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [activity(), activity({ id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'Kids Museum', kids_oriented: true })],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'dry-run',
+      now: NOW,
+      callModel,
+      insertDraft,
+    });
+    expect(insertDraft).not.toHaveBeenCalled();
+    expect(summary.dbWrites).toBe(0);
+    expect(summary.restaurants[0]?.draft?.status).toBe('draft');
+    expect(summary.restaurants[0]?.insertedId).toBeNull();
+    const prompt = callModel.mock.calls[0]?.[0];
+    expect(prompt?.user).toContain(SQUARE);
+    expect(prompt?.user).not.toContain('Kids Museum');
+  });
+
+  it('inserts one draft on apply and skips a second open draft', async () => {
+    const insertDraft = vi.fn(async () => ({ id: 'note-1' }));
+    const summary = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [activity()],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'apply',
+      now: NOW,
+      callModel: async () => ({ text: modelText(), usage: null }),
+      insertDraft,
+    });
+    expect(insertDraft).toHaveBeenCalledTimes(1);
+    expect(summary.dbWrites).toBe(1);
+    const again = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [activity()],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'apply',
+      now: NOW,
+      existing: [{ restaurantId: restaurant().id, status: 'draft', sourceHash: 'abc' }],
+      callModel: async () => ({ text: modelText(), usage: null }),
+      insertDraft,
+    });
+    expect(insertDraft).toHaveBeenCalledTimes(1);
+    expect(again.dbWrites).toBe(0);
+    expect(again.restaurants[0]?.skips).toContain('a draft is already open');
+  });
+
+  it('calls Haiku directly and does not touch the member budget', async () => {
+    const bodies: { model?: string; tools?: unknown }[] = [];
+    await callActivityNoteModel({
+      system: 'system',
+      user: 'user',
+      apiKey: 'test-key',
+      fetchImpl: async (_input, init) => {
+        bodies.push(JSON.parse(String(init?.body)) as { model?: string; tools?: unknown });
+        return new Response(JSON.stringify({ content: [{ type: 'text', text: '{}' }], usage: { input_tokens: 3, output_tokens: 2 } }), {
+          status: 200,
+        });
+      },
+    });
+    expect(bodies[0]?.model).toBe(ACTIVITY_NOTE_MODEL);
+    expect(bodies[0]?.tools).toBeUndefined();
+    const root = process.cwd();
+    for (const file of ['note-generate.ts', 'note-run.ts', 'note-copy.ts', 'note-store.ts', 'load-notes.ts']) {
+      const sourceText = readFileSync(path.join(root, 'src/lib/activities', file), 'utf8');
+      expect(sourceText).not.toMatch(/ai_reserve|rpcAi|entitlement_credits/);
+    }
+    const script = readFileSync(path.join(root, 'scripts/e06-activity-notes.ts'), 'utf8');
+    expect(script).not.toMatch(/ai_reserve|rpcAi|entitlement_credits/);
+    expect(script).toContain('WANDERBITE_ACTIVITY_NOTES_HOSTED_OK');
+  });
+});

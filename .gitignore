@@ -50,6 +50,7 @@ next-env.d.ts
 
 # Operator dry-run output for E05-B menu recipe drafts. Never commit.
 /.menu-recipes/
+/.activity-notes/
 
 # Operator dry-run output for E06-A2 briefing research. Never commit.
 /.briefings/
