@@ -204,7 +204,7 @@ describe('briefing research filter', () => {
     expect(BRIEFING_WEB_SEARCH_MAX_USES).toBe(5);
     expect(briefingModelMatchesDiscover()).toBe(true);
     const sql = readFileSync(
-      path.resolve(process.cwd(), 'supabase/migrations/20261124142713_haiku_5_5_price.sql'),
+      path.resolve(process.cwd(), 'supabase/migrations/20261124144427_haiku_5_5_price.sql'),
       'utf8',
     );
     expect(sql).toContain(`'anthropic', '${BRIEFING_MODEL}', 'input', 100000`);
