@@ -9,7 +9,14 @@ import {
   isActivityNoteRetryReason,
   parseActivityNoteDraft,
 } from '@/lib/activities/note-copy';
-import { eligibleNoteActivities, type NoteSourceActivity, type NoteSourceRestaurant } from '@/lib/activities/note-eligible';
+import { isEscapeRoomActivity } from '@/lib/activities/note-copy';
+import {
+  activityNoteUseCaps,
+  eligibleNoteActivities,
+  type ActivityNoteUseCaps,
+  type NoteSourceActivity,
+  type NoteSourceRestaurant,
+} from '@/lib/activities/note-eligible';
 import type { ActivityNoteModelResult } from '@/lib/activities/note-generate';
 
 export const ACTIVITY_NOTE_SCHEMA = 'wanderbite.e06.activity_notes.v1';
@@ -39,7 +46,18 @@ export type ExistingActivityNote = {
   restaurantId: string;
   status: string;
   sourceHash: string;
+  /** Activity ids the note cites. Draft and approved rows that are kept count toward the cap. */
+  activityIds?: readonly string[];
 };
+
+export type ActivityNoteUseTotal = {
+  activityId: string;
+  name: string;
+  uses: number;
+  escapeRoom: boolean;
+};
+
+const KEPT_ACTIVITY_NOTE_STATUSES = new Set(['draft', 'approved']);
 
 export type ActivityNoteRestaurantResult = {
   restaurantId: string;
@@ -58,6 +76,10 @@ export type ActivityNoteRunSummary = {
   dbWrites: number;
   restaurants: ActivityNoteRestaurantResult[];
   skips: string[];
+  useCaps: ActivityNoteUseCaps;
+  escapeRoomUses: number;
+  /** Citations in this run's drafts plus kept draft and approved notes that were not replaced. */
+  activityUses: ActivityNoteUseTotal[];
 };
 
 export function hostedActivityNoteUrl(supabaseUrl: string): boolean {
@@ -117,6 +139,9 @@ export async function runActivityNoteDrafts(args: {
   callModel: ActivityNoteModelCaller;
   existing?: readonly ExistingActivityNote[];
   insertDraft?: (row: ActivityNoteDraftInsert) => Promise<{ id: string }>;
+  /** Overrides the env caps. Tests pass this. The script passes env. */
+  useCaps?: ActivityNoteUseCaps;
+  env?: Record<string, string | undefined>;
 }): Promise<ActivityNoteRunSummary> {
   const now = args.now ?? new Date();
   const modelId = args.model?.trim() || ACTIVITY_NOTE_MODEL;
@@ -127,6 +152,13 @@ export async function runActivityNoteDrafts(args: {
   );
   const restaurants: ActivityNoteRestaurantResult[] = [];
   let dbWrites = 0;
+  const useCaps = args.useCaps ?? activityNoteUseCaps(args.env);
+  const escapeRoomIds = new Set(
+    args.activities.filter((activity) => isEscapeRoomActivity(activity.name)).map((activity) => activity.id),
+  );
+  const nameById = new Map(args.activities.map((activity) => [activity.id, activity.name.trim()]));
+  const replacedRestaurantIds = new Set<string>();
+  const draftedUses: { activityIds: readonly string[] }[] = [];
   for (const restaurant of selected) {
     const result: ActivityNoteRestaurantResult = {
       restaurantId: restaurant.id,
@@ -136,11 +168,25 @@ export async function runActivityNoteDrafts(args: {
       insertedId: null,
       skips: [],
     };
+    const counted = combineActivityUses(
+      keptActivityUses({
+        notes: existing,
+        exceptRestaurantId: restaurant.id,
+        replacedRestaurantIds,
+        escapeRoomIds,
+      }),
+      draftedUses,
+      escapeRoomIds,
+    );
     const candidates = eligibleNoteActivities({
       restaurant,
       activities: args.activities,
       restaurantNames: args.restaurantNames,
       now,
+      activityUses: counted.byActivity,
+      escapeRoomUses: counted.escapeRoomUses,
+      maxUsesPerActivity: useCaps.maxUsesPerActivity,
+      maxEscapeRoomUses: useCaps.maxEscapeRoomUses,
     });
     if (candidates.length === 0) {
       result.skips.push('no currently showing nearby activity');
@@ -219,8 +265,17 @@ export async function runActivityNoteDrafts(args: {
         dbWrites += 1;
       }
     }
+    if (result.draft) {
+      draftedUses.push({ activityIds: result.draft.activity_ids });
+      replacedRestaurantIds.add(restaurant.id);
+    }
     restaurants.push(result);
   }
+  const totals = combineActivityUses(
+    keptActivityUses({ notes: existing, replacedRestaurantIds, escapeRoomIds }),
+    draftedUses,
+    escapeRoomIds,
+  );
   return {
     schema: ACTIVITY_NOTE_SCHEMA,
     mode: args.mode,
@@ -229,7 +284,67 @@ export async function runActivityNoteDrafts(args: {
     dbWrites,
     restaurants,
     skips,
+    useCaps,
+    escapeRoomUses: totals.escapeRoomUses,
+    activityUses: formatActivityUses(totals.byActivity, nameById, escapeRoomIds),
   };
+}
+
+export function keptActivityUses(args: {
+  notes: readonly ExistingActivityNote[];
+  exceptRestaurantId?: string;
+  replacedRestaurantIds?: ReadonlySet<string>;
+  escapeRoomIds: ReadonlySet<string>;
+}): { byActivity: Map<string, number>; escapeRoomUses: number } {
+  const byActivity = new Map<string, number>();
+  let escapeRoomUses = 0;
+  for (const note of args.notes) {
+    if (!KEPT_ACTIVITY_NOTE_STATUSES.has(note.status)) continue;
+    if (args.exceptRestaurantId && note.restaurantId === args.exceptRestaurantId) continue;
+    if (args.replacedRestaurantIds?.has(note.restaurantId)) continue;
+    for (const id of new Set(note.activityIds ?? [])) {
+      byActivity.set(id, (byActivity.get(id) ?? 0) + 1);
+      if (args.escapeRoomIds.has(id)) escapeRoomUses += 1;
+    }
+  }
+  return { byActivity, escapeRoomUses };
+}
+
+function combineActivityUses(
+  base: { byActivity: Map<string, number>; escapeRoomUses: number },
+  drafts: readonly { activityIds: readonly string[] }[],
+  escapeRoomIds: ReadonlySet<string>,
+): { byActivity: Map<string, number>; escapeRoomUses: number } {
+  const byActivity = new Map(base.byActivity);
+  let escapeRoomUses = base.escapeRoomUses;
+  for (const draft of drafts) {
+    for (const id of new Set(draft.activityIds)) {
+      byActivity.set(id, (byActivity.get(id) ?? 0) + 1);
+      if (escapeRoomIds.has(id)) escapeRoomUses += 1;
+    }
+  }
+  return { byActivity, escapeRoomUses };
+}
+
+function formatActivityUses(
+  byActivity: ReadonlyMap<string, number>,
+  nameById: ReadonlyMap<string, string>,
+  escapeRoomIds: ReadonlySet<string>,
+): ActivityNoteUseTotal[] {
+  return [...byActivity.entries()]
+    .filter(([, uses]) => uses > 0)
+    .map(([activityId, uses]) => ({
+      activityId,
+      name: nameById.get(activityId) ?? activityId,
+      uses,
+      escapeRoom: escapeRoomIds.has(activityId),
+    }))
+    .sort((left, right) => {
+      if (left.uses !== right.uses) return right.uses - left.uses;
+      const name = left.name.localeCompare(right.name);
+      if (name !== 0) return name;
+      return left.activityId.localeCompare(right.activityId);
+    });
 }
 
 export function writeActivityNoteFile(filePath: string, summary: ActivityNoteRunSummary): void {
@@ -247,6 +362,14 @@ export function formatActivityNoteSummary(summary: ActivityNoteRunSummary, outpu
   }
   for (const skip of summary.skips) lines.push(`skip: ${skip}`);
   lines.push(`mode=${summary.mode} model=${summary.model} db_writes=${summary.dbWrites}`);
+  if (summary.mode === 'dry-run') {
+    lines.push(
+      `activity_uses max_per_activity=${summary.useCaps.maxUsesPerActivity} escape_room_uses=${summary.escapeRoomUses} max_escape_room_uses=${summary.useCaps.maxEscapeRoomUses}`,
+    );
+    for (const row of summary.activityUses) {
+      lines.push(`  uses=${row.uses} escape_room=${row.escapeRoom ? 'yes' : 'no'} ${row.name} ${row.activityId}`);
+    }
+  }
   if (outputPath) lines.push(`wrote ${outputPath}`);
   return `${lines.join('\n')}\n`;
 }

@@ -98,7 +98,10 @@ describe('activity note drafts', () => {
     expect(summary.restaurants[0]?.draft?.model).toBe(ACTIVITY_NOTE_MODEL);
     expect(summary.restaurants[0]?.draft?.prompt_version).toBe(ACTIVITY_NOTE_PROMPT_VERSION);
     expect(summary.restaurants[0]?.insertedId).toBeNull();
-    expect(formatActivityNoteSummary(summary, null)).toContain(`model=${ACTIVITY_NOTE_MODEL}`);
+    const printed = formatActivityNoteSummary(summary, null);
+    expect(printed).toContain(`model=${ACTIVITY_NOTE_MODEL}`);
+    expect(printed).toContain('activity_uses max_per_activity=5 escape_room_uses=0 max_escape_room_uses=6');
+    expect(printed).toContain(`uses=1 escape_room=no ${SQUARE} aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`);
     const prompt = callModel.mock.calls[0]?.[0];
     expect(prompt?.user).toContain(SQUARE);
     expect(prompt?.user).not.toContain('Kids Museum');
@@ -117,6 +120,7 @@ describe('activity note drafts', () => {
     });
     expect(insertDraft).toHaveBeenCalledTimes(1);
     expect(summary.dbWrites).toBe(1);
+    expect(formatActivityNoteSummary(summary, null)).not.toContain('activity_uses');
     const again = await runActivityNoteDrafts({
       restaurants: [restaurant()],
       activities: [activity()],
@@ -406,5 +410,167 @@ describe('activity note drafts', () => {
     });
     expect(summary.restaurants[0]?.skips).toEqual(['model request failed (400)']);
     expect(summary.restaurants[0]?.draft).toBeNull();
+  });
+
+  it('caps reuse across the run, skips a redrafted note, and prints dry-run counts', async () => {
+    const arenaId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const squareId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const escapeId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+    const first = restaurant();
+    const second: NoteSourceRestaurant = {
+      ...restaurant(),
+      id: '22222222-2222-4222-8222-222222222222',
+      name: 'The Stix Icehouse',
+    };
+    const kept: NoteSourceRestaurant = {
+      ...restaurant(),
+      id: '33333333-3333-4333-8333-333333333333',
+      name: 'Kept Grill',
+    };
+    const places = [
+      activity({ id: arenaId, name: 'The Comedy Arena', category: 'comedy' }),
+      activity(),
+      activity({ id: escapeId, name: 'McKinney Escape Room', category: 'games', lat: 33.2 }),
+    ];
+    const caps = { maxUsesPerActivity: 1, maxEscapeRoomUses: 6 };
+    const callModel = vi.fn(async (input: { user: string }) => {
+      const cited = input.user.includes(arenaId)
+        ? { id: arenaId, name: 'The Comedy Arena' }
+        : { id: squareId, name: SQUARE };
+      return {
+        text: JSON.stringify({
+          body: `You could spend the rest of the night at ${cited.name} after the plates are cleared. It is an easy way to let the meal settle.`,
+          activity_ids: [cited.id],
+        }),
+        usage: null,
+      };
+    });
+    const summary = await runActivityNoteDrafts({
+      restaurants: [first, second],
+      activities: places,
+      restaurantNames: [first.name, second.name],
+      mode: 'dry-run',
+      now: NOW,
+      useCaps: caps,
+      callModel,
+    });
+    expect(callModel.mock.calls[0]?.[0].user).toContain(arenaId);
+    expect(callModel.mock.calls[1]?.[0].user).not.toContain(arenaId);
+    expect(callModel.mock.calls[1]?.[0].user).toContain(squareId);
+    expect(summary.activityUses).toEqual([
+      { activityId: squareId, name: SQUARE, uses: 1, escapeRoom: false },
+      { activityId: arenaId, name: 'The Comedy Arena', uses: 1, escapeRoom: false },
+    ]);
+    const ownNote = await runActivityNoteDrafts({
+      restaurants: [first],
+      activities: places,
+      restaurantNames: [first.name],
+      mode: 'dry-run',
+      now: NOW,
+      useCaps: caps,
+      existing: [{ restaurantId: first.id, status: 'approved', sourceHash: 'old', activityIds: [arenaId] }],
+      callModel: async (input) => {
+        expect(input.user).toContain(arenaId);
+        return {
+          text: JSON.stringify({
+            body: 'You could spend the rest of the night at The Comedy Arena after the plates are cleared. It is an easy way to let the meal settle.',
+            activity_ids: [arenaId],
+          }),
+          usage: null,
+        };
+      },
+    });
+    expect(ownNote.activityUses).toEqual([
+      { activityId: arenaId, name: 'The Comedy Arena', uses: 1, escapeRoom: false },
+    ]);
+    const blocked = await runActivityNoteDrafts({
+      restaurants: [second],
+      activities: places,
+      restaurantNames: [second.name],
+      mode: 'dry-run',
+      now: NOW,
+      useCaps: caps,
+      existing: [
+        { restaurantId: kept.id, status: 'approved', sourceHash: 'kept', activityIds: [arenaId] },
+        { restaurantId: kept.id, status: 'rejected', sourceHash: 'no', activityIds: [squareId] },
+        { restaurantId: kept.id, status: 'paused', sourceHash: 'paused', activityIds: [escapeId] },
+      ],
+      callModel: async (input) => {
+        expect(input.user).not.toContain(arenaId);
+        expect(input.user).toContain(squareId);
+        expect(input.user).toContain(escapeId);
+        return {
+          text: JSON.stringify({
+            body: `You could spend the rest of the night at ${SQUARE} after the plates are cleared. It is an easy way to let the meal settle.`,
+            activity_ids: [squareId],
+          }),
+          usage: null,
+        };
+      },
+    });
+    expect(blocked.activityUses.map((row) => row.activityId).sort()).toEqual([arenaId, squareId].sort());
+    const replaced = await runActivityNoteDrafts({
+      restaurants: [first, second],
+      activities: places,
+      restaurantNames: [first.name, second.name],
+      mode: 'dry-run',
+      now: NOW,
+      useCaps: caps,
+      existing: [{ restaurantId: first.id, status: 'approved', sourceHash: 'old', activityIds: [arenaId] }],
+      callModel: async (input) => {
+        const cited = input.user.includes(squareId)
+          ? { id: squareId, name: SQUARE }
+          : { id: arenaId, name: 'The Comedy Arena' };
+        return {
+          text: JSON.stringify({
+            body: `You could spend the rest of the night at ${cited.name} after the plates are cleared. It is an easy way to let the meal settle.`,
+            activity_ids: [cited.id],
+          }),
+          usage: null,
+        };
+      },
+    });
+    expect(replaced.restaurants[0]?.draft?.activity_ids).toEqual([squareId]);
+    expect(replaced.restaurants[1]?.draft?.activity_ids).toEqual([arenaId]);
+    expect(replaced.activityUses).toEqual([
+      { activityId: squareId, name: SQUARE, uses: 1, escapeRoom: false },
+      { activityId: arenaId, name: 'The Comedy Arena', uses: 1, escapeRoom: false },
+    ]);
+    const escapeCaps = { maxUsesPerActivity: 5, maxEscapeRoomUses: 1 };
+    let escapeCalls = 0;
+    const escapeRun = await runActivityNoteDrafts({
+      restaurants: [first, second],
+      activities: places,
+      restaurantNames: [first.name, second.name],
+      mode: 'dry-run',
+      now: NOW,
+      useCaps: escapeCaps,
+      callModel: async (input) => {
+        escapeCalls += 1;
+        const cited = escapeCalls === 1
+          ? { id: escapeId, name: 'McKinney Escape Room' }
+          : { id: squareId, name: SQUARE };
+        if (escapeCalls === 2) expect(input.user).not.toContain(escapeId);
+        return {
+          text: JSON.stringify({
+            body: `You could spend the rest of the night at ${cited.name} after the plates are cleared. It is an easy way to let the meal settle.`,
+            activity_ids: [cited.id],
+          }),
+          usage: null,
+        };
+      },
+    });
+    expect(escapeRun.escapeRoomUses).toBe(1);
+    expect(escapeRun.activityUses.find((row) => row.activityId === escapeId)?.escapeRoom).toBe(true);
+    const fromEnv = await runActivityNoteDrafts({
+      restaurants: [first],
+      activities: [activity()],
+      restaurantNames: [first.name],
+      mode: 'dry-run',
+      now: NOW,
+      env: { WANDERBITE_ACTIVITY_NOTES_MAX_USES_PER_ACTIVITY: '3', WANDERBITE_ACTIVITY_NOTES_MAX_ESCAPE_ROOM_USES: '4' },
+      callModel: async () => ({ text: modelText(), usage: null }),
+    });
+    expect(fromEnv.useCaps).toEqual({ maxUsesPerActivity: 3, maxEscapeRoomUses: 4 });
   });
 });

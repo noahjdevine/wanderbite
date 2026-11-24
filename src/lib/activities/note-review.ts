@@ -22,6 +22,8 @@ export type ReviewActivity = NoteVisibleActivity & {
   name: string;
   /** True when the unrounded distance from the restaurant is within a half mile. */
   walkable: boolean;
+  /** Downtown wander at a Historic Downtown restaurant. The pin is not a walk. */
+  areaWander?: boolean;
 };
 
 export type ActivityNoteStore = {
@@ -61,6 +63,7 @@ function citedPlaces(activities: readonly ReviewActivity[]): ActivityNoteCitedPl
     name: activity.name,
     displayName: activityDisplayName(activity.name),
     walkable: activity.walkable,
+    areaWander: activity.areaWander,
   }));
 }
 
