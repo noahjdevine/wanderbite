@@ -1,7 +1,11 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { callActivityNoteModel, resolveActivityNoteModel } from '@/lib/activities/note-generate';
+import {
+  ACTIVITY_NOTE_MAX_OUTPUT_TOKENS,
+  callActivityNoteModel,
+  resolveActivityNoteModel,
+} from '@/lib/activities/note-generate';
 import { ACTIVITY_NOTE_MODEL, ACTIVITY_NOTE_PROMPT_VERSION } from '@/lib/activities/note-copy';
 import type { NoteSourceActivity, NoteSourceRestaurant } from '@/lib/activities/note-eligible';
 import {
@@ -124,32 +128,54 @@ describe('activity note drafts', () => {
   });
 
   it('calls Haiku directly and does not touch the member budget', async () => {
-    const bodies: { model?: string; tools?: unknown }[] = [];
+    const bodies: { model?: string; max_tokens?: number; temperature?: number; thinking?: { type?: string }; tools?: unknown }[] = [];
     await callActivityNoteModel({
       system: 'system',
       user: 'user',
       apiKey: 'test-key',
       fetchImpl: async (_input, init) => {
-        bodies.push(JSON.parse(String(init?.body)) as { model?: string; tools?: unknown });
+        bodies.push(JSON.parse(String(init?.body)) as { model?: string; max_tokens?: number; temperature?: number; thinking?: { type?: string }; tools?: unknown });
         return new Response(JSON.stringify({ content: [{ type: 'text', text: '{}' }], usage: { input_tokens: 3, output_tokens: 2 } }), {
           status: 200,
         });
       },
     });
     expect(bodies[0]?.model).toBe(ACTIVITY_NOTE_MODEL);
+    expect(bodies[0]?.model).toBe('claude-haiku-5-5');
+    expect(bodies[0]?.max_tokens).toBe(ACTIVITY_NOTE_MAX_OUTPUT_TOKENS);
+    expect(bodies[0]?.max_tokens).toBe(2048);
+    expect(bodies[0]?.temperature).toBeUndefined();
+    expect(bodies[0]?.thinking).toEqual({ type: 'disabled' });
+    expect(JSON.stringify(bodies[0])).not.toContain('temperature');
     expect(bodies[0]?.tools).toBeUndefined();
-    const overrideBodies: { model?: string }[] = [];
+    const overrideBodies: { model?: string; temperature?: number; thinking?: { type?: string } }[] = [];
+    await callActivityNoteModel({
+      system: 'system',
+      user: 'user',
+      apiKey: 'test-key',
+      model: 'claude-sonnet-5-5',
+      fetchImpl: async (_input, init) => {
+        overrideBodies.push(JSON.parse(String(init?.body)) as { model?: string; temperature?: number; thinking?: { type?: string } });
+        return new Response(JSON.stringify({ content: [{ type: 'text', text: '{}' }] }), { status: 200 });
+      },
+    });
+    expect(overrideBodies[0]?.model).toBe('claude-sonnet-5-5');
+    expect(overrideBodies[0]?.temperature).toBeUndefined();
+    expect(overrideBodies[0]?.thinking).toEqual({ type: 'disabled' });
+    expect(JSON.stringify(overrideBodies[0])).not.toContain('temperature');
+    const legacyBodies: { model?: string; temperature?: number }[] = [];
     await callActivityNoteModel({
       system: 'system',
       user: 'user',
       apiKey: 'test-key',
       model: 'claude-sonnet-4-5',
       fetchImpl: async (_input, init) => {
-        overrideBodies.push(JSON.parse(String(init?.body)) as { model?: string });
+        legacyBodies.push(JSON.parse(String(init?.body)) as { model?: string; temperature?: number });
         return new Response(JSON.stringify({ content: [{ type: 'text', text: '{}' }] }), { status: 200 });
       },
     });
-    expect(overrideBodies[0]?.model).toBe('claude-sonnet-4-5');
+    expect(legacyBodies[0]?.model).toBe('claude-sonnet-4-5');
+    expect(legacyBodies[0]?.temperature).toBe(0);
     expect(resolveActivityNoteModel({})).toEqual({ ok: true, model: ACTIVITY_NOTE_MODEL });
     expect(resolveActivityNoteModel({ WANDERBITE_ACTIVITY_NOTES_MODEL: '  claude-sonnet-4-5  ' })).toEqual({
       ok: true,

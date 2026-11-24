@@ -67,8 +67,8 @@ describe('reveal AI ranking', () => {
     expect(aiRankingEnabled(undefined)).toBe(false);
     expect(aiRankingEnabled('TRUE')).toBe(false);
     expect(aiRankingEnabled('true')).toBe(true);
-    expect(REVEAL_RANK_MODEL).toBe('claude-haiku-4-5-20251001');
-    expect(REVEAL_AI_SOURCE_VERSION).toBe('e04.ai.claude-haiku-4-5-20251001');
+    expect(REVEAL_RANK_MODEL).toBe('claude-haiku-5-5');
+    expect(REVEAL_AI_SOURCE_VERSION).toBe('e04.ai.claude-haiku-5-5');
     expect(AI_RANK_TIMEOUT_MS).toBe(8_000);
   });
 
@@ -113,7 +113,7 @@ describe('reveal AI ranking', () => {
     const client = vi.fn(async () => picks('gamma', 'alpha'));
     const ranked = await rankMonthlyReveal({ brief, candidates, client });
     expect(ranked?.source).toBe('ai_ranked');
-    expect(ranked?.sourceVersion).toBe('e04.ai.claude-haiku-4-5-20251001');
+    expect(ranked?.sourceVersion).toBe('e04.ai.claude-haiku-5-5');
     expect(ranked?.picks.map((pick) => pick.restaurantId)).toEqual(['gamma', 'alpha']);
     expect(client).toHaveBeenCalledTimes(1);
   });

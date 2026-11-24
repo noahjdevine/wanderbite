@@ -133,6 +133,16 @@ async function main() {
   const haikuQuoteAmount = Number(haikuQuote);
   assert.ok(Number.isFinite(haikuQuoteAmount) && haikuQuoteAmount > 0, `haiku quote was ${haikuQuote}`);
   process.stdout.write(`PASS: current price version quotes claude-haiku-4-5-20251001 input/output at ${haikuQuoteAmount} microdollars.\n`);
+  const haiku55Quote = sql(`
+    select public.ai_quote_max_cost(
+      'claude-haiku-5-5',
+      (select price_version_id from public.ai_current_versions()),
+      'anthropic',
+      '{"input":1000,"output":300}'::jsonb
+    );
+  `);
+  assert.equal(haiku55Quote, '250', `claude-haiku-5-5 quote was ${haiku55Quote}`);
+  process.stdout.write('PASS: current price version quotes claude-haiku-5-5 input/output at 250 microdollars.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g1-acceptance.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g2-rls.sql'), 'utf8')) + '\n');
@@ -245,6 +255,8 @@ async function main() {
   process.stdout.write('PASS: catalog import plan, apply, test offers, withdraw, and supply snapshot.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-rls.sql'), 'utf8')) + '\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a1-budget.sql'), 'utf8')) + '\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/haiku-5-5-price.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: claude-haiku-5-5 rate row quotes, reserves, and a missing model fails closed.\n');
   await runG13A1Concurrency({ docker, host, containerId: id, sql });
   process.stdout.write('PASS: G13-A1 last-cent reserve and single dispatch owner.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/g13-a2-rls.sql'), 'utf8')) + '\n');

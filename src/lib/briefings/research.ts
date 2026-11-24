@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { ANTHROPIC_HAIKU_SNAPSHOT, anthropicMessageBody } from '@/lib/ai-budget/haiku-model';
 import { robotsAllowsPath } from '@/lib/recipes/menu-robots';
 import {
   microdollarsForPlacesUnit,
@@ -20,19 +21,20 @@ import {
   type ResearchBriefingField,
 } from '@/lib/briefings/types';
 
-/** Same pinned snapshot as Discover chat. Not a moving alias. */
-export const BRIEFING_MODEL = 'claude-haiku-4-5-20251001';
+/** Same pinned Haiku id as Discover chat. Not a moving alias. Not a price. */
+export const BRIEFING_MODEL = ANTHROPIC_HAIKU_SNAPSHOT;
 
 /**
- * Published ai_price_rates for that snapshot (microdollars per million tokens).
- * An operator estimate for this script. It does not write the AI ledger.
+ * Operator estimate of the published under-100,000-token list price
+ * (microdollars per million tokens). Briefing prompts are far smaller than
+ * that threshold. This does not write the AI ledger.
  */
 export const HAIKU_MICRODOLLARS_PER_MILLION: Record<string, number> = {
-  input: 1_000_000,
-  output: 5_000_000,
-  cache_write_5m: 1_250_000,
-  cache_write_1h: 2_000_000,
-  cache_read: 100_000,
+  input: 100_000,
+  output: 500_000,
+  cache_write_5m: 125_000,
+  cache_write_1h: 200_000,
+  cache_read: 10_000,
 };
 
 export const BRIEFING_PAGE_CAP = 3;
@@ -46,7 +48,8 @@ export const BRIEFING_PAGE_CHARS = 8_000;
  * not dropped. 1.5 MB in decimal bytes.
  */
 export const BRIEFING_HTML_BYTE_CAP = 1_500_000;
-export const BRIEFING_MAX_OUTPUT_TOKENS = 700;
+/** Fact JSON. A 4.5-sized cap truncated structured output on Haiku 5.5. */
+export const BRIEFING_MAX_OUTPUT_TOKENS = 2048;
 export const BRIEFING_SEARCH_MAX_OUTPUT_TOKENS = 1_024;
 export const DEFAULT_RESTAURANT_CAP = 25;
 export const DEFAULT_COST_CAP_MICRODOLLARS = 2_000_000;
@@ -72,8 +75,9 @@ export const BRIEFING_SUBPAGE_HINTS = [
 
 /**
  * Current Messages API server tool (name `web_search`).
- * Haiku 4.5 cannot use the dynamic-filtering caller, so requests set
- * `allowed_callers` to `direct` and read URLs from the tool result.
+ * Requests set `allowed_callers` to `direct` and read URLs from the tool result.
+ * The default caller on this tool version is dynamic filtering, which changes
+ * that result shape.
  */
 export const BRIEFING_WEB_SEARCH_TOOL = 'web_search_20260318';
 /** Anthropic bills each completed search. Cap uses per restaurant. */
@@ -2627,7 +2631,7 @@ type AnthropicTurn = { role: 'user' | 'assistant'; content: unknown };
 async function postAnthropicMessage(args: {
   apiKey: string;
   fetchImpl: typeof fetch;
-  body: Record<string, unknown>;
+  body: object;
 }): Promise<{ ok: true; parsed: unknown } | { ok: false; reason: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
@@ -2707,15 +2711,14 @@ export async function discoverBriefingUrls(args: {
     const posted = await postAnthropicMessage({
       apiKey: args.apiKey,
       fetchImpl,
-      body: {
+      body: anthropicMessageBody({
         model: BRIEFING_MODEL,
         max_tokens: BRIEFING_SEARCH_MAX_OUTPUT_TOKENS,
-        temperature: 0,
         system:
           'Find source pages for one restaurant. Use the web_search tool. Do not invent URLs or state facts from memory.',
         messages,
         tools: [briefingWebSearchTool(remaining)],
-      },
+      }),
     });
     if (!posted.ok) {
       if (urls.length > 0) {
@@ -3326,7 +3329,7 @@ export function formatBriefingReport(run: BriefingRun): { json: string; markdown
 }
 
 export function briefingModelMatchesDiscover(): boolean {
-  const models = readFileSync(path.join(process.cwd(), 'src/lib/ai-budget/models.ts'), 'utf8');
+  const models = readFileSync(path.join(process.cwd(), 'src/lib/ai-budget/haiku-model.ts'), 'utf8');
   return models.includes(`'${BRIEFING_MODEL}'`);
 }
 
@@ -3347,13 +3350,12 @@ export async function callBriefingModel(args: {
         'x-api-key': args.apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
+      body: JSON.stringify(anthropicMessageBody({
         model: BRIEFING_MODEL,
         max_tokens: BRIEFING_MAX_OUTPUT_TOKENS,
-        temperature: 0,
         system: args.system,
         messages: [{ role: 'user', content: args.user }],
-      }),
+      })),
       signal: controller.signal,
     });
     const raw = await response.text();

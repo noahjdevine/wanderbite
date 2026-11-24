@@ -4,6 +4,7 @@ import { classifyRouletteAccounting } from '@/lib/ai-budget/accounting';
 import {
   ANTHROPIC_HAIKU_SNAPSHOT,
   ANTHROPIC_PROVIDER,
+  anthropicMessageBody,
   ROULETTE_MAX_OUTPUT_TOKENS,
 } from '@/lib/ai-budget/models';
 import { rouletteQuoteUsageUnits } from '@/lib/ai-budget/quote';
@@ -382,13 +383,12 @@ async function defaultCallModel(args: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
+      body: JSON.stringify(anthropicMessageBody({
         model: ANTHROPIC_HAIKU_SNAPSHOT,
         max_tokens: ROULETTE_MAX_OUTPUT_TOKENS,
-        temperature: 0,
         system: args.system,
         messages: [{ role: 'user', content: args.user }],
-      }),
+      })),
       signal: controller.signal,
     });
     const providerRequestId = anthropicRequestIdFromHeaders(response.headers);
@@ -497,7 +497,9 @@ export async function runRecipeQaTurn(
 
   let reserved: { acquired: boolean; denyReason: string | null; requestId: string };
   try {
-    reserved = await deps.reserve(rouletteQuoteUsageUnits(prompts.systemPrompt, prompts.userPrompt));
+    reserved = await deps.reserve(
+      rouletteQuoteUsageUnits(prompts.systemPrompt, prompts.userPrompt, ROULETTE_MAX_OUTPUT_TOKENS),
+    );
   } catch {
     console.error('[recipe-qa] reserve failed');
     return finish(null, RECIPE_QA_UNAVAILABLE_NOTICE);

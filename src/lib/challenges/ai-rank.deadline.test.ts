@@ -226,7 +226,7 @@ describe('reveal ranking deadline', () => {
     expect(ledger.revealCalls).toEqual(['deterministic_fallback']);
     expect(result).toMatchObject({ ok: true, selectionSource: 'deterministic_fallback' });
     const quoteArgs = ledger.quote.mock.calls[0]?.[0] as { modelId: string; provider: string; usageUnits: Record<string, number> };
-    expect(quoteArgs.modelId).toBe('claude-haiku-4-5-20251001');
+    expect(quoteArgs.modelId).toBe('claude-haiku-5-5');
     expect(quoteArgs.provider).toBe('anthropic');
     expect(quoteArgs.usageUnits.input).toBeGreaterThan(0);
     expect(quoteArgs.usageUnits.output).toBe(300);

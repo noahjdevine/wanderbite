@@ -37,6 +37,7 @@ import { classifyRouletteAccounting } from '@/lib/ai-budget/accounting';
 import {
   ANTHROPIC_HAIKU_SNAPSHOT,
   ANTHROPIC_PROVIDER,
+  anthropicMessageBody,
   DISCOVER_LINE_MAX_OUTPUT_TOKENS,
   ROULETTE_MAX_OUTPUT_TOKENS,
 } from '@/lib/ai-budget/models';
@@ -888,13 +889,12 @@ ${userPrefs || '(No specific preferences — pick a varied standout for a night 
           'x-api-key': apiKey!,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({
+        body: JSON.stringify(anthropicMessageBody({
           model: ANTHROPIC_HAIKU_SNAPSHOT,
           max_tokens: maxOutputTokens,
-          temperature: 1,
           system: systemPrompt,
           messages: [{ role: 'user', content: userPrompt }],
-        }),
+        })),
         signal: anthropicController.signal,
       });
 

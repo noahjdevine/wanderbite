@@ -4,6 +4,7 @@ import { classifyRouletteAccounting } from '@/lib/ai-budget/accounting';
 import {
   ANTHROPIC_HAIKU_SNAPSHOT,
   ANTHROPIC_PROVIDER,
+  anthropicMessageBody,
   ROULETTE_MAX_OUTPUT_TOKENS,
 } from '@/lib/ai-budget/models';
 import { rouletteQuoteUsageUnits } from '@/lib/ai-budget/quote';
@@ -293,7 +294,11 @@ async function defaultRankClient(
   };
   try {
     const prompts = rankPrompts(request);
-    const usageUnits = rouletteQuoteUsageUnits(prompts.systemPrompt, prompts.userPrompt);
+    const usageUnits = rouletteQuoteUsageUnits(
+      prompts.systemPrompt,
+      prompts.userPrompt,
+      ROULETTE_MAX_OUTPUT_TOKENS,
+    );
     const versionsResult = await withinDeadline(rpcAiCurrentVersions(), deadline);
     if (versionsResult === LEDGER_WAIT || deadlinePassed(deadline)) return null;
     const versions = versionsResult;
@@ -359,13 +364,12 @@ async function defaultRankClient(
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
         },
-        body: JSON.stringify({
+        body: JSON.stringify(anthropicMessageBody({
           model: REVEAL_RANK_MODEL,
           max_tokens: ROULETTE_MAX_OUTPUT_TOKENS,
-          temperature: 0,
           system: prompts.systemPrompt,
           messages: [{ role: 'user', content: prompts.userPrompt }],
-        }),
+        })),
         signal: controller.signal,
       });
       body = await response.text();

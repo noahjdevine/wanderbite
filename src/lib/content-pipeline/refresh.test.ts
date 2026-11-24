@@ -653,7 +653,7 @@ describe('content pipeline', () => {
     expect(MAINTENANCE_FEATURE_CLASS).toBe('maintenance');
     expect(MAINTENANCE_ACCOUNT_TIER).toBe('ops');
     expect(maintenanceIdempotencyKey(SOURCE_ID, contentHash(BASELINE)).length).toBeGreaterThan(8);
-    expect(MENU_RECIPE_MODEL).toBe('claude-haiku-4-5-20251001');
+    expect(MENU_RECIPE_MODEL).toBe('claude-haiku-5-5');
   });
 
   it('seeds registry URLs from the script fixture and not from SQL', () => {

@@ -18,7 +18,7 @@ import { runBriefingRefresh } from '@/lib/content-pipeline/briefing-refresh';
 import { activeFetchedSource, isActivitySourceKind, isRestaurantPageKind } from '@/lib/content-pipeline/registry';
 import { extractMenuDishes } from '@/lib/recipes/menu-extract';
 import { emptyRequestPacer, fetchAllowlistedMenu, type RequestPacer } from '@/lib/recipes/menu-fetch';
-import { buildMenuPrompt, estimateTokens, parseMenuModelText } from '@/lib/recipes/menu-generate';
+import { buildMenuPrompt, estimateTokens, MENU_MAX_OUTPUT_TOKENS, parseMenuModelText } from '@/lib/recipes/menu-generate';
 import { hostedSupabaseUrl, containedRepoPath } from '@/lib/recipes/menu-run';
 import type { MenuModelCaller } from '@/lib/recipes/menu-run';
 import { MENU_MAX_RESTAURANTS } from '@/lib/recipes/menu-run';
@@ -352,7 +352,7 @@ export async function refreshContentSource(args: {
       dishes: plan.candidates.map((candidate) => candidate.dish),
     });
     const estimatedInput = estimateTokens(prompt.system) + estimateTokens(prompt.user);
-    const estimatedOutput = plan.candidates.length * 400;
+    const estimatedOutput = MENU_MAX_OUTPUT_TOKENS;
     if (!args.callModel || used >= CONTENT_MAX_MODEL_CALLS) {
       validated = false;
     } else {

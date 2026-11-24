@@ -1,8 +1,9 @@
+import { ANTHROPIC_HAIKU_SNAPSHOT, anthropicMessageBody } from '@/lib/ai-budget/haiku-model';
 import type { ExtractedDish } from '@/lib/recipes/menu-extract';
 import type { MenuIngredient, MenuModelDish, MenuStep, MenuSubstitution } from '@/lib/recipes/menu-row';
 
-/** Same pinned snapshot the Discover route sends to Anthropic. */
-export const MENU_RECIPE_MODEL = 'claude-haiku-4-5-20251001';
+/** Same pinned Haiku id the Discover route sends to Anthropic. */
+export const MENU_RECIPE_MODEL = ANTHROPIC_HAIKU_SNAPSHOT;
 
 export const MENU_DATA_START = 'BEGIN_UNTRUSTED_MENU_DATA';
 export const MENU_DATA_END = 'END_UNTRUSTED_MENU_DATA';
@@ -169,13 +170,12 @@ export async function callMenuModel(args: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify({
+      body: JSON.stringify(anthropicMessageBody({
         model: MENU_RECIPE_MODEL,
         max_tokens: MENU_MAX_OUTPUT_TOKENS,
-        temperature: 0,
         system: args.system,
         messages: [{ role: 'user', content: args.user }],
-      }),
+      })),
       signal: controller.signal,
     });
     const raw = await response.text();
