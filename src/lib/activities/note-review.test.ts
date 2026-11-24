@@ -148,6 +148,36 @@ describe('activity note review', () => {
     expect(notes[0]?.body).toBe(far);
   });
 
+  it('blocks a mixed pair when the walk sentence names the far place', async () => {
+    const squareId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const arenaId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const notes = [draft('note-1')];
+    notes[0]!.activityIds = [squareId, arenaId];
+    const store = memory(notes);
+    store.loadActivities = async () => [
+      activity({ id: squareId, name: 'Chestnut Square Village', walkable: true }),
+      activity({ id: arenaId, name: 'The Comedy Arena', walkable: false }),
+    ];
+    const farSentence =
+      'It is a short walk to The Comedy Arena after the plates are cleared. Chestnut Square Village is the other stop if you want to wander.';
+    const closeSentence =
+      'It is a short walk to Chestnut Square Village after the plates are cleared. The Comedy Arena is the other stop if you want to sit.';
+    notes[0]!.body = farSentence;
+    const approved = await approveRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', now: NOW });
+    expect(approved).toEqual({ ok: false, error: ACTIVITY_NOTE_WALK_DISTANCE_REASON });
+    expect(notes[0]?.status).toBe('draft');
+    const edited = await editRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', body: farSentence });
+    expect(edited).toEqual({ ok: false, error: ACTIVITY_NOTE_WALK_DISTANCE_REASON });
+    expect(notes[0]?.body).toBe(farSentence);
+    const saved = await editRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', body: closeSentence });
+    expect(saved).toMatchObject({ ok: true, published: false });
+    expect(notes[0]?.body).toBe(closeSentence);
+    expect(notes[0]?.status).toBe('draft');
+    const published = await approveRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', now: NOW });
+    expect(published).toMatchObject({ ok: true, published: true });
+    expect(notes[0]?.status).toBe('approved');
+  });
+
   it('does not approve a draft whose cited activity is paused', async () => {
     const notes = [draft('note-1')];
     const store = memory(notes);

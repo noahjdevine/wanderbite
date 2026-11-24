@@ -35,8 +35,9 @@ dessert, and dessert is capped at 2. Paused, stale, sample, and kids_oriented
 rows are skipped. The model sees a short place name, rounded miles, and whether
 the stop is walkable. A Wanderbite restaurant is not used as the outing. The
 model cannot invent a place. A note that opens or closes with filler, or that
-calls a place a short walk when it is not walkable, is retried once, then
-reported as blocked and not saved. Nearby is allowed for any listed place.
+uses a walk-distance phrase for a place that is not walkable, is retried once,
+then reported as blocked and not saved. Nearby is allowed for any listed place.
+The word walk by itself is allowed.
 
 WANDERBITE_ACTIVITY_NOTES_MODEL overrides the Haiku snapshot for this script only.
 The dry-run printout and JSON record the model id that was used.

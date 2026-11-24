@@ -4,7 +4,7 @@ import { MENU_RECIPE_MODEL } from '@/lib/recipes/menu-generate';
 /** Same pinned Haiku snapshot the menu drafts send to Anthropic. */
 export const ACTIVITY_NOTE_MODEL = MENU_RECIPE_MODEL;
 
-export const ACTIVITY_NOTE_PROMPT_VERSION = 'e06.activity_note.v3';
+export const ACTIVITY_NOTE_PROMPT_VERSION = 'e06.activity_note.v4';
 
 export const ACTIVITY_NOTE_MIN_CHARS = 40;
 export const ACTIVITY_NOTE_MAX_CHARS = 600;
@@ -24,6 +24,9 @@ export const ACTIVITY_NOTE_WALK_DISTANCE_REASON = 'The note calls a place walkab
 /**
  * Distance claims. A walk that is the outing itself, such as a downtown stroll,
  * is not in this list. The word "walk" alone is not a distance claim.
+ * "walking distance" also matches in, within, and easy walking distance.
+ * "minute walk" also matches a number or a number-word before it, including a
+ * hyphen or dash, such as a 5-minute walk or a five-minute walk.
  * Matching folds case, curly quotes, and dashes.
  */
 export const ACTIVITY_NOTE_WALK_WORDS = [
@@ -32,11 +35,19 @@ export const ACTIVITY_NOTE_WALK_WORDS = [
   'walk over',
   'walk down',
   'stroll over',
+  'short stroll',
+  'quick stroll',
   'just down the street',
   'around the corner',
   'steps away',
+  'a few steps',
+  'steps from',
+  'a block away',
+  'a block or two',
   'walkable',
+  'walking distance',
   'within walking distance',
+  'minute walk',
 ] as const;
 
 const ACTIVITY_NOTE_WALK_WORD_PATTERNS = ACTIVITY_NOTE_WALK_WORDS.map((phrase) => {
@@ -119,16 +130,33 @@ const SPACED_BRANCH_SUFFIX = new RegExp(
 /**
  * Periods that are not sentence boundaries. The SQL function
  * activity_note_sentence_count applies these replacements in the same order.
- * Mrs stays before Mr so "Mrs." is one abbreviation.
+ * Mrs stays before Mr so "Mrs." is one abbreviation. The placeholder is
+ * removed for the count and restored when a sentence is matched on its own.
  */
-function maskNonSentencePeriods(body: string): string {
+const NON_SENTENCE_PERIOD = '\uE000';
+
+function protectNonSentencePeriods(body: string): string {
   return body
-    .replace(/(^|[^A-Za-z])a\.m\./gi, '$1am')
-    .replace(/(^|[^A-Za-z])p\.m\./gi, '$1pm')
-    .replace(/(^|[^A-Za-z])e\.g\./gi, '$1eg')
-    .replace(/(^|[^A-Za-z])i\.e\./gi, '$1ie')
-    .replace(/(^|[^A-Za-z])(Mrs|Mr|Ms|Blvd|Ave|etc|Jr|Dr|St|Mt|Rd|Ln|Sr|vs)\./gi, '$1$2')
-    .replace(/([0-9])\.([0-9])/g, '$1$2');
+    .replace(/(^|[^A-Za-z])a\.m\./gi, `$1a${NON_SENTENCE_PERIOD}m${NON_SENTENCE_PERIOD}`)
+    .replace(/(^|[^A-Za-z])p\.m\./gi, `$1p${NON_SENTENCE_PERIOD}m${NON_SENTENCE_PERIOD}`)
+    .replace(/(^|[^A-Za-z])e\.g\./gi, `$1e${NON_SENTENCE_PERIOD}g${NON_SENTENCE_PERIOD}`)
+    .replace(/(^|[^A-Za-z])i\.e\./gi, `$1i${NON_SENTENCE_PERIOD}e${NON_SENTENCE_PERIOD}`)
+    .replace(/(^|[^A-Za-z])(Mrs|Mr|Ms|Blvd|Ave|etc|Jr|Dr|St|Mt|Rd|Ln|Sr|vs)\./gi, `$1$2${NON_SENTENCE_PERIOD}`)
+    .replace(/([0-9])\.([0-9])/g, `$1${NON_SENTENCE_PERIOD}$2`);
+}
+
+function maskNonSentencePeriods(body: string): string {
+  return protectNonSentencePeriods(body).split(NON_SENTENCE_PERIOD).join('');
+}
+
+/** Same boundaries as activityNoteSentenceCount, with abbreviations and decimals kept. */
+function activityNoteSentences(body: string): string[] {
+  const trimmed = body.trim();
+  if (!trimmed) return [];
+  return protectNonSentencePeriods(trimmed)
+    .split(/[.!?]+/)
+    .map((sentence) => sentence.split(NON_SENTENCE_PERIOD).join('.').trim())
+    .filter(Boolean);
 }
 
 export function activityNoteSentenceCount(body: string): number {
@@ -260,6 +288,18 @@ function activityNoteUsesWalkWord(body: string): boolean {
   return ACTIVITY_NOTE_WALK_WORD_PATTERNS.some((pattern) => pattern.test(folded));
 }
 
+/** Shared by the draft prompt and the one retry, so both describe the same check. */
+export const ACTIVITY_NOTE_WALK_DISTANCE_RULE = [
+  'Nearby is fine for any listed place.',
+  'The word walk by itself is fine.',
+  'In a sentence that names a listed place, a short walk, a quick walk, a walk over, a walk down, a stroll over, a short stroll, a quick stroll, just down the street, around the corner, steps away, a few steps, steps from, a block away, a block or two, a minute walk, walkable, walking distance, or within walking distance is allowed only when walkable is true for that place,',
+  `which means about ${ACTIVITY_NOTE_WALKABLE_MILES} miles or less.`,
+  'If that sentence names no listed place, those words are allowed only when some listed place is walkable.',
+  'A minute walk includes a number or a number-word, such as a 5-minute walk or a five-minute walk.',
+  'Walking distance includes in, within, and easy.',
+  'Do not use those words for a place whose walkable is false.',
+].join(' ');
+
 export function buildActivityNotePrompt(args: {
   restaurantName: string;
   cuisineTags: readonly string[];
@@ -281,7 +321,7 @@ export function buildActivityNotePrompt(args: {
     'Do not use superlatives about the restaurant beyond light playful framing.',
     'Use the restaurant name and cuisine tags to judge the meal. After a heavy meal, suggest a walk, a show, a landmark, live music, a museum, games, a class, or sports, not more dessert. Dessert fits better after a light meal or a savory but small meal.',
     'Do not say someone will walk off, work off, or burn off the meal and then send them to dessert or another place to eat.',
-    `Each activity includes miles, rounded to one decimal, and walkable. Nearby is fine for any listed place. Say a place is a short walk, a quick walk, a walk over, a walk down, a stroll over, just down the street, around the corner, steps away, walkable, or within walking distance only when walkable is true, which means about ${ACTIVITY_NOTE_WALKABLE_MILES} miles or less. Do not use those words when walkable is false.`,
+    `Each activity includes miles, rounded to one decimal, and walkable. ${ACTIVITY_NOTE_WALK_DISTANCE_RULE}`,
     'A light mention of alcohol, such as a boozy ice cream shop, is allowed.',
     'Do not encourage heavy drinking, and do not encourage drinking and driving.',
     'This example shows how the picks fit a heavy barbecue meal: a walk or a tour of a historic landmark, or letting the meal settle at a comedy show, not more food. It is one sentence, so your note must still be 2 to 4 sentences. Do not copy its opening.',
@@ -317,6 +357,30 @@ function mentionsPlace(body: string, name: string): boolean {
   if (trimmed.length < 8) return false;
   const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   return new RegExp(`(?:^|[^\\p{L}\\p{N}])${escaped}(?:$|[^\\p{L}\\p{N}])`, 'iu').test(body);
+}
+
+function citedPlaceInSentence(sentence: string, place: ActivityNoteCitedPlace): boolean {
+  return mentionsPlace(sentence, place.name) || mentionsPlace(sentence, place.displayName);
+}
+
+/**
+ * A walk-distance phrase is judged in its own sentence. That sentence must
+ * name a cited place, by official name or short display name, whose walkable
+ * flag is true. A sentence that names no cited place passes only when some
+ * cited place is walkable.
+ */
+function activityNoteWalkDistanceError(
+  body: string,
+  cited: readonly ActivityNoteCitedPlace[],
+): string | null {
+  const someWalkable = cited.some((place) => place.walkable);
+  for (const sentence of activityNoteSentences(body)) {
+    if (!activityNoteUsesWalkWord(sentence)) continue;
+    const named = cited.filter((place) => citedPlaceInSentence(sentence, place));
+    const allowed = named.length === 0 ? someWalkable : named.some((place) => place.walkable);
+    if (!allowed) return ACTIVITY_NOTE_WALK_DISTANCE_REASON;
+  }
+  return null;
 }
 
 export function activityNoteBodyError(
@@ -383,13 +447,8 @@ export function activityNoteBodyError(
   for (const name of args.otherRestaurantNames ?? []) {
     if (mentionsPlace(text, name)) return 'The note cannot send someone to another Wanderbite restaurant.';
   }
-  // Mixed cited places are a known limit: one walkable place allows a walk
-  // word. This does not try to parse which sentence refers to which place.
-  // cited name and displayName identify those places; the decision uses walkable only.
-  const cited = args.cited ?? [];
-  if (!cited.some((place) => place.walkable) && activityNoteUsesWalkWord(text)) {
-    return ACTIVITY_NOTE_WALK_DISTANCE_REASON;
-  }
+  const walkDistance = activityNoteWalkDistanceError(text, args.cited ?? []);
+  if (walkDistance) return walkDistance;
   return null;
 }
 

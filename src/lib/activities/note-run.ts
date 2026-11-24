@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   ACTIVITY_NOTE_MODEL,
   ACTIVITY_NOTE_PROMPT_VERSION,
+  ACTIVITY_NOTE_WALK_DISTANCE_RULE,
   activityNoteSourceHash,
   buildActivityNotePrompt,
   isActivityNoteRetryReason,
@@ -174,7 +175,7 @@ export async function runActivityNoteDrafts(args: {
     if (!parsed.ok && isActivityNoteRetryReason(parsed.reason)) {
       const retry = await args.callModel({
         system: prompt.system,
-        user: `${prompt.user}\n\nThe previous draft was blocked: ${parsed.reason} Write a new note that fixes that. Do not use a banned opening or closer. Call a place a short walk, walkable, or within walking distance only when walkable is true. Nearby is fine for any listed place.\n`,
+        user: `${prompt.user}\n\nThe previous draft was blocked: ${parsed.reason} Write a new note that fixes that. Do not use a banned opening or closer. ${ACTIVITY_NOTE_WALK_DISTANCE_RULE}\n`,
       });
       parsed = parseActivityNoteDraft(retry.text, { candidates, otherRestaurantNames });
       if (!parsed.ok) parsed = { ok: false, reason: `blocked: ${parsed.reason}` };
