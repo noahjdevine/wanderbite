@@ -33,6 +33,8 @@ const harness = vi.hoisted(() => ({
   pages: {} as Record<string, string>,
   missingActivities: false,
   activitiesError: { code: '42P01', message: 'relation "public.activities" does not exist' },
+  notePauses: [] as string[],
+  pausedNoteCount: 0,
 }));
 
 function matches(row: Row, filters: Filter[]): boolean {
@@ -60,6 +62,8 @@ function resetDb() {
   harness.pages = {};
   harness.missingActivities = false;
   harness.activitiesError = { code: '42P01', message: 'relation "public.activities" does not exist' };
+  harness.notePauses = [];
+  harness.pausedNoteCount = 0;
 }
 
 function seedSource(hash: string | null) {
@@ -232,6 +236,10 @@ vi.mock('@/lib/supabase-admin', () => ({
       if (fn === 'ai_settle' || fn === 'ai_mark_assumed_spent') {
         return Promise.resolve({ data: true, error: null });
       }
+      if (fn === 'pause_stale_activity_notes') {
+        harness.notePauses.push(String(args.p_now));
+        return Promise.resolve({ data: harness.pausedNoteCount, error: null });
+      }
       if (fn === 'expire_dated_activities') {
         const today = String(args.p_today);
         let count = 0;
@@ -352,6 +360,7 @@ describe('content refresh cron', () => {
     expect(harness.items).toEqual([{ key: SOURCE_ID, status: 'succeeded', error: null }]);
     expect(harness.tables.recipes?.[0]?.description).toBe('A home pot of beans warmed with paprika and garlic.');
     expect(touchedActivities()).toBe(false);
+    expect(harness.notePauses).toEqual([]);
     expect(pageUrls()).toEqual([MENU_URL]);
   });
 
@@ -484,6 +493,7 @@ describe('content refresh cron', () => {
       error: null,
     });
     expect(touchedActivities()).toBe(false);
+    expect(harness.notePauses).toEqual([]);
     expect(queriedActivitySources()).toBe(false);
     expect(pageUrls()).toEqual([MENU_URL]);
     expect(harness.tables.activities).toEqual(before);
@@ -505,6 +515,7 @@ describe('content refresh cron', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ status: 'disabled', skipped: true });
     expect(touchedActivities()).toBe(false);
+    expect(harness.notePauses).toEqual([]);
     expect(harness.tables.source_fetch_attempts).toHaveLength(0);
   });
 
@@ -519,12 +530,34 @@ describe('content refresh cron', () => {
     expect(response.status).toBe(200);
     const body = await response.json();
     expect(body.result.expiredActivities).toBe(1);
+    expect(body.result.pausedActivityNotes).toBe(0);
+    expect(harness.notePauses).toEqual([at.toISOString()]);
     expect(activityByName('Yesterday').status).toBe('expired');
     expect(activityByName('Today').status).toBe('active');
     expect(activityByName('Undated').status).toBe('active');
     expect(activityByName('Paused').status).toBe('paused');
     expect(harness.tables.activities).toHaveLength(4);
     expect(forbiddenWrites()).toEqual([]);
+  });
+
+  it('expires by the Chicago date at 23:30 Chicago, which is already the next UTC day', async () => {
+    vi.stubEnv('E05_CONTENT_REFRESH_CRON_ENABLED', 'true');
+    vi.stubEnv('E06_ACTIVITY_MAINTENANCE_CRON_ENABLED', 'true');
+    const day = chicagoCalendarDate(new Date());
+    const at = chicagoHalfPastEleven(day);
+    expect(chicagoCalendarDate(at)).toBe(day);
+    expect(at.toISOString().slice(0, 10)).not.toBe(day);
+    seedActivities(at);
+    harness.pausedNoteCount = 1;
+    const response = await runContentRefresh(authorize(), at);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result.expiredActivities).toBe(1);
+    expect(body.result.pausedActivityNotes).toBe(1);
+    expect(harness.notePauses).toEqual([at.toISOString()]);
+    expect(activityByName('Yesterday').status).toBe('expired');
+    expect(activityByName('Today').status).toBe('active');
+    expect(activityByName('Today').valid_until).toBe(day);
   });
 
   it('fetches an event verified 25 hours ago and a venue verified 8 days ago, not a venue verified 3 days ago', async () => {
@@ -670,6 +703,24 @@ const VENUE_OLD_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const EVENT_URL = 'https://example.com/sample-dated-fair';
 const VENUE_RECENT_URL = 'https://example.com/sample-recent-venue';
 const VENUE_OLD_URL = 'https://example.com/sample-old-venue';
+
+function chicagoHalfPastEleven(day: string): Date {
+  const next = shiftCalendarDate(day, 1);
+  for (const utcHour of [4, 5]) {
+    const utc = new Date(Date.parse(`${next}T${String(utcHour).padStart(2, '0')}:30:00.000Z`));
+    if (chicagoCalendarDate(utc) !== day) continue;
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(utc);
+    const hour = parts.find((part) => part.type === 'hour')?.value;
+    const minute = parts.find((part) => part.type === 'minute')?.value;
+    if (hour === '23' && minute === '30') return utc;
+  }
+  throw new Error(`no 23:30 America/Chicago instant for ${day}`);
+}
 
 function chicagoHalfPastMidnight(day: string): Date {
   for (const offsetHours of [6, 5]) {

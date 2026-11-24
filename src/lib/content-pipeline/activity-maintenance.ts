@@ -17,12 +17,14 @@ export type ActivityMaintenancePort = {
   probeSchema(): Promise<{ ok: true } | { ok: false; error: SchemaError }>;
   listExpirable(): Promise<ExpirableActivity[]>;
   expireDated(today: string): Promise<number>;
+  pauseStaleNotes(now: Date): Promise<number>;
   listActiveActivitySources(): Promise<ContentSourceRecord[]>;
 };
 
 export type ActivityMaintenanceResult = {
   sources: ContentSourceRecord[];
   expired: number;
+  paused: number;
   skip: string | null;
 };
 
@@ -35,7 +37,7 @@ export function activityMaintenanceSchemaMissing(error: SchemaError | null | und
 }
 
 function emptyMaintenance(): ActivityMaintenanceResult {
-  return { sources: [], expired: 0, skip: null };
+  return { sources: [], expired: 0, paused: 0, skip: null };
 }
 
 export function logActivityMaintenanceSkip(reason: string = ACTIVITY_MAINTENANCE_SKIP_REASON): void {
@@ -44,7 +46,7 @@ export function logActivityMaintenanceSkip(reason: string = ACTIVITY_MAINTENANCE
 
 function skipped(): ActivityMaintenanceResult {
   logActivityMaintenanceSkip();
-  return { sources: [], expired: 0, skip: ACTIVITY_MAINTENANCE_SKIP_REASON };
+  return { sources: [], expired: 0, paused: 0, skip: ACTIVITY_MAINTENANCE_SKIP_REASON };
 }
 
 function schemaErrorOf(error: unknown): SchemaError | null {
@@ -87,11 +89,29 @@ export async function prepareActivityMaintenance(args: {
       if (!today) throw new Error('Chicago date was not available');
       expired = await args.port.expireDated(today);
     }
+    const paused = await pauseStaleNotes(args.port, args.now);
     const sources = selectDueActivitySources(await args.port.listActiveActivitySources(), args.now);
-    return { sources, expired, skip: null };
+    return { sources, expired, paused, skip: null };
   } catch (error) {
     const schema = schemaErrorOf(error);
     if (schema && activityMaintenanceSchemaMissing(schema)) return skipped();
+    throw error;
+  }
+}
+
+/**
+ * Runs after dated expiry. A missing notes function logs and returns 0 so
+ * menu and activity refresh still run before that migration is applied.
+ */
+async function pauseStaleNotes(port: ActivityMaintenancePort, now: Date): Promise<number> {
+  try {
+    return await port.pauseStaleNotes(now);
+  } catch (error) {
+    const schema = schemaErrorOf(error);
+    if (schema && activityMaintenanceSchemaMissing(schema)) {
+      logActivityMaintenanceSkip('activity note maintenance skipped: notes schema unavailable');
+      return 0;
+    }
     throw error;
   }
 }
@@ -136,6 +156,13 @@ export function activityMaintenancePort(supabase: Client): ActivityMaintenancePo
     },
     async expireDated(today) {
       const { data, error } = await supabase.rpc('expire_dated_activities', { p_today: today });
+      if (error) throw coded(error);
+      return data ?? 0;
+    },
+    async pauseStaleNotes(now) {
+      const { data, error } = await supabase.rpc('pause_stale_activity_notes', {
+        p_now: now.toISOString(),
+      });
       if (error) throw coded(error);
       return data ?? 0;
     },

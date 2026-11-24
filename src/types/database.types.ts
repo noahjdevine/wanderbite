@@ -3590,6 +3590,16 @@ export type Database = {
         }
         Returns: string
       }
+      // Hand-edited. npm run types:db was not run. Not on hosted yet.
+      approve_restaurant_activity_note: {
+        Args: {
+          p_admin_id: string
+          p_expected_version: number
+          p_note_id: string
+          p_now: string
+        }
+        Returns: string
+      }
       assign_carried_credit: {
         Args: {
           p_credit_id: string
@@ -4095,6 +4105,11 @@ export type Database = {
       open_visit_problem_makeup_item: {
         Args: { p_opportunity_id: string; p_user_id: string }
         Returns: Json
+      }
+      // Hand-edited. npm run types:db was not run. Not on hosted yet.
+      pause_stale_activity_notes: {
+        Args: { p_now?: string }
+        Returns: number
       }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }

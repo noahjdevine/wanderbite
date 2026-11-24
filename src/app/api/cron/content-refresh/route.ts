@@ -102,7 +102,9 @@ export async function runContentRefresh(request: Request, now: Date) {
         sources: summary.results.length,
         skips: summary.skips.length + (maintenance.skip ? 1 : 0),
         modelCalls: summary.results.reduce((total, result) => total + result.modelCalls, 0),
-        ...(activityMaintenance ? { expiredActivities: maintenance.expired } : {}),
+        ...(activityMaintenance
+          ? { expiredActivities: maintenance.expired, pausedActivityNotes: maintenance.paused }
+          : {}),
       });
     },
   });

@@ -210,6 +210,10 @@ describe('activity maintenance preparation', () => {
         calls.push(`expire:${today}`);
         return 1;
       },
+      async pauseStaleNotes() {
+        calls.push('pause');
+        return 2;
+      },
       async listActiveActivitySources() {
         calls.push('sources');
         return [
@@ -225,14 +229,15 @@ describe('activity maintenance preparation', () => {
     const calls: string[] = [];
     const result = await prepareActivityMaintenance({ enabled: false, now, port: port(calls) });
     expect(calls).toEqual([]);
-    expect(result).toEqual({ sources: [], expired: 0, skip: null });
+    expect(result).toEqual({ sources: [], expired: 0, paused: 0, skip: null });
   });
 
   it('expires yesterday at 00:30 Chicago and returns only due activity sources', async () => {
     const calls: string[] = [];
     const result = await prepareActivityMaintenance({ enabled: true, now, port: port(calls) });
-    expect(calls).toEqual(['probe', 'list', 'expire:2026-11-05', 'sources']);
+    expect(calls).toEqual(['probe', 'list', 'expire:2026-11-05', 'pause', 'sources']);
     expect(result.expired).toBe(1);
+    expect(result.paused).toBe(2);
     expect(result.skip).toBeNull();
     expect(result.sources.map((row) => row.id)).toEqual(['venue-old', 'event']);
   });
@@ -263,6 +268,10 @@ describe('activity maintenance preparation', () => {
               calls.push('expire');
               return 0;
             },
+            async pauseStaleNotes() {
+              calls.push('pause');
+              return 0;
+            },
             async listActiveActivitySources() {
               calls.push('sources');
               return [];
@@ -274,6 +283,41 @@ describe('activity maintenance preparation', () => {
         expect(result.skip).toBe(ACTIVITY_MAINTENANCE_SKIP_REASON);
         expect(warnings).toEqual([[`[content-refresh] ${ACTIVITY_MAINTENANCE_SKIP_REASON}`]]);
       }
+    } finally {
+      console.warn = original;
+    }
+  });
+
+  it('still returns due sources when the note pause function is missing', async () => {
+    const calls: string[] = [];
+    const warnings: unknown[][] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+    try {
+      const base = port(calls);
+      const result = await prepareActivityMaintenance({
+        enabled: true,
+        now,
+        port: {
+          ...base,
+          async pauseStaleNotes() {
+            calls.push('pause');
+            throw Object.assign(new Error('Could not find the function public.pause_stale_activity_notes'), {
+              code: 'PGRST202',
+            });
+          },
+        },
+      });
+      expect(calls).toEqual(['probe', 'list', 'expire:2026-11-05', 'pause', 'sources']);
+      expect(result.expired).toBe(1);
+      expect(result.paused).toBe(0);
+      expect(result.skip).toBeNull();
+      expect(result.sources.map((row) => row.id)).toEqual(['venue-old', 'event']);
+      expect(warnings).toEqual([
+        ['[content-refresh] activity note maintenance skipped: notes schema unavailable'],
+      ]);
     } finally {
       console.warn = original;
     }

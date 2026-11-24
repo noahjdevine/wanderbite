@@ -1,0 +1,57 @@
+[
+  {
+    "name": "acceptance abbreviations and decimal",
+    "body": "After dinner, wander over to St. Peter's Pub. It's 3.5 miles away and Dr. Pepper fans will love it.",
+    "count": 2
+  },
+  {
+    "name": "one real sentence",
+    "body": "After dinner you can walk over to the square and let the night slow down.",
+    "count": 1
+  },
+  {
+    "name": "two real sentences",
+    "body": "After dinner you can walk over to the square and let the night slow down. Then catch a short set while the meal settles.",
+    "count": 2
+  },
+  {
+    "name": "three real sentences",
+    "body": "One stop is nearby tonight. Two stops can wait until the meal settles. Three stops are enough for a slow walk.",
+    "count": 3
+  },
+  {
+    "name": "four real sentences",
+    "body": "One stop is nearby tonight. Two stops can wait. Three stops are too many for one walk. Four stops will not fit.",
+    "count": 4
+  },
+  {
+    "name": "five real sentences",
+    "body": "One stop is nearby tonight. Two stops can wait. Three stops are too many. Four stops will not fit. Five stops is the limit here.",
+    "count": 5
+  },
+  {
+    "name": "street titles and decimal in two sentences",
+    "body": "Meet Mr. and Mrs. Smith on St. Paul Ave. near Rd. and Ln. with Ms. Park, Mt. Rose Blvd., Jr. and Sr. vs. the crowd tonight. The walk is 3.5 miles and ends at Dr. Pepper.",
+    "count": 2
+  },
+  {
+    "name": "clock abbreviations and latin abbreviations",
+    "body": "Arrive at 9 a.m. or leave at 8 p.m., e.g. the square, i.e. the green, etc. and stay for the show. It is an easy walk after dinner.",
+    "count": 2
+  },
+  {
+    "name": "question and exclamation still count",
+    "body": "Want a walk after dinner? Yes, take the square!",
+    "count": 2
+  },
+  {
+    "name": "empty",
+    "body": "",
+    "count": 0
+  },
+  {
+    "name": "no terminal punctuation",
+    "body": "After dinner wander over to the square",
+    "count": 0
+  }
+]
