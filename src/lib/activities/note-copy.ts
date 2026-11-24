@@ -4,7 +4,7 @@ import { MENU_RECIPE_MODEL } from '@/lib/recipes/menu-generate';
 /** Same pinned Haiku snapshot the menu drafts send to Anthropic. */
 export const ACTIVITY_NOTE_MODEL = MENU_RECIPE_MODEL;
 
-export const ACTIVITY_NOTE_PROMPT_VERSION = 'e06.activity_note.v4';
+export const ACTIVITY_NOTE_PROMPT_VERSION = 'e06.activity_note.v5';
 
 export const ACTIVITY_NOTE_MIN_CHARS = 40;
 export const ACTIVITY_NOTE_MAX_CHARS = 600;
@@ -20,6 +20,84 @@ export const ACTIVITY_DATA_END = 'END_UNTRUSTED_ACTIVITY_DATA';
 export const ACTIVITY_NOTE_FILLER_OPENER_REASON = 'The note opens with filler.';
 export const ACTIVITY_NOTE_FILLER_CLOSER_REASON = 'The note closes with filler.';
 export const ACTIVITY_NOTE_WALK_DISTANCE_REASON = 'The note calls a place walkable when it is not.';
+export const ACTIVITY_NOTE_ESCAPE_ROOM_REASON = 'the note can cite only one escape room';
+export const ACTIVITY_NOTE_WANDER_DEDUP_REASON = 'the note can cite only one downtown wander';
+
+/**
+ * Neighborhood value stored on restaurants in the launch market.
+ * Compared with collapsed case and whitespace. There is no area column.
+ */
+export const HISTORIC_DOWNTOWN_NEIGHBORHOOD = 'Historic Downtown McKinney';
+
+/** Shared by Tiny Doors and the Downtown Historic Walking Tour so a card lists only one. */
+export const DOWNTOWN_WANDER_DEDUP_GROUP = 'downtown_wander';
+
+/**
+ * Escape rooms are detected from the activity name.
+ * activities has no tags column and no subcategory column, so the name is the signal.
+ * A match is the words "escape room" or "escape rooms", ignoring case.
+ * Category is not used, because games also covers other venues.
+ */
+const ESCAPE_ROOM_NAME = /\bescape rooms?\b/i;
+
+/**
+ * Area activities whose single map pin is not a walk from a downtown restaurant.
+ * Matched by name. There is no area column on activities.
+ * Tiny Doors: the name contains "tiny door" or "tiny doors".
+ * Downtown Historic Walking Tour: the name contains "historic walking tour".
+ */
+const TINY_DOORS_NAME = /\btiny doors?\b/i;
+const HISTORIC_TOUR_NAME = /\bhistoric walking tour\b/i;
+
+export const TINY_DOORS_HUNT =
+  '75-plus tiny artist doors scattered through the downtown district that you hunt for';
+
+export type DowntownWanderKind = 'tiny_doors' | 'historic_tour';
+export type NoteActivityArea = 'downtown_wander' | 'downtown_drive';
+
+export function isHistoricDowntownNeighborhood(value: string | null | undefined): boolean {
+  if (!value) return false;
+  return value.trim().toLowerCase().replace(/\s+/g, ' ') === HISTORIC_DOWNTOWN_NEIGHBORHOOD.toLowerCase();
+}
+
+export function isEscapeRoomActivity(name: string): boolean {
+  return ESCAPE_ROOM_NAME.test(name);
+}
+
+export function downtownWanderKind(name: string): DowntownWanderKind | null {
+  if (TINY_DOORS_NAME.test(name)) return 'tiny_doors';
+  if (HISTORIC_TOUR_NAME.test(name)) return 'historic_tour';
+  return null;
+}
+
+/** Facts for the model. Instructions stay in the system prompt, outside the data block. */
+export function downtownWanderAbout(kind: DowntownWanderKind, inDowntown: boolean): string {
+  if (kind === 'tiny_doors' && inDowntown) {
+    return `${TINY_DOORS_HUNT}. A wander around downtown, not a stop at one door.`;
+  }
+  if (kind === 'tiny_doors') {
+    return `A drive to downtown McKinney, then a wander through the district. ${TINY_DOORS_HUNT}.`;
+  }
+  if (inDowntown) {
+    return 'A wander around historic downtown, not a stop at one pin.';
+  }
+  return 'A drive to downtown McKinney, then a wander around the historic district.';
+}
+
+/**
+ * Walkable follows the half-mile pin distance, except a downtown wander in
+ * Historic Downtown McKinney. That pin is one door or the tour start, not the outing.
+ * Missing miles are not walkable. Off downtown, the same places use the pin distance.
+ */
+export function activityNoteWalkable(args: {
+  name: string;
+  neighborhood: string | null | undefined;
+  miles: number | null;
+}): boolean {
+  if (args.miles == null || !Number.isFinite(args.miles)) return false;
+  if (isHistoricDowntownNeighborhood(args.neighborhood) && downtownWanderKind(args.name)) return false;
+  return args.miles <= ACTIVITY_NOTE_WALKABLE_MILES;
+}
 
 /**
  * Distance claims. A walk that is the outing itself, such as a downtown stroll,
@@ -177,8 +255,18 @@ export type NotePromptActivity = {
   category: string;
   /** Miles from the restaurant, rounded to one decimal. */
   miles: number;
-  /** True when the unrounded distance is within ACTIVITY_NOTE_WALKABLE_MILES. */
+  /** True when a walk-distance phrase is allowed. False for a downtown wander. */
   walkable: boolean;
+  /** Set for Tiny Doors and the historic tour. downtown_wander means the pin is not a walk. */
+  area?: NoteActivityArea;
+  /** Short description of an area outing. Facts only. The system prompt holds the rules. */
+  about?: string;
+  /** True only for a downtown wander at a Historic Downtown McKinney restaurant. */
+  areaWander?: boolean;
+  /** True when the name is an escape room. Not shown to the model. */
+  escapeRoom?: boolean;
+  /** Shared id so two downtown wanders cannot share a card. Not shown to the model. */
+  dedupGroup?: string;
 };
 
 export function normalizeActivityNotePunctuation(value: string): string {
@@ -273,6 +361,8 @@ export type ActivityNoteCitedPlace = {
   /** Short name the model is asked to use. */
   displayName: string;
   walkable: boolean;
+  /** A downtown wander is not walkable from its pin, even when this flag was set from that pin. */
+  areaWander?: boolean;
 };
 
 function foldActivityNoteWalkText(value: string): string {
@@ -298,6 +388,9 @@ export const ACTIVITY_NOTE_WALK_DISTANCE_RULE = [
   'A minute walk includes a number or a number-word, such as a 5-minute walk or a five-minute walk.',
   'Walking distance includes in, within, and easy.',
   'Do not use those words for a place whose walkable is false.',
+  'A downtown wander is not walkable from its pin.',
+  'Do not use those words in a sentence that names a downtown wander, even when that sentence also names a walkable place.',
+  'Do not say a downtown wander is just down the street or a short walk over.',
 ].join(' ');
 
 export function buildActivityNotePrompt(args: {
@@ -322,6 +415,12 @@ export function buildActivityNotePrompt(args: {
     'Use the restaurant name and cuisine tags to judge the meal. After a heavy meal, suggest a walk, a show, a landmark, live music, a museum, games, a class, or sports, not more dessert. Dessert fits better after a light meal or a savory but small meal.',
     'Do not say someone will walk off, work off, or burn off the meal and then send them to dessert or another place to eat.',
     `Each activity includes miles, rounded to one decimal, and walkable. ${ACTIVITY_NOTE_WALK_DISTANCE_RULE}`,
+    'An activity with area downtown_wander is a wander around downtown, not a stop at its pin. walkable is false.',
+    `McKinney Tiny Doors means ${TINY_DOORS_HUNT}.`,
+    'The Downtown Historic Walking Tour is a wander around historic downtown.',
+    'Cite at most one downtown wander. Do not cite both Tiny Doors and the historic tour.',
+    'An activity with area downtown_drive is a normal drive to downtown, then that same wander. It is not a walk from the restaurant when walkable is false.',
+    'Cite at most one escape room.',
     'A light mention of alcohol, such as a boozy ice cream shop, is allowed.',
     'Do not encourage heavy drinking, and do not encourage drinking and driving.',
     'This example shows how the picks fit a heavy barbecue meal: a walk or a tour of a historic landmark, or letting the meal settle at a comedy show, not more food. It is one sentence, so your note must still be 2 to 4 sentences. Do not copy its opening.',
@@ -339,13 +438,26 @@ export function buildActivityNotePrompt(args: {
     '',
     ACTIVITY_DATA_START,
     JSON.stringify(
-      args.activities.map((activity) => ({
-        id: activity.id,
-        name: activity.displayName,
-        category: activity.category,
-        miles: activity.miles,
-        walkable: activity.walkable,
-      })),
+      args.activities.map((activity) => {
+        const row: {
+          id: string;
+          name: string;
+          category: string;
+          miles: number;
+          walkable: boolean;
+          area?: NoteActivityArea;
+          about?: string;
+        } = {
+          id: activity.id,
+          name: activity.displayName,
+          category: activity.category,
+          miles: activity.miles,
+          walkable: activity.walkable,
+        };
+        if (activity.area) row.area = activity.area;
+        if (activity.about) row.about = activity.about;
+        return row;
+      }),
     ),
     ACTIVITY_DATA_END,
   ].join('\n');
@@ -367,17 +479,23 @@ function citedPlaceInSentence(sentence: string, place: ActivityNoteCitedPlace): 
  * A walk-distance phrase is judged in its own sentence. That sentence must
  * name a cited place, by official name or short display name, whose walkable
  * flag is true. A sentence that names no cited place passes only when some
- * cited place is walkable.
+ * cited place is walkable. A downtown wander does not count as walkable, and
+ * a sentence that names one fails even when another named place is walkable.
  */
+function citedPlaceWalkable(place: ActivityNoteCitedPlace): boolean {
+  return place.walkable && !place.areaWander;
+}
+
 function activityNoteWalkDistanceError(
   body: string,
   cited: readonly ActivityNoteCitedPlace[],
 ): string | null {
-  const someWalkable = cited.some((place) => place.walkable);
+  const someWalkable = cited.some((place) => citedPlaceWalkable(place));
   for (const sentence of activityNoteSentences(body)) {
     if (!activityNoteUsesWalkWord(sentence)) continue;
     const named = cited.filter((place) => citedPlaceInSentence(sentence, place));
-    const allowed = named.length === 0 ? someWalkable : named.some((place) => place.walkable);
+    if (named.some((place) => place.areaWander)) return ACTIVITY_NOTE_WALK_DISTANCE_REASON;
+    const allowed = named.length === 0 ? someWalkable : named.some((place) => citedPlaceWalkable(place));
     if (!allowed) return ACTIVITY_NOTE_WALK_DISTANCE_REASON;
   }
   return null;
@@ -489,6 +607,13 @@ export function parseActivityNoteDraft(
     if (!activity) return { ok: false, reason: 'the note cited a place that was not listed' };
     chosen.push(activity);
   }
+  if (chosen.filter((activity) => activity.escapeRoom).length > 1) {
+    return { ok: false, reason: ACTIVITY_NOTE_ESCAPE_ROOM_REASON };
+  }
+  const wanderGroups = chosen.map((activity) => activity.dedupGroup).filter((group): group is string => Boolean(group));
+  if (new Set(wanderGroups).size !== wanderGroups.length) {
+    return { ok: false, reason: ACTIVITY_NOTE_WANDER_DEDUP_REASON };
+  }
   const chosenIds = new Set(activityIds);
   const bodyError = activityNoteBodyError(record.body, {
     requiredNames: chosen.map((activity) => activity.name),
@@ -500,6 +625,7 @@ export function parseActivityNoteDraft(
       name: activity.name,
       displayName: activity.displayName,
       walkable: activity.walkable,
+      areaWander: activity.areaWander,
     })),
   });
   if (bodyError) return { ok: false, reason: bodyError };
@@ -525,6 +651,11 @@ export function activityNoteSourceHash(args: {
         category: activity.category,
         miles: activity.miles,
         walkable: activity.walkable,
+        area: activity.area ?? null,
+        about: activity.about ?? null,
+        areaWander: activity.areaWander === true,
+        escapeRoom: activity.escapeRoom === true,
+        dedupGroup: activity.dedupGroup ?? null,
       }))
       .sort((left, right) => left.id.localeCompare(right.id)),
   };

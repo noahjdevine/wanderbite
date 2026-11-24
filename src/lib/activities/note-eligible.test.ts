@@ -1,9 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { haversineMiles } from '@/lib/launch-market';
 import { ACTIVITY_NOTE_WALKABLE_MILES } from '@/lib/activities/note-copy';
+import { TINY_DOORS_HUNT } from '@/lib/activities/note-copy';
 import {
   ACTIVITY_NOTE_CANDIDATE_CAP,
   ACTIVITY_NOTE_DESSERT_CAP,
+  ACTIVITY_NOTE_MAX_ESCAPE_ROOM_USES,
+  ACTIVITY_NOTE_MAX_ESCAPE_ROOM_USES_ENV,
+  ACTIVITY_NOTE_MAX_USES_PER_ACTIVITY,
+  ACTIVITY_NOTE_MAX_USES_ENV,
+  activityNoteSpreadBand,
+  activityNoteUseCaps,
   eligibleNoteActivities,
   type NoteSourceActivity,
   type NoteSourceRestaurant,
@@ -191,6 +198,180 @@ describe('eligible note activities', () => {
     });
     expect(handel[0]?.name).toBe('Handel\u2019s Homemade Ice Cream \u2013 McKinney');
     expect(handel[0]?.displayName).toBe("Handel's Homemade Ice Cream");
+  });
+
+  it('caps one activity and escape rooms, and lists at most one escape room', () => {
+    expect(ACTIVITY_NOTE_MAX_USES_PER_ACTIVITY).toBe(5);
+    expect(ACTIVITY_NOTE_MAX_ESCAPE_ROOM_USES).toBe(6);
+    expect(activityNoteUseCaps({})).toEqual({ maxUsesPerActivity: 5, maxEscapeRoomUses: 6 });
+    expect(activityNoteUseCaps({
+      [ACTIVITY_NOTE_MAX_USES_ENV]: '2',
+      [ACTIVITY_NOTE_MAX_ESCAPE_ROOM_USES_ENV]: '0',
+    })).toEqual({ maxUsesPerActivity: 2, maxEscapeRoomUses: 0 });
+    expect(activityNoteUseCaps({
+      [ACTIVITY_NOTE_MAX_USES_ENV]: 'five',
+      [ACTIVITY_NOTE_MAX_ESCAPE_ROOM_USES_ENV]: '-1',
+    })).toEqual({ maxUsesPerActivity: 5, maxEscapeRoomUses: 6 });
+    const arena = at(0.3, 'The Comedy Arena', 'comedy');
+    const square = at(0.4, 'Chestnut Square Village', 'landmark');
+    const under = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [arena, square],
+      activityUses: new Map([[arena.id, 4]]),
+    }).map((row) => row.name);
+    expect(under).toContain('The Comedy Arena');
+    const capped = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [arena, square],
+      activityUses: new Map([[arena.id, 5]]),
+    }).map((row) => row.name);
+    expect(capped).toEqual(['Chestnut Square Village']);
+    const room = at(0.3, 'McKinney Escape Room', 'games');
+    const still = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [room, square],
+      escapeRoomUses: 5,
+    }).map((row) => row.name);
+    expect(still).toContain('McKinney Escape Room');
+    const typeCapped = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [room, square],
+      escapeRoomUses: 6,
+    }).map((row) => row.name);
+    expect(typeCapped).toEqual(['Chestnut Square Village']);
+    const alpha = at(0.2, 'Alpha Escape Room', 'games');
+    const beta = at(0.35, 'Beta Escape Room', 'arts');
+    const oneRoom = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [alpha, beta],
+      activityUses: new Map([[alpha.id, 2]]),
+    });
+    expect(oneRoom.map((row) => row.name)).toEqual(['Beta Escape Room']);
+    expect(oneRoom[0]?.escapeRoom).toBe(true);
+    expect(eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [at(0.2, 'The Escape Game', 'games'), at(0.3, 'Puzzle Break', 'games')],
+    }).map((row) => row.escapeRoom)).toEqual([undefined, undefined]);
+  });
+
+  it('prefers the less-used outing in a distance band and keeps dessert order', () => {
+    expect(activityNoteSpreadBand(0.5)).toBe(0);
+    expect(activityNoteSpreadBand(0.51)).toBe(1);
+    expect(activityNoteSpreadBand(1)).toBe(1);
+    expect(activityNoteSpreadBand(1.01)).toBe(2);
+    const used = at(0.2, 'Used Comedy', 'comedy');
+    const fresh = at(0.4, 'Fresh Comedy', 'comedy');
+    const spread = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [used, fresh],
+      activityUses: new Map([[used.id, 3]]),
+    });
+    expect(spread.map((row) => row.name)).toEqual(['Fresh Comedy', 'Used Comedy']);
+    const reversed = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [fresh, used],
+      activityUses: new Map([[used.id, 3]]),
+    });
+    expect(reversed.map((row) => row.id)).toEqual(spread.map((row) => row.id));
+    const nearUsed = at(0.2, 'Near Landmark', 'landmark');
+    const farFresh = at(1.2, 'Far Landmark', 'landmark');
+    const nearerBand = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [farFresh, nearUsed],
+      activityUses: new Map([[nearUsed.id, 4]]),
+    });
+    expect(nearerBand.map((row) => row.name)).toEqual(['Near Landmark', 'Far Landmark']);
+    const others = ['museum', 'walk', 'class', 'sports', 'arts', 'comedy', 'theater', 'live_music', 'games'] as const;
+    const usedLandmark = at(0.15, 'Used Landmark', 'landmark');
+    const freshLandmark = at(0.4, 'Fresh Landmark', 'landmark');
+    const nearScoop = at(0.2, 'Near Scoop', 'dessert');
+    const farScoop = at(0.35, 'Far Scoop', 'dessert');
+    const seated = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [
+        usedLandmark,
+        freshLandmark,
+        nearScoop,
+        farScoop,
+        ...others.map((category, index) => at(4 + index * 0.01, `Far ${category}`, category)),
+      ],
+      activityUses: new Map([[usedLandmark.id, 3], [nearScoop.id, 4]]),
+    });
+    expect(seated.some((row) => row.name === 'Fresh Landmark')).toBe(true);
+    expect(seated.some((row) => row.name === 'Used Landmark')).toBe(false);
+    expect(seated.filter((row) => row.category === 'dessert').map((row) => row.name)).toEqual([
+      'Near Scoop',
+      'Far Scoop',
+    ]);
+  });
+
+  it('keeps one downtown wander and does not call its pin a walk', () => {
+    const doors = at(0.1, 'McKinney Tiny Doors', 'arts');
+    const tour = at(0.2, 'Downtown Historic Walking Tour', 'walk');
+    const downtown = eligibleNoteActivities({
+      restaurant: restaurant({ neighborhood: 'Historic Downtown McKinney' }),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [doors, tour, at(0.3, 'Tiny Door Hunt', 'arts')],
+      activityUses: new Map([[doors.id, 1]]),
+    });
+    expect(downtown.map((row) => row.name)).toEqual(['Downtown Historic Walking Tour']);
+    expect(downtown[0]?.walkable).toBe(false);
+    expect(downtown[0]?.area).toBe('downtown_wander');
+    expect(downtown[0]?.areaWander).toBe(true);
+    expect(downtown[0]?.about).toContain('wander around historic downtown');
+    expect(downtown[0]?.dedupGroup).toBe('downtown_wander');
+    const equal = eligibleNoteActivities({
+      restaurant: restaurant({ neighborhood: 'Historic Downtown McKinney' }),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [tour, doors],
+    });
+    expect(equal.map((row) => row.name)).toEqual(['McKinney Tiny Doors']);
+    expect(equal[0]?.walkable).toBe(false);
+    expect(equal[0]?.about).toContain(TINY_DOORS_HUNT);
+    const drive = eligibleNoteActivities({
+      restaurant: restaurant(),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [doors, tour],
+    });
+    expect(drive).toHaveLength(1);
+    expect(drive[0]?.name).toBe('McKinney Tiny Doors');
+    expect(drive[0]?.area).toBe('downtown_drive');
+    expect(drive[0]?.areaWander).toBe(false);
+    expect(drive[0]?.walkable).toBe(true);
+    expect(drive[0]?.about).toContain('drive to downtown');
+    expect(drive[0]?.about).toContain(TINY_DOORS_HUNT);
+    const farDrive = eligibleNoteActivities({
+      restaurant: restaurant({ neighborhood: 'East Side' }),
+      restaurantNames: ['Hutchins BBQ'],
+      now: NOW,
+      activities: [at(1.5, 'McKinney Tiny Doors', 'arts')],
+    });
+    expect(farDrive[0]?.walkable).toBe(false);
+    expect(farDrive[0]?.area).toBe('downtown_drive');
+    expect(farDrive[0]?.about).toContain('drive to downtown');
   });
 });
 

@@ -1,7 +1,11 @@
 import 'server-only';
 
 import { logAdminAction, type AdminAuditAction } from '@/lib/audit/log-admin-action';
-import { ACTIVITY_NOTE_WALKABLE_MILES } from '@/lib/activities/note-copy';
+import {
+  activityNoteWalkable,
+  downtownWanderKind,
+  isHistoricDowntownNeighborhood,
+} from '@/lib/activities/note-copy';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
 import { haversineMiles, toGeoPoint } from '@/lib/launch-market';
 import type { ActivityNoteStore, ActivityNoteStatus, StoredActivityNote } from '@/lib/activities/note-review';
@@ -42,15 +46,24 @@ const NOTE_COLUMNS =
 const ACTIVITY_COLUMNS =
   'id, name, status, is_sample, source_url, valid_from, valid_until, last_verified_at, lat, lon';
 
-/** Missing coordinates are not walkable, so a distance claim cannot pass without a measurement. */
-function activityWalkableFromRestaurant(
-  origin: { lat: number; lon: number } | null,
-  lat: number | null,
-  lon: number | null,
-): boolean {
-  const point = toGeoPoint(lat, lon);
-  if (!origin || !point) return false;
-  return haversineMiles(origin, point) <= ACTIVITY_NOTE_WALKABLE_MILES;
+/**
+ * Missing coordinates are not walkable. A downtown wander in Historic Downtown
+ * McKinney is not walkable from its pin. Other places use the half-mile distance.
+ */
+function activityWalkableFromRestaurant(args: {
+  name: string;
+  neighborhood: string | null | undefined;
+  origin: { lat: number; lon: number } | null;
+  lat: number | null;
+  lon: number | null;
+}): boolean {
+  const point = toGeoPoint(args.lat, args.lon);
+  const miles = args.origin && point ? haversineMiles(args.origin, point) : null;
+  return activityNoteWalkable({
+    name: args.name,
+    neighborhood: args.neighborhood,
+    miles,
+  });
 }
 
 export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteStore {
@@ -73,7 +86,7 @@ export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteSt
       if (error) throw new Error('Activity lookup failed.');
       const place = await supabase
         .from('restaurants')
-        .select('lat, lon')
+        .select('lat, lon, neighborhood')
         .eq('id', restaurantId)
         .maybeSingle();
       if (place.error) throw new Error('Restaurant lookup failed.');
@@ -89,7 +102,15 @@ export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteSt
           valid_from: row.valid_from,
           valid_until: row.valid_until,
           last_verified_at: row.last_verified_at,
-          walkable: activityWalkableFromRestaurant(origin, row.lat, row.lon),
+          walkable: activityWalkableFromRestaurant({
+            name: row.name,
+            neighborhood: place.data?.neighborhood,
+            origin,
+            lat: row.lat,
+            lon: row.lon,
+          }),
+          areaWander: downtownWanderKind(row.name) != null
+            && isHistoricDowntownNeighborhood(place.data?.neighborhood),
         }];
       });
     },

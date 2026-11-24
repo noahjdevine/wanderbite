@@ -31,13 +31,23 @@ It does not write the database.
 
 Drafts use the restaurant name and cuisine tags plus a varied set of currently
 showing, non-kids activities within 5 miles. Real outings are ranked ahead of
-dessert, and dessert is capped at 2. Paused, stale, sample, and kids_oriented
-rows are skipped. The model sees a short place name, rounded miles, and whether
-the stop is walkable. A Wanderbite restaurant is not used as the outing. The
-model cannot invent a place. A note that opens or closes with filler, or that
-uses a walk-distance phrase for a place that is not walkable, is retried once,
-then reported as blocked and not saved. Nearby is allowed for any listed place.
-The word walk by itself is allowed.
+dessert, and dessert is capped at 2. Among similar distances, less-used places
+come first. Each activity is capped per run, and escape rooms have a separate
+cap. A card lists at most one escape room. Tiny Doors and the Downtown Historic
+Walking Tour share one seat. In Historic Downtown McKinney they are a downtown
+wander, not a walk from their pin. Off downtown they are a drive to downtown.
+Paused, stale, sample, and kids_oriented rows are skipped. The model sees a
+short place name, rounded miles, and whether the stop is walkable. A Wanderbite
+restaurant is not used as the outing. The model cannot invent a place. A note
+that opens or closes with filler, or that uses a walk-distance phrase for a
+place that is not walkable, is retried once, then reported as blocked and not
+saved. Nearby is allowed for any listed place. The word walk by itself is allowed.
+
+WANDERBITE_ACTIVITY_NOTES_MAX_USES_PER_ACTIVITY defaults to 5.
+WANDERBITE_ACTIVITY_NOTES_MAX_ESCAPE_ROOM_USES defaults to 6.
+A non-integer value falls back to that default. Dry-run prints use counts.
+Escape rooms are detected from the activity name ("escape room" or "escape rooms").
+activities has no tags or subcategory column.
 
 WANDERBITE_ACTIVITY_NOTES_MODEL overrides the Haiku snapshot for this script only.
 The dry-run printout and JSON record the model id that was used.
@@ -97,7 +107,7 @@ async function main(): Promise<void> {
     ? allRestaurants.filter((restaurant) => parsed.slugs.includes(restaurant.slug))
     : allRestaurants;
   const activities = await loadActivities(supabase);
-  const existing = await loadExisting(supabase, restaurants.map((restaurant) => restaurant.id));
+  const existing = await loadExisting(supabase, allRestaurants.map((restaurant) => restaurant.id));
   const startedAt = new Date();
   const summary = await runActivityNoteDrafts({
     restaurants,
@@ -106,6 +116,7 @@ async function main(): Promise<void> {
     mode: parsed.mode,
     model: resolvedModel.model,
     now: startedAt,
+    env: process.env,
     existing,
     callModel: async (input) => callActivityNoteModel({ ...input, apiKey, model: resolvedModel.model }),
     insertDraft: parsed.mode === 'apply' ? (row) => insertDraft(supabase, row) : undefined,
@@ -121,7 +132,7 @@ async function loadRestaurants(
 ): Promise<(NoteSourceRestaurant & { slug: string })[]> {
   let query = supabase
     .from('restaurants')
-    .select('id, name, slug, cuisine_tags, lat, lon, status')
+    .select('id, name, slug, cuisine_tags, lat, lon, neighborhood, status')
     .eq('status', 'active');
   if (slugs.length > 0) query = query.in('slug', [...slugs]);
   const { data, error } = await query;
@@ -138,6 +149,7 @@ async function loadRestaurants(
       cuisineTags: row.cuisine_tags ?? [],
       lat: row.lat,
       lon: row.lon,
+      neighborhood: row.neighborhood,
     }];
   });
 }
@@ -175,7 +187,7 @@ async function loadExisting(
   if (restaurantIds.length === 0) return [];
   const { data, error } = await supabase
     .from('restaurant_activity_notes')
-    .select('restaurant_id, status, source_hash')
+    .select('restaurant_id, status, source_hash, activity_ids')
     .in('restaurant_id', [...restaurantIds]);
   if (error) {
     console.error('[activity-notes] note lookup failed', error.code);
@@ -185,6 +197,7 @@ async function loadExisting(
     restaurantId: row.restaurant_id,
     status: row.status,
     sourceHash: row.source_hash,
+    activityIds: row.activity_ids,
   }));
 }
 
