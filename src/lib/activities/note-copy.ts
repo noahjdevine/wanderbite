@@ -4,12 +4,12 @@ import { MENU_RECIPE_MODEL } from '@/lib/recipes/menu-generate';
 /** Same pinned Haiku snapshot the menu drafts send to Anthropic. */
 export const ACTIVITY_NOTE_MODEL = MENU_RECIPE_MODEL;
 
-export const ACTIVITY_NOTE_PROMPT_VERSION = 'e06.activity_note.v2';
+export const ACTIVITY_NOTE_PROMPT_VERSION = 'e06.activity_note.v3';
 
 export const ACTIVITY_NOTE_MIN_CHARS = 40;
 export const ACTIVITY_NOTE_MAX_CHARS = 600;
 
-/** A place this close may be called a short walk or just down the street. */
+/** Unrounded miles at or under this may use a walk-distance phrase. Nearby is allowed past it. */
 export const ACTIVITY_NOTE_WALKABLE_MILES = 0.5;
 
 export const RESTAURANT_DATA_START = 'BEGIN_UNTRUSTED_RESTAURANT_DATA';
@@ -19,6 +19,33 @@ export const ACTIVITY_DATA_END = 'END_UNTRUSTED_ACTIVITY_DATA';
 
 export const ACTIVITY_NOTE_FILLER_OPENER_REASON = 'The note opens with filler.';
 export const ACTIVITY_NOTE_FILLER_CLOSER_REASON = 'The note closes with filler.';
+export const ACTIVITY_NOTE_WALK_DISTANCE_REASON = 'The note calls a place walkable when it is not.';
+
+/**
+ * Distance claims. A walk that is the outing itself, such as a downtown stroll,
+ * is not in this list. The word "walk" alone is not a distance claim.
+ * Matching folds case, curly quotes, and dashes.
+ */
+export const ACTIVITY_NOTE_WALK_WORDS = [
+  'short walk',
+  'quick walk',
+  'walk over',
+  'walk down',
+  'stroll over',
+  'just down the street',
+  'around the corner',
+  'steps away',
+  'walkable',
+  'within walking distance',
+] as const;
+
+const ACTIVITY_NOTE_WALK_WORD_PATTERNS = ACTIVITY_NOTE_WALK_WORDS.map((phrase) => {
+  const body = phrase
+    .split(' ')
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('\\s+');
+  return new RegExp(`(?:^|[^\\p{L}\\p{N}])${body}(?:$|[^\\p{L}\\p{N}])`, 'u');
+});
 
 /**
  * Soft openings. A hit blocks the draft. It is not a grammar check.
@@ -207,6 +234,32 @@ export function isActivityNoteFillerReason(reason: string): boolean {
   return reason === ACTIVITY_NOTE_FILLER_OPENER_REASON || reason === ACTIVITY_NOTE_FILLER_CLOSER_REASON;
 }
 
+/** Filler and a false walk-distance claim each get one retry, then a blocked report. */
+export function isActivityNoteRetryReason(reason: string): boolean {
+  return isActivityNoteFillerReason(reason) || reason === ACTIVITY_NOTE_WALK_DISTANCE_REASON;
+}
+
+export type ActivityNoteCitedPlace = {
+  /** Official activity name. */
+  name: string;
+  /** Short name the model is asked to use. */
+  displayName: string;
+  walkable: boolean;
+};
+
+function foldActivityNoteWalkText(value: string): string {
+  return normalizeActivityNotePunctuation(value)
+    .replace(/[\u2010\u2011\u2012\u2013\u2014\u2015-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function activityNoteUsesWalkWord(body: string): boolean {
+  const folded = foldActivityNoteWalkText(body);
+  return ACTIVITY_NOTE_WALK_WORD_PATTERNS.some((pattern) => pattern.test(folded));
+}
+
 export function buildActivityNotePrompt(args: {
   restaurantName: string;
   cuisineTags: readonly string[];
@@ -228,7 +281,7 @@ export function buildActivityNotePrompt(args: {
     'Do not use superlatives about the restaurant beyond light playful framing.',
     'Use the restaurant name and cuisine tags to judge the meal. After a heavy meal, suggest a walk, a show, a landmark, live music, a museum, games, a class, or sports, not more dessert. Dessert fits better after a light meal or a savory but small meal.',
     'Do not say someone will walk off, work off, or burn off the meal and then send them to dessert or another place to eat.',
-    `Each activity includes miles, rounded to one decimal, and walkable. Say a place is walkable, a short walk, just down the street, or nearby only when walkable is true, which means about ${ACTIVITY_NOTE_WALKABLE_MILES} miles or less. Do not say that when walkable is false.`,
+    `Each activity includes miles, rounded to one decimal, and walkable. Nearby is fine for any listed place. Say a place is a short walk, a quick walk, a walk over, a walk down, a stroll over, just down the street, around the corner, steps away, walkable, or within walking distance only when walkable is true, which means about ${ACTIVITY_NOTE_WALKABLE_MILES} miles or less. Do not use those words when walkable is false.`,
     'A light mention of alcohol, such as a boozy ice cream shop, is allowed.',
     'Do not encourage heavy drinking, and do not encourage drinking and driving.',
     'This example shows how the picks fit a heavy barbecue meal: a walk or a tour of a historic landmark, or letting the meal settle at a comedy show, not more food. It is one sentence, so your note must still be 2 to 4 sentences. Do not copy its opening.',
@@ -272,6 +325,11 @@ export function activityNoteBodyError(
     requiredNames: readonly string[];
     extraCandidateNames?: readonly string[];
     otherRestaurantNames?: readonly string[];
+    /**
+     * Cited places, with official names, short names, and walkable flags.
+     * Omitted means no place is walkable, so a walk-distance phrase fails.
+     */
+    cited?: readonly ActivityNoteCitedPlace[];
   },
 ): string | null {
   const text = body.trim();
@@ -325,6 +383,13 @@ export function activityNoteBodyError(
   for (const name of args.otherRestaurantNames ?? []) {
     if (mentionsPlace(text, name)) return 'The note cannot send someone to another Wanderbite restaurant.';
   }
+  // Mixed cited places are a known limit: one walkable place allows a walk
+  // word. This does not try to parse which sentence refers to which place.
+  // cited name and displayName identify those places; the decision uses walkable only.
+  const cited = args.cited ?? [];
+  if (!cited.some((place) => place.walkable) && activityNoteUsesWalkWord(text)) {
+    return ACTIVITY_NOTE_WALK_DISTANCE_REASON;
+  }
   return null;
 }
 
@@ -372,6 +437,11 @@ export function parseActivityNoteDraft(
       .filter((activity) => !chosenIds.has(activity.id))
       .map((activity) => activity.name),
     otherRestaurantNames: args.otherRestaurantNames,
+    cited: chosen.map((activity) => ({
+      name: activity.name,
+      displayName: activity.displayName,
+      walkable: activity.walkable,
+    })),
   });
   if (bodyError) return { ok: false, reason: bodyError };
   return { ok: true, body: record.body.trim(), activityIds };

@@ -5,7 +5,7 @@ import {
   ACTIVITY_NOTE_PROMPT_VERSION,
   activityNoteSourceHash,
   buildActivityNotePrompt,
-  isActivityNoteFillerReason,
+  isActivityNoteRetryReason,
   parseActivityNoteDraft,
 } from '@/lib/activities/note-copy';
 import { eligibleNoteActivities, type NoteSourceActivity, type NoteSourceRestaurant } from '@/lib/activities/note-eligible';
@@ -171,10 +171,10 @@ export async function runActivityNoteDrafts(args: {
     const otherRestaurantNames = args.restaurantNames.filter((name) => name !== restaurant.name);
     const firstText = await args.callModel(prompt);
     let parsed = parseActivityNoteDraft(firstText.text, { candidates, otherRestaurantNames });
-    if (!parsed.ok && isActivityNoteFillerReason(parsed.reason)) {
+    if (!parsed.ok && isActivityNoteRetryReason(parsed.reason)) {
       const retry = await args.callModel({
         system: prompt.system,
-        user: `${prompt.user}\n\nThe previous draft was blocked: ${parsed.reason} Write a new note that fixes that. Do not use a banned opening or closer.\n`,
+        user: `${prompt.user}\n\nThe previous draft was blocked: ${parsed.reason} Write a new note that fixes that. Do not use a banned opening or closer. Call a place a short walk, walkable, or within walking distance only when walkable is true. Nearby is fine for any listed place.\n`,
       });
       parsed = parseActivityNoteDraft(retry.text, { candidates, otherRestaurantNames });
       if (!parsed.ok) parsed = { ok: false, reason: `blocked: ${parsed.reason}` };

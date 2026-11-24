@@ -858,4 +858,30 @@ describe('activity note actions', () => {
     expect(rows.find((row) => row.id === NOTE_ID)?.status).toBe('rejected');
     expect(rows.filter((row) => row.status === 'approved')).toHaveLength(0);
   });
+
+  it('rejects a short-walk edit when the cited place is farther than a half mile', async () => {
+    seedNote();
+    harness.tables.restaurants = [{ id: NOTE_RESTAURANT, lat: 33.1972, lon: -96.6156 }];
+    const row = harness.tables.activities?.[0];
+    if (row) {
+      row.lat = 33.22;
+      row.lon = -96.6156;
+    }
+    const far = "Dinner is done, and it's a short walk to Chestnut Square Village. The square is the easy way to let a heavy plate settle.";
+    const edited = await editActivityNote(NOTE_ID, far);
+    expect(edited).toEqual({
+      ok: false,
+      error: 'The note calls a place walkable when it is not.',
+    });
+    expect(harness.tables.restaurant_activity_notes?.[0]?.body).toBe(NOTE_BODY);
+    if (row) {
+      row.lat = 33.198;
+      row.lon = -96.616;
+    }
+    const close =
+      'You could wander through Chestnut Square Village and let the meal settle while you walk. It is a short walk that keeps the night easy.';
+    const allowed = await editActivityNote(NOTE_ID, close);
+    expect(allowed).toMatchObject({ ok: true, published: false });
+    expect(harness.tables.restaurant_activity_notes?.[0]?.body).toBe(close);
+  });
 });

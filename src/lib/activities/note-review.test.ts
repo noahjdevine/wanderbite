@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ACTIVITY_NOTE_WALK_DISTANCE_REASON } from '@/lib/activities/note-copy';
 import {
   approveRestaurantActivityNote,
   editRestaurantActivityNote,
@@ -15,7 +16,7 @@ const BODY =
 const EDITED =
   'You could wander through Chestnut Square Village and let the meal settle while you walk. Save the second stop for a night when you want to sit down.';
 
-function activity(): ReviewActivity {
+function activity(overrides: Partial<ReviewActivity> = {}): ReviewActivity {
   return {
     id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
     name: PLACE,
@@ -25,6 +26,8 @@ function activity(): ReviewActivity {
     valid_from: null,
     valid_until: null,
     last_verified_at: '2026-11-02T18:00:00.000Z',
+    walkable: true,
+    ...overrides,
   };
 }
 
@@ -125,6 +128,24 @@ describe('activity note review', () => {
     expect(notes.map((note) => note.status)).toEqual(['approved', 'draft']);
     expect(notes.find((note) => note.id === 'note-2')?.version).toBe(9);
     expect(audits).toBe(0);
+  });
+
+  it('blocks a short-walk review when the cited place is not walkable', async () => {
+    const notes = [draft('note-1')];
+    const store = memory(notes);
+    const far = "Dinner is done, and it's a short walk to The Comedy Arena. The set is the easy way to let a heavy plate settle.";
+    store.loadActivities = async () => [activity({ name: 'The Comedy Arena', walkable: false })];
+    notes[0]!.body = far;
+    const approved = await approveRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', now: NOW });
+    expect(approved).toEqual({ ok: false, error: ACTIVITY_NOTE_WALK_DISTANCE_REASON });
+    expect(notes[0]?.status).toBe('draft');
+    const edited = await editRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', body: far });
+    expect(edited).toEqual({ ok: false, error: ACTIVITY_NOTE_WALK_DISTANCE_REASON });
+    expect(notes[0]?.body).toBe(far);
+    store.loadActivities = async () => [activity({ name: 'The Comedy Arena', walkable: true })];
+    const allowed = await editRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', body: far });
+    expect(allowed).toMatchObject({ ok: true, published: false });
+    expect(notes[0]?.body).toBe(far);
   });
 
   it('does not approve a draft whose cited activity is paused', async () => {

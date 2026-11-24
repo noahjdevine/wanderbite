@@ -6,7 +6,11 @@ import {
   callActivityNoteModel,
   resolveActivityNoteModel,
 } from '@/lib/activities/note-generate';
-import { ACTIVITY_NOTE_MODEL, ACTIVITY_NOTE_PROMPT_VERSION } from '@/lib/activities/note-copy';
+import {
+  ACTIVITY_NOTE_MODEL,
+  ACTIVITY_NOTE_PROMPT_VERSION,
+  ACTIVITY_NOTE_WALK_DISTANCE_REASON,
+} from '@/lib/activities/note-copy';
 import type { NoteSourceActivity, NoteSourceRestaurant } from '@/lib/activities/note-eligible';
 import {
   activityNoteReadAllowed,
@@ -238,6 +242,64 @@ describe('activity note drafts', () => {
     expect(blocked.dbWrites).toBe(0);
     expect(blocked.restaurants[0]?.draft).toBeNull();
     expect(blocked.restaurants[0]?.skips[0]).toMatch(/^blocked: /);
+  });
+
+  it('retries a walk-distance miss once, then blocks or saves the good note', async () => {
+    const arenaId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+    const tooFar =
+      "Dinner is done, and it's a short walk to The Comedy Arena. The set is the easy way to let a heavy plate settle.";
+    const good =
+      'You could catch a set at The Comedy Arena after the plates are cleared. It is an easy way to let a heavy meal settle.';
+    const far = activity({
+      id: arenaId,
+      name: 'The Comedy Arena',
+      category: 'comedy',
+      lat: 33.21,
+      lon: -96.6156,
+    });
+    const insertDraft = vi.fn(async () => ({ id: 'note-walk' }));
+    let calls = 0;
+    const callModel = vi.fn(async (_input: { system: string; user: string }) => {
+      calls += 1;
+      return {
+        text: JSON.stringify({
+          body: calls === 1 ? tooFar : good,
+          activity_ids: [arenaId],
+        }),
+        usage: null,
+      };
+    });
+    const saved = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [far],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'apply',
+      now: NOW,
+      callModel,
+      insertDraft,
+    });
+    expect(callModel).toHaveBeenCalledTimes(2);
+    expect(String(callModel.mock.calls[0]?.[0].user)).toContain('"walkable":false');
+    expect(String(callModel.mock.calls[1]?.[0].user)).toContain(ACTIVITY_NOTE_WALK_DISTANCE_REASON);
+    expect(insertDraft).toHaveBeenCalledTimes(1);
+    expect(saved.dbWrites).toBe(1);
+    expect(saved.restaurants[0]?.draft?.body).toBe(good);
+    const blocked = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [far],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'apply',
+      now: NOW,
+      callModel: async () => ({
+        text: JSON.stringify({ body: tooFar, activity_ids: [arenaId] }),
+        usage: null,
+      }),
+      insertDraft,
+    });
+    expect(insertDraft).toHaveBeenCalledTimes(1);
+    expect(blocked.dbWrites).toBe(0);
+    expect(blocked.restaurants[0]?.draft).toBeNull();
+    expect(blocked.restaurants[0]?.skips).toEqual([`blocked: ${ACTIVITY_NOTE_WALK_DISTANCE_REASON}`]);
   });
 
   it('does not retry a note that failed for another reason', async () => {

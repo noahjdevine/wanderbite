@@ -1,7 +1,9 @@
 import 'server-only';
 
 import { logAdminAction, type AdminAuditAction } from '@/lib/audit/log-admin-action';
+import { ACTIVITY_NOTE_WALKABLE_MILES } from '@/lib/activities/note-copy';
 import { getSupabaseAdmin } from '@/lib/supabase-admin';
+import { haversineMiles, toGeoPoint } from '@/lib/launch-market';
 import type { ActivityNoteStore, ActivityNoteStatus, StoredActivityNote } from '@/lib/activities/note-review';
 import type { ReviewActivity } from '@/lib/activities/note-review';
 
@@ -37,6 +39,20 @@ function mapNote(row: {
 const NOTE_COLUMNS =
   'id, restaurant_id, body, status, activity_ids, version, reviewed_at, reviewed_by';
 
+const ACTIVITY_COLUMNS =
+  'id, name, status, is_sample, source_url, valid_from, valid_until, last_verified_at, lat, lon';
+
+/** Missing coordinates are not walkable, so a distance claim cannot pass without a measurement. */
+function activityWalkableFromRestaurant(
+  origin: { lat: number; lon: number } | null,
+  lat: number | null,
+  lon: number | null,
+): boolean {
+  const point = toGeoPoint(lat, lon);
+  if (!origin || !point) return false;
+  return haversineMiles(origin, point) <= ACTIVITY_NOTE_WALKABLE_MILES;
+}
+
 export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteStore {
   return {
     async loadNote(id) {
@@ -48,13 +64,20 @@ export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteSt
       if (error) throw new Error('Activity note lookup failed.');
       return data ? mapNote(data) : null;
     },
-    async loadActivities(ids) {
+    async loadActivities(ids, restaurantId) {
       if (ids.length === 0) return [];
       const { data, error } = await supabase
         .from('activities')
-        .select('id, name, status, is_sample, source_url, valid_from, valid_until, last_verified_at')
+        .select(ACTIVITY_COLUMNS)
         .in('id', [...ids]);
       if (error) throw new Error('Activity lookup failed.');
+      const place = await supabase
+        .from('restaurants')
+        .select('lat, lon')
+        .eq('id', restaurantId)
+        .maybeSingle();
+      if (place.error) throw new Error('Restaurant lookup failed.');
+      const origin = toGeoPoint(place.data?.lat, place.data?.lon);
       return (data ?? []).flatMap((row): ReviewActivity[] => {
         if (!row.name.trim()) return [];
         return [{
@@ -66,6 +89,7 @@ export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteSt
           valid_from: row.valid_from,
           valid_until: row.valid_until,
           last_verified_at: row.last_verified_at,
+          walkable: activityWalkableFromRestaurant(origin, row.lat, row.lon),
         }];
       });
     },
