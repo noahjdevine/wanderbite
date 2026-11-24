@@ -50,6 +50,8 @@ type CarriedCreditCardProps = {
   recipes?: RecipeCardModel[];
   recipeExclusionLine?: string | null;
   activities?: ActivitySuggestion[];
+  activityNotesMode?: boolean;
+  activityNote?: string | null;
   briefings?: BriefingFact[];
   visitProblems?: boolean;
 };
@@ -72,6 +74,8 @@ export function CarriedCreditCard({
   recipes = [],
   recipeExclusionLine = null,
   activities = [],
+  activityNotesMode = false,
+  activityNote = null,
   briefings = [],
   visitProblems = false,
 }: CarriedCreditCardProps) {
@@ -156,6 +160,8 @@ export function CarriedCreditCard({
           recipes={recipes}
           recipeExclusionLine={recipeExclusionLine}
           activities={activities}
+          activityNotesMode={activityNotesMode}
+          activityNote={activityNote}
           briefings={briefings}
           visitProblems={visitProblems}
         />

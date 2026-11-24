@@ -17,6 +17,12 @@ import {
   setContentSourceRunning,
   type ContentActionResult,
 } from '@/lib/content-pipeline/review';
+import { activityNoteStore } from '@/lib/activities/note-store';
+import {
+  approveRestaurantActivityNote,
+  editRestaurantActivityNote,
+  rejectRestaurantActivityNote,
+} from '@/lib/activities/note-review';
 import { parseUuid } from '@/lib/uuid';
 
 async function gate(): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
@@ -28,6 +34,12 @@ async function gate(): Promise<{ ok: true; userId: string } | { ok: false; error
 function refresh() {
   revalidatePath('/admin/content');
   revalidatePath('/admin');
+}
+
+function refreshNotes() {
+  refresh();
+  revalidatePath('/challenges');
+  revalidatePath('/dashboard');
 }
 
 export async function approveContentException(exceptionId: string): Promise<ContentActionResult> {
@@ -170,6 +182,46 @@ export async function rollbackContentRecipe(recipeId: string): Promise<ContentAc
     adminId: auth.userId,
   });
   if (result.ok) refresh();
+  return result;
+}
+
+export async function approveActivityNote(noteId: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(noteId);
+  if (!id) return { ok: false, error: 'Activity note not found.' };
+  const result = await approveRestaurantActivityNote(activityNoteStore(), {
+    noteId: id,
+    adminId: auth.userId,
+  });
+  if (result.ok) refreshNotes();
+  return result;
+}
+
+export async function editActivityNote(noteId: string, body: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(noteId);
+  if (!id) return { ok: false, error: 'Activity note not found.' };
+  const result = await editRestaurantActivityNote(activityNoteStore(), {
+    noteId: id,
+    adminId: auth.userId,
+    body,
+  });
+  if (result.ok) refreshNotes();
+  return result;
+}
+
+export async function rejectActivityNote(noteId: string): Promise<ContentActionResult> {
+  const auth = await gate();
+  if (!auth.ok) return auth;
+  const id = parseUuid(noteId);
+  if (!id) return { ok: false, error: 'Activity note not found.' };
+  const result = await rejectRestaurantActivityNote(activityNoteStore(), {
+    noteId: id,
+    adminId: auth.userId,
+  });
+  if (result.ok) refreshNotes();
   return result;
 }
 

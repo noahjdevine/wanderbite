@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { getRedemptionCode } from '@/app/actions/get-redemption-code';
+import { ActivityNoteBlock } from '@/components/activities/activity-note';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
 import { BoostCheckIn } from '@/components/challenges/boost-check-in';
 import { ReportVisitProblem } from '@/components/challenges/report-visit-problem';
@@ -106,6 +107,13 @@ type AdventureTicketProps = {
   recipes?: RecipeCardModel[];
   recipeExclusionLine?: string | null;
   activities?: ActivitySuggestion[];
+  /**
+   * Exact E06_ACTIVITIES_ENABLED and E06_ACTIVITY_NOTES_ENABLED.
+   * When true, the personal note replaces the fact boxes.
+   */
+  activityNotesMode?: boolean;
+  /** Approved note body. Null hides the section. */
+  activityNote?: string | null;
   /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
   briefings?: BriefingFact[];
   /**
@@ -138,6 +146,8 @@ export function AdventureTicket({
   recipes = [],
   recipeExclusionLine = null,
   activities = [],
+  activityNotesMode = false,
+  activityNote = null,
   briefings = [],
   boostCheckIn = false,
   visitProblems = false,
@@ -364,7 +374,9 @@ export function AdventureTicket({
           }
         />
       ) : null}
-      <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
+      {activityNotesMode ? null : (
+        <NearbyIdeas headingId={`nearby-${item.restaurant.id}`} suggestions={activities} />
+      )}
       <FirstVisitBriefing headingId={`briefing-${item.restaurant.id}`} facts={briefings} />
       {item.socialProof && item.socialProof.totalRatings >= 3 && item.socialProof.avgRating != null ? (
         <SocialProofRatingBlock
@@ -379,6 +391,9 @@ export function AdventureTicket({
         exclusionLine={recipeExclusionLine}
         recipes={recipes}
       />
+      {activityNotesMode && activityNote?.trim() ? (
+        <ActivityNoteBlock headingId={`activity-note-${item.restaurant.id}`} body={activityNote} />
+      ) : null}
     </ChallengeTicket>
   );
 }

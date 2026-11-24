@@ -12,7 +12,9 @@ import { launchAreaState, resolveProfileAddress } from '@/lib/launch-market';
 import { nextMemberRedirect, profileGate } from '@/lib/auth/member-destinations';
 import { loadCreditsSwapRemaining } from '@/lib/challenges/carried-credits';
 import { memberGenerateBlocked } from '@/lib/challenges/load-monthly-reveal';
+import { activitiesEnabled, activityNotesEnabled } from '@/lib/activities/flag';
 import { loadActivitySuggestions } from '@/lib/activities/load';
+import { loadActivityNotes } from '@/lib/activities/load-notes';
 import { loadRestaurantBriefings } from '@/lib/briefings/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
 import { visitProblemsEnabled } from '@/lib/boost/flag';
@@ -105,17 +107,21 @@ export default async function DashboardPage() {
 
   const activityRestaurants = (currentChallenge?.items ?? []).map((item) => item.restaurant);
   const restaurantIds = activityRestaurants.map((restaurant) => restaurant.id);
-  const [progress, blockMemberGenerate, recipeSections, activitySuggestions, briefings, biteNotesRes] =
+  const activityNotesMode = activitiesEnabled() && activityNotesEnabled();
+  const [progress, blockMemberGenerate, recipeSections, activitySuggestions, briefings, biteNotesRes, activityNotes] =
     await Promise.all([
       getMemberProgress(typedProfile.id),
       memberGenerateBlocked(),
       loadRecipeSections(restaurantIds),
-      loadActivitySuggestions({
-        restaurants: activityRestaurants,
-        distanceBand: typedProfile.distance_band,
-      }),
+      activityNotesMode
+        ? Promise.resolve({ byRestaurantId: {} })
+        : loadActivitySuggestions({
+            restaurants: activityRestaurants,
+            distanceBand: typedProfile.distance_band,
+          }),
       loadRestaurantBriefings({ restaurantIds }),
       getBiteNotes(),
+      activityNotesMode ? loadActivityNotes({ restaurantIds }) : Promise.resolve({ byRestaurantId: {} }),
     ]);
   const presentedProgress = presentMemberProgress(progress);
   const biteNotesForDash =
@@ -155,6 +161,8 @@ export default async function DashboardPage() {
           blockMemberGenerate={blockMemberGenerate}
           recipeSections={recipeSections}
           activitySuggestions={activitySuggestions}
+          activityNotesMode={activityNotesMode}
+          activityNotes={activityNotes}
           briefings={briefings}
           visitProblems={visitProblemsEnabled()}
         />

@@ -157,6 +157,8 @@ async function main() {
   process.stdout.write('PASS: E05-B2 content pipeline RLS, version history, and saved recipe resolution.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-activities.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E06 activities constraints, grants, and active non-expired reads.\n');
+  process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-activity-notes.sql'), 'utf8')) + '\n');
+  process.stdout.write('PASS: E06 activity notes, wider categories, and one approved note per restaurant.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-briefings.sql'), 'utf8')) + '\n');
   process.stdout.write('PASS: E06 briefing constraints, grants, and active-only reads.\n');
   process.stdout.write(sql(readFileSync(path.join(root, 'supabase/tests/e06-b1-activity-pipeline.sql'), 'utf8')) + '\n');

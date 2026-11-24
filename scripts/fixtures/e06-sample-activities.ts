@@ -3,9 +3,11 @@
  * Fictional names and example.com links. Not real venues and not official claims.
  * is_sample stays true. The migration does not insert these rows.
  */
+import type { ActivityCategory } from '../../src/lib/activities/types';
+
 export type SampleActivitySeed = {
   name: string;
-  category: 'museum' | 'walk' | 'class' | 'sports' | 'arts';
+  category: ActivityCategory;
   sourceUrl: string;
   lat: number | null;
   lon: number | null;

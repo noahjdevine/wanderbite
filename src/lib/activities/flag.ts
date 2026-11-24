@@ -1,14 +1,27 @@
 /** Exact string only. Unset, empty, and every other value stay off. */
 export const ACTIVITIES_FLAG = 'E06_ACTIVITIES_ENABLED';
 
+/** Exact string only. Does not turn on the nearby fact boxes by itself. */
+export const ACTIVITY_NOTES_FLAG = 'E06_ACTIVITY_NOTES_ENABLED';
+
 const READ_FAILED_LOG = '[activities] read failed';
 const UNAVAILABLE_LOG = '[activities] unavailable';
+const NOTES_READ_FAILED_LOG = '[activity-notes] read failed';
+const NOTES_UNAVAILABLE_LOG = '[activity-notes] unavailable';
 
 let readFailedLogged = false;
 let unavailableLogged = false;
+let notesReadFailedLogged = false;
+let notesUnavailableLogged = false;
 
 export function activitiesEnabled(
   value: string | undefined = process.env.E06_ACTIVITIES_ENABLED,
+): boolean {
+  return value === 'true';
+}
+
+export function activityNotesEnabled(
+  value: string | undefined = process.env.E06_ACTIVITY_NOTES_ENABLED,
 ): boolean {
   return value === 'true';
 }
@@ -42,7 +55,21 @@ export function logActivitiesReadFailedOnce(): void {
   console.warn(READ_FAILED_LOG);
 }
 
+export function logActivityNotesUnavailableOnce(): void {
+  if (notesUnavailableLogged) return;
+  notesUnavailableLogged = true;
+  console.warn(NOTES_UNAVAILABLE_LOG);
+}
+
+export function logActivityNotesReadFailedOnce(): void {
+  if (notesReadFailedLogged) return;
+  notesReadFailedLogged = true;
+  console.warn(NOTES_READ_FAILED_LOG);
+}
+
 export function resetActivitiesLogs(): void {
   readFailedLogged = false;
   unavailableLogged = false;
+  notesReadFailedLogged = false;
+  notesUnavailableLogged = false;
 }

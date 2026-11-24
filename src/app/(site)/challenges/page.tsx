@@ -18,7 +18,9 @@ import {
 } from '@/lib/challenges/carried-credits';
 import { showsMonthlyCuration } from '@/lib/challenges/monthly-cron-gate';
 import { loadMonthlyRevealForChallenges } from '@/lib/challenges/load-monthly-reveal';
+import { activitiesEnabled, activityNotesEnabled } from '@/lib/activities/flag';
 import { loadActivitySuggestions } from '@/lib/activities/load';
+import { loadActivityNotes } from '@/lib/activities/load-notes';
 import { loadRestaurantBriefings } from '@/lib/briefings/load';
 import { loadRecipeSections } from '@/lib/recipes/load';
 import { arrivalSessionsEnabled, visitProblemsEnabled } from '@/lib/boost/flag';
@@ -171,13 +173,17 @@ export default async function ChallengesPage() {
     ...carriedCredits.flatMap((credit) => (credit.item ? [credit.item.restaurant] : [])),
   ];
   const restaurantIds = activityRestaurants.map((restaurant) => restaurant.id);
-  const [recipeSections, activitySuggestions, briefings] = await Promise.all([
+  const activityNotesMode = activitiesEnabled() && activityNotesEnabled();
+  const [recipeSections, activitySuggestions, briefings, activityNotes] = await Promise.all([
     loadRecipeSections(restaurantIds),
-    loadActivitySuggestions({
-      restaurants: activityRestaurants,
-      distanceBand: typedProfile.distance_band,
-    }),
+    activityNotesMode
+      ? Promise.resolve({ byRestaurantId: {} })
+      : loadActivitySuggestions({
+          restaurants: activityRestaurants,
+          distanceBand: typedProfile.distance_band,
+        }),
     loadRestaurantBriefings({ restaurantIds }),
+    activityNotesMode ? loadActivityNotes({ restaurantIds }) : Promise.resolve({ byRestaurantId: {} }),
   ]);
 
   const monthlyReveal = await loadMonthlyRevealForChallenges({
@@ -223,6 +229,8 @@ export default async function ChallengesPage() {
         monthlyReveal={monthlyReveal}
         recipeSections={recipeSections}
         activitySuggestions={activitySuggestions}
+        activityNotesMode={activityNotesMode}
+        activityNotes={activityNotes}
         briefings={briefings}
       />
     </main>

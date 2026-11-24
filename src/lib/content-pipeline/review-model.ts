@@ -59,11 +59,20 @@ export type RecipeHistoryView = {
   canRollback: boolean;
 };
 
+export type ActivityNoteReview = {
+  id: string;
+  restaurantName: string;
+  body: string;
+  activityNames: string[];
+  status: string;
+};
+
 export type ContentReviewModel = {
   exceptions: ExceptionView[];
   sources: SourceView[];
   history: RecipeHistoryView[];
   reasons: readonly ExceptionReason[];
+  activityNotes?: readonly ActivityNoteReview[];
 };
 
 export { EXCEPTION_REASONS };
