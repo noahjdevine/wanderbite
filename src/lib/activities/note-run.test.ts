@@ -166,8 +166,9 @@ describe('activity note drafts', () => {
     });
     expect(overrideBodies[0]?.model).toBe('claude-sonnet-5-5');
     expect(overrideBodies[0]?.temperature).toBeUndefined();
-    expect(overrideBodies[0]?.thinking).toEqual({ type: 'disabled' });
+    expect(overrideBodies[0]?.thinking).toBeUndefined();
     expect(JSON.stringify(overrideBodies[0])).not.toContain('temperature');
+    expect(JSON.stringify(overrideBodies[0])).not.toContain('thinking');
     const legacyBodies: { model?: string; temperature?: number }[] = [];
     await callActivityNoteModel({
       system: 'system',
@@ -383,5 +384,27 @@ describe('activity note drafts', () => {
     expect(summary.model).toBe('claude-sonnet-4-5');
     expect(summary.restaurants[0]?.skips).toEqual(['model output was not a note']);
     expect(formatActivityNoteSummary(summary, null)).toContain('model=claude-sonnet-4-5');
+  });
+
+  it('reports the HTTP status when the model request fails', async () => {
+    const failed = await callActivityNoteModel({
+      system: 'system',
+      user: 'user',
+      apiKey: 'test-key',
+      model: 'claude-sonnet-5-5',
+      fetchImpl: async () => new Response('{"type":"error"}', { status: 400 }),
+    });
+    expect(failed.text).toBe('');
+    expect(failed.failure).toBe('model request failed (400)');
+    const summary = await runActivityNoteDrafts({
+      restaurants: [restaurant()],
+      activities: [activity()],
+      restaurantNames: ['Hutchins BBQ'],
+      mode: 'dry-run',
+      now: NOW,
+      callModel: async () => failed,
+    });
+    expect(summary.restaurants[0]?.skips).toEqual(['model request failed (400)']);
+    expect(summary.restaurants[0]?.draft).toBeNull();
   });
 });

@@ -12,6 +12,13 @@ export function isClaude5Model(modelId: string): boolean {
   return /^claude-(?:haiku|sonnet|opus|fable)-5(?:-|$)/.test(modelId.trim());
 }
 
+/**
+ * Haiku 5.x accepts thinking type "disabled". Sonnet 5.5 and Opus 5.5 reject it.
+ */
+function isClaudeHaiku5Model(modelId: string): boolean {
+  return /^claude-haiku-5(?:-|$)/.test(modelId);
+}
+
 type AnthropicMessageArgs = {
   model: string;
   max_tokens: number;
@@ -26,9 +33,9 @@ type AnthropicMessageArgs = {
 
 /**
  * Messages API body for one model call.
- * Claude 5.x omits temperature. Adaptive thinking is on by default and spends
- * max_tokens before any text, so 5.x calls turn thinking off and keep max_tokens
- * for the text or JSON block.
+ * Claude 5.x omits temperature. Haiku 5.x turns adaptive thinking off so
+ * max_tokens stays available for the text or JSON block. Other Claude 5.x ids
+ * reject thinking type "disabled", so those calls omit the field.
  */
 export function anthropicMessageBody(args: AnthropicMessageArgs): {
   model: string;
@@ -56,7 +63,7 @@ export function anthropicMessageBody(args: AnthropicMessageArgs): {
   };
   if (args.tools !== undefined) body.tools = args.tools;
   if (isClaude5Model(model)) {
-    body.thinking = { type: 'disabled' };
+    if (isClaudeHaiku5Model(model)) body.thinking = { type: 'disabled' };
     return body;
   }
   if (args.temperature !== undefined) body.temperature = args.temperature;
