@@ -35,6 +35,7 @@ const harness = vi.hoisted(() => ({
   activitiesError: { code: '42P01', message: 'relation "public.activities" does not exist' },
   notePauses: [] as string[],
   pausedNoteCount: 0,
+  pauseNoteError: null as { code?: string; message?: string } | null,
 }));
 
 function matches(row: Row, filters: Filter[]): boolean {
@@ -64,6 +65,7 @@ function resetDb() {
   harness.activitiesError = { code: '42P01', message: 'relation "public.activities" does not exist' };
   harness.notePauses = [];
   harness.pausedNoteCount = 0;
+  harness.pauseNoteError = null;
 }
 
 function seedSource(hash: string | null) {
@@ -238,6 +240,9 @@ vi.mock('@/lib/supabase-admin', () => ({
       }
       if (fn === 'pause_stale_activity_notes') {
         harness.notePauses.push(String(args.p_now));
+        if (harness.pauseNoteError) {
+          return Promise.resolve({ data: null, error: harness.pauseNoteError });
+        }
         return Promise.resolve({ data: harness.pausedNoteCount, error: null });
       }
       if (fn === 'expire_dated_activities') {
@@ -674,6 +679,72 @@ describe('content refresh cron', () => {
     expect(harness.calls.some((call) => call.table === 'activities' && call.op === 'insert')).toBe(false);
     expect((await response.json()).result.modelCalls).toBe(1);
   });
+
+  it('keeps the dated-expiry summary when pause throws, including at 23:30 Chicago', async () => {
+    vi.stubEnv('E05_CONTENT_REFRESH_CRON_ENABLED', 'true');
+    vi.stubEnv('E06_ACTIVITY_MAINTENANCE_CRON_ENABLED', 'true');
+    const day = chicagoCalendarDate(new Date());
+    const at = chicagoHalfPastEleven(day);
+    expect(chicagoCalendarDate(at)).toBe(day);
+    expect(at.toISOString().slice(0, 10)).not.toBe(day);
+    seedSource(contentHash(BASELINE));
+    seedActivityCatalog(at);
+    harness.pauseNoteError = {
+      code: '57014',
+      message: 'canceling statement due to statement timeout PRIVATE_NOTE_BODY',
+    };
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const response = await runContentRefresh(authorize(), at);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.status).toBe('success');
+    expect(body.result.expiredActivities).toBe(1);
+    expect(body.result.pausedActivityNotes).toBe(0);
+    expect(body.result.pauseError).toBe('57014');
+    expect(body.result.sources).toBeGreaterThan(0);
+    expect(activityByName('Yesterday').status).toBe('expired');
+    expect(activityByName('Today').status).toBe('active');
+    expect(activityByName('Today').valid_until).toBe(day);
+    expect(harness.notePauses).toEqual([at.toISOString()]);
+    const pages = pageUrls();
+    expect(pages).toContain(MENU_URL);
+    expect(pages).toContain(VENUE_OLD_URL);
+    expect(pages).toContain(EVENT_URL);
+    expect(pages).not.toContain(VENUE_RECENT_URL);
+    expect(errorSpy.mock.calls).toContainEqual(['[content-refresh] activity note pause failed', '57014']);
+    const logged = JSON.stringify(errorSpy.mock.calls);
+    expect(logged).not.toContain('PRIVATE_NOTE_BODY');
+    expect(logged).not.toContain('canceling statement');
+    errorSpy.mockRestore();
+  }, 15000);
+
+  it('keeps today\'s summary when pause is missing from the schema', async () => {
+    vi.stubEnv('E05_CONTENT_REFRESH_CRON_ENABLED', 'true');
+    vi.stubEnv('E06_ACTIVITY_MAINTENANCE_CRON_ENABLED', 'true');
+    const day = chicagoCalendarDate(new Date());
+    const at = chicagoHalfPastEleven(day);
+    seedSource(contentHash(BASELINE));
+    seedActivityCatalog(at);
+    harness.pauseNoteError = {
+      code: 'PGRST202',
+      message: 'Could not find the function public.pause_stale_activity_notes',
+    };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const response = await runContentRefresh(authorize(), at);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result.expiredActivities).toBe(1);
+    expect(body.result.pausedActivityNotes).toBe(0);
+    expect(body.result.pauseError).toBeUndefined();
+    expect(activityByName('Yesterday').status).toBe('expired');
+    expect(activityByName('Today').valid_until).toBe(day);
+    expect(pageUrls()).toContain(MENU_URL);
+    expect(pageUrls()).toContain(EVENT_URL);
+    expect(warn.mock.calls.map((call) => call[0])).toContain(
+      '[content-refresh] activity note maintenance skipped: notes schema unavailable',
+    );
+    warn.mockRestore();
+  }, 15000);
 
   it('skips activity maintenance when the activities table is missing and still refreshes the menu', async () => {
     vi.stubEnv('E05_CONTENT_REFRESH_CRON_ENABLED', 'true');
