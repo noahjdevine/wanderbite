@@ -36,6 +36,11 @@ vi.mock('@/app/actions/bite-notes', () => ({
   toggleNoteVisibility: vi.fn(),
 }));
 
+vi.mock('@/app/actions/visit-problems', () => ({
+  getOwnVisitProblem: vi.fn(async () => ({ ok: true, problem: null })),
+  submitVisitProblem: vi.fn(),
+}));
+
 vi.mock('@/components/restaurants/restaurant-reviews', () => ({
   RestaurantReviews: () => null,
 }));
@@ -568,5 +573,80 @@ describe('golden challenges', () => {
     expect(pushRouter).toHaveBeenCalledWith('/challenges/show/red-ready-1');
     expect(view.textContent).toContain('Getting your code…');
     expect(view.textContent).not.toContain("I'm here — get my code");
+  });
+
+  it('puts get directions under the primary action and the visit report last', async () => {
+    const row = item('ready-1', 'The Common Table', 'assigned', 'ready');
+    row.restaurant.lat = 33.1972;
+    row.restaurant.lon = -96.6156;
+    const note =
+      'Wander through Chestnut Square Village and let the meal settle. The night stays easy.';
+    const notes = {
+      byRestaurantId: { 'ready-1': note },
+      namesByRestaurantId: { 'ready-1': ['Chestnut Square Village'] },
+    };
+    const view = await render(
+      <DashboardClient
+        appearance="golden"
+        launchEligible
+        visitProblems
+        activityNotesMode
+        activityNotes={notes}
+        currentChallenge={challenge([row])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const text = view.textContent ?? '';
+    const actionAt = text.indexOf("I'm here — get my code");
+    const directionsAt = text.indexOf('Get directions');
+    const swapAt = text.indexOf('Swap this spot');
+    const noteAt = text.indexOf('For the rest of the night');
+    const reportAt = text.indexOf('Report it here');
+    expect(actionAt).toBeGreaterThan(-1);
+    expect(directionsAt).toBeGreaterThan(actionAt);
+    expect(swapAt).toBeGreaterThan(directionsAt);
+    expect(noteAt).toBeGreaterThan(swapAt);
+    expect(reportAt).toBeGreaterThan(noteAt);
+    const link = view.querySelector(
+      'a[href="https://www.google.com/maps/search/?api=1&query=33.1972,-96.6156"]',
+    );
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+    expect(link?.className).toContain('wb-cta-secondary-cream');
+    expect(link?.className).toContain('min-h-11');
+    expect(link?.className).toContain('w-full');
+    expect(link?.querySelector('svg')).toBeTruthy();
+    expect(link?.querySelector('.sr-only')?.textContent).toContain('(opens in Google Maps)');
+    expect(view.querySelector('[data-activity-note] em')?.textContent).toBe('Chestnut Square Village');
+    const stack = [...(view.querySelector('article')?.children ?? [])].find((node) =>
+      node.classList.contains('flex-col'),
+    );
+    expect(stack?.lastElementChild?.getAttribute('data-visit-problem')).toBe('');
+
+    const classic = await render(
+      <DashboardClient
+        launchEligible
+        visitProblems
+        activityNotesMode
+        activityNotes={notes}
+        currentChallenge={challenge([row])}
+        streak={streak}
+        biteNotes={[]}
+      />,
+    );
+    const classicText = classic.textContent ?? '';
+    expect(classicText.indexOf('Get directions')).toBeGreaterThan(-1);
+    expect(classicText.indexOf('Get directions')).toBeLessThan(classicText.indexOf('Redeem Offer'));
+    expect(classicText.indexOf('For the rest of the night')).toBeLessThan(classicText.indexOf('Report it here'));
+    const classicLink = classic.querySelector(
+      'a[href="https://www.google.com/maps/search/?api=1&query=33.1972,-96.6156"]',
+    );
+    expect(classicLink?.className).toContain('min-h-11');
+    expect(classicLink?.className).toContain('w-full');
+    expect(classicLink?.getAttribute('target')).toBe('_blank');
+    expect(classic.querySelector('[aria-label="Get directions"]')).toBeNull();
+    const classicCard = classic.querySelector('[data-visit-problem]')?.closest('[data-slot="card"]');
+    expect(classicCard?.lastElementChild?.getAttribute('data-visit-problem')).toBe('');
   });
 });

@@ -52,6 +52,7 @@ type CarriedCreditCardProps = {
   activities?: ActivitySuggestion[];
   activityNotesMode?: boolean;
   activityNote?: string | null;
+  activityNoteNames?: readonly string[];
   briefings?: BriefingFact[];
   visitProblems?: boolean;
 };
@@ -76,6 +77,7 @@ export function CarriedCreditCard({
   activities = [],
   activityNotesMode = false,
   activityNote = null,
+  activityNoteNames = [],
   briefings = [],
   visitProblems = false,
 }: CarriedCreditCardProps) {
@@ -162,6 +164,7 @@ export function CarriedCreditCard({
           activities={activities}
           activityNotesMode={activityNotesMode}
           activityNote={activityNote}
+          activityNoteNames={activityNoteNames}
           briefings={briefings}
           visitProblems={visitProblems}
         />

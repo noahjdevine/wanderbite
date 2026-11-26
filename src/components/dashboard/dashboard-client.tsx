@@ -130,7 +130,7 @@ export function DashboardClient({
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
   activitySuggestions = { byRestaurantId: {} },
   activityNotesMode = false,
-  activityNotes = { byRestaurantId: {} },
+  activityNotes = { byRestaurantId: {}, namesByRestaurantId: {} },
   briefings = { byRestaurantId: {} },
   appearance = 'classic',
   showIncompleteProfile = false,
@@ -291,6 +291,7 @@ export function DashboardClient({
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
               activityNotesMode={activityNotesMode}
               activityNote={activityNotes.byRestaurantId[item.restaurant.id] ?? null}
+              activityNoteNames={activityNotes.namesByRestaurantId[item.restaurant.id] ?? []}
               briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
               boostCheckIn={boostCheckIn}
               visitProblems={visitProblems}
@@ -318,6 +319,7 @@ export function DashboardClient({
               activities={activitySuggestions.byRestaurantId[item.restaurant.id] ?? []}
               activityNotesMode={activityNotesMode}
               activityNote={activityNotes.byRestaurantId[item.restaurant.id] ?? null}
+              activityNoteNames={activityNotes.namesByRestaurantId[item.restaurant.id] ?? []}
               briefings={briefings.byRestaurantId[item.restaurant.id] ?? []}
               visitProblems={visitProblems}
             />

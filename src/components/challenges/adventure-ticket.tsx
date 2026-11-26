@@ -18,6 +18,7 @@ import { getRedemptionCode } from '@/app/actions/get-redemption-code';
 import { ActivityNoteBlock } from '@/components/activities/activity-note';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
 import { BoostCheckIn } from '@/components/challenges/boost-check-in';
+import { GetDirectionsLink } from '@/components/challenges/get-directions';
 import { ReportVisitProblem } from '@/components/challenges/report-visit-problem';
 import { FirstVisitBriefing } from '@/components/briefings/first-visit';
 import { VisitNoteRead } from '@/components/notes/visit-note';
@@ -114,6 +115,8 @@ type AdventureTicketProps = {
   activityNotesMode?: boolean;
   /** Approved note body. Null hides the section. */
   activityNote?: string | null;
+  /** Activity names cited by the note. The restaurant name is added when rendering. */
+  activityNoteNames?: readonly string[];
   /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
   briefings?: BriefingFact[];
   /**
@@ -148,6 +151,7 @@ export function AdventureTicket({
   activities = [],
   activityNotesMode = false,
   activityNote = null,
+  activityNoteNames = [],
   briefings = [],
   boostCheckIn = false,
   visitProblems = false,
@@ -303,12 +307,7 @@ export function AdventureTicket({
       badgeTone={badge?.tone}
       note={swapNote}
     >
-      {visitProblems && item.challengeItem.status !== 'swapped_out' ? (
-        <ReportVisitProblem
-          challengeItemId={item.challengeItem.id}
-          redemptionId={item.redemptionId ?? null}
-        />
-      ) : null}
+      {mapsUrl ? <GetDirectionsLink href={mapsUrl} /> : null}
       <BoostCheckIn
         enabled={
           boostCheckIn && isAssigned && !windowClosed && Boolean(item.challengeItem.offer_version_id) && hasCoords
@@ -342,16 +341,6 @@ export function AdventureTicket({
         <p className="m-0 text-sm text-wb-muted">{isRedeemed ? 'Completed' : 'Not completed yet'}</p>
       ) : null}
       {revealReason ? <p className="m-0 text-sm text-wb-ink">{revealReason}</p> : null}
-      {mapsUrl ? (
-        <a
-          href={mapsUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-sm font-medium text-wb-plum underline-offset-4 hover:underline"
-        >
-          Directions
-        </a>
-      ) : null}
       {isRedeemed && item.redemptionId && !postVerify ? (
         <div className="space-y-2">
           {displayCode ? (
@@ -392,7 +381,18 @@ export function AdventureTicket({
         recipes={recipes}
       />
       {activityNotesMode && activityNote?.trim() ? (
-        <ActivityNoteBlock headingId={`activity-note-${item.restaurant.id}`} body={activityNote} />
+        <ActivityNoteBlock
+          headingId={`activity-note-${item.restaurant.id}`}
+          body={activityNote}
+          names={[...activityNoteNames, item.restaurant.name]}
+        />
+      ) : null}
+      {visitProblems && item.challengeItem.status !== 'swapped_out' ? (
+        <ReportVisitProblem
+          className="border-t border-[#e3d9c6] pt-3"
+          challengeItemId={item.challengeItem.id}
+          redemptionId={item.redemptionId ?? null}
+        />
       ) : null}
     </ChallengeTicket>
   );

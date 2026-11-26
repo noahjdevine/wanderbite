@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { GeneratedChallengeItem } from '@/app/actions/generate-challenge';
 import { AdventureTicket } from '@/components/challenges/adventure-ticket';
 import { ShowRedemptionCode } from '@/components/challenges/show-redemption-code';
+import { RestaurantCard } from '@/components/dashboard/restaurant-card';
 import type { MemberVisitProblem } from '@/lib/boost/visit-problem';
+import { ACTIVITY_NOTE_HEADING } from '@/lib/activities/types';
+import { RECIPES_SECTION_HEADING, type RecipeCardModel } from '@/lib/recipes/display';
 
 const getOwnVisitProblem = vi.fn();
 const submitVisitProblem = vi.fn();
@@ -127,7 +130,7 @@ describe('report a visit problem', () => {
   it('keeps the challenge card unchanged when the flag is off', async () => {
     const view = await render(ticket(false));
     expect(view.textContent).toContain("I'm here — get my code");
-    expect(view.textContent).not.toContain('Report a problem');
+    expect(view.textContent).not.toContain('Report it here');
     expect(getOwnVisitProblem).not.toHaveBeenCalled();
   });
 
@@ -135,9 +138,9 @@ describe('report a visit problem', () => {
     const view = await render(ticket(true));
     expect(getOwnVisitProblem).toHaveBeenCalledWith('44444444-4444-4444-8444-444444444444');
     const open = [...view.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Report a problem'),
+      button.textContent?.includes('Report it here'),
     );
-    expect(open?.textContent).toContain('Report a problem');
+    expect(open?.textContent).toContain('Report it here');
     await act(async () => {
       open?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
@@ -170,7 +173,7 @@ describe('report a visit problem', () => {
 
   it('does not offer a report on a swapped visit', async () => {
     const view = await render(ticket(true, item('swapped_out')));
-    expect(view.textContent).not.toContain('Report a problem');
+    expect(view.textContent).not.toContain('Report it here');
     expect(getOwnVisitProblem).not.toHaveBeenCalled();
   });
 
@@ -191,7 +194,7 @@ describe('report a visit problem', () => {
         visitProblems={false}
       />,
     );
-    expect(hidden.textContent).not.toContain('Report a problem');
+    expect(hidden.textContent).not.toContain('Report it here');
     expect(getOwnVisitProblem).not.toHaveBeenCalled();
 
     getOwnVisitProblem.mockResolvedValue({ ok: true, problem });
@@ -211,16 +214,26 @@ describe('report a visit problem', () => {
         visitProblems
       />,
     );
+    expect(shown.textContent).toContain('Your visit report');
     expect(shown.textContent).toContain('Under review');
     expect(shown.textContent).toContain('We are looking at the code.');
     expect(shown.textContent).not.toContain('Correct savings');
+    expect(shown.textContent).not.toContain('Report it here');
+    expect(shown.querySelector('h4')).toBeNull();
+    expect(shown.querySelector('[data-visit-problem]')?.getAttribute('aria-label')).toBe('Visit problem');
+    expect(shown.querySelector('[data-visit-problem]')?.className).not.toContain('border-t');
+    const report = shown.querySelector('[data-visit-problem]');
+    const back = [...shown.querySelectorAll('a')].find((link) => link.textContent?.includes('Back to challenges'));
+    expect(report).toBeTruthy();
+    expect(back).toBeTruthy();
+    expect(report && back && (report.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING)).toBeTruthy();
     expect(getOwnVisitProblem).toHaveBeenCalled();
   });
 
   it('shows an inline error when the explanation is empty or only whitespace', async () => {
     const view = await render(ticket(true));
     const open = [...view.querySelectorAll('button')].find((button) =>
-      button.textContent?.includes('Report a problem'),
+      button.textContent?.includes('Report it here'),
     );
     await act(async () => {
       open?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -244,5 +257,128 @@ describe('report a visit problem', () => {
     });
     expect(view.textContent).toContain('Tell us what happened');
     expect(submitVisitProblem).not.toHaveBeenCalled();
+  });
+
+  it('shows one underlined report control and no visit-problem header', async () => {
+    const view = await render(ticket(true));
+    const section = view.querySelector('[data-visit-problem]');
+    expect(section?.querySelector('h4')).toBeNull();
+    expect(section?.getAttribute('aria-label')).toBe('Visit problem');
+    expect(view.textContent).not.toContain('Checking this visit');
+    const buttons = [...(section?.querySelectorAll('button') ?? [])];
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.textContent).toContain('Having a problem with your visit?');
+    expect(buttons[0]?.className).toContain('min-h-11');
+    const label = buttons[0]?.querySelector('span');
+    expect(label?.textContent).toBe('Report it here');
+    expect(label?.className).toContain('text-wb-plum');
+    expect(label?.className).toContain('font-medium');
+    expect(label?.className).toContain('underline');
+  });
+
+  it('renders nothing while the existing report is still loading', async () => {
+    let resolveCheck: (value: { ok: true; problem: null }) => void = () => undefined;
+    getOwnVisitProblem.mockReturnValue(
+      new Promise((resolve) => {
+        resolveCheck = resolve;
+      }),
+    );
+    await act(async () => {
+      root.render(ticket(true));
+    });
+    expect(container.textContent).not.toContain('Checking this visit');
+    expect(container.querySelector('[data-visit-problem]')).toBeNull();
+    await act(async () => {
+      resolveCheck({ ok: true, problem: null });
+    });
+    expect(container.textContent).toContain('Report it here');
+  });
+
+  it('labels an existing report and hides the report control', async () => {
+    getOwnVisitProblem.mockResolvedValue({ ok: true, problem });
+    const view = await render(ticket(true));
+    expect(view.textContent).toContain('Your visit report');
+    expect(view.textContent).toContain('Under review');
+    expect(view.querySelector('[data-visit-problem] button')).toBeNull();
+    expect(view.querySelector('h4')).toBeNull();
+  });
+
+  it('places the report control after recipes and the note', async () => {
+    const recipe: RecipeCardModel = {
+      id: 'recipe-1',
+      slug: 'sample-chili',
+      title: 'Sample Chili',
+      recipeType: 'inspired_by',
+      typeLabel: 'Inspired-by home recipe',
+      restaurantId: 'restaurant-1',
+      servings: 2,
+      estMinutes: 20,
+      ingredients: [{ name: 'beans', quantity: '1', unit: 'cup' }],
+      steps: [{ order: 1, text: 'Simmer.' }],
+      substitutions: [],
+      dietaryTags: [],
+      description: null,
+      sourceUrl: null,
+      sourceName: null,
+      sourceKind: null,
+      provenanceLabel: null,
+      retrievedAtLabel: null,
+      paraphraseLine: null,
+      rightsBasis: null,
+      checkedAtLabel: 'Nov 1, 2026',
+      version: 1,
+      isDemo: false,
+      demoLabel: null,
+      uncertaintyLine: null,
+      dietaryWarning: null,
+      saved: false,
+    };
+    const note = 'Wander through Chestnut Square Village and let the meal settle. The night stays easy.';
+    getOwnVisitProblem.mockResolvedValue({ ok: true, problem: null });
+    const placed = await render(
+      <AdventureTicket
+        item={item()}
+        cycleCreatedAt="2026-11-01T18:00:00.000Z"
+        canSwap={false}
+        swapsRemaining={1}
+        isSwapping={false}
+        isRedeeming={false}
+        onSwap={() => undefined}
+        onRedeem={() => undefined}
+        visitProblems
+        recipes={[recipe]}
+        activityNotesMode
+        activityNote={note}
+      />,
+    );
+    const placedText = placed.textContent ?? '';
+    expect(placedText.indexOf(RECIPES_SECTION_HEADING)).toBeLessThan(placedText.indexOf(ACTIVITY_NOTE_HEADING));
+    expect(placedText.indexOf(ACTIVITY_NOTE_HEADING)).toBeLessThan(placedText.indexOf('Report it here'));
+    const ticketStack = [...(placed.querySelector('article')?.children ?? [])].find((node) =>
+      node.classList.contains('flex-col'),
+    );
+    expect(ticketStack?.lastElementChild?.getAttribute('data-visit-problem')).toBe('');
+    expect(ticketStack?.lastElementChild?.className).toContain('border-t');
+    expect(ticketStack?.lastElementChild?.className).toContain('border-[#e3d9c6]');
+
+    const card = await render(
+      <RestaurantCard
+        item={item()}
+        cycleCreatedAt="2026-11-01T18:00:00.000Z"
+        canSwap={false}
+        isSwapping={false}
+        isRedeeming={false}
+        onSwap={() => undefined}
+        onRedeem={() => undefined}
+        visitProblems
+        recipes={[recipe]}
+        activityNotesMode
+        activityNote={note}
+      />,
+    );
+    const cardText = card.textContent ?? '';
+    expect(cardText.indexOf(RECIPES_SECTION_HEADING)).toBeLessThan(cardText.indexOf(ACTIVITY_NOTE_HEADING));
+    expect(cardText.indexOf(ACTIVITY_NOTE_HEADING)).toBeLessThan(cardText.indexOf('Report it here'));
+    expect(card.querySelector('[data-slot="card"]')?.lastElementChild?.getAttribute('data-visit-problem')).toBe('');
   });
 });

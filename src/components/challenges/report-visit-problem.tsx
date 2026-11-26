@@ -9,6 +9,7 @@ import {
   type MemberVisitProblem,
   type VisitProblemCategory,
 } from '@/lib/boost/visit-problem';
+import { cn } from '@/lib/utils';
 
 const MEMBER_ERRORS: Record<string, string> = {
   forbidden: 'That visit is not yours.',
@@ -25,9 +26,14 @@ const MEMBER_ERRORS: Record<string, string> = {
 type ReportVisitProblemProps = {
   challengeItemId: string;
   redemptionId?: string | null;
+  className?: string;
 };
 
-export function ReportVisitProblem({ challengeItemId, redemptionId = null }: ReportVisitProblemProps) {
+export function ReportVisitProblem({
+  challengeItemId,
+  redemptionId = null,
+  className,
+}: ReportVisitProblemProps) {
   const [problem, setProblem] = useState<MemberVisitProblem | null>(null);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -83,15 +89,14 @@ export function ReportVisitProblem({ challengeItemId, redemptionId = null }: Rep
     setOpen(false);
   }
 
+  if (loading) return null;
+
   return (
-    <section className="space-y-2" data-visit-problem="" aria-labelledby={`visit-problem-${challengeItemId}`}>
-      <h4 id={`visit-problem-${challengeItemId}`} className="m-0 text-sm font-semibold text-wb-ink">
-        Visit problem
-      </h4>
-      {loading ? <p className="m-0 text-sm text-wb-muted">Checking this visit…</p> : null}
+    <section className={cn('space-y-2', className)} data-visit-problem="" aria-label="Visit problem">
       {problem ? (
         <div className="rounded-2xl border border-[#e3d9c6] bg-[#f4efe6] px-3 py-3 text-sm">
-          <p className="m-0 font-medium text-wb-ink">
+          <p className="m-0 text-xs font-medium text-wb-muted">Your visit report</p>
+          <p className="m-0 mt-1 font-medium text-wb-ink">
             {problem.categoryLabel} · {problem.statusLabel}
           </p>
           <p className="m-0 mt-1 text-wb-ink">{problem.explanation}</p>
@@ -105,7 +110,7 @@ export function ReportVisitProblem({ challengeItemId, redemptionId = null }: Rep
           )}
         </div>
       ) : null}
-      {!loading && !openCase ? (
+      {!openCase ? (
         open ? (
           <form className="space-y-2" noValidate onSubmit={(event) => void onSubmit(event)}>
             <p className="m-0 text-xs text-wb-muted">
@@ -159,11 +164,12 @@ export function ReportVisitProblem({ challengeItemId, redemptionId = null }: Rep
           </form>
         ) : (
           <button
-            className="text-sm font-medium text-wb-plum underline-offset-4 hover:underline"
+            className="block min-h-11 w-full py-2.5 text-left text-sm leading-5 text-wb-ink"
             type="button"
             onClick={() => setOpen(true)}
           >
-            Report a problem
+            Having a problem with your visit?{' '}
+            <span className="font-medium text-wb-plum underline">Report it here</span>
           </button>
         )
       ) : null}

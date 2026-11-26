@@ -121,7 +121,9 @@ export default async function DashboardPage() {
           }),
       loadRestaurantBriefings({ restaurantIds }),
       getBiteNotes(),
-      activityNotesMode ? loadActivityNotes({ restaurantIds }) : Promise.resolve({ byRestaurantId: {} }),
+      activityNotesMode
+        ? loadActivityNotes({ restaurantIds })
+        : Promise.resolve({ byRestaurantId: {}, namesByRestaurantId: {} }),
     ]);
   const presentedProgress = presentMemberProgress(progress);
   const biteNotesForDash =

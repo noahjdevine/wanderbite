@@ -39,7 +39,7 @@ export function CarriedCreditsSection({
   recipeSections = { exclusionLine: null, byRestaurantId: {} },
   activitySuggestions = { byRestaurantId: {} },
   activityNotesMode = false,
-  activityNotes = { byRestaurantId: {} },
+  activityNotes = { byRestaurantId: {}, namesByRestaurantId: {} },
   briefings = { byRestaurantId: {} },
   visitProblems = false,
 }: CarriedCreditsSectionProps) {
@@ -85,6 +85,9 @@ export function CarriedCreditsSection({
               activityNotesMode={activityNotesMode}
               activityNote={
                 credit.item ? activityNotes.byRestaurantId[credit.item.restaurant.id] ?? null : null
+              }
+              activityNoteNames={
+                credit.item ? activityNotes.namesByRestaurantId[credit.item.restaurant.id] ?? [] : []
               }
               briefings={
                 credit.item ? briefings.byRestaurantId[credit.item.restaurant.id] ?? [] : []

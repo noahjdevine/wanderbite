@@ -34,6 +34,8 @@ export const ACTIVITY_NOTE_HEADING = 'For the rest of the night';
 
 export type ActivityNoteMap = {
   byRestaurantId: Record<string, string>;
+  /** Official name and short display name for each activity cited by the note. */
+  namesByRestaurantId: Record<string, string[]>;
 };
 
 export const OPTIONAL_ACTIVITY_LABEL =

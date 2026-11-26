@@ -8,14 +8,17 @@ import {
   logActivityNotesReadFailedOnce,
   logActivityNotesUnavailableOnce,
 } from '@/lib/activities/flag';
+import { activityDisplayName } from '@/lib/activities/note-names';
 import { noteCanShow, type NoteVisibleActivity } from '@/lib/activities/note-visibility';
 import type { ActivityNoteMap } from '@/lib/activities/types';
 
-const EMPTY: ActivityNoteMap = { byRestaurantId: {} };
+const EMPTY: ActivityNoteMap = { byRestaurantId: {}, namesByRestaurantId: {} };
 
 const NOTE_COLUMNS = 'id, restaurant_id, body, status, activity_ids, is_sample';
 const ACTIVITY_COLUMNS =
-  'id, status, is_sample, source_url, valid_from, valid_until, last_verified_at';
+  'id, name, status, is_sample, source_url, valid_from, valid_until, last_verified_at';
+
+type NoteActivityRow = NoteVisibleActivity & { name: string };
 
 type NoteRow = {
   id: string;
@@ -25,6 +28,28 @@ type NoteRow = {
   activity_ids: string[];
   is_sample: boolean;
 };
+
+function namesForActivities(
+  ids: readonly string[],
+  activities: ReadonlyMap<string, NoteActivityRow>,
+): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  const push = (value: string) => {
+    const trimmed = value.trim();
+    const key = trimmed.toLowerCase();
+    if (!trimmed || seen.has(key)) return;
+    seen.add(key);
+    names.push(trimmed);
+  };
+  for (const id of ids) {
+    const official = activities.get(id)?.name;
+    if (!official) continue;
+    push(official);
+    push(activityDisplayName(official));
+  }
+  return names;
+}
 
 function isNoteRow(value: NoteRow): boolean {
   return (
@@ -70,12 +95,14 @@ export async function loadActivityNotes(args: {
     logActivityNotesReadFailedOnce();
     return EMPTY;
   }
-  const activities = new Map<string, NoteVisibleActivity>();
+  const activities = new Map<string, NoteActivityRow>();
   for (const row of activitiesResult.data ?? []) {
+    if (typeof row.name !== 'string') continue;
     activities.set(row.id, row);
   }
   const now = args.now ?? new Date();
   const byRestaurantId: Record<string, string> = {};
+  const namesByRestaurantId: Record<string, string[]> = {};
   for (const note of notes) {
     if (byRestaurantId[note.restaurant_id]) continue;
     const visible = noteCanShow(
@@ -85,7 +112,9 @@ export async function loadActivityNotes(args: {
     );
     if (!visible) continue;
     const body = note.body.trim();
-    if (body) byRestaurantId[note.restaurant_id] = body;
+    if (!body) continue;
+    byRestaurantId[note.restaurant_id] = body;
+    namesByRestaurantId[note.restaurant_id] = namesForActivities(note.activity_ids, activities);
   }
-  return { byRestaurantId };
+  return { byRestaurantId, namesByRestaurantId };
 }

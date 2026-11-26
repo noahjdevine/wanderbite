@@ -100,6 +100,46 @@ describe('activity note on the card and ticket', () => {
     expect(section?.className).not.toContain('absolute');
   });
 
+  it('italicizes matching names and renders unmatched or markup-like text as plain text', async () => {
+    const named = await render(
+      <ActivityNoteBlock
+        headingId="note-names"
+        body="Alpha Kitchen sits near Chestnut Square Village after the meal. The night stays easy."
+        names={['Chestnut Square Village', 'Alpha Kitchen']}
+      />,
+    );
+    expect([...named.querySelectorAll('em')].map((node) => node.textContent)).toEqual([
+      'Alpha Kitchen',
+      'Chestnut Square Village',
+    ]);
+    expect(named.querySelector('[data-activity-note]')?.innerHTML).not.toContain('dangerouslySetInnerHTML');
+
+    const plain = await render(
+      <ActivityNoteBlock
+        headingId="note-plain"
+        body="The night stays easy after the meal and the walk home."
+        names={['Chestnut Square Village']}
+      />,
+    );
+    expect(plain.querySelector('em')).toBeNull();
+    expect(plain.querySelector('[data-activity-note] p')?.textContent).toBe(
+      'The night stays easy after the meal and the walk home.',
+    );
+
+    const hostile = '<script>alert(1)</script>';
+    const injected = await render(
+      <ActivityNoteBlock
+        headingId="note-html"
+        body={`Look at ${hostile} and keep the night easy.`}
+        names={[hostile]}
+      />,
+    );
+    expect(injected.querySelector('script')).toBeNull();
+    expect(injected.innerHTML).not.toContain('<script');
+    expect(injected.textContent).toContain(hostile);
+    expect(injected.querySelector('em')?.textContent).toBe(hostile);
+  });
+
   it('keeps fact boxes when notes mode is off and hides them when the note is missing', async () => {
     const facts = await render(
       <RestaurantCard
@@ -191,11 +231,13 @@ describe('activity note on the card and ticket', () => {
         onSwap={() => undefined}
         onRedeem={() => undefined}
         activityNotesMode
-        activityNote={NOTE}
+        activityNote="Alpha Kitchen keeps the night easy after the meal."
+        activityNoteNames={['Chestnut Square Village']}
       />,
     );
     const ticketText = ticket.textContent ?? '';
     expect(ticketText.indexOf('Show code to your server')).toBeLessThan(ticketText.indexOf(ACTIVITY_NOTE_HEADING));
     expect(ticket.querySelector('[data-activity-note] a')).toBeNull();
+    expect(ticket.querySelector('[data-activity-note] em')?.textContent).toBe('Alpha Kitchen');
   });
 });
