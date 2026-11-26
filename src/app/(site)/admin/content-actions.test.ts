@@ -47,6 +47,8 @@ const harness = vi.hoisted(() => ({
     | { ok: false; error: string },
   failApply: false,
   failAudit: false,
+  approveRpcError: null as { code?: string; message?: string } | 'throw' | null,
+  bumpNoteVersionBeforeApprove: false,
   tables: {} as Record<string, Row[]>,
 }));
 
@@ -71,6 +73,8 @@ function resetTables() {
   harness.calls = [];
   harness.failApply = false;
   harness.failAudit = false;
+  harness.approveRpcError = null;
+  harness.bumpNoteVersionBeforeApprove = false;
   harness.role = 'admin';
   harness.user = { ok: true, userId: ADMIN_ID, email: 'a@example.com' };
   harness.aal = { currentLevel: 'aal2', nextLevel: 'aal2' };
@@ -271,14 +275,26 @@ vi.mock('@/lib/supabase-admin', () => ({
         return Promise.resolve({ data: recipe.version, error: null });
       }
       if (fn === 'approve_restaurant_activity_note') {
+        if (harness.approveRpcError === 'throw') {
+          throw Object.assign(new Error('fetch failed PRIVATE_NOTE_BODY'), { code: '' });
+        }
+        if (harness.approveRpcError) {
+          return Promise.resolve({ data: null, error: harness.approveRpcError });
+        }
         const notes = harness.tables.restaurant_activity_notes ?? [];
         const note = notes.find((row) => row.id === args.p_note_id);
+        if (harness.bumpNoteVersionBeforeApprove && note) {
+          note.version = Number(note.version) + 1;
+        }
         if (
           !note
           || note.status !== 'draft'
           || Number(note.version) !== Number(args.p_expected_version)
         ) {
-          return Promise.resolve({ data: null, error: { message: 'activity note is not a current draft' } });
+          return Promise.resolve({
+            data: null,
+            error: { code: '22023', message: 'activity note is not a current draft' },
+          });
         }
         const reviewedAt = String(args.p_now);
         const reviewedBy = String(args.p_admin_id);
@@ -844,6 +860,15 @@ describe('activity note actions', () => {
     expect(rows.filter((row) => row.status === 'approved')).toHaveLength(1);
     expect(rows.find((row) => row.id === NOTE_ID)?.status).toBe('approved');
     expect(rows.find((row) => row.id === '11111111-1111-4111-8111-111111111111')?.status).toBe('paused');
+    expect(harness.tables.admin_audit_log).toEqual([
+      expect.objectContaining({
+        action: 'content.activity_note_approve',
+        actor_user_id: ADMIN_ID,
+        target_type: 'restaurant_activity_note',
+        target_id: NOTE_ID,
+        metadata: { published: true },
+      }),
+    ]);
 
     rows.forEach((row) => {
       if (row.id === NOTE_ID) row.status = 'draft';
@@ -857,6 +882,73 @@ describe('activity note actions', () => {
     expect(rejected).toMatchObject({ ok: true, published: false });
     expect(rows.find((row) => row.id === NOTE_ID)?.status).toBe('rejected');
     expect(rows.filter((row) => row.status === 'approved')).toHaveLength(0);
+  });
+
+  it('tells the admin the note changed when the draft version moved', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      seedNote();
+      harness.bumpNoteVersionBeforeApprove = true;
+      const refused = await approveActivityNote(NOTE_ID);
+      expect(refused).toEqual({ ok: false, error: 'This note changed before it could be approved.' });
+      expect(harness.tables.restaurant_activity_notes?.[0]).toMatchObject({
+        status: 'draft',
+        version: 2,
+        reviewed_at: null,
+        body: NOTE_BODY,
+      });
+      expect(harness.tables.admin_audit_log).toHaveLength(0);
+
+      resetTables();
+      seedNote();
+      harness.approveRpcError = { message: 'activity note is not a current draft' };
+      const byMessage = await approveActivityNote(NOTE_ID);
+      expect(byMessage).toEqual({ ok: false, error: 'This note changed before it could be approved.' });
+      expect(harness.tables.restaurant_activity_notes?.[0]).toMatchObject({ status: 'draft', version: 1 });
+      expect(harness.tables.admin_audit_log).toHaveLength(0);
+
+      resetTables();
+      seedNote();
+      harness.approveRpcError = { code: '22023', message: `activity note is not a current draft ${NOTE_BODY}` };
+      const byCode = await approveActivityNote(NOTE_ID);
+      expect(byCode).toEqual({ ok: false, error: 'This note changed before it could be approved.' });
+      expect(harness.tables.admin_audit_log).toHaveLength(0);
+      expect(errorSpy).not.toHaveBeenCalled();
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(NOTE_BODY);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('says approving is unavailable when the approve call fails for another reason', async () => {
+    const failures = [
+      { code: '42883', message: `function approve_restaurant_activity_note does not exist ${NOTE_BODY}` },
+      { code: 'PGRST202', message: `Could not find the function ${NOTE_BODY}` },
+      'throw',
+    ] as const;
+    for (const failure of failures) {
+      resetTables();
+      seedNote();
+      harness.approveRpcError = failure === 'throw' ? 'throw' : failure;
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      const refused = await approveActivityNote(NOTE_ID);
+      expect(refused).toEqual({
+        ok: false,
+        error: "Approving notes isn't available right now. Nothing was changed.",
+      });
+      expect(harness.tables.restaurant_activity_notes?.[0]).toMatchObject({
+        status: 'draft',
+        version: 1,
+        reviewed_at: null,
+        body: NOTE_BODY,
+      });
+      expect(harness.tables.admin_audit_log).toHaveLength(0);
+      const expectedCode = failure === 'throw' ? 'unknown' : failure.code;
+      expect(errorSpy.mock.calls).toEqual([['[activity-note] approve unavailable', expectedCode]]);
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain(NOTE_BODY);
+      expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('PRIVATE_NOTE_BODY');
+      errorSpy.mockRestore();
+    }
   });
 
   it('rejects a short-walk edit when the cited place is farther than a half mile', async () => {

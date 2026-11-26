@@ -26,6 +26,10 @@ export type ReviewActivity = NoteVisibleActivity & {
   areaWander?: boolean;
 };
 
+export type ApproveDraftResult =
+  | { ok: true }
+  | { ok: false; reason: 'stale' | 'unavailable' };
+
 export type ActivityNoteStore = {
   loadNote(id: string): Promise<StoredActivityNote | null>;
   loadActivities(ids: readonly string[], restaurantId: string): Promise<ReviewActivity[]>;
@@ -34,7 +38,7 @@ export type ActivityNoteStore = {
     expectedVersion: number;
     adminId: string;
     now: string;
-  }): Promise<boolean>;
+  }): Promise<ApproveDraftResult>;
   save(note: StoredActivityNote, expectedStatus: ActivityNoteStatus): Promise<boolean>;
   audit(entry: { adminId: string; action: string; noteId: string; metadata: Record<string, unknown> }): Promise<void>;
 };
@@ -91,7 +95,14 @@ export async function approveRestaurantActivityNote(
     adminId: args.adminId,
     now: reviewedAt,
   });
-  if (!saved) return { ok: false, error: 'This note changed before it could be approved.' };
+  if (!saved.ok) {
+    return {
+      ok: false,
+      error: saved.reason === 'stale'
+        ? 'This note changed before it could be approved.'
+        : "Approving notes isn't available right now. Nothing was changed.",
+    };
+  }
   await store.audit({
     adminId: args.adminId,
     action: 'content.activity_note_approve',

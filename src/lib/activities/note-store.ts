@@ -43,6 +43,34 @@ function mapNote(row: {
 const NOTE_COLUMNS =
   'id, restaurant_id, body, status, activity_ids, version, reviewed_at, reviewed_by';
 
+/** Raised by approve_restaurant_activity_note for a stale version or a non-draft. */
+const STALE_DRAFT_SQLSTATE = '22023';
+const STALE_DRAFT_MESSAGE = 'activity note is not a current draft';
+const APPROVE_UNAVAILABLE_LOG = '[activity-note] approve unavailable';
+
+function isStaleDraftRefusal(error: { code?: string | null; message?: string | null }): boolean {
+  return error.code === STALE_DRAFT_SQLSTATE || error.message === STALE_DRAFT_MESSAGE;
+}
+
+function approveErrorCode(error: unknown): string {
+  if (!error || typeof error !== 'object' || !('code' in error)) return 'unknown';
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string' && /^[A-Za-z0-9]{1,16}$/.test(code)) return code;
+  return 'unknown';
+}
+
+function approveRefusal(error: unknown): { ok: false; reason: 'stale' | 'unavailable' } {
+  if (
+    error
+    && typeof error === 'object'
+    && isStaleDraftRefusal(error as { code?: string | null; message?: string | null })
+  ) {
+    return { ok: false, reason: 'stale' };
+  }
+  console.error(APPROVE_UNAVAILABLE_LOG, approveErrorCode(error));
+  return { ok: false, reason: 'unavailable' };
+}
+
 const ACTIVITY_COLUMNS =
   'id, name, status, is_sample, source_url, valid_from, valid_until, last_verified_at, lat, lon';
 
@@ -115,13 +143,18 @@ export function activityNoteStore(supabase = getSupabaseAdmin()): ActivityNoteSt
       });
     },
     async approveDraft(args) {
-      const { error } = await supabase.rpc('approve_restaurant_activity_note', {
-        p_note_id: args.noteId,
-        p_admin_id: args.adminId,
-        p_now: args.now,
-        p_expected_version: args.expectedVersion,
-      });
-      return !error;
+      try {
+        const { error } = await supabase.rpc('approve_restaurant_activity_note', {
+          p_note_id: args.noteId,
+          p_admin_id: args.adminId,
+          p_now: args.now,
+          p_expected_version: args.expectedVersion,
+        });
+        if (!error) return { ok: true };
+        return approveRefusal(error);
+      } catch (error) {
+        return approveRefusal(error);
+      }
     },
     async save(note, expectedStatus) {
       const { data, error } = await supabase

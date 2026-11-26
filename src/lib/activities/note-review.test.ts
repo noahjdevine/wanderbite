@@ -42,7 +42,9 @@ function memory(notes: StoredActivityNote[]): ActivityNoteStore {
     },
     async approveDraft(args) {
       const note = notes.find((row) => row.id === args.noteId);
-      if (!note || note.status !== 'draft' || note.version !== args.expectedVersion) return false;
+      if (!note || note.status !== 'draft' || note.version !== args.expectedVersion) {
+        return { ok: false, reason: 'stale' };
+      }
       for (const prior of notes) {
         if (prior.restaurantId !== note.restaurantId || prior.status !== 'approved') continue;
         prior.status = 'paused';
@@ -54,7 +56,7 @@ function memory(notes: StoredActivityNote[]): ActivityNoteStore {
       note.version += 1;
       note.reviewedAt = args.now;
       note.reviewedBy = args.adminId;
-      return true;
+      return { ok: true };
     },
     async save(note, expectedStatus) {
       const current = notes.find((row) => row.id === note.id);
@@ -176,6 +178,37 @@ describe('activity note review', () => {
     const published = await approveRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', now: NOW });
     expect(published).toMatchObject({ ok: true, published: true });
     expect(notes[0]?.status).toBe('approved');
+  });
+
+  it('writes one audit row only after the note is approved', async () => {
+    const notes = [draft('note-1')];
+    const store = memory(notes);
+    let audits = 0;
+    store.audit = async () => {
+      audits += 1;
+    };
+    const approved = await approveRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', now: NOW });
+    expect(approved).toMatchObject({ ok: true, published: true });
+    expect(notes[0]?.status).toBe('approved');
+    expect(audits).toBe(1);
+  });
+
+  it('reports that approving is unavailable and writes no audit for another failure', async () => {
+    const notes = [draft('note-1')];
+    const store = memory(notes);
+    let audits = 0;
+    store.approveDraft = async () => ({ ok: false, reason: 'unavailable' });
+    store.audit = async () => {
+      audits += 1;
+    };
+    const approved = await approveRestaurantActivityNote(store, { noteId: 'note-1', adminId: 'admin', now: NOW });
+    expect(approved).toEqual({
+      ok: false,
+      error: "Approving notes isn't available right now. Nothing was changed.",
+    });
+    expect(notes[0]?.status).toBe('draft');
+    expect(notes[0]?.version).toBe(1);
+    expect(audits).toBe(0);
   });
 
   it('does not approve a draft whose cited activity is paused', async () => {
