@@ -183,7 +183,9 @@ export default async function ChallengesPage() {
           distanceBand: typedProfile.distance_band,
         }),
     loadRestaurantBriefings({ restaurantIds }),
-    activityNotesMode ? loadActivityNotes({ restaurantIds }) : Promise.resolve({ byRestaurantId: {} }),
+    activityNotesMode
+      ? loadActivityNotes({ restaurantIds })
+      : Promise.resolve({ byRestaurantId: {}, namesByRestaurantId: {} }),
   ]);
 
   const monthlyReveal = await loadMonthlyRevealForChallenges({

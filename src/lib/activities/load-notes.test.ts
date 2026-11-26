@@ -34,6 +34,7 @@ function activity(overrides: Record<string, unknown> = {}) {
     source_url: 'https://example.com/chestnut-square',
     valid_from: null,
     valid_until: null,
+    name: 'Chestnut Square Village - McKinney',
     last_verified_at: new Date().toISOString(),
     ...overrides,
   };
@@ -64,7 +65,9 @@ describe('loadActivityNotes', () => {
     process.env.E06_ACTIVITY_NOTES_ENABLED = 'true';
     const activitiesOff = await loadActivityNotes({ restaurantIds: [RESTAURANT] });
     expect(notesOff.byRestaurantId).toEqual({});
+    expect(notesOff.namesByRestaurantId).toEqual({});
     expect(activitiesOff.byRestaurantId).toEqual({});
+    expect(activitiesOff.namesByRestaurantId).toEqual({});
     expect(from).not.toHaveBeenCalled();
   });
 
@@ -78,6 +81,10 @@ describe('loadActivityNotes', () => {
     const loaded = await loadActivityNotes({ restaurantIds: [RESTAURANT] });
     expect(from.mock.calls.map((call) => call[0])).toEqual(['restaurant_activity_notes', 'activities']);
     expect(loaded.byRestaurantId[RESTAURANT]).toBe(BODY);
+    expect(loaded.namesByRestaurantId[RESTAURANT]).toEqual([
+      'Chestnut Square Village - McKinney',
+      'Chestnut Square Village',
+    ]);
   });
 
   it('returns nothing when the cited activity is paused or the table is missing', async () => {
@@ -88,9 +95,9 @@ describe('loadActivityNotes', () => {
       return query({ data: [], error: null });
     });
     const hidden = await loadActivityNotes({ restaurantIds: [RESTAURANT] });
-    expect(hidden.byRestaurantId).toEqual({});
+    expect(hidden).toEqual({ byRestaurantId: {}, namesByRestaurantId: {} });
     from.mockImplementation(() => query({ data: null, error: { code: 'PGRST205', message: 'Could not find the table' } }));
     const missing = await loadActivityNotes({ restaurantIds: [RESTAURANT] });
-    expect(missing.byRestaurantId).toEqual({});
+    expect(missing).toEqual({ byRestaurantId: {}, namesByRestaurantId: {} });
   });
 });

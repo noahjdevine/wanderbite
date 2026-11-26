@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { addDays } from 'date-fns';
-import { Loader2, MapPin, RefreshCw, Ticket } from 'lucide-react';
+import { Loader2, RefreshCw, Ticket } from 'lucide-react';
 import {
   Card,
   CardContent,
@@ -39,6 +39,7 @@ import {
 } from '@/lib/challenges/challenge-deadline';
 import { ActivityNoteBlock } from '@/components/activities/activity-note';
 import { NearbyIdeas } from '@/components/activities/nearby-ideas';
+import { GetDirectionsLink } from '@/components/challenges/get-directions';
 import { ReportVisitProblem } from '@/components/challenges/report-visit-problem';
 import { FirstVisitBriefing } from '@/components/briefings/first-visit';
 import type { ActivitySuggestion } from '@/lib/activities/types';
@@ -82,6 +83,8 @@ export type RestaurantCardProps = {
   activityNotesMode?: boolean;
   /** Approved note body. Null hides the section. */
   activityNote?: string | null;
+  /** Activity names cited by the note. The restaurant name is added when rendering. */
+  activityNoteNames?: readonly string[];
   /** Empty when E06_BRIEFINGS_ENABLED is not exactly true, or no active facts exist. */
   briefings?: BriefingFact[];
   /** Exact E07_VISIT_PROBLEMS_ENABLED. Default false hides problem reporting. */
@@ -107,6 +110,7 @@ export function RestaurantCard({
   activities = [],
   activityNotesMode = false,
   activityNote = null,
+  activityNoteNames = [],
   briefings = [],
   visitProblems = false,
 }: RestaurantCardProps) {
@@ -165,8 +169,8 @@ export function RestaurantCard({
           googlePlaceId={item.restaurant.google_place_id}
         />
       </div>
-      <CardHeader className="flex flex-row items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
+      <CardHeader>
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <CardTitle>{item.restaurant.name}</CardTitle>
             {isExpired && <Badge variant="secondary">Expired</Badge>}
@@ -181,18 +185,7 @@ export function RestaurantCard({
             </CardDescription>
           ) : null}
         </div>
-        {mapsUrl && (
-          <Button variant="ghost" size="icon" className="shrink-0" asChild>
-            <a
-              href={mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Get directions"
-            >
-              <MapPin className="size-4" />
-            </a>
-          </Button>
-        )}
+        {mapsUrl ? <GetDirectionsLink href={mapsUrl} /> : null}
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm font-medium text-primary">{offerText}</p>
@@ -252,12 +245,6 @@ export function RestaurantCard({
                 ? { id: biteNote.id, note: biteNote.note, is_public: biteNote.is_public }
                 : null
             }
-          />
-        ) : null}
-        {visitProblems && item.challengeItem.status !== 'swapped_out' ? (
-          <ReportVisitProblem
-            challengeItemId={item.challengeItem.id}
-            redemptionId={item.redemptionId ?? null}
           />
         ) : null}
         <RecipeCards
@@ -335,9 +322,20 @@ export function RestaurantCard({
         </CardFooter>
       )}
       {activityNotesMode && activityNote?.trim() ? (
-        <div className="px-6 pb-6">
-          <ActivityNoteBlock headingId={`activity-note-${item.restaurant.id}`} body={activityNote} />
+        <div className="px-6">
+          <ActivityNoteBlock
+            headingId={`activity-note-${item.restaurant.id}`}
+            body={activityNote}
+            names={[...activityNoteNames, item.restaurant.name]}
+          />
         </div>
+      ) : null}
+      {visitProblems && item.challengeItem.status !== 'swapped_out' ? (
+        <ReportVisitProblem
+          className="border-t border-[#e3d9c6] px-6 pt-3"
+          challengeItemId={item.challengeItem.id}
+          redemptionId={item.redemptionId ?? null}
+        />
       ) : null}
     </Card>
   );
