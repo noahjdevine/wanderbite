@@ -313,6 +313,7 @@ describe('activity maintenance preparation', () => {
       expect(calls).toEqual(['probe', 'list', 'expire:2026-11-05', 'pause', 'sources']);
       expect(result.expired).toBe(1);
       expect(result.paused).toBe(0);
+      expect(result.pauseError).toBeUndefined();
       expect(result.skip).toBeNull();
       expect(result.sources.map((row) => row.id)).toEqual(['venue-old', 'event']);
       expect(warnings).toEqual([
@@ -320,6 +321,62 @@ describe('activity maintenance preparation', () => {
       ]);
     } finally {
       console.warn = original;
+    }
+  });
+
+  it('keeps the expiry count and due sources when pause throws a generic error', async () => {
+    const calls: string[] = [];
+    const errors: unknown[][] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args);
+    };
+    try {
+      const base = port(calls);
+      const result = await prepareActivityMaintenance({
+        enabled: true,
+        now,
+        port: {
+          ...base,
+          async pauseStaleNotes() {
+            calls.push('pause');
+            throw Object.assign(new Error('canceling statement due to statement timeout PRIVATE_NOTE_BODY'), {
+              code: '57014',
+            });
+          },
+        },
+      });
+      expect(calls).toEqual(['probe', 'list', 'expire:2026-11-05', 'pause', 'sources']);
+      expect(result.expired).toBe(1);
+      expect(result.paused).toBe(0);
+      expect(result.pauseError).toBe('57014');
+      expect(result.skip).toBeNull();
+      expect(result.sources.map((row) => row.id)).toEqual(['venue-old', 'event']);
+      expect(errors).toEqual([['[content-refresh] activity note pause failed', '57014']]);
+      expect(JSON.stringify(errors)).not.toContain('PRIVATE_NOTE_BODY');
+      expect(JSON.stringify(errors)).not.toContain('canceling statement');
+
+      calls.length = 0;
+      errors.length = 0;
+      const uncoded = await prepareActivityMaintenance({
+        enabled: true,
+        now,
+        port: {
+          ...base,
+          async pauseStaleNotes() {
+            calls.push('pause');
+            throw new Error('fetch failed');
+          },
+        },
+      });
+      expect(calls).toEqual(['probe', 'list', 'expire:2026-11-05', 'pause', 'sources']);
+      expect(uncoded.expired).toBe(1);
+      expect(uncoded.paused).toBe(0);
+      expect(uncoded.pauseError).toBe('pause_failed');
+      expect(uncoded.sources.map((row) => row.id)).toEqual(['venue-old', 'event']);
+      expect(errors).toEqual([['[content-refresh] activity note pause failed', 'pause_failed']]);
+    } finally {
+      console.error = original;
     }
   });
 });

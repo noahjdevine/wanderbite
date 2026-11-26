@@ -26,6 +26,8 @@ export type ActivityMaintenanceResult = {
   expired: number;
   paused: number;
   skip: string | null;
+  /** Set only when pause failed for a reason other than a missing notes schema. */
+  pauseError?: string;
 };
 
 export function activityMaintenanceSchemaMissing(error: SchemaError | null | undefined): boolean {
@@ -89,9 +91,15 @@ export async function prepareActivityMaintenance(args: {
       if (!today) throw new Error('Chicago date was not available');
       expired = await args.port.expireDated(today);
     }
-    const paused = await pauseStaleNotes(args.port, args.now);
+    const pause = await pauseStaleNotes(args.port, args.now);
     const sources = selectDueActivitySources(await args.port.listActiveActivitySources(), args.now);
-    return { sources, expired, paused, skip: null };
+    return {
+      sources,
+      expired,
+      paused: pause.paused,
+      skip: null,
+      ...(pause.pauseError ? { pauseError: pause.pauseError } : {}),
+    };
   } catch (error) {
     const schema = schemaErrorOf(error);
     if (schema && activityMaintenanceSchemaMissing(schema)) return skipped();
@@ -102,18 +110,31 @@ export async function prepareActivityMaintenance(args: {
 /**
  * Runs after dated expiry. A missing notes function logs and returns 0 so
  * menu and activity refresh still run before that migration is applied.
+ * Any other pause error is recorded and does not discard this run.
  */
-async function pauseStaleNotes(port: ActivityMaintenancePort, now: Date): Promise<number> {
+async function pauseStaleNotes(
+  port: ActivityMaintenancePort,
+  now: Date,
+): Promise<{ paused: number; pauseError: string | null }> {
   try {
-    return await port.pauseStaleNotes(now);
+    return { paused: await port.pauseStaleNotes(now), pauseError: null };
   } catch (error) {
     const schema = schemaErrorOf(error);
     if (schema && activityMaintenanceSchemaMissing(schema)) {
       logActivityMaintenanceSkip('activity note maintenance skipped: notes schema unavailable');
-      return 0;
+      return { paused: 0, pauseError: null };
     }
-    throw error;
+    const pauseError = pauseFailureCode(error);
+    console.error('[content-refresh] activity note pause failed', pauseError);
+    return { paused: 0, pauseError };
   }
+}
+
+function pauseFailureCode(error: unknown): string {
+  if (!error || typeof error !== 'object' || !('code' in error)) return 'pause_failed';
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === 'string' && /^[A-Za-z0-9]{1,16}$/.test(code)) return code;
+  return 'pause_failed';
 }
 
 function sourceRecord(row: {
